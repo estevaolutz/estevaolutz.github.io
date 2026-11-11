@@ -1,0 +1,2183 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Gotas · iPad</title>
+<meta name="theme-color" content="#070a10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gotas">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: palco à esquerda, rack de efeitos à direita; empilha abaixo de 1020px. Tema escuro único, deliberado (instalação). */
+  :root {
+    color-scheme: dark;
+    --bg: #070a10;
+    --panel: #0f141e;
+    --well: #0a0e15;
+    --border: #1c2434;
+    --border-hi: #2a3650;
+    --text: #e3e9f2;
+    --muted: #7d89a3;
+    --accent: #38bdf8;
+    --fx-delay: #38bdf8;
+    --fx-reverb: #8b5cf6;
+    --fx-drive: #f43f5e;
+    --fx-bitcrush: #eab308;
+    --water: #5eead4;
+    --font-ui: "Familjen Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    margin: 0;
+    min-height: 100%;
+    color: var(--text);
+    font-family: var(--font-ui);
+    padding-block: 20px;
+    padding-left: 16px;
+    padding-right: 16px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+    gap: 18px;
+    align-items: start;
+    max-width: 1360px;
+    width: 100%;
+  }
+  @media (max-width: 1020px) {
+    .app { grid-template-columns: minmax(0, 1fr); max-width: 760px; }
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  header p { margin: 0; font-size: 12px; color: var(--muted); }
+
+  .canvas-box { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; }
+  canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border-radius: 10px;
+    background: #03050a;
+    border: 1px solid #172033;
+    cursor: crosshair;
+    touch-action: none;
+    display: block;
+  }
+  .meter {
+    position: absolute; top: 10px; right: 12px;
+    font-family: var(--font-data); font-size: 10px; color: var(--muted);
+    pointer-events: none; font-variant-numeric: tabular-nums;
+  }
+
+  .fs-btn { position: absolute; right: 10px; bottom: 10px; z-index: 2; padding: 5px 10px; font-size: 11px; border-radius: 7px; background: rgba(10, 14, 22, .7); border: 1px solid var(--border-hi); color: var(--text); opacity: .7; transition: opacity .3s ease; }
+  .fs-btn:hover, .fs-btn:focus-visible { opacity: 1; background: rgba(20, 28, 44, .9); }
+  /* tela cheia: o palco mantém 16:9 (sem distorcer as gotas) e fica centralizado sobre preto */
+  .canvas-box:fullscreen, .canvas-box.pfs { display: flex; align-items: center; justify-content: center; background: #000; border-radius: 0; }
+  .canvas-box.pfs { position: fixed; inset: 0; width: 100%; max-width: none; aspect-ratio: auto; z-index: 100; }
+  .canvas-box:fullscreen canvas, .canvas-box.pfs canvas { position: static; inset: auto; width: min(100vw, calc(100vh * 16 / 9)); height: min(100vh, calc(100vw * 9 / 16)); border-radius: 0; border: 0; }
+  .hcur { position: absolute; z-index: 2; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 2px solid var(--c, #fb7185); background: color-mix(in srgb, var(--c, #fb7185) 18%, transparent); pointer-events: none; opacity: .9; transition: transform .18s ease, opacity .25s ease; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+  .hcur.hit { transform: scale(1.7); opacity: .35; }
+  .hcur.jcur { width: 16px; height: 16px; margin: -8px 0 0 -8px; border-width: 1px; border-radius: 50%; background: none; opacity: .5; box-shadow: none; display: flex; align-items: center; justify-content: center; font: 500 8px system-ui, sans-serif; color: var(--c); text-shadow: 0 0 2px rgba(0,0,0,.6); transition: transform .25s ease, opacity .6s ease; }
+  .hcur.jcur.hit { transform: scale(1.5); opacity: .25; }
+  .hcur.jcur2 { width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; opacity: .38; font-size: 7px; overflow: visible; white-space: nowrap; }
+  .hcur.jcur.gone { opacity: 0; }
+  .hcur.gone { opacity: 0; }
+  #hVideo { width: 160px; max-width: 40%; border-radius: 8px; transform: scaleX(-1); border: 1px solid var(--border-hi); margin-top: 8px; }
+  #hVideo.nomirror { transform: none; }
+  .canvas-box.idle canvas { cursor: none; }
+  .canvas-box.idle .fs-btn, .canvas-box.idle .meter { opacity: 0; }
+  .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  button, select {
+    font-family: var(--font-ui);
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #161e2d;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  button:hover, select:hover { background: #1f2a40; border-color: var(--border-hi); }
+  button:focus-visible, select:focus-visible, .knob:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.active { background: #0369a1; border-color: var(--accent); color: #fff; }
+  button.toggle { padding: 3px 9px; font-size: 10px; letter-spacing: .06em; font-family: var(--font-data); }
+  button.toggle.active { background: color-mix(in srgb, var(--c) 30%, #0b1018); border-color: var(--c); }
+
+  input[type=color] { width: 46px; height: 38px; padding: 2px; border-radius: 8px; border: 1px solid var(--border); background: #161e2d; cursor: pointer; }
+  input[type=file] { font-family: var(--font-ui); font-size: 12px; color: var(--muted); max-width: 100%; }
+  input[type=file]::file-selector-button { font-family: var(--font-ui); font-weight: 600; font-size: 12px; padding: 7px 12px; margin-right: 10px; border-radius: 8px; border: 1px solid var(--border); background: #161e2d; color: var(--text); cursor: pointer; }
+  audio { color-scheme: dark; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row select { flex: 1 1 140px; min-width: 0; }
+
+  .section {
+    background: var(--well);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .section-head h2 {
+    margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+    display: flex; align-items: center; gap: 7px; color: var(--text);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+
+  .fx-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .fx-grid .section { padding: 10px 8px; }
+  .fx-grid .section-head { flex-direction: column; gap: 6px; }
+
+  .knob-row { display: flex; justify-content: space-around; gap: 6px; }
+  .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; user-select: none; -webkit-user-select: none; }
+  .knob-title { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .knob { width: 46px; height: 46px; cursor: ns-resize; touch-action: none; border-radius: 50%; }
+  .knob svg { display: block; width: 100%; height: 100%; }
+  .knob-val { font-family: var(--font-data); font-size: 10px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .legend { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin: 0; }
+  .legend b { color: var(--text); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* ---------- iPad: palco na tela toda, ajustes numa gaveta ---------- */
+  body { padding:0 !important; display:block !important; overflow:hidden; height:100%; }
+  .canvas-box { position:fixed !important; inset:0; width:auto !important; max-width:none !important; aspect-ratio:auto !important; z-index:1; background:#03050a; }
+  .canvas-box canvas { border:0 !important; border-radius:0 !important; }
+  #fsBtn { display:none !important; }
+  .meter { top:auto !important; right:auto !important; left:max(14px,env(safe-area-inset-left)); bottom:max(10px,env(safe-area-inset-bottom)); }
+  .app { position:fixed; top:0; right:0; bottom:0; width:min(420px,100vw); max-width:none !important; display:block !important; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+    z-index:35; padding:max(12px,env(safe-area-inset-top)) 12px max(30px,env(safe-area-inset-bottom)); background:rgba(7,10,16,.95); border-left:1px solid var(--border); transition:transform .25s ease; }
+  .app > .card { margin-bottom:12px; }
+  body.nopanel .app, body.inicio .app { transform:translateX(102%); }
+  .knob { width:52px; height:52px; }
+  #entrada { background:radial-gradient(ellipse at 50% 35%, rgba(7,10,16,.72), rgba(7,10,16,.95) 70%) !important; }
+</style>
+
+<style id="ipad-css">
+  /* ---------- comum às versões de iPad ---------- */
+  html, body { -webkit-touch-callout:none; -webkit-text-size-adjust:100%; touch-action:manipulation; overscroll-behavior:none; }
+  .app-ui { position:fixed; z-index:30; font:14px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif; color:#e6e9f2; }
+  #entrada { z-index:40; inset:0; display:grid; place-items:center; overflow-y:auto; padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
+    background:radial-gradient(ellipse at 50% 35%, rgba(5,7,12,.35), rgba(5,7,12,.93) 70%); }
+  #entrada[hidden], #compart[hidden], .ic[hidden] { display:none !important; }
+  #entrada .c { width:min(30rem,100%); min-width:0; display:grid; gap:14px; }
+  #entrada h1 { margin:0; font:200 clamp(1.6rem,6vw,3rem)/1 system-ui,-apple-system,sans-serif; letter-spacing:.04em; text-transform:uppercase; color:#e6e9f2; }
+  #entrada h1 b { font-weight:600; color:var(--ipad-ac); }
+  #entrada p { margin:0; color:#98a1bf; line-height:1.5; font-size:14px; }
+  .big { display:block; width:100%; text-align:left; padding:15px 16px; border-radius:14px; font:500 16px/1.3 system-ui,-apple-system,sans-serif; border:1px solid #38425c; background:rgba(23,28,42,.9); color:#e6e9f2; cursor:pointer; }
+  .big small { display:block; color:#98a1bf; font-size:12.5px; font-weight:400; margin-top:2px; }
+  .big.p { background:var(--ipad-ac); color:#06150f; border-color:var(--ipad-ac); }
+  .big.p small { color:rgba(0,0,0,.62); }
+  #topo { top:0; right:0; padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 0 0; display:flex; gap:8px; transition:opacity .35s, right .25s ease; }
+  body.quieto #topo { opacity:0; pointer-events:none; }
+  body.inicio #topo { display:none; }
+  .ic { width:48px; height:48px; min-height:0; border-radius:50%; border:1px solid #38425c; background:rgba(12,15,23,.72); color:#e6e9f2; font:19px/1 system-ui,sans-serif; padding:0; display:grid; place-items:center; cursor:pointer; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
+  .ic.on { background:var(--ipad-ac); color:#06150f; border-color:var(--ipad-ac); }
+  #dica { left:50%; top:max(18px,env(safe-area-inset-top)); transform:translateX(-50%); padding:8px 14px; border-radius:999px; background:rgba(12,15,23,.85); font-size:13px; opacity:0; transition:opacity .4s; pointer-events:none; white-space:nowrap; z-index:41; }
+  #dica.v { opacity:1; }
+  #compart { left:50%; bottom:max(28px,env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:45; width:min(22rem,90vw); }
+  #fecharPainel { position:sticky; top:0; float:right; width:40px; height:40px; min-height:0; border-radius:50%; padding:0; font-size:17px; z-index:3; margin-left:8px; }
+  body:not(.nopanel) #topo { right:var(--ipad-pw); }
+  @media (max-width:999px), (orientation:portrait) { body:not(.nopanel) #topo { opacity:0; pointer-events:none; } }
+  .ic:focus-visible, .big:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+</style>
+<style>:root{--ipad-ac:#5eead4;--ipad-pw:min(420px,100vw)}</style>
+</head>
+<body>
+<div id="entrada" class="app-ui" role="dialog" aria-labelledby="entT"><div class="c">
+  <h1 id="entT">Go<b>tas</b></h1>
+  <p id="entradaP">Cada toque vira uma gota que soa. Toque ou arraste no palco; a chuva cai junto. Ajustes completos no ⚙.</p>
+  <button class="big p" id="eToque" type="button">Tocar com os dedos<small>Toque e arraste no palco, com a chuva automática</small></button>
+  <button class="big" id="eMic" type="button">Microfone<small>Cada som que o iPad ouvir vira uma gota (use fones)</small></button>
+  <button class="big" id="eArq" type="button">Arquivo de áudio<small>Uma música do app Arquivos: cada ataque vira uma gota</small></button>
+</div></div>
+<div id="topo" class="app-ui">
+  <button class="ic" id="tSom" type="button" aria-label="Ligar ou desligar o som">🔊</button>
+  <button class="ic" id="tChuva" type="button" aria-label="Chuva automática">☂︎</button>
+  <button class="ic" id="tFonte" type="button" aria-label="Trocar a entrada">⇄</button>
+  <button class="ic" id="tAjustes" type="button" aria-label="Todos os ajustes">⚙︎</button>
+  <button class="ic" id="tTela" type="button" aria-label="Tela cheia">⛶</button>
+</div>
+<div id="dica" class="app-ui" role="status" aria-live="polite"></div>
+<div id="compart" class="app-ui" hidden><button class="big p" type="button">Salvar ou compartilhar<small id="compartN"></small></button></div>
+
+<script>
+/* ---------- comum às versões de iPad: abertura, botões do topo, tela cheia, tela acesa, compartilhar ---------- */
+const IPAD = (() => {
+  const $ = (id) => document.getElementById(id);
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+  const toggleFs = async () => { const el = document.documentElement;
+    try { if (fsEl()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document); else await (el.requestFullscreen || el.webkitRequestFullscreen).call(el); } catch (e) {} };
+  const instalado = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  const temFs = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  let dT = 0; const dica = (t) => { const d = $('dica'); d.textContent = t; d.classList.add('v'); clearTimeout(dT); dT = setTimeout(() => d.classList.remove('v'), 2200); };
+  const sessao = (tipo) => { try { if (navigator.audioSession) navigator.audioSession.type = tipo; } catch (e) {} };   // 'playback' toca mesmo com a chave de silêncio
+  let lock = null, comecou = false;
+  const manterAcesa = async () => { try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch (e) {} };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && comecou) manterAcesa(); });
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault()));
+  function saveBlob(b, name) {   // no iPad abre a folha de compartilhar (Salvar em Fotos, Arquivos, AirDrop)
+    let file = null; try { file = new File([b], name, { type: b.type }); } catch (e) {}
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      const box = $('compart'); $('compartN').textContent = name; box.hidden = false;
+      box.querySelector('button').onclick = async () => { box.hidden = true; try { await navigator.share({ files: [file] }); } catch (e) {} };
+      clearTimeout(box._t); box._t = setTimeout(() => { box.hidden = true; }, 20000); return;
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  let qT = 0; const acorda = () => { document.body.classList.remove('quieto'); clearTimeout(qT);
+    qT = setTimeout(() => { if ($('entrada').hidden && document.body.classList.contains('nopanel')) document.body.classList.add('quieto'); }, 4000); };
+  ['pointerdown', 'keydown'].forEach((ev) => addEventListener(ev, acorda, true));
+  const painel = (abrir) => { document.body.classList.toggle('nopanel', !abrir); acorda(); };
+  const entrada = (mostrar, msg) => { $('entrada').hidden = !mostrar; document.body.classList.toggle('inicio', mostrar);
+    if (msg) $('entradaP').textContent = msg; if (!mostrar) { comecou = true; manterAcesa(); acorda(); } };
+  document.body.classList.add('nopanel', 'inicio');
+  $('tTela').onclick = toggleFs; if (instalado || !temFs) $('tTela').hidden = true;
+  $('tAjustes').onclick = () => painel(document.body.classList.contains('nopanel'));
+  $('tFonte').onclick = () => entrada(true);
+  const estreito = matchMedia('(max-width:999px), (orientation:portrait)');
+  const fechaSeEstreito = () => { if (estreito.matches && !document.body.classList.contains('nopanel')) painel(false); };
+  const registraSW = () => { if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {}); };
+  return { $, dica, sessao, saveBlob, painel, entrada, acorda, fsEl, toggleFs, fechaSeEstreito, registraSW };
+})();
+</script>
+
+<div class="app">
+  <div class="card">
+    <header>
+      <h1>Gotas</h1>
+      <p>Toque ou arraste no palco para criar gotas</p>
+    </header>
+    <div class="canvas-box">
+      <canvas id="stage" aria-label="Palco: cada gota gera uma nota"></canvas>
+      <span class="meter" id="meter">vozes 0</span>
+      <button id="fsBtn" class="fs-btn" type="button" aria-label="Tela cheia" title="Tela cheia (tecla F). Esc para sair.">Tela cheia (F)</button>
+    </div>
+    <div class="toolbar">
+      <button id="audioBtn" type="button">Ligar som</button>
+      <button id="rainBtn" type="button" class="active">Chuva automática: ligada</button>
+      <button id="saveBtn" type="button" title="Guarda todos os parâmetros neste navegador; na próxima vez que abrir, eles voltam sozinhos">Salvar parâmetros</button>
+      <button id="copyStateBtn" type="button" title="Copia os parâmetros como texto (para me enviar ou guardar num arquivo)">Copiar estado</button>
+      <button id="clearStateBtn" type="button" title="Apaga o que foi salvo e volta ao padrão" hidden>Apagar salvo</button>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2>Escala, timbre, cor e chuva</h2></div>
+      <div class="row">
+        <select id="scaleSelect" aria-label="Escala">
+          <option value="major">Pentatônica maior (Dó)</option>
+          <option value="minor" selected>Pentatônica menor (Si♭)</option>
+          <option value="dorian">Dórico (Ré)</option>
+          <option value="lydian">Lídio (Fá)</option>
+        </select>
+        <select id="timbreSelect" aria-label="Timbre das gotas">
+          <option value="agua" selected>Timbre: água</option>
+          <option value="vidro">Timbre: vidro</option>
+          <option value="kalimba">Timbre: kalimba</option>
+          <option value="madeira">Timbre: madeira</option>
+        </select>
+        <select id="paletteSelect" aria-label="Paleta de cores">
+          <option value="aquarela" selected>Aquarela</option>
+          <option value="nanquim">Nanquim</option>
+          <option value="outono">Outono</option>
+          <option value="lagoa">Lagoa</option>
+          <option value="noite">Noite</option>
+        </select>
+        <select id="rainDensity" aria-label="Intensidade da chuva">
+          <option value="0.22">Chuva leve</option>
+          <option value="0.45" selected>Chuva média</option>
+          <option value="0.8">Chuva forte</option>
+        </select>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2><span class="dot" style="--c:#f59e0b"></span>Harmonia e clima</h2></div>
+      <div class="row">
+        <select id="harmonySelect" aria-label="Harmonia">
+          <option value="12">Acordes lentos (12 s)</option>
+          <option value="24" selected>Acordes lentos (24 s)</option>
+          <option value="48">Acordes lentos (48 s)</option>
+          <option value="free">Escala livre (sem acordes)</option>
+        </select>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Drone</span><div class="knob" data-param="droneLvl" data-value="0.35" data-color="#f59e0b" aria-label="Volume do drone harmônico"></div><span class="knob-val" id="droneLvlVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Clima</span><div class="knob" data-param="weather" data-value="0.5" data-color="#f59e0b" aria-label="Quanto a chuva engrossa e afina ao longo dos minutos"></div><span class="knob-val" id="weatherVal"></span></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2><span class="dot" style="--c:#34d399"></span>Entrada de áudio</h2></div>
+      <div class="row">
+        <select id="inSource" aria-label="Fonte do áudio que cria as gotas">
+          <option value="off" selected>Entrada: desligada (toque e chuva)</option>
+          <option value="mic">Microfone do computador</option>
+          <option value="interface">Placa de áudio externa</option>
+          <option value="file">Arquivo de áudio</option>
+        </select>
+        <select id="inDevice" hidden aria-label="Dispositivo de entrada"></select>
+        <select id="inChan" hidden aria-label="Canal da placa">
+          <option value="stereo">Canais 1+2</option>
+          <option value="L">Canal 1 (esquerdo)</option>
+          <option value="R">Canal 2 (direito)</option>
+        </select>
+      </div>
+      <div id="inFileRow" hidden>
+        <input type="file" id="inFile" accept="audio/*" aria-label="Escolher arquivo de áudio">
+        <audio id="inAudio" controls loop style="width:100%;margin-top:8px"></audio>
+      </div>
+      <div class="row">
+        <select id="inMapX" aria-label="O que define a posição horizontal da gota">
+          <option value="auto" selected>X automático: estéreo segue o pan · mono espalha</option>
+          <option value="pitch">X segue: altura do som</option>
+          <option value="bright">X segue: brilho do som</option>
+          <option value="stereo">X segue: estéreo (E–D)</option>
+        </select>
+        <select id="inMapY" aria-label="O que define a posição vertical da gota">
+          <option value="bright" selected>Y segue: brilho do som</option>
+          <option value="level">Y segue: volume</option>
+          <option value="free">Y livre (sorteado)</option>
+        </select>
+        <button id="inMon" type="button" class="toggle" style="--c:#34d399" aria-pressed="false" title="Ouve a entrada junto com as gotas">OUVIR ENTRADA: OFF</button>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Ganho</span><div class="knob" data-param="inGain" data-value="0.5" data-color="#34d399" aria-label="Ganho da entrada"></div><span class="knob-val" id="inGainVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Sensib.</span><div class="knob" data-param="inSens" data-value="0.5" data-color="#34d399" aria-label="Sensibilidade para detectar ataques"></div><span class="knob-val" id="inSensVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Intervalo</span><div class="knob" data-param="inGap" data-value="0.3" data-color="#34d399" aria-label="Tempo mínimo entre duas gotas"></div><span class="knob-val" id="inGapVal"></span></div>
+      </div>
+      <p class="legend" id="inStatus" aria-live="polite">Cada ataque do som cria uma gota: a altura ou o brilho do som escolhe onde ela cai, e o volume escolhe o tamanho.</p>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2><span class="dot" style="--c:#fb7185"></span>Mãos (câmera)</h2></div>
+      <div class="row">
+        <button id="hBtn" type="button" class="toggle" style="--c:#fb7185" aria-pressed="false">CÂMERA: OFF</button>
+        <select id="hMode" aria-label="Gesto que cria a gota">
+          <option value="motion" selected>Gesto: movimento da mão</option>
+          <option value="pinch">Gesto: pinça (polegar + indicador)</option>
+          <option value="open">Gesto: abrir a mão (punho → palma)</option>
+        </select>
+        <select id="hCam" hidden aria-label="Câmera"></select>
+        <button id="hMirror" type="button" class="toggle active" style="--c:#fb7185" aria-pressed="true" title="Espelha a imagem: mover a mão para a direita leva a gota para a direita">ESPELHO: ON</button>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Sensib.</span><div class="knob" data-param="hSens" data-value="0.5" data-color="#fb7185" aria-label="Sensibilidade do gesto"></div><span class="knob-val" id="hSensVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Intervalo</span><div class="knob" data-param="hGap" data-value="0.3" data-color="#fb7185" aria-label="Tempo mínimo entre duas gotas da mesma mão"></div><span class="knob-val" id="hGapVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Alcance</span><div class="knob" data-param="hReach" data-value="0.5" data-color="#fb7185" aria-label="Quanto da imagem da câmera cobre o palco inteiro"></div><span class="knob-val" id="hReachVal"></span></div>
+      </div>
+      <video id="hVideo" muted playsinline hidden></video>
+      <p class="legend" id="hStatus" aria-live="polite">Ligue a câmera e mova as mãos: um círculo mostra onde cada mão está, e cada gesto solta uma gota ali. Dá para usar as duas mãos.</p>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2><span class="dot" style="--c:#fbbf24"></span>Joystick</h2></div>
+      <div class="row">
+        <select id="jMode" aria-label="Como o direcional move o cursor">
+          <option value="cursor" selected>Direcional move o cursor (ele fica onde parou)</option>
+          <option value="direct">Direcional = posição direta no palco</option>
+        </select>
+        <select id="jImg" aria-label="Parâmetro da imagem controlado pela posição vertical do cursor 2">
+          <option value="stainLife" selected>Cursor 2 vertical: duração das manchas</option>
+          <option value="inkHue">Cursor 2 vertical: matiz das cores</option>
+          <option value="stainSize">Cursor 2 vertical: tamanho das manchas</option>
+          <option value="stainInt">Cursor 2 vertical: intensidade da tinta</option>
+          <option value="inkSat">Cursor 2 vertical: saturação</option>
+          <option value="rings">Cursor 2 vertical: anéis</option>
+          <option value="chaos">Cursor 2 vertical: caos</option>
+          <option value="surfLum">Cursor 2 vertical: brilho da superfície</option>
+          <option value="">Cursor 2 vertical: nenhum</option>
+        </select>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Velocidade</span><div class="knob" data-param="jSpeed" data-value="0.5" data-color="#fbbf24" aria-label="Velocidade do cursor do joystick"></div><span class="knob-val" id="jSpeedVal"></span></div>
+      </div>
+      <div id="joyHost"></div>
+      <p class="legend">Dois cursores: o azul (direcional 1) solta as gotas, com botão de gota (segurar = fio). O rosa (direcional 2) não solta gotas: horizontal = feedback do delay, vertical = o parâmetro da imagem escolhido no menu; os números (feedback/imagem) aparecem só enquanto ele se move. Os cursores aparecem no palco, inclusive em tela cheia.</p>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2><span class="dot" style="--c:#e5e7eb"></span>Superfície</h2></div>
+      <div class="row" style="align-items:center">
+        <input type="color" id="surfColor" value="#f5f3ee" aria-label="Cor da superfície (papel ou água)" title="Cor da superfície">
+        <button id="surfReset" type="button" title="Volta à cor da paleta escolhida">Cor da paleta</button>
+        <div class="knob-wrap" style="margin-left:auto"><span class="knob-title">Brilho</span><div class="knob" data-param="surfLum" data-value="0.5" data-color="#e5e7eb" aria-label="Brilho da superfície"></div><span class="knob-val" id="surfLumVal"></span></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2><span class="dot" style="--c:#c084fc"></span>Manchas de tinta</h2></div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Tamanho</span><div class="knob" data-param="stainSize" data-value="0.5" data-color="#c084fc" aria-label="Tamanho das manchas de tinta"></div><span class="knob-val" id="stainSizeVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Intensidade</span><div class="knob" data-param="stainInt" data-value="0.5" data-color="#c084fc" aria-label="Intensidade da tinta"></div><span class="knob-val" id="stainIntVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Duração</span><div class="knob" data-param="stainLife" data-value="0.5" data-color="#c084fc" aria-label="Duração das manchas"></div><span class="knob-val" id="stainLifeVal"></span></div>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Matiz</span><div class="knob" data-param="inkHue" data-value="0.5" data-color="#c084fc" aria-label="Gira as cores das manchas no círculo cromático"></div><span class="knob-val" id="inkHueVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Saturação</span><div class="knob" data-param="inkSat" data-value="0.5" data-color="#c084fc" aria-label="Saturação das cores"></div><span class="knob-val" id="inkSatVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Luminos.</span><div class="knob" data-param="inkLum" data-value="0.5" data-color="#c084fc" aria-label="Claridade das cores"></div><span class="knob-val" id="inkLumVal"></span></div>
+      </div>
+      <div class="row" style="align-items:center">
+        <input type="color" id="inkPick" value="#2f7fd6" aria-label="Cor única das manchas" title="Cor única">
+        <button id="inkMonoBtn" type="button" class="toggle" style="--c:#c084fc" aria-pressed="false" title="Liga: todas as manchas usam esta cor (com pequenas variações por nota). Desliga: cores da paleta.">COR ÚNICA: OFF</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head">
+        <h2><span class="dot" style="--c:var(--water)"></span>Água</h2>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Raio</span><div class="knob" data-param="dropRadius" data-value="0.29" data-color="#5eead4" aria-label="Raio de cada gota"></div><span class="knob-val" id="dropRadiusVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Ondas</span><div class="knob" data-param="rings" data-value="0.29" data-color="#5eead4" aria-label="Número de ondas por gota"></div><span class="knob-val" id="ringsVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Interação</span><div class="knob" data-param="interact" data-value="0.6" data-color="#5eead4" aria-label="Força de repulsão e atração entre ondas"></div><span class="knob-val" id="interactVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Acaso</span><div class="knob" data-param="chaos" data-value="0.35" data-color="#5eead4" aria-label="Aleatoriedade dos parâmetros de cada gota"></div><span class="knob-val" id="chaosVal"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <section class="card" aria-label="Efeitos">
+    <div class="section">
+      <div class="section-head">
+        <h2><span class="dot" style="--c:var(--fx-delay)"></span>Delay</h2>
+        <button id="toggleDelay" type="button" class="toggle active" style="--c:var(--fx-delay)">ON</button>
+      </div>
+      <div class="row">
+        <select id="delayStyle" aria-label="Estilo do delay (inspirado no Replika XT)" title="Cada estilo ajusta os controles abaixo; depois você pode mexer em tudo">
+          <option value="modern" selected>Estilo: Moderno</option>
+          <option value="analog">Estilo: Analógico (BBD)</option>
+          <option value="tape">Estilo: Fita</option>
+          <option value="digital">Estilo: Digital vintage</option>
+          <option value="diffusion">Estilo: Difusão</option>
+        </select>
+        <select id="delaySync" aria-label="Sincronia do tempo" title="Com sincronia, o knob Tempo vira andamento (BPM)">
+          <option value="free" selected>Tempo livre (ms)</option>
+          <option value="q">Sync 1/4</option>
+          <option value="e">Sync 1/8</option>
+          <option value="de">Sync 1/8 pontuada</option>
+          <option value="et">Sync 1/8 tercina</option>
+          <option value="s">Sync 1/16</option>
+        </select>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Tempo</span><div class="knob" data-param="delayTime" data-value="0.39" data-color="#38bdf8" aria-label="Tempo do delay"></div><span class="knob-val" id="delayTimeVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Feedback</span><div class="knob" data-param="delayFb" data-value="0.55" data-color="#38bdf8" aria-label="Feedback do delay"></div><span class="knob-val" id="delayFbVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Mix</span><div class="knob" data-param="delayMix" data-value="0.5" data-color="#38bdf8" aria-label="Mix do delay"></div><span class="knob-val" id="delayMixVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Estéreo</span><div class="knob" data-param="delayStereo" data-value="0.35" data-color="#38bdf8" aria-label="Abertura estéreo: 0 = mono, 100% = ping-pong"></div><span class="knob-val" id="delayStereoVal"></span></div>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Low cut</span><div class="knob" data-param="delayLow" data-value="0.1" data-color="#38bdf8" aria-label="Corta os graves a cada repetição"></div><span class="knob-val" id="delayLowVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Hi cut</span><div class="knob" data-param="delayHi" data-value="0.5" data-color="#38bdf8" aria-label="Corta os agudos a cada repetição"></div><span class="knob-val" id="delayHiVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Saturação</span><div class="knob" data-param="delaySat" data-value="0" data-color="#38bdf8" aria-label="Saturação dentro do laço de feedback"></div><span class="knob-val" id="delaySatVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Ducking</span><div class="knob" data-param="delayDuck" data-value="0" data-color="#38bdf8" aria-label="O eco abaixa quando uma gota nova toca"></div><span class="knob-val" id="delayDuckVal"></span></div>
+      </div>
+      <div class="knob-row">
+        <div class="knob-wrap"><span class="knob-title">Profund.</span><div class="knob" data-param="delayDepth" data-value="0.15" data-color="#38bdf8" aria-label="Profundidade da modulação do tempo"></div><span class="knob-val" id="delayDepthVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Taxa</span><div class="knob" data-param="delayRate" data-value="0.3" data-color="#38bdf8" aria-label="Velocidade da modulação do tempo"></div><span class="knob-val" id="delayRateVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Difusão</span><div class="knob" data-param="delayDiff" data-value="0" data-color="#38bdf8" aria-label="Quanto os ecos se esfumam"></div><span class="knob-val" id="delayDiffVal"></span></div>
+        <div class="knob-wrap"><span class="knob-title">Tamanho</span><div class="knob" data-param="delaySize" data-value="0.4" data-color="#38bdf8" aria-label="Tamanho do espaço de difusão"></div><span class="knob-val" id="delaySizeVal"></span></div>
+      </div>
+    </div>
+
+    <div class="fx-grid">
+      <div class="section">
+        <div class="section-head">
+          <h2><span class="dot" style="--c:var(--fx-reverb)"></span>Reverb</h2>
+          <button id="toggleReverb" type="button" class="toggle active" style="--c:var(--fx-reverb)">ON</button>
+        </div>
+        <div class="knob-wrap"><span class="knob-title">Mix</span><div class="knob" data-param="reverbMix" data-value="0.65" data-color="#8b5cf6" aria-label="Mix do reverb"></div><span class="knob-val" id="reverbMixVal"></span></div>
+      </div>
+      <div class="section">
+        <div class="section-head">
+          <h2><span class="dot" style="--c:var(--fx-drive)"></span>Drive</h2>
+          <button id="toggleDrive" type="button" class="toggle" style="--c:var(--fx-drive)">OFF</button>
+        </div>
+        <div class="knob-wrap"><span class="knob-title">Ganho</span><div class="knob" data-param="driveAmt" data-value="0.4" data-color="#f43f5e" aria-label="Quantidade de drive"></div><span class="knob-val" id="driveAmtVal"></span></div>
+      </div>
+      <div class="section">
+        <div class="section-head">
+          <h2><span class="dot" style="--c:var(--fx-bitcrush)"></span>Crush</h2>
+          <button id="toggleBitCrush" type="button" class="toggle" style="--c:var(--fx-bitcrush)">OFF</button>
+        </div>
+        <div class="knob-wrap"><span class="knob-title">Bits</span><div class="knob" data-param="bitBits" data-value="0.43" data-color="#eab308" aria-label="Resolução em bits"></div><span class="knob-val" id="bitBitsVal"></span></div>
+      </div>
+    </div>
+
+    <p class="legend">
+      As paletas de papel (<b>Aquarela</b>, <b>Nanquim</b>, <b>Outono</b>) misturam as tintas por transparência, como pigmento sobre papel molhado; <b>Lagoa</b> e <b>Noite</b> acendem a tinta sobre água escura. O knob <b>Acaso</b> sorteia, para cada gota, variações de raio, número e espaçamento das ondas, velocidade, força, cor, oitava e uma leve desafinação. <b>X</b> escolhe a nota e a posição no estéreo. <b>Y</b> abre o filtro: mais embaixo, mais brilho.
+      Cada efeito também muda a imagem: o delay gera ecos visuais no mesmo tempo do som, o reverb alonga o rastro,
+      o drive treme as ondas e o crush as quebra em polígonos. Arraste os knobs na vertical, use as setas do teclado ou dê duplo clique para voltar ao valor inicial.
+    </p>
+  </section>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Estado ----------
+  const W = 640, H = 360;                 // coordenadas lógicas do palco
+  const MAX_VOICES = 28;
+
+  const SCALES = {
+    major:  [60, 62, 64, 67, 69, 72, 74, 76],   // Dó pentatônica maior
+    minor:  [58, 61, 63, 65, 68, 70, 73, 75],   // Si♭ pentatônica menor
+    dorian: [62, 64, 65, 67, 69, 71, 72, 74],   // Ré dórico (Ré Mi Fá Sol Lá Si Dó Ré)
+    lydian: [65, 67, 69, 71, 72, 74, 76, 77]    // Fá lídio (Si natural = 4ª aumentada)
+  };
+  const NOTE_NAMES = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+  const FLAT_NAMES = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
+
+  // Campo harmônico: cada escala tem uma progressão lenta de acordes (raiz MIDI + intervalos).
+  // No modo "acordes", o eixo X do palco percorre só as notas do acorde atual (e suas extensões), então toda gota é consonante.
+  const PROGS = {
+    major:  [{ r: 60, iv: [0, 4, 7, 11, 14] }, { r: 57, iv: [0, 3, 7, 10, 14] }, { r: 65, iv: [0, 4, 7, 11, 14] }, { r: 67, iv: [0, 4, 7, 9, 14] }],   // Cmaj9 · Am9 · Fmaj9 · G6/9
+    minor:  [{ r: 58, iv: [0, 3, 7, 10, 14] }, { r: 54, iv: [0, 4, 7, 11, 14] }, { r: 61, iv: [0, 4, 7, 11, 14] }, { r: 56, iv: [0, 4, 7, 9, 14] }],   // B♭m9 · G♭maj9 · D♭maj9 · A♭6/9
+    dorian: [{ r: 62, iv: [0, 3, 7, 10, 14] }, { r: 55, iv: [0, 4, 7, 9, 14] }, { r: 62, iv: [0, 3, 7, 10, 14] }, { r: 60, iv: [0, 4, 7, 11, 14] }], // Dm9 · G6/9 · Dm9 · Cmaj9
+    lydian: [{ r: 65, iv: [0, 4, 7, 11, 18] }, { r: 55, iv: [0, 4, 7, 9, 14] }, { r: 57, iv: [0, 3, 7, 10, 14] }, { r: 65, iv: [0, 4, 7, 11, 14] }]  // Fmaj7♯11 · G6/9 · Am9 · Fmaj9
+  };
+  let harmony = 24;            // segundos por acorde, ou 'free' (escala livre)
+  let chordIdx = 0, chordStart = 0;
+  const curChord = () => PROGS[scaleType][chordIdx % PROGS[scaleType].length];
+  function chordPool(ch) {     // todas as notas do acorde entre Sol2 e Lá♯5, em ordem crescente
+    const pcs = ch.iv.map((i) => (ch.r + i) % 12), out = [];
+    for (let n = 55; n <= 82; n++) if (pcs.includes(n % 12)) out.push(n);
+    return out;
+  }
+  let scaleType = 'minor';
+  let rainRate = 0.45;         // gotas por segundo (leve ≈ 1 a cada 4,5 s, média ≈ 1 a cada 2 s, forte ≈ 1 a cada 1,2 s)
+  let phrase = [];             // gotas-eco melódicas agendadas (pequenos motivos que o clima forte dispara)
+  let nextRain = 0;            // instante da próxima gota automática
+  let autoRain = true;
+  let audioOn = false;
+  let audioCtx = null;
+  let fx = {};
+  let voices = 0;
+
+  // Delay inspirado no Replika XT (Native Instruments): estilos Moderno, Analógico, Fita, Digital vintage e Difusão;
+  // Low cut e Hi cut agem no laço de feedback, e a modulação pode ser aberta em estéreo.
+  const SYNC = { q: 1, e: 0.5, de: 0.75, et: 1 / 3, s: 0.25 };      // frações de uma semínima
+  let dStyle = 'modern', dSync = 'free';
+  const STYLES_D = {
+    modern:    { delayHi: 0.5,  delayLow: 0.1,  delaySat: 0,    delayDepth: 0.15, delayRate: 0.3,  delayStereo: 0.35, delayDiff: 0,    delaySize: 0.4 },
+    analog:    { delayHi: 0.34, delayLow: 0.14, delaySat: 0.3,  delayDepth: 0.38, delayRate: 0.26, delayStereo: 0.3,  delayDiff: 0,    delaySize: 0.4 },
+    tape:      { delayHi: 0.38, delayLow: 0.2,  delaySat: 0.45, delayDepth: 0.45, delayRate: 0.5,  delayStereo: 0.2,  delayDiff: 0,    delaySize: 0.4 },
+    digital:   { delayHi: 0.72, delayLow: 0.1,  delaySat: 0.1,  delayDepth: 0.1,  delayRate: 0.62, delayStereo: 0.5,  delayDiff: 0,    delaySize: 0.4 },
+    diffusion: { delayHi: 0.6,  delayLow: 0.15, delaySat: 0,    delayDepth: 0.3,  delayRate: 0.2,  delayStereo: 0.5,  delayDiff: 0.8,  delaySize: 0.62 }
+  };
+  const fxState = { delay: true, reverb: true, drive: false, bitcrush: false };
+  const params = { inSpread: 0.7, delayTime: 0.39, delayFb: 0.55, delayMix: 0.5, reverbMix: 0.65, driveAmt: 0.4, bitBits: 0.43,
+                   dropRadius: 0.29, rings: 0.29, interact: 0.6, chaos: 0.35, droneLvl: 0.35, weather: 0.5, stainSize: 0.5, stainInt: 0.5, stainLife: 0.5,
+                   delayStereo: 0.35, delayLow: 0.1, delayHi: 0.5, delaySat: 0, delayDuck: 0, delayDepth: 0.15, delayRate: 0.3, delayDiff: 0, delaySize: 0.4,
+                   inkHue: 0.5, inkSat: 0.5, inkLum: 0.5, inGain: 0.5, inSens: 0.5, inGap: 0.3, hSens: 0.5, hGap: 0.3, hReach: 0.5, jSpeed: 0.5 };
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const notePool = () => (harmony === 'free' ? SCALES[scaleType] : chordPool(curChord()));
+  const curDelaySec = () => (dSync === 'free' ? map.delaySec(params.delayTime) : clamp(60 / map.bpm(params.delayTime) * SYNC[dSync], 0.02, 1.8));
+  const noteName = (m) => (scaleType === 'minor' ? FLAT_NAMES : NOTE_NAMES)[m % 12] + (Math.floor(m / 12) - 1);
+
+  // Mapeamentos únicos (som e rótulo usam a mesma fórmula)
+  const map = {
+    delaySec: (v) => 0.1 + v * 0.9,
+    delayFbGain: (v) => v * 0.9,
+    bits: (v) => Math.round(2 + v * 14),
+    radiusMul: (v) => 0.4 + v * 2.1,        // 0,4× a 2,5× o tamanho original
+    rings: (v) => 1 + Math.round(v * 7),      // 1 a 8 ondas por gota
+    bpm: (v) => 50 + 110 * v,                 // com sincronia, o knob Tempo vira andamento
+    dLow: (v) => 20 * Math.pow(40, v),        // 20 Hz a 800 Hz
+    dHi: (v) => 800 * Math.pow(25, v),        // 800 Hz a 20 kHz
+    dRate: (v) => 0.15 * Math.pow(40, v),     // 0,15 a 6 Hz
+    stain: (v) => Math.pow(3, 2 * v - 1),     // tamanho e intensidade das manchas: ×0,33 a ×3 (centro = ×1)
+    stainLife: (v) => Math.pow(4, 2 * v - 1)  // duração das manchas: ×0,25 a ×4
+  };
+
+  // ---------- Áudio ----------
+  function driveCurve(amt) {
+    const n = 2048, c = new Float32Array(n), k = 1 + amt * 40;
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.tanh(k * x) / Math.tanh(k); }
+    return c;
+  }
+  function crushCurve(bits) {
+    const n = 65536, c = new Float32Array(n), steps = Math.pow(2, bits - 1);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.round(x * steps) / steps; }
+    return c;
+  }
+  // Impulso de sala: os agudos morrem antes dos graves (como no ar e nas paredes reais),
+  // com um pequeno pré-atraso e algumas reflexões iniciais esparsas.
+  function impulse(ctx, seconds, decay) {
+    const rate = ctx.sampleRate, len = Math.floor(rate * seconds), buf = ctx.createBuffer(2, len, rate);
+    const pre = Math.floor(rate * 0.018);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let lp = 0;
+      for (let i = pre; i < len; i++) {
+        const t = (i - pre) / (len - pre);
+        const c = 0.85 * Math.pow(1 - t, 2.2) + 0.04;      // filtro passa-baixa que vai fechando
+        lp += c * ((Math.random() * 2 - 1) - lp);
+        d[i] = lp * Math.pow(1 - t, decay) * (1.2 - c * 0.4);
+      }
+      for (let k = 0; k < 9; k++) {                         // reflexões iniciais
+        const at = pre + Math.floor(rate * (0.004 + Math.random() * 0.06));
+        d[at] += (Math.random() < 0.5 ? -1 : 1) * (0.5 - k * 0.04);
+      }
+    }
+    return buf;
+  }
+  // Estágio de inserção com bypass sem clique: entrada → (seco | processado) → saída
+  function insertStage(ctx, shaper, wetLevel) {
+    const input = ctx.createGain(), out = ctx.createGain(), dry = ctx.createGain(), wet = ctx.createGain();
+    input.connect(dry); dry.connect(out);
+    input.connect(shaper); shaper.connect(wet); wet.connect(out);
+    dry.gain.value = 1; wet.gain.value = 0;
+    return { input, out, dry, wet, shaper, wetLevel };
+  }
+  const ramp = (p, v) => { if (audioCtx) p.setTargetAtTime(v, audioCtx.currentTime, 0.03); };
+
+  function initAudio() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+    const ctx = audioCtx;
+
+    const bus = ctx.createGain();
+
+    const driveShaper = ctx.createWaveShaper();
+    driveShaper.curve = driveCurve(params.driveAmt); driveShaper.oversample = '4x';
+    const drive = insertStage(ctx, driveShaper, 0.55);
+
+    const crushShaper = ctx.createWaveShaper();
+    crushShaper.curve = crushCurve(map.bits(params.bitBits));
+    const crush = insertStage(ctx, crushShaper, 0.9);
+
+    bus.connect(drive.input); drive.out.connect(crush.input);
+    const post = crush.out;
+
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.25;
+    const master = ctx.createGain(); master.gain.value = 0;
+    comp.connect(master); master.connect(ctx.destination);
+
+    post.connect(comp); // sinal seco
+
+    // Delay estéreo: duas linhas (E/D) com feedback próprio e cruzado (ping-pong), low/hi cut e saturação dentro do laço,
+    // modulação do tempo (wow/flutter/chorus), difusão por convolução curta e ducking.
+    const delaySend = ctx.createGain(); delaySend.gain.value = fxState.delay ? 1 : 0;
+    const dL = ctx.createDelay(2.5), dR = ctx.createDelay(2.5), inR = ctx.createGain();
+    const mkLoop = () => {
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.Q.value = 0.5;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5;
+      const sh = ctx.createWaveShaper(); sh.oversample = '2x';
+      hp.connect(lp); lp.connect(sh);
+      return { hp, lp, sh };
+    };
+    const lL = mkLoop(), lR = mkLoop();
+    const gn = () => ctx.createGain();
+    const selfL = gn(), crossL = gn(), selfR = gn(), crossR = gn();
+    delaySend.connect(dL); delaySend.connect(inR); inR.connect(dR);
+    dL.connect(lL.hp); dR.connect(lR.hp);
+    lL.sh.connect(selfL); selfL.connect(dL); lL.sh.connect(crossL); crossL.connect(dR);
+    lR.sh.connect(selfR); selfR.connect(dR); lR.sh.connect(crossR); crossR.connect(dL);
+    const dOut = gn(), tapL = gn(), tapR = gn(); tapL.gain.value = tapR.gain.value = 0.72;
+    const pL = ctx.createStereoPanner ? ctx.createStereoPanner() : null, pR = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pL) { lL.sh.connect(tapL); tapL.connect(pL); pL.connect(dOut); lR.sh.connect(tapR); tapR.connect(pR); pR.connect(dOut); }
+    else { lL.sh.connect(tapL); tapL.connect(dOut); lR.sh.connect(tapR); tapR.connect(dOut); }
+    // modulação do tempo: LFO principal (profundidade/taxa) + flutter extra no estilo Fita; E e D em fase ou em oposição conforme o estéreo
+    const lfo = ctx.createOscillator(), lfoGL = gn(), lfoGR = gn(), flut = ctx.createOscillator(), flutG = gn();
+    lfo.connect(lfoGL); lfoGL.connect(dL.delayTime); lfo.connect(lfoGR); lfoGR.connect(dR.delayTime);
+    flut.frequency.value = 6.3; flut.connect(flutG); flutG.connect(dL.delayTime); flutG.connect(dR.delayTime);
+    lfo.start(); flut.start();
+    // difusão: o eco passa por uma cauda curta de ruído (parte seca + parte esfumada)
+    const dDry = gn(), diffConv = ctx.createConvolver(), dDiff = gn(), dF = gn(), duck = gn(), delayWet = gn();
+    dOut.connect(dDry); dDry.connect(dF); dOut.connect(diffConv); diffConv.connect(dDiff); dDiff.connect(dF);
+    dF.connect(duck); duck.connect(delayWet); delayWet.connect(comp);
+    delayWet.gain.value = params.delayMix;
+    post.connect(delaySend);
+    const delayDF = dF;
+
+    // Reverb por convolução com impulso sintético
+    const reverbSend = ctx.createGain();
+    const convolver = ctx.createConvolver();
+    convolver.buffer = impulse(ctx, 3.4, 2.6);
+    const reverbWet = ctx.createGain();
+    reverbSend.gain.value = fxState.reverb ? 1 : 0;
+    reverbWet.gain.value = params.reverbMix;
+    post.connect(reverbSend); reverbSend.connect(convolver); convolver.connect(reverbWet); reverbWet.connect(comp);
+    // o eco também passa pelo reverb, para as repetições não soarem secas
+    delayDF.connect(reverbSend);
+
+    // Drone harmônico: o acorde inteiro (raiz grave + as cinco notas do acorde), filtrado e muito lento. Entra no reverb, não no drive/crush.
+    const padMaster = ctx.createGain(); padMaster.gain.value = params.droneLvl * 0.2;
+    const padDuck = ctx.createGain(); padDuck.gain.value = 1;
+    const padLP = ctx.createBiquadFilter(); padLP.type = 'lowpass'; padLP.frequency.value = 1000; padLP.Q.value = 0.4;
+    const padLfo = ctx.createOscillator(), padLfoG = ctx.createGain(); padLfo.frequency.value = 0.045; padLfoG.gain.value = 300;
+    padLfo.connect(padLfoG); padLfoG.connect(padLP.frequency); padLfo.start();
+    const padVoices = [['sine', 1], ['triangle', 0.42], ['sine', 0.42], ['triangle', 0.4], ['sine', 0.3], ['triangle', 0.24]].map(([type, lv]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.detune.value = (Math.random() * 2 - 1) * 5; g.gain.value = lv;
+      o.connect(g); g.connect(padLP); o.start();
+      return { o };
+    });
+    padLP.connect(padDuck); padDuck.connect(padMaster); padMaster.connect(comp); padMaster.connect(reverbSend);
+
+    // ruído reutilizado para o toque de cada gota
+    const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    { const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+
+    fx = { pad: { master: padMaster, duck: padDuck, voices: padVoices }, noise, bus, drive, crush, comp, master, delaySend, delayWet, reverbSend, reverbWet,
+           dl: { dL, dR, inR, lL, lR, selfL, crossL, selfR, crossR, pL, pR, lfo, lfoGL, lfoGR, flutG, dDry, dDiff, diffConv, duck, curveKey: '', irKey: '' } };
+    applyInsert('drive'); applyInsert('bitcrush');
+    padSetChord(true);
+    applyDelay();
+  }
+
+  // Troca o acorde do drone sem deslizar por notas fora do acorde: o som some, as afinações mudam em silêncio e ele volta.
+  function padSetChord(now) {
+    if (!audioCtx || !fx.pad) return;
+    // voz 0: raiz grave · vozes 1-5: as cinco notas do acorde (com 7ª e 9ª uma oitava acima), em registro médio
+    const c = audioCtx.currentTime, ch = curChord(), D = fx.pad.duck.gain;
+    const notes = [36 + (ch.r % 12), ...ch.iv.map((iv, k) => 50 + ((((ch.r + iv) % 12) - 50) % 12 + 12) % 12 + (k >= 3 ? 12 : 0))];
+    const setF = (at) => fx.pad.voices.forEach((v, i) => v.o.frequency.setValueAtTime(midiToFreq(notes[i]), at));
+    if (now) { setF(c); return; }
+    D.cancelScheduledValues(c); D.setTargetAtTime(0, c, 0.7);
+    setF(c + 2.6);
+    D.setTargetAtTime(1, c + 2.7, 1.4);
+  }
+
+  // curva do laço do delay: saturação suave; no estilo Digital vintage, também reduz a resolução (como um conversor antigo)
+  function loopCurve(style, sat) {
+    const n = 4096, c = new Float32Array(n), k = 1 + sat * 5, steps = Math.pow(2, 8);
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1; let y = sat > 0.005 ? Math.tanh(k * x) / k : x;   // ganho 1 para sinais pequenos: o laço nunca realimenta mais do que recebe
+      if (style === 'digital') y = Math.round(y * steps) / steps;
+      c[i] = y;
+    }
+    return c;
+  }
+  function diffIR(ctx, size) {
+    const rate = ctx.sampleRate, len = Math.floor(rate * (0.03 + 0.3 * size)), buf = ctx.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.4); }
+    return buf;
+  }
+  function applyDelay() {
+    const d = fx.dl; if (!d || !audioCtx) return;
+    const c = audioCtx.currentTime, st = params.delayStereo, t = curDelaySec(), fb = map.delayFbGain(params.delayFb), tape = dStyle === 'tape';
+    d.dL.delayTime.setTargetAtTime(t, c, 0.08); d.dR.delayTime.setTargetAtTime(t * (1 + 0.33 * st), c, 0.08);
+    ramp(d.selfL.gain, fb * (1 - st)); ramp(d.selfR.gain, fb * (1 - st)); ramp(d.crossL.gain, fb * st); ramp(d.crossR.gain, fb * st);
+    ramp(d.inR.gain, 1 - st);
+    [d.lL, d.lR].forEach((L) => { L.hp.frequency.setTargetAtTime(map.dLow(params.delayLow), c, 0.03); L.lp.frequency.setTargetAtTime(map.dHi(params.delayHi), c, 0.03); });
+    const ck = dStyle + Math.round(params.delaySat * 40);
+    if (ck !== d.curveKey) { d.curveKey = ck; d.lL.sh.curve = loopCurve(dStyle, params.delaySat); d.lR.sh.curve = loopCurve(dStyle, params.delaySat); }
+    if (d.pL) { d.pL.pan.setTargetAtTime(-0.9 * st, c, 0.05); d.pR.pan.setTargetAtTime(0.9 * st, c, 0.05); }
+    const depth = params.delayDepth * 0.004 * (tape ? 1.6 : 1);
+    d.lfo.frequency.setTargetAtTime(map.dRate(params.delayRate), c, 0.1);
+    ramp(d.lfoGL.gain, depth); ramp(d.lfoGR.gain, depth * (1 - 2 * st));
+    ramp(d.flutG.gain, tape ? params.delayDepth * 0.0007 : 0);
+    ramp(d.dDry.gain, 1 - 0.6 * params.delayDiff); ramp(d.dDiff.gain, params.delayDiff * 1.3);
+    const ik = Math.round(params.delaySize * 20);
+    if (ik !== d.irKey) { d.irKey = ik; d.diffConv.buffer = diffIR(audioCtx, params.delaySize); }
+  }
+  function duckDelay() {   // ducking: o eco abaixa no instante em que uma gota nova toca e volta devagar
+    const a = params.delayDuck; if (a < 0.02 || !fx.dl) return;
+    const g = fx.dl.duck.gain, c = audioCtx.currentTime;
+    g.cancelScheduledValues(c); g.setTargetAtTime(1 - 0.92 * a, c, 0.012); g.setTargetAtTime(1, c + 0.12, 0.25 + 0.2 * a);
+  }
+  function applyInsert(key) {
+    const st = key === 'drive' ? fx.drive : fx.crush;
+    if (!st) return;
+    const on = fxState[key];
+    ramp(st.dry.gain, on ? 0 : 1);
+    ramp(st.wet.gain, on ? st.wetLevel : 0);
+  }
+
+  // ---------- Timbres ----------
+  // Síntese modal: cada timbre é um conjunto de parciais [razão, amplitude, duração relativa],
+  // como os modos de vibração de um objeto real. Parciais agudos morrem antes dos graves.
+  // touch: ruído curto que imita o impacto (centro relativo à nota, Q, nível, duração)
+  // bubble: o "plink" da bolha de ar, um seno que sobe de afinação (nível, oitava)
+  const TIMBRES = {
+    agua:    { len: 1.0, partials: [[1, 1, 1], [2.005, 0.16, 0.45], [4.07, 0.05, 0.18]],
+               touch: { f: 9, q: 0.7, lvl: 0.18, dur: 0.012 }, bubble: { lvl: 0.55, mul: 2 }, bright: 0.9 },
+    vidro:   { len: 1.7, partials: [[1, 1, 1], [2.32, 0.42, 0.75], [4.25, 0.2, 0.42], [6.63, 0.08, 0.25]],
+               touch: { f: 6, q: 1.2, lvl: 0.08, dur: 0.008 }, bubble: null, bright: 1.1 },
+    kalimba: { len: 1.2, partials: [[1, 1, 1], [5.4, 0.3, 0.12], [2.0, 0.07, 0.5], [11.2, 0.06, 0.05]],
+               touch: { f: 4, q: 2.5, lvl: 0.22, dur: 0.02 }, bubble: null, bright: 1.0 },
+    madeira: { len: 0.55, partials: [[1, 1, 1], [3.93, 0.32, 0.3], [9.2, 0.09, 0.1]],
+               touch: { f: 2.2, q: 3, lvl: 0.35, dur: 0.025 }, bubble: null, bright: 0.75 }
+  };
+  let timbre = 'agua';
+
+  function playDrop(x, y, size, v) {
+    if (!audioOn || !audioCtx || voices >= MAX_VOICES) return null;
+    const ctx = audioCtx, T = TIMBRES[timbre];
+    const now = ctx.currentTime + 0.005 + Math.random() * 0.008 * params.chaos;   // micro-atraso humano
+    const pool = notePool();
+    const pi = clamp(Math.floor((x / W) * pool.length), 0, pool.length - 1);
+    const idx = clamp(Math.floor((x / W) * 8), 0, 7);   // índice de cor (independe do tamanho do conjunto de notas)
+    const midi = pool[pi] + v.octave;
+    const f = midiToFreq(midi) * Math.pow(2, v.cents / 1200);
+    const big = size > 10;
+    const yn = y / H;
+    const vel = clamp((big ? 1 : 0.45 + size * 0.04) * v.strength, 0.2, 1);   // força do toque
+    // gotas maiores soam por mais tempo
+    const len = (big ? 2.2 : 0.9 + size * 0.06) * T.len * (0.6 + 0.4 * map.radiusMul(params.dropRadius) * v.rad);
+    const amp = 0.3 * vel;
+    const nyq = ctx.sampleRate * 0.45;
+
+    // Brilho: o filtro abre no impacto e fecha enquanto o som morre, como num instrumento acústico.
+    // Toques mais fortes e gotas mais embaixo no palco começam mais brilhantes.
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass'; tone.Q.value = 0.5;
+    const open = clamp(f * (2.5 + 9 * vel * yn + 3 * vel) * T.bright, 600, nyq);
+    const settle = clamp(Math.max(f * 1.6, open * 0.22), 300, nyq);
+    tone.frequency.setValueAtTime(open, now);
+    tone.frequency.setTargetAtTime(settle, now + 0.01, 0.12 + len * 0.08);
+
+    const out = ctx.createGain();
+    out.gain.value = 1;
+    tone.connect(out);
+    let last = out;
+    if (ctx.createStereoPanner) {
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = (x / W) * 1.6 - 0.8;
+      out.connect(pan); last = pan;
+    }
+    last.connect(fx.bus);
+
+    const stopAt = now + len + 0.1;
+    const oscs = [];
+
+    // Modos de vibração: cada um com afinação levemente imperfeita e decaimento exponencial próprio
+    const norm = T.partials.reduce((a, p) => a + p[1], 0);
+    for (const [ratio, a, dec] of T.partials) {
+      const pf = f * ratio * Math.pow(2, ((Math.random() * 2 - 1) * (2 + params.chaos * 6)) / 1200);
+      if (pf > nyq) continue;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = pf;
+      const g = ctx.createGain();
+      const pa = amp * (a / norm) * (0.85 + Math.random() * 0.3) * (ratio > 1 ? 0.6 + vel * 0.6 : 1);
+      const att = ratio > 1 ? 0.002 : 0.004;
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(pa, now + att);
+      g.gain.setTargetAtTime(0, now + att, (len * dec) / 5);
+      o.connect(g); g.connect(tone);
+      o.start(now); o.stop(stopAt);
+      oscs.push(o);
+    }
+
+    // Toque: rajada curta de ruído filtrado, o som do impacto antes da nota
+    const tc = T.touch;
+    const ns = ctx.createBufferSource();
+    ns.buffer = fx.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = clamp(f * tc.f * (0.8 + Math.random() * 0.4), 200, nyq);
+    bp.Q.value = tc.q;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0, now);
+    ng.gain.linearRampToValueAtTime(amp * tc.lvl * (0.5 + vel), now + 0.001);
+    ng.gain.setTargetAtTime(0, now + 0.001, tc.dur / 3);
+    ns.connect(bp); bp.connect(ng); ng.connect(out);   // o toque não passa pelo filtro de brilho
+    ns.start(now, Math.random() * 0.5, tc.dur * 6);
+
+    // Bolha: a cavidade de ar que a gota abre na água ressoa e sobe de afinação ao se fechar
+    if (T.bubble) {
+      const bf = f * T.bubble.mul;
+      const b = ctx.createOscillator();
+      b.type = 'sine';
+      b.frequency.setValueAtTime(bf * 0.72, now);
+      b.frequency.exponentialRampToValueAtTime(bf * (1.02 + Math.random() * 0.06), now + 0.045 + 0.04 * (1 - vel));
+      const bg = ctx.createGain();
+      const bl = amp * T.bubble.lvl * (0.6 + Math.random() * 0.5);
+      bg.gain.setValueAtTime(0, now);
+      bg.gain.linearRampToValueAtTime(bl, now + 0.006);
+      bg.gain.setTargetAtTime(0, now + 0.006, 0.025 + 0.03 * vel);
+      b.connect(bg); bg.connect(out);
+      b.start(now); b.stop(now + 0.4);
+    }
+
+    duckDelay();
+    voices++;
+    oscs[0].onended = () => { voices--; try { last.disconnect(); } catch (e) {} };
+    return { midi, idx };
+  }
+
+  // ---------- Visual ----------
+  const canvas = document.getElementById('stage');
+  const ctx2d = canvas.getContext('2d');
+  const meter = document.getElementById('meter');
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let ripples = [];
+  let echoes = [];          // ecos visuais agendados (espelham o delay)
+  let blooms = [];          // manchas de tinta se abrindo na água
+
+  // ---------- Paletas ----------
+  // paper: pigmento subtrativo (multiply) sobre papel claro, as camadas escurecem onde se sobrepõem.
+  // water: tinta luminosa (screen) sobre água escura, as camadas clareiam onde se sobrepõem.
+  // As tintas seguem a escala da nota mais grave (esquerda) à mais aguda (direita).
+  const PALETTES = {
+    aquarela: { ground: [245, 243, 238], mode: 'paper', ink: 0.05, ring: 0.42, fade: 0.0016, grain: 0.38,
+      // cerúleo, ultramar, violeta dioxazina, rosa quinacridona, siena queimada, aureolina, viridiana, cinza de Payne
+      inks: [[40,145,195],[52,72,190],[95,55,150],[205,40,110],[180,85,45],[232,180,40],[20,135,110],[60,72,92]] },
+    nanquim: { ground: [242, 240, 235], mode: 'paper', ink: 0.05, ring: 0.36, fade: 0.0014, grain: 0.45,
+      // pretos e cinzas de tinta sumi, com o vermelhão do carimbo na nota mais aguda
+      inks: [[24,24,28],[48,48,54],[34,36,44],[70,70,78],[20,20,24],[88,90,96],[40,42,50],[185,42,30]] },
+    outono: { ground: [244, 240, 232], mode: 'paper', ink: 0.05, ring: 0.4, fade: 0.0016, grain: 0.38,
+      // carmim alizarina, siena, ocre, amarelo Nápoles, verde oliva, terra de sombra, rosa velho, verde seiva
+      inks: [[150,38,40],[176,74,46],[196,128,40],[205,160,60],[116,124,52],[88,62,42],[160,62,82],[72,84,66]] },
+    lagoa: { ground: [4, 20, 26], mode: 'water', ink: 0.032, ring: 0.6, fade: 0.005, grain: 0,
+      inks: [[0,150,120],[0,130,170],[40,80,210],[150,60,200],[215,45,140],[240,115,40],[220,205,70],[190,225,225]] },
+    noite: { ground: [3, 5, 10], mode: 'water', ink: 0.018, ring: 0.95, fade: 0.02, grain: 0, inks: null }
+  };
+  let basePal = PALETTES.aquarela, pal = basePal, surfOverride = null, surfLum = 1;
+
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  function hslToRgb(h, s, l) {
+    h = (((h % 360) + 360) % 360) / 360;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    const f = (t) => { t = (t + 1) % 1; return t < 1/6 ? p + (q - p) * 6 * t : t < 1/2 ? q : t < 2/3 ? p + (q - p) * (2/3 - t) * 6 : p; };
+    return [f(h + 1/3) * 255, f(h) * 255, f(h - 1/3) * 255];
+  }
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+    if (mx === mn) return [0, 0, l];
+    const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, s, l];
+  }
+  const shiftHue = (c, deg) => { if (!deg) return c; const [h, s, l] = rgbToHsl(c[0], c[1], c[2]); return hslToRgb(h + deg, s, l); };
+
+  // Cor da tinta: escolhida pela nota; Y muda a concentração (mais embaixo, mais brilho / lavagem mais clara)
+  let inkMono = null;       // cor única escolhida pelo usuário (null = tintas da paleta)
+  function inkColor(idx, y, hueShift) {
+    const yn = clamp(y / H, 0, 1);
+    let c;
+    if (inkMono) {
+      const [mh, ms, ml] = rgbToHsl(inkMono[0], inkMono[1], inkMono[2]);
+      const base = hslToRgb(mh, ms, clamp(ml + (idx - 3.5) * 0.035, 0.05, 0.95));   // pequenas variações de claridade por nota
+      c = pal.mode === 'paper' ? base.map((v) => v + (255 - v) * yn * 0.3) : base.map((v) => v * (0.65 + yn * 0.35));
+    }
+    else if (!pal.inks) c = hslToRgb(195 + idx * 14, 0.9, 0.48 + yn * 0.28);
+    else if (pal.mode === 'paper') c = pal.inks[idx].map((v) => v + (255 - v) * yn * 0.3);
+    else c = pal.inks[idx].map((v) => v * (0.65 + yn * 0.35));
+    c = shiftHue(c, hueShift * 0.6);
+    // ajustes do usuário: matiz (gira o círculo cromático), saturação e claridade
+    const hu = (params.inkHue - 0.5) * 360, sa = 2 * params.inkSat, lu = 0.5 + params.inkLum;
+    if (Math.abs(hu) > 0.5 || Math.abs(sa - 1) > 0.01 || Math.abs(lu - 1) > 0.01) {
+      const [h, sv, l] = rgbToHsl(c[0], c[1], c[2]);
+      c = hslToRgb(h + hu, clamp(sv * sa, 0, 1), clamp(l * lu, 0, 0.97));
+    }
+    return c.map((v) => Math.round(clamp(v, 0, 255)));
+  }
+
+  // ---------- Camadas ----------
+  // pig: pigmento acumulado (baixa resolução = bordas macias); ringC: ondas com rastro; grain: textura do papel
+  const PW = 400, PH = 225;
+  const pig = document.createElement('canvas'); pig.width = PW; pig.height = PH;
+  const pctx = pig.getContext('2d');
+  const blurC = document.createElement('canvas'); blurC.width = PW / 2; blurC.height = Math.round(PH / 2);
+  const bctx = blurC.getContext('2d');
+  const ringC = document.createElement('canvas');
+  const rctx = ringC.getContext('2d');
+
+  const grainPattern = (() => {
+    const g = document.createElement('canvas'); g.width = g.height = 256;
+    const gx = g.getContext('2d'), img = gx.createImageData(256, 256), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = 255 - Math.pow(Math.random(), 3) * 70;
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+    gx.putImageData(img, 0, 0);
+    return ctx2d.createPattern(g, 'repeat');
+  })();
+
+  function fillGround(alpha) {
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.globalCompositeOperation = 'source-over';
+    pctx.globalAlpha = 1;
+    pctx.fillStyle = rgba(pal.ground, alpha);
+    pctx.fillRect(0, 0, PW, PH);
+  }
+
+  let wash = 0;            // trocar de paleta lava o palco aos poucos
+  // A superfície (papel ou água) tem cor e brilho próprios. Se a cor muda de clara para escura (ou o contrário), o modo de mistura vira
+  // pigmento sobre papel (multiply) ou luz sobre água (screen), e as tintas da paleta são clareadas ou escurecidas para continuarem visíveis.
+  const lumaOf = (c) => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+  const toHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+  function buildPal() {
+    const g = (surfOverride || basePal.ground).map((v) => clamp(Math.round(v * surfLum), 0, 255));
+    if (!surfOverride && Math.abs(surfLum - 1) < 0.01) pal = basePal;
+    else {
+      const mode = lumaOf(g) > 0.42 ? 'paper' : 'water';
+      if (mode === basePal.mode) pal = Object.assign({}, basePal, { ground: g });
+      else {
+        const ref = mode === 'paper' ? PALETTES.aquarela : PALETTES.lagoa;
+        const inks = basePal.inks ? basePal.inks.map((c) => c.map((v) => mode === 'water' ? clamp(Math.round(v * 1.5 + 35), 0, 255) : Math.round(v * 0.55))) : ref.inks;
+        pal = Object.assign({}, ref, { ground: g, mode, inks });
+      }
+    }
+    canvas.style.background = rgba(pal.ground, 1);
+    wash = 1;
+  }
+  function syncSurfInput() { if (!surfOverride) document.getElementById('surfColor').value = toHex(basePal.ground); }
+  function setPalette(name) { basePal = PALETTES[name] || PALETTES.aquarela; buildPal(); syncSurfInput(); }
+  setPalette('aquarela'); fillGround(1); wash = 0;
+
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = ringC.width = Math.max(1, Math.round(r.width * dpr));
+    canvas.height = ringC.height = Math.max(1, Math.round(r.height * dpr));
+    ctx2d.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    rctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  }
+  new ResizeObserver(resize).observe(canvas);
+
+  // ---------- Manchas de tinta ----------
+  const MAX_BLOOMS = 70;
+  function addBloom(x, y, R, rgb, strength, chaos) {
+    R *= map.stain(params.stainSize); strength *= map.stain(params.stainInt);
+    const lifeMul = map.stainLife(params.stainLife);
+    const tend = [];
+    const nT = 2 + Math.round(Math.random() * (2 + chaos * 5));
+    for (let i = 0; i < nT; i++) {
+      const a = Math.random() * Math.PI * 2, sp = R * (0.6 + Math.random() * 1.2);
+      tend.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 1.2 + Math.random() * R * 0.1, curl: (Math.random() * 2 - 1) * 1.6 });
+    }
+    blooms.push({
+      x, y, R, rgb, a: pal.ink * strength, age: 0,
+      life: (2.4 + R / 40 + Math.random() * 1.5) * lifeMul,
+      irr: 0.5 + chaos * 0.9 + Math.random() * 0.3,
+      p: [0, 0, 0, 0].map(() => Math.random() * 6.283), tend
+    });
+    if (blooms.length > MAX_BLOOMS) blooms.shift();
+  }
+
+  // contorno irregular: soma de senos que se torce devagar enquanto a mancha cresce
+  function blobPath(g, x, y, r, b, ts, f) {
+    const n = 44, irr = b.irr * (0.35 + 0.65 * f), p = b.p;
+    g.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const k = 1 + irr * (0.16 * Math.sin(3 * a + p[0] + ts * 0.4) + 0.09 * Math.sin(5 * a + p[1] - ts * 0.3)
+                         + 0.05 * Math.sin(9 * a + p[2] + ts * 0.7) + 0.03 * Math.sin(15 * a + p[3]));
+      const px = x + Math.cos(a) * r * k, py = y + Math.sin(a) * r * k;
+      i ? g.lineTo(px, py) : g.moveTo(px, py);
+    }
+    g.closePath();
+  }
+
+  let frameN = 0, fadeAcc = 0;
+  function updatePigment(dt, t) {
+    frameN++;
+    // dissolução: acumulada e aplicada em passos de 6%, porque passos menores
+    // somem no arredondamento de 8 bits do canvas e a tinta nunca sairia
+    fadeAcc += (wash > 0 ? 0.05 : pal.fade / map.stainLife(params.stainLife)) * dt * 60;   // manchas duradouras também demoram mais para sumir do papel
+    wash = Math.max(0, wash - dt * 0.7);
+    if (fadeAcc >= 0.06) { fillGround(Math.min(1, fadeAcc)); fadeAcc = 0; }
+
+    // difusão: mistura uma versão desfocada da camada sobre ela mesma
+    if (frameN % 2 === 0 && !reduceMotion) {
+      bctx.drawImage(pig, 0, 0, blurC.width, blurC.height);
+      pctx.setTransform(1, 0, 0, 1, 0, 0);
+      pctx.globalAlpha = 0.1;
+      pctx.drawImage(blurC, 0, 0, PW, PH);
+      pctx.globalAlpha = 1;
+    }
+
+    pctx.setTransform(PW / W, 0, 0, PH / H, 0, 0);
+    pctx.globalCompositeOperation = pal.mode === 'paper' ? 'multiply' : 'screen';
+    const fps = dt * 60, ts = t * 0.001, damp = Math.pow(0.12, dt);
+    for (let i = blooms.length - 1; i >= 0; i--) {
+      const b = blooms[i];
+      b.age += dt;
+      const f = b.age / b.life;
+      if (f >= 1) { blooms.splice(i, 1); continue; }
+      const e = 1 - Math.pow(1 - f, 3);
+      const r = 2 + b.R * e;
+      // véu transparente: o miolo recebe pouca tinta e cada vez menos
+      const water = pal.mode === 'water';
+      const fillA = b.a * (water ? 0.3 : 0.12) * (1 - f) * (1 - f) * fps;
+      // borda: o anel passa rápido enquanto a mancha cresce e se demora quando ela desacelera,
+      // então o pigmento se acumula na margem, como a borda escura da aquarela ao secar
+      const edgeA = b.a * (water ? 0.22 : 0.55) * (1 - f * 0.6) * fps;
+      blobPath(pctx, b.x, b.y, r, b, ts, f);
+      pctx.fillStyle = rgba(b.rgb, fillA);
+      pctx.fill();
+      pctx.strokeStyle = rgba(b.rgb, edgeA);
+      pctx.lineWidth = water ? 2.6 : 1.6;
+      pctx.stroke();
+      // filamentos de tinta que escapam e se curvam; somem conforme perdem velocidade
+      for (const td of b.tend) {
+        const ang = td.curl * dt, c = Math.cos(ang), sn = Math.sin(ang);
+        const vx = td.vx * c - td.vy * sn, vy = td.vx * sn + td.vy * c;
+        td.vx = vx * damp; td.vy = vy * damp;
+        td.x += td.vx * dt; td.y += td.vy * dt;
+        if (td.v0 === undefined) td.v0 = Math.hypot(td.vx, td.vy) || 1;
+        const sp = Math.hypot(td.vx, td.vy) / td.v0;
+        if (sp < 0.03) continue;
+        pctx.fillStyle = rgba(b.rgb, b.a * 0.5 * sp * fps);
+        pctx.beginPath(); pctx.arc(td.x, td.y, td.r * (0.6 + e), 0, Math.PI * 2); pctx.fill();
+      }
+    }
+    pctx.globalCompositeOperation = 'source-over';
+  }
+
+  const RING_GAP = 0.13;      // segundos entre ondas consecutivas da mesma gota
+  const MAX_RINGS = 380;
+  let gid = 0;
+
+  // Cria um grupo de ondas concêntricas para uma gota
+  function addGroup(x, y, maxR, life, rgb, strength, count, gap = RING_GAP) {
+    const id = ++gid;
+    const line = pal.mode === 'paper' ? rgb.map((v) => Math.round(v * 0.72)) : rgb;  // no papel, a linha é um tom mais escuro da tinta
+    for (let k = 0; k < count; k++) {
+      ripples.push({
+        gid: id, k, x, y, maxR: maxR * (1 - k * 0.04), life,
+        delay: k * gap, age: 0, r: 0, alpha: 0,
+        rgb: line,
+        strength: strength * Math.pow(0.78, k),
+        seed: Math.random() * 1000, nb: null
+      });
+    }
+    if (ripples.length > MAX_RINGS) ripples.splice(0, ripples.length - MAX_RINGS);
+  }
+
+  // Sorteia as variações de uma gota. Os mesmos valores guiam som e imagem,
+  // então uma gota sorteada maior também soa mais longa, e uma mais forte soa mais alto.
+  function rollVariation() {
+    const f = params.chaos;
+    const rnd = () => (Math.random() * 2 - 1) * f;
+    let octave = 0;
+    if (Math.random() < 0.12 + f * 0.3) octave = Math.random() < f * 0.5 ? -12 : 12;
+    return {
+      rad: Math.exp(rnd() * 0.75),            // raio: até ~0,5× a ~2,1×
+      rings: Math.round(rnd() * 3),           // até ±3 ondas
+      life: Math.exp(rnd() * 0.4),            // velocidade de expansão
+      gap: Math.exp(rnd() * 0.5),             // espaçamento entre ondas
+      strength: clamp(1 + rnd() * 0.45, 0.35, 1),
+      hue: rnd() * 30,
+      cents: rnd() * 14,
+      octave,
+      jx: rnd() * 10, jy: rnd() * 10          // pequeno desvio do ponto de impacto
+    };
+  }
+
+  function spawnDrop(x, y, size) {
+    const v = rollVariation();
+    x = clamp(x + v.jx, 0, W); y = clamp(y + v.jy, 0, H);
+    const note = playDrop(x, y, size, v);
+    const idx = note ? note.idx : clamp(Math.floor((x / W) * 8), 0, 7);
+    const rgb = inkColor(idx, y, v.hue);
+    const mul = map.radiusMul(params.dropRadius) * v.rad;
+    const maxR = (size * 5 + 18 + Math.random() * 16) * mul;
+    const life = (size > 10 ? 1.8 : 1.1) * (0.7 + 0.3 * mul) * v.life;
+    const count = clamp(map.rings(params.rings) + v.rings, 1, 8);
+    const gap = RING_GAP * v.gap;
+    addGroup(x, y, maxR, life, rgb, v.strength, count, gap);
+    addBloom(x, y, maxR * 0.5, rgb, v.strength, params.chaos);
+
+    // ecos: mesmo intervalo do delay, intensidade caindo pelo feedback
+    if (fxState.delay) {
+      const dt = curDelaySec();
+      const g = map.delayFbGain(params.delayFb);
+      let s = params.delayMix * v.strength, t = performance.now();
+      for (let k = 1; k <= 8 && s > 0.06; k++) {
+        t += dt * 1000;
+        echoes.push({ at: t, x: clamp(x + (k % 2 ? 1 : -1) * params.delayStereo * 30 * k, 0, W), y, maxR: maxR * (1 + k * 0.12), life, rgb, strength: s, count: Math.ceil(count / 2), gap });
+        s *= g;
+      }
+    }
+  }
+
+  // ---------- Interação entre ondas ----------
+  // Perto da frente de outra onda, cada ponto é empurrado para longe dela (repulsão)
+  // e, um pouco mais adiante, puxado de volta (atração). O perfil é sen(k·d)·e^(−d²/σ²).
+  const SIGMA = 16, KW = Math.PI / 13, REACH = SIGMA * 2.3;
+
+  function buildNeighbors(list) {
+    for (const r of list) r.nb = null;
+    if (params.interact < 0.01) return;
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        if (a.gid === b.gid) continue;
+        const D = Math.hypot(a.x - b.x, a.y - b.y);
+        if (D > a.r + b.r + REACH || D < Math.abs(a.r - b.r) - REACH) continue;
+        (a.nb || (a.nb = [])).push(b);
+        (b.nb || (b.nb = [])).push(a);
+      }
+    }
+  }
+
+  function displacement(px, py, nb) {
+    let dx = 0, dy = 0;
+    const amp = params.interact * 11;
+    for (const o of nb) {
+      const vx = px - o.x, vy = py - o.y;
+      const dist = Math.hypot(vx, vy) || 0.001;
+      const d = dist - o.r;
+      if (d > REACH || d < -REACH) continue;
+      const m = amp * o.alpha * Math.sin(d * KW) * Math.exp(-(d * d) / (SIGMA * SIGMA));
+      dx += (vx / dist) * m; dy += (vy / dist) * m;
+    }
+    return [dx, dy];
+  }
+
+  function drawRipple(rp, frac, t) {
+    const alpha = rp.alpha;
+    const r = rp.r;
+
+    // reverb: halo difuso só na primeira onda do grupo
+    if (rp.k === 0 && fxState.reverb && params.reverbMix > 0.02) {
+      const halo = rctx.createRadialGradient(rp.x, rp.y, r * 0.2, rp.x, rp.y, r * 1.6);
+      halo.addColorStop(0, rgba(rp.rgb, alpha * params.reverbMix * 0.16));
+      halo.addColorStop(1, rgba(rp.rgb, 0));
+      rctx.fillStyle = halo;
+      rctx.beginPath(); rctx.arc(rp.x, rp.y, r * 1.6, 0, Math.PI * 2); rctx.fill();
+    }
+
+    rctx.strokeStyle = rgba(rp.rgb, Math.min(1, alpha * pal.ring));
+    rctx.lineWidth = (fxState.drive ? 1.4 + params.driveAmt * 2.4 : 1.4) * (rp.k === 0 ? 1 : 0.8);
+
+    const crush = fxState.bitcrush, drive = fxState.drive, nb = rp.nb;
+    if (!crush && !drive && !nb) {
+      rctx.beginPath(); rctx.arc(rp.x, rp.y, r, 0, Math.PI * 2); rctx.stroke();
+      return;
+    }
+    const bits = map.bits(params.bitBits);
+    const sides = crush ? Math.max(3, bits * 3) : clamp(Math.round(r * 0.55) + 20, 28, 110);
+    const grid = crush ? (17 - bits) * 0.9 : 0;
+    const jitter = drive ? params.driveAmt * 5 : 0;
+    rctx.beginPath();
+    for (let i = 0; i <= sides; i++) {
+      const a = (i / sides) * Math.PI * 2;
+      const n = jitter ? Math.sin(a * 9 + rp.seed + t * 14) * jitter * (1 - frac) : 0;
+      let px = rp.x + Math.cos(a) * (r + n), py = rp.y + Math.sin(a) * (r + n);
+      if (nb) { const [dx, dy] = displacement(px, py, nb); px += dx; py += dy; }
+      if (grid > 1) { px = Math.round(px / grid) * grid; py = Math.round(py / grid) * grid; }
+      i ? rctx.lineTo(px, py) : rctx.moveTo(px, py);
+    }
+    rctx.stroke();
+  }
+
+  // ---------- Loop ----------
+  let lastT = performance.now();
+  let pointerDown = false, lastDrag = 0;
+
+  function loop(t) {
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+
+    // rastro das ondas: o reverb alonga
+    const trail = reduceMotion ? 0.5 : (fxState.reverb ? 0.22 - params.reverbMix * 0.13 : 0.24);
+    rctx.save();
+    rctx.setTransform(1, 0, 0, 1, 0, 0);
+    rctx.globalCompositeOperation = 'destination-out';
+    rctx.fillStyle = `rgba(0,0,0,${trail})`;
+    rctx.fillRect(0, 0, ringC.width, ringC.height);
+    rctx.restore();
+
+    // intervalos sorteados em torno da média (50% a 150%), sem rajadas de gotas coladas
+    inputTick(t);   // áudio externo: cada ataque vira uma gota
+    // clima: a densidade da chuva engrossa e afina em ondas lentas (períodos de ~80 s e ~29 s), sem repetição exata
+    const ts = t / 1000, wf = clamp(1 + params.weather * (0.7 * Math.sin(ts * 6.2832 / 80) + 0.3 * Math.sin(ts * 6.2832 / 29 + 1.3)), 0.12, 2.2);
+    // relógio dos acordes
+    if (!chordStart) chordStart = t;
+    if (harmony !== 'free' && t - chordStart > harmony * 1000) { chordStart = t; chordIdx = (chordIdx + 1) % PROGS[scaleType].length; padSetChord(false); }
+    const rate = rainRate * wf;
+    if (!nextRain) nextRain = t + (1000 / rate) * Math.random();
+    if (autoRain && t >= nextRain) {
+      nextRain = t + (1000 / rate) * (0.5 + Math.random());
+      const x0 = Math.random() * W, y0 = Math.random() * H;
+      spawnDrop(x0, y0, Math.random() * 8 + 3);
+      // com chuva forte, às vezes a gota vira um pequeno motivo: 2 a 3 gotas vizinhas, andando de nota em nota do acorde
+      if (wf > 1.2 && Math.random() < 0.5 * params.weather) {
+        const step = W / notePool().length, dir = Math.random() < 0.5 ? -1 : 1, n = 2 + (Math.random() < 0.4 ? 1 : 0);
+        for (let k = 1; k <= n; k++) phrase.push({ at: t + k * (170 + Math.random() * 170), x: clamp(x0 + dir * step * k, 5, W - 5), y: clamp(y0 + (Math.random() * 2 - 1) * 24, 0, H), size: 5 + Math.random() * 3 });
+      }
+    }
+    for (let i = phrase.length - 1; i >= 0; i--) { const q = phrase[i]; if (t >= q.at) { spawnDrop(q.x, q.y, q.size); phrase.splice(i, 1); } }
+
+    // libera ecos cujo tempo chegou
+    for (let i = echoes.length - 1; i >= 0; i--) {
+      const e = echoes[i];
+      if (t >= e.at) {
+        addGroup(e.x, e.y, e.maxR, e.life, e.rgb, e.strength, e.count, e.gap);
+        addBloom(e.x, e.y, e.maxR * 0.3, e.rgb, e.strength * 0.5, params.chaos);
+        echoes.splice(i, 1);
+      }
+    }
+
+    // avança todas as ondas e separa as visíveis
+    const live = [];
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.age += dt;
+      const tt = rp.age - rp.delay;
+      if (tt < 0) continue;                      // onda ainda não nasceu
+      const frac = tt / rp.life;
+      if (frac >= 1) { ripples.splice(i, 1); continue; }
+      rp.frac = frac; rp.tt = tt;
+      rp.r = 1 + (1 - Math.pow(1 - frac, 2.2)) * rp.maxR;   // desacelera como onda real
+      rp.alpha = (1 - frac) * rp.strength;
+      if (rp.alpha > 0.02) live.push(rp);
+    }
+    buildNeighbors(live);
+    for (const rp of live) drawRipple(rp, rp.frac, rp.tt);
+
+    updatePigment(dt, t);
+
+    // composição: pigmento → textura do papel → ondas
+    ctx2d.globalCompositeOperation = 'source-over';
+    ctx2d.globalAlpha = 1;
+    ctx2d.drawImage(pig, 0, 0, W, H);
+    if (pal.grain > 0) {
+      ctx2d.globalCompositeOperation = 'multiply';
+      ctx2d.globalAlpha = pal.grain;
+      ctx2d.fillStyle = grainPattern;
+      ctx2d.fillRect(0, 0, W, H);
+    }
+    ctx2d.globalAlpha = 1;
+    ctx2d.globalCompositeOperation = pal.mode === 'paper' ? 'multiply' : 'screen';
+    ctx2d.drawImage(ringC, 0, 0, W, H);
+    ctx2d.globalCompositeOperation = 'source-over';
+
+    meter.textContent = (audioOn ? `vozes ${voices}` : 'som desligado') + (inp.an ? ` · entrada ${'▁▂▃▄▅▆▇█'[Math.min(7, Math.floor(inp.level * 7.99))]}` : '') + (hand.on ? ` · mãos ${hand.n}` : '');
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- Interação no palco ----------
+  function toStage(e) {
+    const r = canvas.getBoundingClientRect();
+    return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    pointerDown = true;
+    const [x, y] = toStage(e);
+    spawnDrop(x, y, 12);
+    lastDrag = performance.now();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!pointerDown) return;
+    const now = performance.now();
+    if (now - lastDrag < 110) return;     // arrastar gera um fio de gotas menores
+    lastDrag = now;
+    const [x, y] = toStage(e);
+    spawnDrop(clamp(x, 0, W), clamp(y, 0, H), 7);
+  });
+  const up = () => { pointerDown = false; };
+  canvas.addEventListener('pointerup', up);
+  canvas.addEventListener('pointercancel', up);
+
+  // ---------- Controles ----------
+  const audioBtn = document.getElementById('audioBtn');
+  audioBtn.addEventListener('click', async () => {
+    try {
+      if (!audioCtx) initAudio();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+    } catch (err) {
+      audioBtn.textContent = 'Áudio indisponível neste navegador';
+      return;
+    }
+    audioOn = !audioOn;
+    fx.master.gain.setTargetAtTime(audioOn ? 0.85 : 0, audioCtx.currentTime, audioOn ? 0.05 : 0.15);
+    audioBtn.textContent = audioOn ? 'Som ligado' : 'Ligar som';
+    audioBtn.classList.toggle('active', audioOn);
+  });
+
+  const rainBtn = document.getElementById('rainBtn');
+  rainBtn.addEventListener('click', () => {
+    autoRain = !autoRain;
+    rainBtn.classList.toggle('active', autoRain);
+    rainBtn.textContent = autoRain ? 'Chuva automática: ligada' : 'Chuva automática: desligada';
+  });
+
+  document.getElementById('scaleSelect').addEventListener('change', (e) => { scaleType = e.target.value; chordIdx = 0; chordStart = performance.now(); padSetChord(false); });
+  document.getElementById('harmonySelect').addEventListener('change', (e) => {
+    harmony = e.target.value === 'free' ? 'free' : parseFloat(e.target.value);
+    chordIdx = 0; chordStart = performance.now(); padSetChord(false);
+  });
+  document.getElementById('timbreSelect').addEventListener('change', (e) => { timbre = e.target.value; });
+  document.getElementById('surfColor').addEventListener('input', (e) => {
+    const h = e.target.value; surfOverride = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); buildPal();
+  });
+  document.getElementById('surfReset').addEventListener('click', () => { surfOverride = null; buildPal(); syncSurfInput(); });
+  document.getElementById('paletteSelect').addEventListener('change', (e) => { setPalette(e.target.value); });
+  document.getElementById('rainDensity').addEventListener('change', (e) => {
+    rainRate = parseFloat(e.target.value);
+    nextRain = performance.now() + (1000 / rainRate) * (0.3 + Math.random() * 0.4);
+  });
+
+  [['Delay', 'delay'], ['Reverb', 'reverb'], ['Drive', 'drive'], ['BitCrush', 'bitcrush']].forEach(([id, key]) => {
+    const btn = document.getElementById('toggle' + id);
+    btn.addEventListener('click', () => {
+      fxState[key] = !fxState[key];
+      btn.classList.toggle('active', fxState[key]);
+      btn.textContent = fxState[key] ? 'ON' : 'OFF';
+      btn.setAttribute('aria-pressed', fxState[key]);
+      if (!audioCtx) return;
+      if (key === 'delay') ramp(fx.delaySend.gain, fxState.delay ? 1 : 0);   // o rabo do eco continua soando
+      if (key === 'reverb') ramp(fx.reverbSend.gain, fxState.reverb ? 1 : 0);
+      if (key === 'drive' || key === 'bitcrush') applyInsert(key);
+    });
+    btn.setAttribute('aria-pressed', fxState[key]);
+  });
+
+  // ---------- Knobs ----------
+  const A0 = Math.PI * 0.75, SPAN = Math.PI * 1.5;   // arco de 270°
+  function arc(cx, cy, r, a0, a1) {
+    const x0 = cx + Math.cos(a0) * r, y0 = cy + Math.sin(a0) * r;
+    const x1 = cx + Math.cos(a1) * r, y1 = cy + Math.sin(a1) * r;
+    return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+  }
+  function renderKnob(el, v, color) {
+    const a = A0 + v * SPAN;
+    const px = 23 + Math.cos(a) * 11, py = 23 + Math.sin(a) * 11;
+    el.innerHTML =
+      `<svg viewBox="0 0 46 46" aria-hidden="true">
+        <circle cx="23" cy="23" r="14" fill="#141b29" stroke="#26314a" stroke-width="1"/>
+        <path d="${arc(23, 23, 19, A0, A0 + SPAN)}" fill="none" stroke="#1d2638" stroke-width="3.5" stroke-linecap="round"/>
+        ${v > 0.003 ? `<path d="${arc(23, 23, 19, A0, a)}" fill="none" stroke="${color}" stroke-width="3.5" stroke-linecap="round"/>` : ''}
+        <line x1="23" y1="23" x2="${px.toFixed(2)}" y2="${py.toFixed(2)}" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
+      </svg>`;
+  }
+  function label(param, v) {
+    switch (param) {
+      case 'delayTime': return dSync === 'free' ? `${Math.round(map.delaySec(v) * 1000)} ms` : `${Math.round(map.bpm(v))} BPM`;
+      case 'delayLow':  return `${Math.round(map.dLow(v))} Hz`;
+      case 'delayHi':   { const f = map.dHi(v); return f >= 1000 ? `${(f / 1000).toFixed(1).replace('.', ',')} kHz` : `${Math.round(f)} Hz`; }
+      case 'delayRate': return `${map.dRate(v).toFixed(1).replace('.', ',')} Hz`;
+      case 'inGain':    return `×${Math.pow(4, 2 * v - 1).toFixed(1).replace('.', ',')}`;
+      case 'inGap':     return `${Math.round(40 + 360 * v)} ms`;
+      case 'jSpeed':    return `${(0.4 + 1.6 * v).toFixed(1).replace('.', ',')} larguras/s`;
+      case 'hGap':      return `${Math.round(60 + 540 * v)} ms`;
+      case 'hSens':     return `${Math.round(v * 100)}%`;
+      case 'hReach':    return `${Math.round(100 - 50 * v)}% da imagem`;
+      case 'inkHue':    return `${Math.round((v - 0.5) * 360)}°`;
+      case 'inkSat':    return `×${(2 * v).toFixed(1).replace('.', ',')}`;
+      case 'inkLum':    return `×${(0.5 + v).toFixed(1).replace('.', ',')}`;
+      case 'bitBits':   return `${map.bits(v)} bits`;
+      case 'dropRadius':return `×${map.radiusMul(v).toFixed(1).replace('.', ',')}`;
+      case 'surfLum':   return `×${(0.4 + 1.2 * v).toFixed(1).replace('.', ',')}`;
+      case 'stainSize': case 'stainInt': return `×${map.stain(v).toFixed(1).replace('.', ',')}`;
+      case 'stainLife': return `×${map.stainLife(v).toFixed(1).replace('.', ',')}`;
+      case 'rings':     { const n = map.rings(v); return n === 1 ? '1 onda' : `${n} ondas`; }
+      default:          return `${Math.round(v * 100)}%`;
+    }
+  }
+  function applyParam(param, v) {
+    if (!audioCtx) return;
+    switch (param) {
+      case 'inGain':    applyInput(); break;
+      case 'delayMix':  ramp(fx.delayWet.gain, v); break;
+      case 'delayTime': case 'delayFb': case 'delayStereo': case 'delayLow': case 'delayHi': case 'delaySat':
+      case 'delayDepth': case 'delayRate': case 'delayDiff': case 'delaySize': applyDelay(); break;
+      case 'reverbMix': ramp(fx.reverbWet.gain, v); break;
+      case 'droneLvl':  ramp(fx.pad.master.gain, v * 0.2); break;
+      case 'driveAmt':  fx.drive.shaper.curve = driveCurve(v); break;
+      case 'bitBits':   fx.crush.shaper.curve = crushCurve(map.bits(v)); break;
+    }
+  }
+
+  const knobSets = {};
+  document.querySelectorAll('.knob').forEach((knob) => {
+    const param = knob.dataset.param;
+    const color = knob.dataset.color;
+    const initial = parseFloat(knob.dataset.value);
+    const valEl = document.getElementById(param + 'Val');
+    let val = initial;
+    let lastBits = null;
+
+    knob.tabIndex = 0;
+    knob.setAttribute('role', 'slider');
+    knob.setAttribute('aria-valuemin', '0');
+    knob.setAttribute('aria-valuemax', '100');
+
+    const set = (nv) => {
+      val = clamp(nv, 0, 1);
+      params[param] = val;
+      if (param === 'surfLum') { const nl = 0.4 + 1.2 * val; if (Math.abs(nl - surfLum) > 1e-6) { surfLum = nl; buildPal(); } }
+      renderKnob(knob, val, color);
+      const txt = label(param, val);
+      valEl.textContent = txt;
+      knob.setAttribute('aria-valuenow', Math.round(val * 100));
+      knob.setAttribute('aria-valuetext', txt);
+      // só recalcula a curva do crush quando o número de bits muda de fato
+      if (param === 'bitBits') { const b = map.bits(val); if (b === lastBits) return; lastBits = b; }
+      applyParam(param, val);
+    };
+    set(val);
+    knobSets[param] = set;
+
+    let startY = 0, startVal = val;
+    knob.addEventListener('pointerdown', (e) => {
+      knob.setPointerCapture(e.pointerId);
+      startY = e.clientY; startVal = val;
+      e.preventDefault();
+    });
+    knob.addEventListener('pointermove', (e) => {
+      if (!knob.hasPointerCapture(e.pointerId)) return;
+      const fine = e.shiftKey ? 0.25 : 1;
+      set(startVal + ((startY - e.clientY) / 140) * fine);
+    });
+    knob.addEventListener('dblclick', () => set(initial));
+    knob.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 0.1 : 0.02;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { set(val + step); e.preventDefault(); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { set(val - step); e.preventDefault(); }
+      if (e.key === 'Home') { set(0); e.preventDefault(); }
+      if (e.key === 'End') { set(1); e.preventDefault(); }
+    });
+    knob.addEventListener('wheel', (e) => { e.preventDefault(); set(val - Math.sign(e.deltaY) * 0.02); }, { passive: false });
+  });
+
+  // ---------- Entrada de áudio externa ----------
+  // Fontes: microfone, placa de áudio (escolha do dispositivo e do canal) ou arquivo. A análise acha os ataques (fluxo espectral com limiar
+  // adaptativo); em cada ataque mede altura (YIN), brilho (centroide) e estéreo, e solta uma gota: X = altura/brilho/estéreo, Y = brilho/volume, tamanho = volume.
+  const inp = { kind: 'off', stream: null, elSrc: null, nodes: [], g: null, gL: null, gR: null, an: null, anL: null, anR: null, mon: null,
+                prev: null, flux: [], lastFlux: 0, last: 0, level: 0, rainBefore: null, file: null };
+  const $in = (id) => document.getElementById(id);
+  const say = (m) => { $in('inStatus').textContent = m; };
+  const spec = new Float32Array(1024), tbuf = new Float32Array(2048), pbuf = new Float32Array(512), pbufR = new Float32Array(512);
+  // estéreo ou mono? médias longas de nível em cada canal e da diferença entre eles (L−R)
+  const stx = { l: 0, r: 0, side: 0, mid: 0, hx: [], hy: [] };
+  function stereoTrack() {
+    if (!inp.anL || !inp.anR) return;
+    inp.anL.getFloatTimeDomainData(pbuf); inp.anR.getFloatTimeDomainData(pbufR);
+    let l = 0, r = 0, sd = 0, md = 0;
+    for (let i = 0; i < 512; i++) { const a = pbuf[i], b = pbufR[i]; l += a * a; r += b * b; sd += (a - b) * (a - b); md += (a + b) * (a + b); }
+    if (l + r < 1e-7) return;   // silêncio: não muda a estimativa
+    const k = 0.01;   // ~2 s de memória
+    stx.l += (l - stx.l) * k; stx.r += (r - stx.r) * k; stx.side += (sd - stx.side) * k; stx.mid += (md - stx.mid) * k;
+  }
+  function isStereo() {
+    if ($in('inChan').value !== 'stereo') return false;
+    const lo = Math.min(stx.l, stx.r), hi = Math.max(stx.l, stx.r);
+    if (hi <= 0 || lo < hi * 0.003) return false;          // só um canal tem sinal: mono
+    return stx.side / (stx.mid + 1e-12) > 0.004;            // canais quase idênticos: mono
+  }
+  function spreadPos(v, hist) {   // espalha pela tela usando a faixa dos últimos ataques + um pouco de acaso
+    hist.push(v); if (hist.length > 24) hist.shift();
+    const sp = params.inSpread, srt = [...hist].sort((a, b) => a - b);
+    let lo = srt[Math.floor(srt.length * 0.1)], hi = srt[Math.floor((srt.length - 1) * 0.9)];
+    if (hi - lo < 0.12) { const m = (hi + lo) / 2; lo = m - 0.06; hi = m + 0.06; }
+    const stretched = clamp((v - lo) / (hi - lo), 0, 1) * 0.84 + 0.08;
+    const base = v * (1 - sp) + stretched * sp;
+    return clamp(base + (Math.random() - 0.5) * 0.3 * sp, 0.04, 0.96);
+  }
+
+  function applyInput() {
+    if (!inp.g) return;
+    const c = audioCtx.currentTime, ch = $in('inChan').value, both = ch === 'stereo' ? 0.7 : 0;
+    inp.gL.gain.setTargetAtTime(ch === 'R' ? 0 : (ch === 'L' ? 1 : both), c, 0.02);
+    inp.gR.gain.setTargetAtTime(ch === 'L' ? 0 : (ch === 'R' ? 1 : both), c, 0.02);
+    inp.g.gain.setTargetAtTime(Math.pow(4, 2 * params.inGain - 1), c, 0.03);
+  }
+  function setMonitor(on) {
+    const b = $in('inMon'); b.classList.toggle('active', on); b.setAttribute('aria-pressed', on);
+    b.textContent = on ? 'OUVIR ENTRADA: ON' : 'OUVIR ENTRADA: OFF';
+    if (inp.mon) inp.mon.gain.setTargetAtTime(on ? 0.9 : 0, audioCtx.currentTime, 0.03);
+  }
+  function inputStop() {
+    if (inp.stream) { inp.stream.getTracks().forEach((t) => t.stop()); inp.stream = null; }
+    inp.nodes.forEach((n) => { try { n.disconnect(); } catch (e) {} }); inp.nodes = [];
+    if (inp.elSrc) { try { inp.elSrc.disconnect(); } catch (e) {} }
+    const el = $in('inAudio'); if (el && !el.paused) el.pause();
+    inp.g = inp.gL = inp.gR = inp.an = inp.anL = inp.anR = inp.mon = null; inp.prev = null; inp.flux = []; inp.level = 0;
+  }
+  function inputBuild(src, monitor) {
+    const ac = audioCtx, node = (n) => { inp.nodes.push(n); return n; };
+    const split = node(ac.createChannelSplitter(2)), gL = node(ac.createGain()), gR = node(ac.createGain()), g = node(ac.createGain());
+    const an = node(ac.createAnalyser()), anL = node(ac.createAnalyser()), anR = node(ac.createAnalyser()), mon = node(ac.createGain());
+    an.fftSize = 2048; an.smoothingTimeConstant = 0; anL.fftSize = anR.fftSize = 512;
+    src.connect(split); split.connect(gL, 0); split.connect(gR, 1); gL.connect(g); gR.connect(g); g.connect(an);
+    split.connect(anL, 0); split.connect(anR, 1);
+    mon.gain.value = 0; src.connect(mon); mon.connect(fx.comp);
+    Object.assign(inp, { g, gL, gR, an, anL, anR, mon, prev: null, flux: [], last: 0, pend: null });
+    applyInput(); setMonitor(monitor);
+  }
+  // altura (YIN): devolve a frequência fundamental em Hz, ou 0 se o som não tiver altura definida
+  function detectPitch(x, sr) {
+    const W = 1024, maxTau = Math.min(1000, Math.floor(sr / 70)), minTau = Math.max(2, Math.floor(sr / 2000));
+    const d = new Float32Array(maxTau + 1), c = new Float32Array(maxTau + 1);
+    for (let tau = 1; tau <= maxTau; tau++) { let sum = 0; for (let i = 0; i < W; i++) { const v = x[i] - x[i + tau]; sum += v * v; } d[tau] = sum; }
+    let run = 0; c[0] = 1;
+    for (let tau = 1; tau <= maxTau; tau++) { run += d[tau]; c[tau] = run > 0 ? d[tau] * tau / run : 1; }
+    for (let tau = minTau; tau < maxTau; tau++) {
+      if (c[tau] < 0.15) {
+        while (tau + 1 < maxTau && c[tau + 1] < c[tau]) tau++;
+        const a = c[tau - 1], b = c[tau], e = c[tau + 1], den = a - 2 * b + e;
+        return sr / (tau + (den ? 0.5 * (a - e) / den : 0));
+      }
+    }
+    return 0;
+  }
+  function inputOnset(rms, centroid, pan, pitch) {
+    const cn = clamp(Math.log2(Math.max(centroid, 250) / 250) / Math.log2(24), 0, 1);   // brilho: 250 Hz a 6 kHz
+    const db = 20 * Math.log10(Math.max(rms, 1e-5)), ln = clamp((db + 52) / 40, 0, 1);
+    const mx = $in('inMapX').value, my = $in('inMapY').value;
+    let xn;
+    const stereo = mx === 'auto' && isStereo();
+    if (mx === 'stereo' || stereo) xn = 0.5 + 0.5 * clamp(pan * 1.5, -1, 1) + (Math.random() - 0.5) * 0.06;
+    else if ((mx === 'pitch' || mx === 'auto') && pitch > 0) xn = Math.log2(clamp(pitch, 110, 1760) / 110) / 4;      // quatro oitavas, de 110 Hz a 1,76 kHz
+    else xn = cn;
+    let yn = my === 'bright' ? 0.12 + 0.76 * cn : my === 'level' ? 0.15 + 0.7 * ln : Math.random();
+    if (mx === 'auto' && !stereo) { xn = spreadPos(clamp(xn, 0, 1), stx.hx); if (my !== 'free') yn = spreadPos(yn, stx.hy); }
+    spawnDrop(clamp(xn, 0, 1) * W, yn * H, 3 + 9 * ln);
+  }
+  function centroidOf() {   // centroide espectral (brilho) do quadro atual, em Hz
+    const binHz = audioCtx.sampleRate / 2048; let num = 0, den = 0;
+    for (let i = Math.max(1, Math.floor(60 / binHz)); i <= Math.min(1023, Math.floor(12000 / binHz)); i++) { const m = Math.pow(10, spec[i] / 20); num += m * i * binHz; den += m; }
+    return num / (den || 1);
+  }
+  function inputTick(t) {
+    if (!inp.an) return;
+    stereoTrack();
+    const sr = audioCtx.sampleRate, binHz = sr / 2048;
+    inp.an.getFloatFrequencyData(spec); inp.an.getFloatTimeDomainData(tbuf);
+    let e = 0; for (let i = 0; i < tbuf.length; i++) e += tbuf[i] * tbuf[i];
+    const rms = Math.sqrt(e / tbuf.length); inp.level = Math.max(inp.level * 0.9, clamp((20 * Math.log10(Math.max(rms, 1e-5)) + 60) / 50, 0, 1));
+    const lo = Math.max(1, Math.floor(60 / binHz)), hi = Math.min(1023, Math.floor(8000 / binHz));
+    if (!inp.prev) inp.prev = new Float32Array(1024);
+    let flux = 0;
+    for (let i = lo; i <= hi; i++) { const v = clamp((spec[i] + 100) / 70, 0, 1), dv = v - inp.prev[i]; if (dv > 0) flux += dv; inp.prev[i] = v; }
+    flux /= (hi - lo + 1);
+    const H_ = inp.flux; let mean = 0, sd = 0;
+    if (H_.length > 8) { for (const v of H_) mean += v; mean /= H_.length; for (const v of H_) sd += (v - mean) * (v - mean); sd = Math.sqrt(sd / H_.length); }
+    const sens = params.inSens, thr = mean + (3.4 - 2.8 * sens) * sd + 0.003 * (1.3 - sens), gap = 40 + 360 * params.inGap;
+    if (H_.length > 8 && flux > thr && inp.lastFlux <= thr && t - inp.last > gap && rms > 0.004 && !inp.pend) { inp.last = t; inp.pend = { at: t + 55, peak: rms, c: centroidOf() }; }
+    // a análise de altura/brilho espera ~55 ms depois do ataque, para a janela já conter a nota e não só o silêncio que veio antes
+    if (inp.pend) {
+      inp.pend.peak = Math.max(inp.pend.peak, rms);
+      if (t >= inp.pend.at) {
+      const prms = inp.pend.peak, cOn = inp.pend.c, dead = rms < 0.1 * prms; inp.pend = null;   // som já morreu (percussivo): usa o brilho do instante do ataque
+      inp.anL.getFloatTimeDomainData(pbuf); let l = 0; for (let i = 0; i < pbuf.length; i++) l += pbuf[i] * pbuf[i];
+      inp.anR.getFloatTimeDomainData(pbuf); let r = 0; for (let i = 0; i < pbuf.length; i++) r += pbuf[i] * pbuf[i];
+      const pan = (Math.sqrt(r) - Math.sqrt(l)) / (Math.sqrt(r) + Math.sqrt(l) + 1e-9);
+      inputOnset(prms, dead ? cOn : centroidOf(), pan, ($in('inMapX').value === 'pitch' || $in('inMapX').value === 'auto') && !dead ? detectPitch(tbuf, sr) : 0);
+      }
+    }
+    H_.push(flux); if (H_.length > 43) H_.shift();
+    inp.lastFlux = flux;
+  }
+  async function fillDevices(askPermission) {
+    if (askPermission) { const tmp = await navigator.mediaDevices.getUserMedia({ audio: true }); tmp.getTracks().forEach((tr) => tr.stop()); }   // sem permissão o navegador não mostra os nomes
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'), sel = $in('inDevice'), keep = sel.value;
+    sel.innerHTML = '';
+    devs.forEach((d, i) => { const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || `Entrada ${i + 1}`; sel.appendChild(o); });
+    const ext = devs.find((d) => d.deviceId !== 'default' && d.deviceId !== 'communications' && !/built-in|internal|macbook|integrad|embutid/i.test(d.label));
+    if (keep && devs.some((d) => d.deviceId === keep)) sel.value = keep; else if (ext) sel.value = ext.deviceId;
+    return devs.length;
+  }
+  function showRows(kind) {
+    $in('inDevice').hidden = kind !== 'interface'; $in('inChan').hidden = kind !== 'interface'; $in('inFileRow').hidden = kind !== 'file';
+  }
+  async function startInput(kind) {
+    inputStop(); inp.kind = kind; showRows(kind);
+    if (kind === 'off') {
+      if (inp.rainBefore && !autoRain) rainBtn.click();
+      inp.rainBefore = null; say('Entrada desligada: toque no palco ou deixe a chuva cair.'); return;
+    }
+    try {
+      if (!audioCtx) initAudio();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      if (kind === 'mic') {
+        inp.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false } });
+        inputBuild(audioCtx.createMediaStreamSource(inp.stream), false);
+        $in('inChan').value = 'stereo'; applyInput();
+        say('Microfone ativo. Use fones de ouvido: sem eles, o som das próprias gotas volta pelo microfone e cria gotas sozinho.');
+      } else if (kind === 'interface') {
+        const n = await fillDevices(true);
+        if (!n) throw new Error('Nenhuma entrada de áudio encontrada.');
+        const id = $in('inDevice').value;
+        inp.stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: id ? { exact: id } : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 2 } } });
+        inputBuild(audioCtx.createMediaStreamSource(inp.stream), false);
+        say('Placa de áudio ativa: ' + ($in('inDevice').selectedOptions[0] || {}).textContent + '. Escolha o canal se a fonte estiver só em uma entrada.');
+      } else {
+        const el = $in('inAudio');
+        if (!inp.file) { say('Escolha um arquivo de áudio para começar.'); return; }
+        inp.elSrc = inp.elSrc || audioCtx.createMediaElementSource(el);
+        inputBuild(inp.elSrc, true);
+        if (el.paused) await el.play().catch(() => say('Aperte o play do player para começar.'));
+        say('Arquivo: ' + inp.file.name + '. O áudio toca em loop e cada ataque cria uma gota.');
+      }
+      if (inp.rainBefore === null) inp.rainBefore = autoRain;
+      if (autoRain) rainBtn.click();   // com entrada externa a chuva automática pausa (dá para religar no botão)
+    } catch (err) {
+      const m = err && err.name === 'NotAllowedError' ? 'O navegador bloqueou o acesso ao áudio. Libere a permissão na barra de endereço e tente de novo.'
+        : err && err.name === 'NotFoundError' ? 'Entrada de áudio não encontrada.' : 'Não foi possível abrir a entrada: ' + (err && err.message ? err.message : err);
+      say(m); $in('inSource').value = 'off'; inp.kind = 'off'; showRows('off'); inputStop();
+    }
+  }
+  $in('inSource').addEventListener('change', (e) => startInput(e.target.value));
+  $in('inDevice').addEventListener('change', () => { if (inp.kind === 'interface') startInput('interface'); });
+  $in('inChan').addEventListener('change', applyInput);
+  $in('inMon').addEventListener('click', () => setMonitor(!$in('inMon').classList.contains('active')));
+  $in('inFile').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const el = $in('inAudio'); if (inp.file) URL.revokeObjectURL(el.src);
+    inp.file = f; el.src = URL.createObjectURL(f);
+    if (inp.kind === 'file') startInput('file');
+  });
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', () => { if (inp.kind === 'interface') fillDevices(false).catch(() => {}); });
+
+  // ---------- Mãos pela câmera ----------
+  // MediaPipe Hand Landmarker (carregado da rede na primeira vez). Três gestos: movimento (gotas ao longo do trajeto, tamanho pela velocidade),
+  // pinça (gota ao fechar polegar e indicador) e abrir a mão (gota quando o punho abre). Cada mão tem seu círculo-guia no palco.
+  const MP_VER = '0.10.15';
+  const hand = { on: false, n: 0, stream: null, video: $in('hVideo'), lm: null, loading: false, raf: 0, lastVT: -1, hands: {}, mirror: true };
+  const hsay = (m) => { $in('hStatus').textContent = m; };
+  const hbox = document.querySelector('.canvas-box');
+  async function makeLandmarker() {
+    if (hand.lm) return hand.lm;
+    const mod = await import(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/vision_bundle.mjs`);
+    const vision = await mod.FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`);
+    const opts = (d) => ({ baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: d },
+                           runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: 0.4, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
+    try { hand.lm = await mod.HandLandmarker.createFromOptions(vision, opts('GPU')); }
+    catch (e) { hand.lm = await mod.HandLandmarker.createFromOptions(vision, opts('CPU')); }
+    return hand.lm;
+  }
+  const hd = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  function hcursor(h) {
+    if (!h.el) { h.el = document.createElement('div'); h.el.className = 'hcur'; h.el.style.setProperty('--c', h.key === 'Left' ? '#60a5fa' : '#fb7185'); hbox.appendChild(h.el); }
+    return h.el;
+  }
+  function placeCursor(h) {
+    const cr = canvas.getBoundingClientRect(), br = hbox.getBoundingClientRect(), el = hcursor(h);
+    el.style.left = (cr.left - br.left + h.x * cr.width) + 'px'; el.style.top = (cr.top - br.top + h.y * cr.height) + 'px';
+    el.classList.remove('gone');
+  }
+  function handDrop(h, size, now) {
+    h.lastDrop = now; spawnDrop(clamp(h.x, 0, 1) * W, clamp(h.y, 0, 1) * H, size);
+    const el = hcursor(h); el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), 160);
+  }
+  function handResults(res, now) {
+    const lms = (res && res.landmarks) || [], seen = new Set();
+    const mode = $in('hMode').value, sens = params.hSens, gap = 60 + 540 * params.hGap, zoom = 1 + 0.9 * params.hReach;   // alcance: 100% a 55% da imagem
+    lms.forEach((lm, i) => {
+      const key = (res.handedness && res.handedness[i] && res.handedness[i][0] && res.handedness[i][0].categoryName) || ('h' + i);
+      seen.add(key);
+      const h = hand.hands[key] || (hand.hands[key] = { key, x: 0.5, y: 0.5, t: 0, init: false, lastDrop: 0, closed: false, fist: false, v: 0 });
+      // referência do gesto: palma (movimento e abrir) ou ponto médio da pinça
+      const wrist = lm[0], size = Math.max(0.02, hd(lm[0], lm[9]));
+      let px = (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 5, py = (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 5;
+      const pd = hd(lm[4], lm[8]) / size;
+      if (mode === 'pinch') { px = (lm[4].x + lm[8].x) / 2; py = (lm[4].y + lm[8].y) / 2; }
+      if (hand.mirror) px = 1 - px;
+      const tx = clamp(0.5 + (px - 0.5) * zoom, 0, 1), ty = clamp(0.5 + (py - 0.5) * zoom, 0, 1);
+      const dt = h.init ? Math.max(0.008, (now - h.t) / 1000) : 0.033;
+      const nx = h.init ? h.x + (tx - h.x) * 0.55 : tx, ny = h.init ? h.y + (ty - h.y) * 0.55 : ty;
+      const dist = Math.hypot((nx - h.x) * 16 / 9, ny - h.y);     // em alturas de palco
+      const v = h.init ? dist / dt : 0; h.v = h.v * 0.5 + v * 0.5;
+      h.x = nx; h.y = ny; h.t = now; h.init = true;
+      placeCursor(h);
+      if (mode === 'motion') {
+        const thr = 1.1 - 0.95 * sens;                                    // alturas de palco por segundo
+        if (h.v > thr && now - h.lastDrop > gap) handDrop(h, 3 + 9 * clamp((h.v - thr) / 2.2, 0, 1), now);
+      } else if (mode === 'pinch') {
+        const closeT = 0.2 + 0.2 * sens, openT = closeT + 0.2;
+        if (!h.closed && pd < closeT) { h.closed = true; if (now - h.lastDrop > gap) handDrop(h, 12, now); }
+        else if (h.closed && pd > openT) h.closed = false;
+      } else {
+        const ext = [[8, 6], [12, 10], [16, 14], [20, 18]].filter(([t, b]) => hd(lm[t], wrist) > hd(lm[b], wrist) * (1.02 + 0.1 * (1 - sens))).length;
+        if (ext <= 1) h.fist = true;
+        else if (ext >= 4 && h.fist) { h.fist = false; if (now - h.lastDrop > gap) { handDrop(h, 12, now);
+          const sx = h.x, sy = h.y; for (let k = 0; k < 2; k++) { const a = Math.random() * 6.283, r = 0.07 + Math.random() * 0.05; h.x = clamp(sx + Math.cos(a) * r * 9 / 16, 0, 1); h.y = clamp(sy + Math.sin(a) * r, 0, 1); spawnDrop(h.x * W, h.y * H, 5 + Math.random() * 3); }
+          h.x = sx; h.y = sy; } }
+      }
+    });
+    Object.keys(hand.hands).forEach((k) => {
+      const h = hand.hands[k];
+      if (!seen.has(k)) { if (h.el) h.el.classList.add('gone'); h.init = false; h.closed = false; h.fist = false; }
+    });
+    hand.n = seen.size;
+  }
+  function handLoop() {
+    if (!hand.on) return;
+    const v = hand.video;
+    if (hand.lm && v.readyState >= 2 && v.currentTime !== hand.lastVT) {
+      hand.lastVT = v.currentTime;
+      try { handResults(hand.lm.detectForVideo(v, performance.now()), performance.now()); } catch (e) {}
+    }
+    hand.raf = requestAnimationFrame(handLoop);
+  }
+  async function fillCams(keep) {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput'), sel = $in('hCam'), cur = sel.value;
+    sel.innerHTML = devs.map((d, i) => `<option value="${d.deviceId}">${d.label || 'Câmera ' + (i + 1)}</option>`).join('');
+    if (keep && devs.some((d) => d.deviceId === cur)) sel.value = cur;
+    sel.hidden = devs.length < 2; return devs.length;
+  }
+  function handStop() {
+    hand.on = false; cancelAnimationFrame(hand.raf);
+    if (hand.stream) { hand.stream.getTracks().forEach((t) => t.stop()); hand.stream = null; }
+    hand.video.srcObject = null; hand.video.hidden = true; hand.n = 0;
+    Object.values(hand.hands).forEach((h) => { if (h.el) h.el.remove(); }); hand.hands = {};
+  }
+  async function handStart() {
+    handStop(); hsay('Abrindo a câmera…');
+    try {
+      const id = $in('hCam').value;
+      hand.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: id ? { exact: id } : undefined, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false });
+      await fillCams(true);
+      const cur = hand.stream.getVideoTracks()[0] && hand.stream.getVideoTracks()[0].getSettings().deviceId; if (cur) $in('hCam').value = cur;
+      hand.video.srcObject = hand.stream; hand.video.hidden = false; await hand.video.play();
+      hand.on = true; setHBtn(true);
+      if (!hand.lm) { hsay('Carregando o modelo de mãos (só na primeira vez)…'); await makeLandmarker(); }
+      if (!hand.on) return;
+      hand.lastVT = -1; hand.raf = requestAnimationFrame(handLoop);
+      hsay('Câmera ativa' + (audioOn ? '' : ' (aperte "Ligar som" para ouvir as gotas)') + '. Mostre a mão para a câmera. Dica: ligue a câmera com a chuva automática desligada para ver só as suas gotas.');
+    } catch (err) {
+      handStop(); setHBtn(false);
+      hsay(err && err.name === 'NotAllowedError' ? 'O navegador bloqueou a câmera. Libere a permissão na barra de endereço e tente de novo.'
+        : err && err.name === 'NotFoundError' ? 'Nenhuma câmera encontrada.'
+        : 'Não foi possível iniciar as mãos: ' + (err && err.message ? err.message : err) + ' (o modelo precisa de internet na primeira vez).');
+    }
+  }
+  function setHBtn(on) { const b = $in('hBtn'); b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); b.textContent = on ? 'CÂMERA: ON' : 'CÂMERA: OFF'; }
+  $in('hBtn').addEventListener('click', () => { if (hand.on || hand.stream) { handStop(); setHBtn(false); hsay('Câmera desligada.'); } else handStart(); });
+  $in('hCam').addEventListener('change', () => { if (hand.on) handStart(); });
+  $in('hMode').addEventListener('change', () => { Object.values(hand.hands).forEach((h) => { h.closed = false; h.fist = false; }); });
+  $in('hMirror').addEventListener('click', () => {
+    hand.mirror = !hand.mirror; const b = $in('hMirror');
+    b.classList.toggle('active', hand.mirror); b.setAttribute('aria-pressed', hand.mirror); b.textContent = hand.mirror ? 'ESPELHO: ON' : 'ESPELHO: OFF';
+    hand.video.classList.toggle('nomirror', !hand.mirror);
+  });
+
+  // ---------- Tela cheia ----------
+  // O palco inteiro (canvas + som) em tela cheia, 16:9 centralizado sobre preto. Tecla F alterna; Esc sai. Depois de 2,5 s sem mexer o mouse,
+  // o cursor e os rótulos somem (para instalação). Sem a API de tela cheia, cai num modo que cobre a janela.
+  const stageBox = document.querySelector('.canvas-box'), fsBtn = document.getElementById('fsBtn');
+  let fsIdle = 0, wakeLock = null;
+  const isFs = () => document.fullscreenElement === stageBox || stageBox.classList.contains('pfs');
+  const wake = () => {
+    stageBox.classList.remove('idle'); clearTimeout(fsIdle);
+    if (isFs()) fsIdle = setTimeout(() => stageBox.classList.add('idle'), 2500);
+  };
+  async function holdScreen(on) {   // evita que a tela apague durante a exibição
+    try {
+      if (on && navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+      else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch (e) {}
+  }
+  function syncFs() {
+    const on = isFs();
+    fsBtn.textContent = on ? 'Sair (Esc)' : 'Tela cheia (F)'; fsBtn.setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
+    holdScreen(on); wake();
+  }
+  async function toggleFs() {
+    if (isFs()) {
+      if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch (e) {} }
+      stageBox.classList.remove('pfs');
+    } else if (stageBox.requestFullscreen) {
+      try { await stageBox.requestFullscreen({ navigationUI: 'hide' }); } catch (e) { stageBox.classList.add('pfs'); }
+    } else stageBox.classList.add('pfs');
+    syncFs();
+  }
+  fsBtn.addEventListener('click', toggleFs);
+  document.addEventListener('fullscreenchange', syncFs);
+  stageBox.addEventListener('pointermove', wake);
+  stageBox.addEventListener('pointerdown', wake);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && isFs()) holdScreen(true); });
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(tag)) return;
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFs(); }
+    else if (e.key === 'Escape' && stageBox.classList.contains('pfs')) { stageBox.classList.remove('pfs'); syncFs(); }
+  });
+
+  // ---------- Delay: estilo e sincronia ----------
+  document.getElementById('delayStyle').addEventListener('change', (e) => {
+    dStyle = e.target.value;
+    Object.entries(STYLES_D[dStyle]).forEach(([k, v]) => knobSets[k](v));
+    applyDelay();
+  });
+  document.getElementById('delaySync').addEventListener('change', (e) => {
+    dSync = e.target.value;
+    knobSets.delayTime(params.delayTime);   // atualiza o rótulo (ms ou BPM) e o tempo
+  });
+
+  // ---------- Cores das manchas: cor única ----------
+  const inkPick = document.getElementById('inkPick'), inkBtn = document.getElementById('inkMonoBtn');
+  const inkFromHex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const setMono = (on) => {
+    inkMono = on ? inkFromHex(inkPick.value) : null;
+    inkBtn.classList.toggle('active', on); inkBtn.setAttribute('aria-pressed', on);
+    inkBtn.textContent = on ? 'COR ÚNICA: ON' : 'COR ÚNICA: OFF';
+  };
+  inkBtn.addEventListener('click', () => setMono(!inkMono));
+  inkPick.addEventListener('input', () => { if (!inkMono) setMono(true); else inkMono = inkFromHex(inkPick.value); });
+
+  // ---------- Salvar parâmetros ----------
+  // Guarda knobs, menus, liga/desliga e cores no navegador (localStorage) e recarrega tudo ao abrir. "Copiar estado" gera o mesmo conteúdo em texto;
+  // ESTADO_EMBUTIDO (abaixo) vale como padrão quando não há nada salvo.
+  const ESTADO_EMBUTIDO = null;
+  const STATE_KEY = 'gotas_estado_v1';
+  const SEL_IDS = ['delayStyle', 'delaySync', 'paletteSelect', 'scaleSelect', 'timbreSelect', 'rainDensity', 'harmonySelect', 'inMapX', 'inMapY', 'hMode', 'jMode', 'jImg'];
+  const TOG_IDS = ['toggleDelay', 'toggleReverb', 'toggleDrive', 'toggleBitCrush', 'rainBtn', 'inkMonoBtn', 'hMirror'];
+  const byId = (id) => document.getElementById(id);
+  const hex2 = (a) => '#' + a.map((v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');
+  function collectState() {
+    const st = { ver: 1, params: {}, sel: {}, tog: {}, surf: surfOverride ? hex2(surfOverride) : null, ink: byId('inkPick').value };
+    Object.keys(knobSets).forEach((k) => { st.params[k] = +params[k].toFixed(4); });
+    SEL_IDS.forEach((id) => { st.sel[id] = byId(id).value; });
+    TOG_IDS.forEach((id) => { st.tog[id] = byId(id).classList.contains('active'); });
+    return st;
+  }
+  function applyState(st) {
+    if (!st || typeof st !== 'object') return;
+    const sel = st.sel || {};
+    SEL_IDS.forEach((id) => {   // na ordem: o estilo do delay vem antes dos knobs, que sobrescrevem o que ele ajustou
+      const el = byId(id); if (!(id in sel) || ![...el.options].some((o) => o.value === sel[id])) return;
+      el.value = sel[id]; el.dispatchEvent(new Event('change'));
+    });
+    if (st.surf) { byId('surfColor').value = st.surf; byId('surfColor').dispatchEvent(new Event('input')); }
+    else if (surfOverride) byId('surfReset').click();
+    Object.entries(st.params || {}).forEach(([k, v]) => { if (knobSets[k] && typeof v === 'number') knobSets[k](v); });
+    if (st.ink && /^#[0-9a-f]{6}$/i.test(st.ink)) { byId('inkPick').value = st.ink; if (inkMono) inkMono = inkFromHex(st.ink); }
+    TOG_IDS.forEach((id) => { const el = byId(id); if (id in (st.tog || {}) && el.classList.contains('active') !== !!st.tog[id]) el.click(); });
+    if (st.ink && st.tog && st.tog.inkMonoBtn) inkMono = inkFromHex(st.ink);
+  }
+  const saveBtn = byId('saveBtn'), copyBtn = byId('copyStateBtn'), clearBtn = byId('clearStateBtn');
+  const flash = (btn, txt, ms = 1600) => { const o = btn.dataset.o || btn.textContent; btn.dataset.o = o; btn.textContent = txt; clearTimeout(btn._t); btn._t = setTimeout(() => { btn.textContent = o; }, ms); };
+  saveBtn.addEventListener('click', () => {
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(collectState())); clearBtn.hidden = false; flash(saveBtn, 'Salvo ✓'); }
+    catch (e) { flash(saveBtn, 'Não foi possível salvar', 2600); }
+  });
+  copyBtn.addEventListener('click', async () => {
+    const txt = JSON.stringify(collectState());
+    try { await navigator.clipboard.writeText(txt); flash(copyBtn, 'Copiado ✓'); }
+    catch (e) { window.prompt('Copie o estado (Ctrl+C):', txt); }
+  });
+  clearBtn.addEventListener('click', () => { try { localStorage.removeItem(STATE_KEY); } catch (e) {} location.reload(); });
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveBtn.click(); }
+  });
+  (function loadState() {
+    let st = null;
+    try { const raw = localStorage.getItem(STATE_KEY); if (raw) { st = JSON.parse(raw); clearBtn.hidden = false; } } catch (e) {}
+    if (!st) st = ESTADO_EMBUTIDO;
+    if (st) try { applyState(st); } catch (e) {}
+  })();
+
+  // ---------- Modo TouchDesigner (?td): só o palco em tela inteira; o TD controla tudo por window.td ----------
+  const TDM = new URLSearchParams(location.search).has('td');
+  if (TDM) {
+    stageBox.classList.add('pfs');
+    const st = document.createElement('style');
+    st.textContent = '#fsBtn,#meter{display:none!important} body{overflow:hidden!important}';
+    document.head.appendChild(st);
+    try { syncFs(); } catch (e) {}
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
+  }
+  window.td = {
+    knob: (k, v) => { if (knobSets[k]) { knobSets[k](+v); return true; } if (k in params) { params[k] = +v; return true; } return false; },
+    entrada: () => ({ estereo: isStereo(), l: stx.l, r: stx.r, largura: stx.side / (stx.mid + 1e-12) }),
+    sel: (id, v) => { const el = byId(id); if (!el || ![...el.options].some((o) => o.value === String(v))) return false;
+      if (el.value !== String(v)) { el.value = String(v); el.dispatchEvent(new Event('change')); } return true; },
+    tog: (id, on) => { const el = byId(id); if (!el) return false; if (el.classList.contains('active') !== !!on) el.click(); return true; },
+    clicar: (id) => { const el = byId(id); if (el) el.click(); },
+    som: (on) => { if (audioOn !== !!on) audioBtn.click(); },
+    gota: (u, v, size) => { spawnDrop(u * W, v * H, size == null ? 1 : size); },
+    estado: () => JSON.stringify(collectState()),
+    aplicar: (j) => applyState(typeof j === 'string' ? JSON.parse(j) : j),
+  };
+
+  /* ---------- iPad: abertura, botões do topo, gaveta de ajustes ---------- */
+  {
+    document.body.insertBefore(stageBox, document.body.firstChild);   // o palco sai do cartão e ocupa a tela toda
+    const app = document.querySelector('.app'), fecha = document.createElement('button');
+    fecha.id = 'fecharPainel'; fecha.type = 'button'; fecha.textContent = '✕'; fecha.setAttribute('aria-label', 'Fechar ajustes'); app.prepend(fecha);
+    fecha.onclick = () => IPAD.painel(false);
+    const somLigado = () => audioBtn.classList.contains('active');
+    const ligarSom = () => { if (!somLigado()) audioBtn.click(); };
+    const marca = () => { IPAD.$('tSom').textContent = somLigado() ? '🔊' : '🔇'; IPAD.$('tChuva').classList.toggle('on', rainBtn.classList.contains('active')); };
+    new MutationObserver(marca).observe(audioBtn, { attributes: true, attributeFilter: ['class'] });
+    new MutationObserver(marca).observe(rainBtn, { attributes: true, attributeFilter: ['class'] });
+    marca();
+    IPAD.$('tSom').onclick = () => { IPAD.sessao('playback'); audioBtn.click(); };
+    IPAD.$('tChuva').onclick = () => { rainBtn.click(); IPAD.dica(rainBtn.classList.contains('active') ? 'Chuva ligada' : 'Chuva desligada'); };
+    const sel = document.getElementById('inSource'), inFile = document.getElementById('inFile'), inAudio = document.getElementById('inAudio');
+    const fonte = (k) => { if (sel.value !== k) { sel.value = k; sel.dispatchEvent(new Event('change')); } };
+    const confere = (k, nome) => setTimeout(() => { if (sel.value !== k) IPAD.entrada(true, 'Não deu para usar ' + nome + '. Libere o acesso em Ajustes do iPad › Safari (ou no “aA” da barra de endereço) e tente de novo.'); }, 2500);
+    let pendArq = false;
+    inFile.addEventListener('change', () => { if (!pendArq) return; pendArq = false; fonte('file'); IPAD.entrada(false);
+      setTimeout(() => IPAD.dica(inAudio.paused ? 'Toque no palco para começar a música' : 'Tocando o arquivo'), 600); });
+    IPAD.$('eToque').onclick = () => { IPAD.sessao('playback'); ligarSom(); fonte('off'); IPAD.entrada(false); IPAD.dica('Toque ou arraste para criar gotas'); };
+    IPAD.$('eMic').onclick = () => { IPAD.sessao('play-and-record'); ligarSom(); fonte('mic'); IPAD.entrada(false); IPAD.dica('Microfone ligado'); confere('mic', 'o microfone'); };
+    IPAD.$('eArq').onclick = () => { IPAD.sessao('playback'); ligarSom(); pendArq = true; inFile.click(); };
+    canvas.addEventListener('pointerdown', () => { IPAD.fechaSeEstreito(); if (sel.value === 'file' && inAudio.paused && inAudio.src) inAudio.play().catch(() => {}); });
+    const reanima = () => { if (audioCtx && audioCtx.state !== 'running' && document.visibilityState === 'visible' && somLigado()) audioCtx.resume().catch(() => {}); };
+    document.addEventListener('visibilitychange', reanima); addEventListener('pointerdown', reanima, true);
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
+    IPAD.registraSW();
+  }
+
+
+/* ---------- Joystick (Gamepad API) ----------
+   Lê o primeiro joystick/gamepad conectado a cada quadro. Cada função tem um vínculo (eixo ou botão) que dá para refazer: clique em "Aprender" e mexa no controle.
+   v[id] = valor (eixos: -1…1 já com zona morta · botões: 0…1) · down[id] = botão apertado · pressed[id] = acabou de apertar neste quadro. */
+function makeJoy(o) {
+  const clampJ = (x, a, b) => Math.max(a, Math.min(b, x));
+  const defMap = {}; o.funcs.forEach(f => { const m = /^([ab])(\d+)$/.exec(f.def); defMap[f.id] = { t: m[1], i: +m[2], inv: !!f.inv, rest: m[1] === 'a' ? 0 : 0, dir: 1 }; });
+  let map = JSON.parse(JSON.stringify(defMap)), dead = 0.14, learn = null, padSel = '';
+  try { const s = JSON.parse(localStorage.getItem(o.key) || 'null'); if (s) { Object.keys(s.map || {}).forEach(k => { if (defMap[k]) map[k] = s.map[k]; }); if (typeof s.dead === 'number') dead = s.dead; if (s.pad) padSel = s.pad; } } catch (e) {}
+  const save = () => { try { localStorage.setItem(o.key, JSON.stringify({ map, dead, pad: padSel })); } catch (e) {} };
+  const J = { v: {}, down: {}, pressed: {}, pad: null, last: -99, live: (sec, now) => ((now ?? performance.now() / 1000) - J.last) < sec };
+  const prev = {}, refs = {};
+  if (!document.getElementById('joyCss')) {
+    const st = document.createElement('style'); st.id = 'joyCss';
+    st.textContent = '.jy{font:12px system-ui,sans-serif;color:inherit}.jy p{margin:4px 0 8px;opacity:.8;line-height:1.45}.jy-row{display:grid;grid-template-columns:minmax(150px,1.6fr) 74px 90px 22px auto;gap:6px;align-items:center;margin:3px 0}'
+      + '.jy-bar{height:8px;border-radius:4px;background:rgba(128,128,150,.25);position:relative;overflow:hidden}.jy-bar i{position:absolute;top:0;bottom:0;background:#34d399;left:50%;width:0}'
+      + '.jy-row button{padding:3px 8px;font-size:11px}.jy-row.learning button{outline:2px solid #fbbf24}.jy-row b{font-weight:600}.jy-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}';
+    document.head.appendChild(st);
+  }
+  const host = o.host; host.classList.add('jy');
+  const bindTxt = m => (m.t === 'a' ? 'Eixo ' : 'Botão ') + m.i;
+  host.innerHTML = '<p class="jy-status"></p><div class="jy-rows"></div><div class="jy-tools"><label>Zona morta <input type="range" class="jy-dead" min="0" max=".4" step=".01"></label><select class="jy-pad" hidden aria-label="Qual joystick usar"></select><button type="button" class="jy-reset">Restaurar mapeamento</button></div>';
+  const stEl = host.querySelector('.jy-status'), rows = host.querySelector('.jy-rows'), deadEl = host.querySelector('.jy-dead'), padEl = host.querySelector('.jy-pad');
+  deadEl.value = dead; deadEl.oninput = () => { dead = +deadEl.value; save(); };
+  host.querySelector('.jy-reset').onclick = () => { map = JSON.parse(JSON.stringify(defMap)); save(); render(); };
+  padEl.onchange = () => { padSel = padEl.value; save(); };
+  function render() {
+    rows.innerHTML = '';
+    o.funcs.forEach(f => {
+      const m = map[f.id], r = document.createElement('div'); r.className = 'jy-row';
+      r.innerHTML = `<span>${f.label}</span><b>${bindTxt(m)}</b><span class="jy-bar"><i></i></span><span></span><span></span>`;
+      const bar = r.querySelector('.jy-bar i'); refs[f.id] = { bar, row: r, axis: f.kind === 'axis' };
+      if (f.kind === 'axis') { const c = document.createElement('input'); c.type = 'checkbox'; c.checked = !!m.inv; c.title = 'Inverter o eixo'; c.onchange = () => { m.inv = c.checked; save(); }; r.children[3].appendChild(c); }
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = learn && learn.id === f.id ? 'Mexa no controle…' : 'Aprender';
+      b.onclick = () => { learn = learn && learn.id === f.id ? null : { id: f.id, kind: f.kind, base: null }; render(); };
+      r.children[4].appendChild(b); if (learn && learn.id === f.id) r.classList.add('learning'); rows.appendChild(r);
+    });
+  }
+  render();
+  const shape = raw => { const a = Math.abs(raw); return a < dead ? 0 : Math.sign(raw) * (a - dead) / (1 - dead); };
+  J.poll = function (nowMs) {
+    const now = nowMs / 1000, all = (navigator.getGamepads ? Array.from(navigator.getGamepads()) : []).filter(p => p && p.connected);
+    if (all.length > 1 || (all.length && padEl.options.length !== all.length)) {
+      padEl.innerHTML = all.map(p => `<option value="${p.id}">${p.id.slice(0, 40)}</option>`).join(''); padEl.hidden = all.length < 2;
+      if (all.some(p => p.id === padSel)) padEl.value = padSel;
+    }
+    const pad = all.find(p => p.id === padSel) || all[0] || null;
+    if (!pad) {
+      J.pad = null; stEl.textContent = 'Nenhum joystick detectado. Conecte-o na USB e mexa nele ou aperte um botão: o navegador só o enxerga depois do primeiro toque.';
+      o.funcs.forEach(f => { J.v[f.id] = 0; J.down[f.id] = false; J.pressed[f.id] = false; }); return J;
+    }
+    if (J.pad !== pad.id) { J.pad = pad.id; stEl.textContent = `Conectado: ${pad.id.slice(0, 70)} · ${pad.axes.length} eixos · ${pad.buttons.length} botões`; }
+    const btn = i => { const b = pad.buttons[i]; return b ? (typeof b.value === 'number' && b.value > 0 ? b.value : (b.pressed ? 1 : 0)) : 0; };
+    if (learn) {   // aprender: o primeiro eixo que se mexer bastante (ou botão, nas funções de botão) vira o vínculo
+      if (!learn.base) learn.base = { a: Array.from(pad.axes), b: pad.buttons.map((_, i) => btn(i)) };
+      let got = null;
+      pad.axes.forEach((a, i) => { const d = a - learn.base.a[i]; if (!got && Math.abs(d) > 0.6) got = { t: 'a', i, inv: false, rest: learn.base.a[i], dir: Math.sign(d) }; });
+      if (!got && learn.kind === 'btn') pad.buttons.forEach((_, i) => { if (!got && btn(i) > 0.5 && learn.base.b[i] < 0.5) got = { t: 'b', i, inv: false, rest: 0, dir: 1 }; });
+      if (got) { if (got.t === 'a' && learn.kind === 'axis') { got.rest = 0; got.dir = 1; } map[learn.id] = got; learn = null; save(); render(); }
+    }
+    let act = false;
+    o.funcs.forEach(f => {
+      const m = map[f.id]; let v = 0;
+      if (m.t === 'a') {
+        const raw = pad.axes[m.i] ?? 0;
+        if (f.kind === 'axis') v = shape(raw) * (m.inv ? -1 : 1);
+        else { const span = m.dir > 0 ? 1 - m.rest : 1 + m.rest; v = span > 0.2 ? clampJ((raw - m.rest) * m.dir / span, 0, 1) : (raw > 0.5 ? 1 : 0); if (v < dead) v = 0; }
+      } else v = f.kind === 'axis' ? btn(m.i) * (m.inv ? -1 : 1) : btn(m.i);
+      J.v[f.id] = v; const dn = f.kind === 'btn' ? v > 0.5 : false;
+      J.pressed[f.id] = dn && !prev[f.id]; J.down[f.id] = dn; prev[f.id] = dn;
+      if (Math.abs(v) > 0.001) act = true;
+      const r = refs[f.id]; if (r) { if (r.axis) { r.bar.style.left = (v < 0 ? 50 + v * 50 : 50) + '%'; r.bar.style.width = Math.abs(v) * 50 + '%'; } else { r.bar.style.left = '0'; r.bar.style.width = v * 100 + '%'; } }
+    });
+    if (act) J.last = now;
+    return J;
+  };
+  return J;
+}
+
+  // ---------- Joystick: cursores e botões do Gotas ----------
+  const JF = [
+    { id: 'c1x', label: 'Cursor 1 (azul) · horizontal', kind: 'axis', def: 'a0' }, { id: 'c1y', label: 'Cursor 1 · vertical', kind: 'axis', def: 'a1' },
+    { id: 'c2x', label: 'Cursor 2 (rosa) · horizontal (feedback do delay)', kind: 'axis', def: 'a2' }, { id: 'c2y', label: 'Cursor 2 · vertical (parâmetro da imagem)', kind: 'axis', def: 'a3' },
+    { id: 'd1', label: 'Gota no cursor 1 (segure = fio)', kind: 'btn', def: 'b0' },
+    { id: 'burst', label: 'Rajada de gotas no cursor 1', kind: 'btn', def: 'b2' }, { id: 'rain', label: 'Liga/desliga a chuva', kind: 'btn', def: 'b3' },
+    { id: 'scl', label: 'Próxima escala', kind: 'btn', def: 'b4' }, { id: 'pal', label: 'Próxima paleta', kind: 'btn', def: 'b5' },
+    { id: 'fs', label: 'Tela cheia', kind: 'btn', def: 'b9' }, { id: 'save', label: 'Salvar parâmetros', kind: 'btn', def: 'b8' }
+  ];
+  const jy = makeJoy({ key: 'gotas_joy_v1', funcs: JF, host: byId('joyHost') });
+  const jc = [{ x: 0.3, y: 0.5, col: '#60a5fa', since: 0, last: 0, id: 'd1' }, { x: params.delayFb, y: 0.5, col: '#fb7185', since: 0, last: 0, id: null }];
+  const nextOpt = (id) => { const el = byId(id), n = el.options.length; el.selectedIndex = (el.selectedIndex + 1) % n; el.dispatchEvent(new Event('change')); };
+  // Cursor 2: X = feedback do delay (esquerda 0, direita máximo) · Y = parâmetro da imagem escolhido no menu (embaixo 0, em cima máximo).
+  // Parado, o cursor acompanha os knobs; o número (feedback/imagem, em %) só aparece enquanto ele se move.
+  let fbShow = 0;
+  function fbCursor(c, moved, now) {
+    const img = byId('jImg').value;
+    if (moved) {
+      const fb = clamp(c.x, 0, 1); if (Math.abs(fb - params.delayFb) > 0.002) knobSets.delayFb(fb);
+      if (img && knobSets[img]) { const v = clamp(1 - c.y, 0, 1); if (Math.abs(v - params[img]) > 0.002) knobSets[img](v); }
+      fbShow = now + 1200;
+    } else { c.x = params.delayFb; if (img && knobSets[img]) c.y = 1 - params[img]; }
+    c.el.textContent = now < fbShow && !c.el.classList.contains('gone') ? Math.round(params.delayFb * 100) + '/' + (img ? Math.round(params[img] * 100) : '–') : '';
+  }
+  let jLast = performance.now();
+  function joyTick(ts) {
+    requestAnimationFrame(joyTick);
+    const dt = clamp((ts - jLast) / 1000, 0.001, 0.1); jLast = ts; jy.poll(ts);
+    if (!jy.pad) { jc.forEach((c) => { if (c.el) c.el.classList.add('gone'); }); return; }
+    const direct = byId('jMode').value === 'direct', sp = 0.4 + 1.6 * params.jSpeed, now = ts, live = jy.live(2.5, ts / 1000);
+    jc.forEach((c, k) => {
+      const sx = jy.v['c' + (k + 1) + 'x'], sy = jy.v['c' + (k + 1) + 'y'];
+      if (direct) { if (Math.abs(sx) + Math.abs(sy) > 0) { c.x = 0.5 + 0.5 * sx; c.y = 0.5 + 0.5 * sy; } }
+      else { c.x = clamp(c.x + sx * Math.abs(sx) * sp * dt, 0, 1); c.y = clamp(c.y + sy * Math.abs(sy) * sp * dt * (W / H), 0, 1); }
+      if (!c.el) { c.el = document.createElement('div'); c.el.className = 'hcur jcur' + (k === 1 ? ' jcur2' : ''); c.el.style.setProperty('--c', c.col); stageBox.appendChild(c.el); }
+      const cr = canvas.getBoundingClientRect(), br = stageBox.getBoundingClientRect();
+      c.el.style.left = (cr.left - br.left + c.x * cr.width) + 'px'; c.el.style.top = (cr.top - br.top + c.y * cr.height) + 'px';
+      c.el.classList.toggle('gone', !live);
+      if (k === 1) { fbCursor(c, Math.abs(sx) + Math.abs(sy) > 0, now); return; }   // cursor 2 não solta gotas: regula o feedback do delay
+      const v = jy.v[c.id], hit = (size) => { spawnDrop(c.x * W, c.y * H, size); c.last = now; c.el.classList.add('hit'); setTimeout(() => c.el.classList.remove('hit'), 160); };
+      if (jy.pressed[c.id]) { hit(4 + 8 * Math.max(v, 0.5)); c.since = now; }
+      else if (jy.down[c.id] && now - c.since > 350 && now - c.last > 150) hit(3 + 8 * v);
+    });
+    if (jy.pressed.burst) { const c = jc[0]; for (let i = 0; i < 5; i++) { const a = Math.random() * 6.283, r = 0.04 + Math.random() * 0.1; spawnDrop(clamp(c.x + Math.cos(a) * r * H / W, 0, 1) * W, clamp(c.y + Math.sin(a) * r, 0, 1) * H, 4 + Math.random() * 7); } }
+    if (jy.pressed.rain) rainBtn.click();
+    if (jy.pressed.scl) nextOpt('scaleSelect');
+    if (jy.pressed.pal) nextOpt('paletteSelect');
+    if (jy.pressed.fs) toggleFs();
+    if (jy.pressed.save) saveBtn.click();
+  }
+  requestAnimationFrame(joyTick);
+
+})();
+</script>
+
+
+</body>
+</html>

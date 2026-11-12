@@ -10,6 +10,7 @@ Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<past
 - Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `gotas`, `desenhos-de-luz`
 - Política e dados: `quanto-custa-o-poder`, `para-onde-vai-o-meu-imposto`
 - Estudos: `katas-shotokan`, `libras`, `reproducao-humana`
+- Sol e luz: `rastro-solar`
 - Ferramentas de som: `medidor-spl`
 
 As versões anteriores (mapas 2D, versões para iPad e cópias dos artefatos do Claude) estão na branch `backup-2026-11`.

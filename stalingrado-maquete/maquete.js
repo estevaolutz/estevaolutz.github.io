@@ -94,11 +94,11 @@ const PRESETS = {
 const canvas = $("#stage");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(DPR);
-renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b1116);
 scene.fog = new THREE.Fog(0x0b1116, 600, 1500);
@@ -110,12 +110,43 @@ controls.minDistance = 3; controls.maxDistance = 620;
 controls.screenSpacePanning = false; controls.zoomSpeed = 1.1; controls.rotateSpeed = 0.6;
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-const hemi = new THREE.HemisphereLight(0xcfd9e3, 0x5b4d3a, 0.7); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); scene.add(sun); scene.add(sun.target);
+const PI = Math.PI;
+const hemi = new THREE.HemisphereLight(0xcfd9e3, 0x5b4d3a, 0.7 * PI); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4 * PI); scene.add(sun); scene.add(sun.target);
 sun.shadow.mapSize.setScalar(LITE ? 1024 : MOBILE ? 2048 : 4096);
 { const c = sun.shadow.camera; c.left = -KMX / 2 - 8; c.right = KMX / 2 + 8; c.top = KMY / 2 + 8; c.bottom = -KMY / 2 - 8; c.near = 1; c.far = 1400; }
-sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.1; sun.castShadow = true;
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.1; sun.shadow.radius = 2.5; sun.castShadow = true;
 
+// ---------------- luz ambiente refletida + pós-processamento (three r187) ----------------
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.28;
+const composer = new THREE.EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: MOBILE ? 0 : 4 }));
+composer.setPixelRatio(DPR);
+composer.addPass(new THREE.RenderPass(scene, camera));
+const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.55, 3.2);
+composer.addPass(bloom);
+composer.addPass(new THREE.OutputPass());
+// acabamento em espaço de tela: vinheta de lâmpada sobre a mesa e grão fino de filme
+const vignette = new THREE.ShaderPass({
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, aspect: { value: 1 }, dim: { value: 0 } },
+  vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float time, aspect, dim; varying vec2 vUv;
+    float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec2 d = (vUv - 0.5) * vec2(aspect, 1.0);
+      float v = smoothstep(1.15, 0.35, length(d) * (0.9 + 0.2 * dim));
+      c.rgb *= mix(0.55, 1.0, v);
+      c.rgb += (h(vUv * 917.0 + fract(time) * 31.0) - 0.5) * (0.018 + 0.012 * dim);
+      gl_FragColor = c;
+    }`
+});
+composer.addPass(vignette);
+let FXON = (() => { try { return localStorage.getItem("stal3-fx") !== "0"; } catch (e) { return true; } })();
+const HDR_FX = 2.8; // efeitos emissivos acima de 1.0: só eles passam do limiar do brilho
+
+let snd = null; // motor de som (sound.js), criado no boot
 const G = {};
 for (const k of ["units", "trails", "hqs", "ops", "fx", "plan"]) { G[k] = new THREE.Group(); scene.add(G[k]); }
 
@@ -123,7 +154,7 @@ for (const k of ["units", "trails", "hqs", "ops", "fx", "plan"]) { G[k] = new TH
 function canvasTex(w, h, draw, srgb = true) {
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   draw(c.getContext("2d"), w, h);
-  const t = new THREE.CanvasTexture(c); if (srgb) t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return t;
+  const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 const softTex = canvasTex(128, 128, (g, w, h) => {
   const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
@@ -174,7 +205,7 @@ function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcT
 function symbolTexture(o) {
   const c = document.createElement("canvas"); c.width = 256; c.height = 232;
   drawSymbol(c.getContext("2d"), o);
-  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; t.minFilter = THREE.LinearMipmapLinearFilter; return { tex: t, canvas: c, ctx: c.getContext("2d") };
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.minFilter = THREE.LinearMipmapLinearFilter; return { tex: t, canvas: c, ctx: c.getContext("2d") };
 }
 function symbolInto(canvasEl, o) { const c = document.createElement("canvas"); c.width = 256; c.height = 232; drawSymbol(c.getContext("2d"), o); const g = canvasEl.getContext("2d"); canvasEl.width = canvasEl.clientWidth * DPR; canvasEl.height = canvasEl.clientHeight * DPR; g.drawImage(c, 0, 0, canvasEl.width, canvasEl.height); }
 const unitSym = (u) => ({ side: u.side, type: TYPEMAP[u.type] || "inf", size: u.ech, nat: NATS[u.nat], fill: u.nat === "ro" ? "#e8d48a" : u.nat === "it" ? "#a9d6ab" : u.nat === "hu" ? "#ecbd92" : null });
@@ -192,12 +223,15 @@ async function boot() {
   const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(hImg, 0, 0);
   const d = g.getImageData(0, 0, GW, GH).data; HGT = new Float32Array(GW * GH); WAT = new Uint8Array(GW * GH);
   for (let i = 0; i < GW * GH; i++) { HGT[i] = ((d[i * 4] << 8) | d[i * 4 + 1]) / 100 - 50; WAT[i] = d[i * 4 + 2] > 127 ? 1 : 0; }
-  const mapTex = new THREE.Texture(mImg); mapTex.encoding = THREE.sRGBEncoding; mapTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const mapTex = new THREE.Texture(mImg); mapTex.colorSpace = THREE.SRGBColorSpace; mapTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   mapTex.minFilter = THREE.LinearMipmapLinearFilter; mapTex.generateMipmaps = true; mapTex.needsUpdate = true;
   setLoad(.6);
   buildTerrain(mapTex); setLoad(.7);
-  buildPlan(); buildUnits(); buildHQs(); buildOps(); buildFX(); buildWeather(); setLoad(.9);
+  buildPlan(); buildUnits(); buildHQs(); buildOps(); buildFX(); buildCombat(); buildWeather(); setLoad(.9);
   buildUI();
+  snd = SG.makeSound ? SG.makeSound({ camera, controls, events: EVENTS, toX, toZ }) : null; snd?.buildUI();
+  { const fb = $("#fxbtn"), sync = () => { fb.setAttribute("aria-pressed", FXON); fb.textContent = FXON ? "Ligados" : "Desligados"; };
+    sync(); fb.onclick = () => { FXON = !FXON; try { localStorage.setItem("stal3-fx", FXON ? "1" : "0"); } catch (e) {} sync(); }; }
   resize(); flyTo("geral", true);
   setTime(0);
   setLoad(1);
@@ -219,7 +253,7 @@ function buildTerrain(mapTex) {
   vec3 c = diffuseColor.rgb; float lum = dot(c, vec3(.3, .55, .15));
   float blue = smoothstep(.02, .08, c.b - c.r);
   float paper = smoothstep(.07, .16, lum);
-  float n = fract(sin(dot(floor(vUv * 900.0), vec2(12.9898, 78.233))) * 43758.5453);
+  float n = fract(sin(dot(floor(vMapUv * 900.0), vec2(12.9898, 78.233))) * 43758.5453);
   float s = uSnow * paper * (1.0 - blue) * (.82 + .18 * n);
   c = mix(c, vec3(.84, .87, .91) * clamp(lum / .2, .5, 1.05), s * .62);
   c = mix(c, vec3(.62, .70, .78), uIce * blue * .85);
@@ -230,7 +264,7 @@ function buildTerrain(mapTex) {
   terrain.receiveShadow = true; terrain.castShadow = true; scene.add(terrain);
   // camada das frentes: pintada num canvas sobre a mesma malha
   const oc = document.createElement("canvas"); oc.width = MOBILE ? 2048 : 4096; oc.height = Math.round(oc.width * KMY / KMX);
-  overlayCtx = oc.getContext("2d"); overlayTex = new THREE.CanvasTexture(oc); overlayTex.encoding = THREE.sRGBEncoding; overlayTex.anisotropy = 8;
+  overlayCtx = oc.getContext("2d"); overlayTex = new THREE.CanvasTexture(oc); overlayTex.colorSpace = THREE.SRGBColorSpace; overlayTex.anisotropy = 8;
   overlay = new THREE.Mesh(terrainGeo, new THREE.MeshBasicMaterial({ map: overlayTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -14, polygonOffsetUnits: -14 }));
   overlay.renderOrder = 4; scene.add(overlay);
   const tableTex = canvasTex(512, 512, (g, w, h) => {
@@ -317,7 +351,7 @@ const planMeshes = [];
 function buildPlan() {
   for (const pl of [].concat(SG.PLANTA || [])) {
     const file = pl.file8k && BIG ? pl.file8k : pl.file;
-    const tex = new THREE.TextureLoader().load(file); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const tex = new THREE.TextureLoader().load(file); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     const m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ map: tex, color: 0xa29c88, roughness: 0.95, transparent: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
     m.userData.pl = pl; m.userData.lit = m.material; m.userData.flat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, polygonOffset: true }); m.receiveShadow = true; m.renderOrder = 1; G.plan.add(m); planMeshes.push(m);
   }
@@ -562,7 +596,7 @@ function drawOverlay(t) {
 // ---------------- efeitos: incêndios, explosões, fumaça ----------------
 const fx = { flashes: [], smokes: [] };
 let flashPool = [], smokePool = [], fireSprites = [];
-function sprite(color, blend, tex) { const m = new THREE.SpriteMaterial({ map: tex || softTex, color, transparent: true, depthWrite: false, blending: blend || THREE.AdditiveBlending }); const s = new THREE.Sprite(m); s.visible = false; G.fx.add(s); return s; }
+function sprite(color, blend, tex) { const m = new THREE.SpriteMaterial({ map: tex || softTex, color, transparent: true, depthWrite: false, blending: blend || THREE.AdditiveBlending }); if (!blend) m.color.multiplyScalar(HDR_FX); const s = new THREE.Sprite(m); s.visible = false; G.fx.add(s); return s; }
 function buildFX() {
   for (let i = 0; i < 160; i++) flashPool.push(sprite(0xffa040, null, sparkTex));
   for (let i = 0; i < 160; i++) smokePool.push(sprite(0x8a8681, THREE.NormalBlending, smokeTex));
@@ -573,8 +607,9 @@ function buildFX() {
   for (const f of fires) fireSprites.push({ la: f[0], lo: f[1], t0: f[2], t1: f[3], size: f[4], glow: sprite(0xff7a2a, null, sparkTex), sm: sprite(0x6f6a64, THREE.NormalBlending, smokeTex) });
 }
 function take(pool, list, o) { const s = pool.find((p) => !p.visible); if (!s) return; s.visible = true; o.s = s; list.push(o); }
-function boom(x, z, size) {
+function boom(x, z, size, quiet) {
   const lo = (x + KMX / 2) / KX + LON0, la = LAT1 - (z + KMY / 2) / KY, y = yAt(la, lo) + 0.06;
+  if (!quiet) snd?.boom(x, z, cityView ? size / 0.25 : size / 1.6);
   take(flashPool, fx.flashes, { pos: new THREE.Vector3(x, y + .05, z), age: 0, life: 0.35, size: size * 1.1 });
   take(smokePool, fx.smokes, { pos: new THREE.Vector3(x, y, z), age: 0, life: 3.5 + Math.random() * 2, size: size * .55, rot: Math.random() * 6 });
 }
@@ -610,6 +645,214 @@ function updateFX(t, dt) {
   }
 }
 
+// ---------------- combate animado: Katyushas, Stukas, barcos no Volga, ponte aérea, tanques e barragens ----------------
+const pend = []; const later = (sec, fn) => pend.push({ at: fxClock + sec, fn });
+const gY = (x, z) => { const lo = (x + KMX / 2) / KX + LON0, la = LAT1 - (z + KMY / 2) / KY; return yAt(la, lo); };
+const cityXZ = (lat, km) => { const [la, lo] = cityLL(lat, km); const x = toX(lo), z = toZ(la); return new THREE.Vector3(x, gY(x, z), z); };
+const R = Math.random;
+const fx2 = { streaks: [], splashes: [], planes: [], bombs: [], boats: [] };
+let streakLines, splashPool = [];
+const D = (s) => day(s);
+const T_CITY0 = D("1942-09-13"), T_STUKA1 = D("1942-11-18"), T_BOAT1 = D("1942-11-11"), T_FLOES = D("1942-11-12"), T_ICE = D("1942-12-16"), T_KAT1 = D("1943-01-31");
+const T_AIR0 = D("1942-11-24"), T_TATS = D("1942-12-24"), T_PIT = D("1943-01-16"), T_GUM = D("1943-01-22");
+const PITOMNIK = [48.78, 44.3], GUMRAK = [48.77, 44.4];
+
+// --- modelos de avião, em metros, nariz em +x; fundidos num só mesh com cor por vértice ---
+const planeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.2 });
+function colorGeo(g, hex) { const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; } g.setAttribute("color", new THREE.BufferAttribute(a, 3)); return g.index ? g.toNonIndexed() : g; }
+const part = (g, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => { if (rx) g.rotateX(rx); if (ry) g.rotateY(ry); if (rz) g.rotateZ(rz); g.translate(x, y, z); return colorGeo(g, hex); };
+const box = (lx, ly, lz, hex, x, y, z, rx, ry, rz) => part(new THREE.BoxGeometry(lx, ly, lz), hex, x, y, z, rx, ry, rz);
+const cyl = (r0, r1, len, hex, x, y, z) => part(new THREE.CylinderGeometry(r1, r0, len, 10), hex, x, y, z, 0, 0, -Math.PI / 2);
+function buildPlane(kind) {
+  const P = [], GRN = 0x3e4a33, DK = 0x2a2f27, BLU = 0x8ea4b5, YEL = 0xd9b13a, GL = 0x9fb7c6, BLK = 0x151515;
+  if (kind === "stuka") { // Ju 87: asa de gaivota invertida, trem fixo carenado
+    P.push(cyl(0.7, 0.45, 9.5, GRN, 0, 0, 0), cyl(0.75, 0.7, 1.4, YEL, 5, 0, 0), box(2.4, 0.9, 0.9, GL, 1.2, 0.75, 0));
+    for (const s of [-1, 1]) { P.push(box(2.1, 0.22, 3.2, GRN, 0.6, -0.55, s * 1.9, s * 0.35, 0, 0), box(1.9, 0.18, 4.2, GRN, 0.4, -0.25, s * 5.4, -s * 0.12, 0, 0), box(1.9, 0.19, 0.6, YEL, 0.4, -0.05, s * 7.3), box(0.9, 1.6, 0.5, DK, 1.6, -1.6, s * 1.9), box(1.0, 0.15, 2.0, GRN, -4.3, 0.2, s * 1.1)); }
+    P.push(box(1.4, 1.9, 0.18, GRN, -4.5, 1.0, 0), box(0.25, 2.4, 0.2, BLK, 5.8, 0, 0));
+  } else if (kind === "ju52") { // trimotor de chapa corrugada
+    P.push(box(14, 2.2, 2.0, GRN, 0, 0, 0), cyl(1.0, 0.9, 1.6, DK, 7.6, 0, 0), box(2.5, 1.0, 1.7, GL, 5.4, 1.1, 0), box(1.6, 2.0, 2.1, YEL, -2, 0, 0));
+    for (const s of [-1, 1]) P.push(box(3.6, 0.35, 13, GRN, 1.4, -0.7, s * 7.2), cyl(0.7, 0.6, 2.2, DK, 3.4, -0.6, s * 4.6), box(1.8, 0.2, 3.6, GRN, -7, 0.5, s * 2));
+    P.push(box(2.6, 2.8, 0.2, GRN, -7.2, 1.6, 0));
+  } else { // He 111: bimotor, nariz envidraçado
+    P.push(cyl(0.95, 0.5, 15, GRN, 0, 0, 0), part(new THREE.SphereGeometry(1.0, 10, 8), GL, 7.4, 0, 0));
+    for (const s of [-1, 1]) P.push(box(3.4, 0.3, 10.5, GRN, 0.6, -0.2, s * 5.6), cyl(0.75, 0.55, 3.4, DK, 2.6, -0.2, s * 3.6), box(1.8, 0.2, 3.2, GRN, -6.4, 0.3, s * 1.8));
+    P.push(box(2.2, 2.6, 0.2, GRN, -6.6, 1.3, 0), box(1.2, 0.2, 2.6, YEL, -3, 0.95, 0));
+  }
+  const g = THREE.mergeGeometries(P); g.computeVertexNormals(); return g;
+}
+const PLANE_GEO = { stuka: buildPlane("stuka"), ju52: buildPlane("ju52"), he111: buildPlane("he111") };
+function boatGeo() { const P = [box(9, 1.2, 2.6, 0x5a4a38, 0, 0, 0), box(3, 1.4, 2, 0x6b6b5e, -1, 1.2, 0), box(1.6, 0.4, 2.7, 0x2c2a26, 4.4, 0.5, 0)]; const g = THREE.mergeGeometries(P); g.computeVertexNormals(); return g; }
+const BOAT_GEO = boatGeo();
+const truckMat = new THREE.MeshStandardMaterial({ color: 0x2e3329, roughness: 0.8 });
+
+function buildCombat() {
+  const tg = new THREE.BufferGeometry(); tg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(900 * 6), 3)); tg.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(900 * 6), 3));
+  streakLines = new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  streakLines.material.color.setScalar(HDR_FX); streakLines.frustumCulled = false; G.fx.add(streakLines);
+  for (let i = 0; i < 70; i++) splashPool.push(sprite(0xdfe8ee, THREE.NormalBlending, smokeTex));
+}
+// rastro luminoso: foguete, traçante ou granada; arc = altura da parábola, len = fração do trajeto desenhada
+function streak(a, b, life, o = {}) { if (fx2.streaks.length < 900) fx2.streaks.push({ a, b, life, age: -(o.delay || 0), arc: o.arc || 0, len: o.len || 0.12, col: o.col || [1, 0.55, 0.2], end: o.end || null }); }
+function splash(x, z, size) {
+  const y = gY(x, z);
+  const s = splashPool.find((p) => !p.visible); if (!s) return; s.visible = true;
+  fx2.splashes.push({ s, x, y, z, size, age: 0, life: 1.4 });
+}
+function plane(kind, path, dur, o = {}) {
+  const m = new THREE.Mesh(PLANE_GEO[kind], planeMat); m.scale.setScalar(o.scale || 1); G.fx.add(m);
+  fx2.planes.push({ kind, m, path, dur, age: 0, ...o });
+}
+function frontKm(fi, lat) { // distância da frente à margem, na latitude dada
+  const pts = FRONTS[fi].pts; if (!pts.length) return null;
+  if (lat >= pts[0][0]) return pts[0][1]; if (lat <= pts[pts.length - 1][0]) return null;
+  for (let i = 1; i < pts.length; i++) if (lat >= pts[i][0]) { const a = pts[i - 1], b = pts[i], f = (lat - a[0]) / (b[0] - a[0]); return lerp(a[1], b[1], f); }
+  return null;
+}
+function katyusha(from, to, spread, n, size) {
+  for (let k = 0; k < n; k++) {
+    const tx = to.x + (R() - .5) * spread, tz = to.z + (R() - .5) * spread, t = new THREE.Vector3(tx, gY(tx, tz), tz), dist = from.distanceTo(t);
+    streak(from.clone().add(new THREE.Vector3((R() - .5) * spread * 0.05, 0, (R() - .5) * spread * 0.05)), t, 1.3 + R() * 0.2, { delay: k * 0.07, arc: dist * 0.18, len: 0.1, col: [1, 0.62, 0.28], end: () => boom(tx, tz, size, true) });
+  }
+  take(flashPool, fx.flashes, { pos: from.clone().setY(from.y + size * 0.4), age: 0, life: 1.1, size: size * 4 });
+  snd?.katyusha(from.x, from.y, from.z, n, to.x, to.z);
+}
+
+function updateCombat(t, dt) {
+  const on = playing && layers.fx;
+  let fi = -1; FRONTS.forEach((f, i) => { if (t >= f.t) fi = i; });
+  if (on && cityView) {
+    // Katyushas na margem leste atirando por cima do Volga
+    if (t >= T_CITY0 && t <= T_KAT1 && fi >= 0 && R() < 0.3 * dt) {
+      const lat = 48.69 + R() * 0.12, km = frontKm(fi, lat);
+      if (km !== null && km > 0.15) katyusha(cityXZ(lat, -2.8 - R()), cityXZ(lat, km + 0.25 + R() * 0.6), 0.5, 16, 0.12);
+    }
+    // Stukas em mergulho sobre a faixa soviética junto ao rio
+    if (t >= T_CITY0 && t <= T_STUKA1 && fi >= 0 && fx2.planes.filter((p) => p.kind === "stuka").length < 3 && R() < 0.35 * dt) {
+      const lat = 48.69 + R() * 0.13, km = frontKm(fi, lat);
+      if (km !== null && km > 0.2) {
+        const tg = cityXZ(lat, km * (0.25 + R() * 0.4)), z0 = tg.z + (R() - .5) * 2;
+        const pts = [[tg.x - 6, 3.2, z0], [tg.x - 1.3, 3.0, tg.z], [tg.x - 0.18, tg.y + 0.55, tg.z], [tg.x + 1.4, 1.6, tg.z - 0.4], [tg.x + 5, 2.8, tg.z - 1.2]];
+        plane("stuka", pts, 6.5, { scale: 0.016, tg, phases: [0, 0.3, 0.52, 0.72, 1], dived: false, released: false });
+      }
+    }
+    // barcos cruzando o Volga sob fogo; depois do congelamento, caminhões sobre o gelo
+    const boatOn = t >= T_CITY0 && t < T_ICE, rate = t < T_FLOES ? 0.9 : t < T_ICE ? 0.25 : 0.7;
+    if ((boatOn || t >= T_ICE) && t <= T_KAT1 && fx2.boats.length < 10 && R() < rate * dt) {
+      const lat = [48.713, 48.735, 48.758, 48.779, 48.70, 48.822][(R() * 6) | 0] + (R() - .5) * 0.004;
+      const a = cityXZ(lat, -1.35), b = cityXZ(lat, 0.04), ice = t >= T_ICE;
+      const m = new THREE.Mesh(BOAT_GEO, ice ? truckMat : planeMat); m.scale.setScalar(ice ? 0.009 : 0.011); G.fx.add(m);
+      fx2.boats.push({ m, a, b, age: 0, life: ice ? 6 : 8 + R() * 3, ice });
+    }
+    if (t < T_ICE) for (const bt of fx2.boats) if (!bt.ice && R() < 0.7 * dt) { const p = bt.m.position; splash(p.x + (R() - .5) * 0.5, p.z + (R() - .5) * 0.4, 0.12); snd?.splash(p.x, p.z); }
+    // fogo de armas leves atravessando a linha de frente: MG 42 do lado alemão, PPSh do soviético
+    if (fi >= 0 && FRONTS[fi].pts.length && R() < 3 * dt) {
+      const pts = FRONTS[fi].pts, p = pts[(R() * pts.length) | 0], lat = p[0] + (R() - .5) * 0.004, ger = R() < 0.55;
+      const a = cityXZ(lat, p[1] + (ger ? 0.12 : -0.12)), b = cityXZ(lat + (R() - .5) * 0.002, p[1] + (ger ? -0.12 : 0.12));
+      a.y += 0.03; b.y += 0.03;
+      const n = 4 + (R() * 4 | 0); for (let k = 0; k < n; k++) streak(a.clone(), b.clone(), 0.35, { delay: k * 0.06, len: 0.3, col: ger ? [1, 0.32, 0.14] : [1, 0.8, 0.35] });
+      if (ger) snd?.mg42(a.x, a.y, a.z); else snd?.ppsh(a.x, a.y, a.z);
+    }
+  }
+  if (on && !cityView) {
+    // 23 ago: o grande bombardeio da Luftflotte 4 sobre a cidade
+    if (t < 1.3 && fx2.planes.filter((p) => p.kind === "he111").length < 24 && R() < 3 * dt) {
+      const c = cityXZ(48.71 + (R() - .5) * 0.1, 1 + R() * 3), y0 = 9 + R() * 1.5, dz = (R() - .5) * 20;
+      const a = [toX(42.9), y0, toZ(49.05) + dz], b = [c.x + 25, y0, c.z + 8 + dz * 0.3];
+      plane("he111", [a, [lerp(a[0], b[0], 0.5), y0, lerp(a[2], b[2], 0.5)], b], 8, { scale: 0.17, phases: [0, 0.5, 1], city: c, bombed: false });
+    }
+    // ponte aérea: Ju 52 para Pitomnik (depois Gumrak), sob o fogo antiaéreo em volta do bolsão
+    if (t >= T_AIR0 && t <= T_GUM && fx2.planes.filter((p) => p.kind === "ju52").length < 18 && R() < 1.4 * dt) {
+      const base = t < T_TATS ? [48.20, 41.27] : t < D("1943-01-02") ? [48.35, 41.8] : [47.62, 40.75], dest = t < T_PIT ? PITOMNIK : GUMRAK;
+      const y0 = 5 + R() * 1.5, j = (R() - .5) * 6, a = [toX(base[1]) + j, y0, toZ(base[0]) + j], b = [toX(dest[1]), gY(toX(dest[1]), toZ(dest[0])) + 0.4, toZ(dest[0])];
+      const mid = [lerp(a[0], b[0], 0.75) + j, y0, lerp(a[2], b[2], 0.75) + j];
+      plane("ju52", [a, mid, b], 9, { scale: 0.13, phases: [0, 0.75, 1], doomed: R() < 0.12, flak: true });
+    }
+    // barragens de abertura nas ofensivas soviéticas: Katyushas e artilharia de massa sobre a linha inicial
+    for (const o of opArrows) {
+      if (o.a.s !== "su" || o.a.city || o.a.air || !o.pts) continue;
+      const dt0 = t - o.e.t; if (dt0 < 0 || dt0 > 0.45) continue;
+      const p0 = o.pts[0], p1 = o.pts[Math.min(6, o.pts.length - 1)], dx = p1.x - p0.x, dz = p1.z - p0.z, L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
+      if (R() < 1.1 * dt) { const s = (R() - .5) * 18, back = new THREE.Vector3(p0.x - ux * 7 - uz * s, 0, p0.z - uz * 7 + ux * s); back.y = gY(back.x, back.z) + 0.2; const tgt = new THREE.Vector3(p0.x + ux * (2 + R() * 6) - uz * s, 0, p0.z + uz * (2 + R() * 6) + ux * s); katyusha(back, tgt, 4, 16, 1.0); }
+      if (R() < 5 * dt) { const s = (R() - .5) * 22, f = 1 + R() * 7; boom(p0.x + ux * f - uz * s, p0.z + uz * f + ux * s, 1.6); }
+      if (R() < 4 * dt) { const s = (R() - .5) * 22, x = p0.x - ux * (4 + R() * 3) - uz * s, z = p0.z - uz * (4 + R() * 3) + ux * s; take(flashPool, fx.flashes, { pos: new THREE.Vector3(x, gY(x, z) + 0.3, z), age: 0, life: 0.18, size: 1.4 }); snd?.gun(x, gY(x, z), z); }
+      snd?.barrage(p0.x, p0.z);
+    }
+  }
+  // tanques atirando quando se movem ou durante as operações
+  if (on) for (const o of unitObjs) {
+    const u = o.u; if ((u.type !== "arm" && u.type !== "mech") || !o.grp.visible || !o.pos || u.div !== cityView) continue;
+    const mv = trackAt(u.track, t)[2] || 0; if (R() > (mv > 0.15 ? 0.7 : 0.1) * dt) continue;
+    const [la1, lo1] = trackAt(u.track, t - 1), [la2, lo2] = trackAt(u.track, t + 1);
+    let hx = toX(lo2) - toX(lo1), hz = toZ(la2) - toZ(la1); const hl = Math.hypot(hx, hz);
+    if (hl < 1e-3) { hx = u.side === "ax" ? 1 : -1; hz = 0; } else { hx /= hl; hz /= hl; }
+    const sc = cityView ? 0.12 : 1, r = (cityView ? 0.3 : 3) + R() * (cityView ? 0.5 : 5), sd = (R() - .5) * r * 0.5;
+    const mx = o.pos.x + hx * sc * 0.6, mz = o.pos.z + hz * sc * 0.6, my = gY(mx, mz) + sc * 0.15, tx = o.pos.x + hx * r - hz * sd, tz = o.pos.z + hz * r + hx * sd;
+    take(flashPool, fx.flashes, { pos: new THREE.Vector3(mx, my, mz), age: 0, life: 0.15, size: sc * 1.2 });
+    streak(new THREE.Vector3(mx, my, mz), new THREE.Vector3(tx, gY(tx, tz) + sc * 0.05, tz), 0.3, { len: 0.35, col: [1, 0.75, 0.4], end: () => boom(tx, tz, sc * 0.9, true) });
+    snd?.tankGun(mx, my, mz, u.side === "ax");
+  }
+
+  for (let i = pend.length - 1; i >= 0; i--) if (fxClock >= pend[i].at) { const p = pend[i]; pend.splice(i, 1); p.fn(); }
+  // aviões
+  for (let i = fx2.planes.length - 1; i >= 0; i--) {
+    const p = fx2.planes[i]; p.age += dt; let f = p.age / p.dur;
+    if (f >= 1 || !layers.fx) { G.fx.remove(p.m); fx2.planes.splice(i, 1); continue; }
+    if (p.falling) { // abatido: cai em espiral deixando fumaça
+      p.fa += dt; const k = p.fa / 2.6; p.m.position.y = lerp(p.fy, gY(p.m.position.x, p.m.position.z), k * k); p.m.position.x += p.vx * dt; p.m.position.z += p.vz * dt; p.m.rotation.x += dt * 2.5;
+      if (R() < 12 * dt) take(smokePool, fx.smokes, { pos: p.m.position.clone(), age: 0, life: 2.5, size: 0.7, rot: R() * 6 });
+      if (k >= 1) { boom(p.m.position.x, p.m.position.z, 1.5); G.fx.remove(p.m); fx2.planes.splice(i, 1); } continue;
+    }
+    const ph = p.phases; let s = 0; while (s < ph.length - 2 && f > ph[s + 1]) s++;
+    const lf = (f - ph[s]) / (ph[s + 1] - ph[s]), A = p.path[s], B = p.path[s + 1];
+    const x = lerp(A[0], B[0], lf), y = lerp(A[1], B[1], lf), z = lerp(A[2], B[2], lf);
+    const vx = B[0] - A[0], vy = B[1] - A[1], vz = B[2] - A[2];
+    p.m.position.set(x, y, z); p.m.rotation.set(0, -Math.atan2(vz, vx), Math.atan2(vy, Math.hypot(vx, vz)), "YXZ");
+    p.m.visible = layers.fx;
+    snd?.plane(x, y, z, p.kind);
+    if (p.kind === "stuka") {
+      if (s === 1 && !p.dived) { p.dived = true; snd?.siren(x, y, z, (ph[2] - ph[1]) * p.dur); }
+      if (s === 2 && !p.released) { p.released = true; const tg = p.tg; fx2.bombs.push({ a: new THREE.Vector3(x, y, z), b: tg.clone(), age: 0, life: 0.7 }); snd?.bomb(tg.x, tg.z); }
+    } else if (p.kind === "he111" && !p.bombed && Math.hypot(x - p.city.x, z - p.city.z) < 4) {
+      p.bombed = true; for (let k = 0; k < 6; k++) later(0.9 + k * 0.18, () => { const bx = p.city.x + (R() - .5) * 5, bz = p.city.z + (R() - .5) * 4; boom(bx, bz, 1.3); });
+    } else if (p.kind === "ju52" && p.flak) {
+      const dd = Math.hypot(x - toX(PITOMNIK[1]), z - toZ(PITOMNIK[0]));
+      if (dd < 45 && R() < 1.2 * dt) { const fx_ = x + (R() - .5) * 3, fz = z + (R() - .5) * 3, fy = y + (R() - .2) * 1.2; take(smokePool, fx.smokes, { pos: new THREE.Vector3(fx_, fy, fz), age: 0, life: 2, size: 0.45, rot: R() * 6 }); take(flashPool, fx.flashes, { pos: new THREE.Vector3(fx_, fy, fz), age: 0, life: 0.12, size: 0.7 }); snd?.flak(fx_, fy, fz); }
+      if (p.doomed && dd < 30) { p.falling = true; p.fa = 0; p.fy = y; p.vx = vx / p.dur * 0.6; p.vz = vz / p.dur * 0.6; snd?.crash(x, y, z); }
+    }
+  }
+  // bombas dos Stukas
+  for (let i = fx2.bombs.length - 1; i >= 0; i--) { const b = fx2.bombs[i]; b.age += dt; if (b.age >= b.life) { boom(b.b.x, b.b.z, 0.35); fx2.bombs.splice(i, 1); } }
+  // barcos e caminhões
+  for (let i = fx2.boats.length - 1; i >= 0; i--) {
+    const b = fx2.boats[i]; b.age += dt; const f = b.age / b.life;
+    if (f >= 1 || !cityView || !layers.fx) { G.fx.remove(b.m); fx2.boats.splice(i, 1); continue; }
+    b.m.position.lerpVectors(b.a, b.b, f); b.m.position.y = gY(b.m.position.x, b.m.position.z) + 0.004;
+    b.m.rotation.y = -Math.atan2(b.b.z - b.a.z, b.b.x - b.a.x);
+    snd?.boat(b.m.position.x, b.m.position.z, b.ice);
+  }
+  // colunas d'água
+  for (let i = fx2.splashes.length - 1; i >= 0; i--) {
+    const o = fx2.splashes[i]; o.age += dt; const f = o.age / o.life;
+    if (f >= 1) { o.s.visible = false; fx2.splashes.splice(i, 1); continue; }
+    o.s.position.set(o.x, o.y + o.size * (0.4 + f * 1.4), o.z); o.s.scale.set(o.size * (0.6 + f), o.size * (1.6 + f * 2.2), 1); o.s.material.opacity = 0.75 * (1 - f);
+  }
+  // rastros
+  const sp = streakLines.geometry.attributes.position.array, sc_ = streakLines.geometry.attributes.color.array; let n = 0;
+  const _a = new THREE.Vector3(), _b = new THREE.Vector3();
+  const at = (o, f, out) => { out.lerpVectors(o.a, o.b, f); out.y += Math.sin(f * Math.PI) * o.arc; return out; };
+  for (let i = fx2.streaks.length - 1; i >= 0; i--) {
+    const o = fx2.streaks[i]; o.age += dt; if (o.age < 0) continue; const f = o.age / o.life;
+    if (f >= 1) { fx2.streaks.splice(i, 1); if (o.end) o.end(); continue; }
+    if (n >= 900) continue;
+    at(o, Math.max(0, f - o.len), _a); at(o, f, _b);
+    sp.set([_a.x, _a.y, _a.z, _b.x, _b.y, _b.z], n * 6);
+    sc_.set([o.col[0] * 0.15, o.col[1] * 0.15, o.col[2] * 0.15, o.col[0], o.col[1], o.col[2]], n * 6); n++;
+  }
+  streakLines.geometry.setDrawRange(0, n * 2); streakLines.geometry.attributes.position.needsUpdate = streakLines.geometry.attributes.color.needsUpdate = true;
+  // incêndios alimentam o crepitar
+  if (snd) for (const f of fireSprites) if (f.glow.visible) snd.fire(f.glow.position.x, f.glow.position.y, f.glow.position.z, f.size);
+}
+
 // ---------------- estação e clima (no lugar do ciclo dia/noite do Dia D) ----------------
 const knots = (arr) => arr.map(([d, v]) => [day(d), v]);
 const interp = (ks, t) => { if (t <= ks[0][0]) return ks[0][1]; for (let i = 1; i < ks.length; i++) if (t <= ks[i][0]) { const a = ks[i - 1], b = ks[i]; return lerp(a[1], b[1], (t - a[0]) / (b[0] - a[0])); } return ks[ks.length - 1][1]; };
@@ -631,9 +874,11 @@ function updateSeason(t, camD) {
   const el = interp(ELEV_K, t), ov = Math.max(w.cloud * 0.8, w.snow, w.rain * 0.9), fg = Math.max(w.fog, w.haze * 0.5);
   const er = THREE.MathUtils.degToRad(el), ar = THREE.MathUtils.degToRad(215);
   sun.position.set(Math.sin(ar) * Math.cos(er) * 500, Math.sin(er) * 500, -Math.cos(ar) * Math.cos(er) * 500);
-  sun.intensity = 2.5 * (1 - 0.55 * ov) * (1 - 0.3 * fg);
+  sun.intensity = 2.5 * PI * (1 - 0.55 * ov) * (1 - 0.3 * fg);
   sun.color.copy(cSum).lerp(cWin, s);
-  hemi.color.copy(cSkySum).lerp(cSkyWin, s); hemi.groundColor.copy(cGndSum).lerp(cGndWin, s); hemi.intensity = 0.72 + 0.25 * ov;
+  hemi.color.copy(cSkySum).lerp(cSkyWin, s); hemi.groundColor.copy(cGndSum).lerp(cGndWin, s); hemi.intensity = (0.72 + 0.25 * ov) * PI;
+  bloom.strength = 0.5 + 0.35 * fg; bloom.threshold = 3.2 - 0.9 * fg; vignette.uniforms.dim.value = ov;
+  scene.environmentIntensity = 0.28 * (1 - 0.4 * ov);
   // neblina e nevasca fecham a visibilidade como no clima das fontes
   const k = Math.max(w.fog, w.snow * 0.4, w.haze * 0.3);
   scene.fog.color.setHex(0x0b1116).lerp(new THREE.Color(0xb9c2c6), k * 0.85);
@@ -840,7 +1085,7 @@ function buildUI() {
   EVENTS.forEach((e, i) => {
     const d = document.createElement("div"); d.className = "ev"; d.tabIndex = 0; d.dataset.i = i;
     d.innerHTML = `<time>${fmt(e.t)[0]}</time><b class="${e.side}">${esc(e.title)}</b><p>${esc(e.text)}</p>`;
-    const go = () => { setTime(e.t + 0.01); lastAutoIdx = i; flyToEvent(i); };
+    const go = () => { setTime(e.t + 0.01); lastAutoIdx = i; flyToEvent(i); snd?.init(); snd?.cue(i); };
     d.onclick = go; d.onkeydown = (k) => { if (k.key === "Enter" || k.key === " ") { k.preventDefault(); go(); } };
     ev.appendChild(d);
   });
@@ -891,13 +1136,16 @@ function drawTrack() {
   const px = X(simT); g.fillStyle = "#f1c46d"; g.fillRect(px - DPR, 4 * DPR, 2 * DPR, h - 8 * DPR);
   g.beginPath(); g.arc(px, y0 + bh / 2, 6 * DPR, 0, 7); g.fill(); g.strokeStyle = "#0b1116"; g.lineWidth = 2 * DPR; g.stroke();
 }
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); drawTrack(); }
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloom.resolution.set(w, h); vignette.uniforms.aspect.value = w / h; camera.aspect = w / h; camera.updateProjectionMatrix(); drawTrack(); }
 
 // ---------------- quadro ----------------
 let lastUI = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
+  const prevT = simT;
   if (playing) { simT += dt * speed; if (simT >= T1) { simT = T1; togglePlay(false); } }
+  if (playing && snd) EVENTS.forEach((e, i) => { if (e.t > prevT && e.t <= simT) snd.cue(i); });
+  snd?.frameStart();
   updateAutoCam(now);
   updateFly(now);
   if (follow && follow.pos) { const d = new THREE.Vector3(follow.pos.x, 0, follow.pos.z).sub(new THREE.Vector3(controls.target.x, 0, controls.target.z)); controls.target.add(d.multiplyScalar(0.08)); camera.position.add(d); }
@@ -909,10 +1157,12 @@ function frame(now) {
   updateSeason(simT, camD);
   drawOverlay(simT);
   updateUnits(simT, cp); updateHQs(simT, cp); updateOps(simT);
-  updateFX(simT, dt);
+  updateFX(simT, dt); updateCombat(simT, dt);
+  if (snd) { let fi = -1; FRONTS.forEach((f, i) => { if (simT >= f.t) fi = i; }); snd.frameEnd(playing, wxNow, dt, cityView, simT >= T_CITY0 && fi >= 0 && FRONTS[fi].pts.length > 0, simT < T_ICE, simT >= T_FLOES && simT < T_ICE); }
   if (weather) weather.update(layers.wx && !cityPlan ? wxNow : { cloud: 0, fog: 0, snow: 0, wind: 0, rain: 0, haze: 0, smoke: 0 }, dt, camD, controls.target, layers.wx && !cityPlan);
   if (now - lastUI > (playing ? 90 : 250)) { lastUI = now; updateClock(); drawTrack(); updateEvents(); if (selected && selected.u && selected.u.sp && $("#cchart")) strChart($("#cchart"), selected.u); }
-  renderer.render(scene, camera);
+  vignette.uniforms.time.value = now * 0.001;
+  if (FXON) composer.render(dt); else renderer.render(scene, camera);
 }
 
 // gancho de teste (?lite): permite pausar o laço e renderizar quadros sob demanda

@@ -1,6 +1,6 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <meta charset="utf-8">
-<title>Stalingrado · Maquete</title>
+<title>Stalingrado Sonoro</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -118,6 +118,16 @@ summary::marker{color:var(--brass)}
   #speeds .eyebrow{display:none}
 }
 .toolhead{display:flex;align-items:center;justify-content:space-between}
+.iconbtn.small{width:34px;height:34px;border-color:var(--line-2);background:transparent;color:var(--fg)}
+.iconbtn.small:hover{border-color:var(--brass);color:var(--brass-2)}
+.iconbtn.small svg{width:16px;height:16px}
+.mixer{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:2px 8px;align-items:center}
+.mixer label{grid-column:1/-1;margin-top:6px;font:500 13px/1.15 var(--f-head);letter-spacing:.03em;color:var(--fg)}
+.mixer label.main{color:var(--brass-2);font-weight:600}
+.mixer input{width:100%;accent-color:var(--brass);margin:0}
+.mixer output{font:500 11px/1 var(--f-mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+#mixer.off{opacity:.45}
+#mute{margin-right:10px}
 @media (prefers-reduced-motion:reduce){#loading{transition:none}}
 </style>
 
@@ -142,6 +152,11 @@ summary::marker{color:var(--brass)}
     <div class="eyebrow" style="margin-bottom:6px">Exagero do relevo</div>
     <div class="row"><input type="range" id="exag" min="2" max="30" step="1" value="12" aria-label="Exagero vertical do relevo"><span class="mono" id="exagv">12×</span></div>
   </div>
+  <div class="row" style="justify-content:space-between"><span class="eyebrow">Efeitos de luz</span><button class="chip" id="fxbtn" type="button" aria-pressed="true" title="Brilho das explosões, vinheta e granulação (desligue em aparelhos lentos)">Ligados</button></div>
+  <div id="soundbox">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="eyebrow">Som</span><button class="chip" id="sndbtn" type="button" aria-pressed="true">Ligado</button></div>
+    <div class="mixer" id="mixer"></div>
+  </div>
   <details id="legendbox">
     <summary class="eyebrow" style="cursor:pointer;margin-bottom:8px">Legenda e comandos fora do mapa</summary>
     <div id="legend"></div>
@@ -160,17 +175,30 @@ summary::marker{color:var(--brass)}
   <button class="iconbtn" id="play" type="button" aria-label="Reproduzir"><svg viewBox="0 0 24 24" id="playicon"><path d="M7 4.5v15l13-7.5z"/></svg></button>
   <div class="row" style="gap:14px"><div id="clock" class="mono" aria-live="off">23 ago</div><div id="date"><strong>1942 · Dia 1</strong><span id="phase">Aproximação</span><div id="wx"></div></div></div>
   <div></div>
-  <div id="speeds"><span class="eyebrow">Velocidade</span><button class="chip" id="autocam" type="button" aria-pressed="true" title="A câmera acompanha as operações durante a reprodução">Câmera automática</button><button class="chip togglelogbtn" id="togglelog" type="button">Diário</button></div>
+  <div id="speeds"><button class="iconbtn small" id="mute" type="button" aria-label="Desligar o som" title="Som (M)"><svg viewBox="0 0 24 24" id="muteicon"></svg></button><span class="eyebrow">Velocidade</span><button class="chip" id="autocam" type="button" aria-pressed="true" title="A câmera acompanha as operações durante a reprodução">Câmera automática</button><button class="chip togglelogbtn" id="togglelog" type="button">Diário</button></div>
   <div id="trackwrap"><canvas id="track" tabindex="0" aria-label="Linha do tempo de 23 de agosto de 1942 a 2 de fevereiro de 1943"></canvas></div>
 </footer>
 
 <div id="tip" hidden></div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
-<script src="data.js"></script>
-<script src="city.js"></script>
-<script src="strength.js"></script>
-<script src="demdata.js"></script>
-<script src="weather.js"></script>
-<script src="maquete.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"}}</script>
+<script type="module">
+// three.js r187 is module-only: expose it as the THREE global the maquete's scripts expect, then load them in order.
+import * as T from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+T.ColorManagement.enabled = false; // keep the colour pipeline the maquete was designed under
+window.THREE = Object.assign({}, T, { OrbitControls, mergeGeometries, RoomEnvironment, EffectComposer, RenderPass, UnrealBloomPass, ShaderPass, OutputPass });
+for (const f of ["data.js", "city.js", "strength.js", "demdata.js", "weather.js", "sound.js", "maquete.js"]) {
+  await new Promise((ok, fail) => { const sc = document.createElement("script"); sc.src = f; sc.onload = ok; sc.onerror = () => fail(new Error("Falha ao carregar " + f)); document.body.appendChild(sc); })
+    .catch((e) => { const h = document.querySelector("#loading h2"); if (h) h.textContent = e.message; throw e; });
+}
+</script>
+
+</body></html>

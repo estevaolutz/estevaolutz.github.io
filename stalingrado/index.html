@@ -1,10 +1,4 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Mapa 3D interativo da Batalha de Stalingrado (1942–1943): linha do tempo, exércitos, operações e QGs.">
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}img{max-width:100%}</style>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Stalingrado 3D</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -155,9 +149,29 @@ button{font:inherit;color:inherit}
   .op-title{font-size:25px}
 }
 @media (prefers-reduced-motion:reduce){#panel{transition:none}}
+#hud{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:12px;display:flex;flex-direction:column;gap:6px;align-items:flex-start;max-width:calc(100% - 250px);pointer-events:none}
+#hud>*{pointer-events:auto}
+#modeChip{position:static!important;max-width:none!important}
+#wxChip{background:rgba(20,27,32,.9);border:1px solid rgba(220,232,240,.35);border-radius:4px;padding:6px 10px;font-size:12px;display:flex;flex-direction:column;gap:2px;cursor:help}
+#wxChip b{color:#e8f0f5;font-weight:600}
+#wxChip b::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:#cfdbe3;box-shadow:0 0 6px #cfdbe3}
+#wxChip .riv{font-size:11px;color:#9fc4d6}
+#viewCtl{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:48px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.seg{display:flex;align-items:center;gap:2px;background:rgba(20,27,32,.86);border:1px solid var(--line);border-radius:4px;padding:2px}
+.seg span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:0 6px}
+.seg button{border:0;background:transparent;color:var(--muted);border-radius:3px;padding:4px 8px;font-size:12px;cursor:pointer;min-height:26px}
+.seg button[aria-pressed="true"]{background:var(--brass);color:var(--bg)}
+#loading{position:absolute;inset:0;display:grid;place-items:center;background:rgba(14,19,23,.72);color:var(--ink);font-family:var(--f-mono);font-size:13px;letter-spacing:.06em;z-index:5;text-align:center;padding:16px}
+#wxTicks{position:absolute;left:0;right:0;top:33px;height:4px}
+.wxt{position:absolute;height:4px;min-width:5px;padding:0;border:0;border-radius:2px;background:rgba(207,219,227,.55);cursor:pointer}
+.wxt.big{background:#e4eef4;box-shadow:0 0 5px rgba(228,238,244,.7)}
+.lbl.lake{font-style:italic;font-size:11px;color:#a9cbdb;text-shadow:0 1px 3px #000}
+@media (max-width:760px){
+  #hud{top:52px;max-width:calc(100% - 24px)}
+  #viewCtl{top:auto;bottom:12px;right:12px}
+}
 </style>
-</head>
-<body>
+
 <div id="app">
   <header id="top">
     <div class="brand"><b>Stalingrado</b><span>23 AGO 1942 – 2 FEV 1943 · 48°42′N 44°31′E</span></div>
@@ -168,16 +182,22 @@ button{font:inherit;color:inherit}
       <button class="fbtn" data-f="hq" aria-pressed="true"><i style="--c:var(--brass)"></i>QGs</button>
       <button class="fbtn" data-f="ar" aria-pressed="true"><i style="--c:var(--ink)"></i>Operações</button>
       <button class="fbtn" data-f="lb" aria-pressed="true"><i style="--c:var(--muted)"></i>Rótulos</button>
+      <button class="fbtn" data-f="wx" aria-pressed="true"><i style="--c:#cfdbe3"></i>Clima</button>
     </div>
   </header>
 
   <main id="stage">
-    <div id="scene" aria-label="Mapa tridimensional da região do Don e do Volga"></div>
+    <div id="scene" aria-label="Mapa tridimensional da região entre Voronezh, Saratov, Rostov e Elista"></div>
     <div id="labels"></div>
     <div id="camBtns"><button id="cityBtn">Zoom na cidade</button><button id="reset">Visão geral</button></div>
-    <div id="modeChip" hidden><b>Vista urbana</b> · divisões e linha de frente rua a rua</div>
+    <div id="hud"><div id="modeChip" hidden><b>Vista urbana</b> · divisões e linha de frente rua a rua</div><div id="wxChip" hidden></div></div>
+    <div id="viewCtl">
+      <div class="seg" role="group" aria-label="Estilo do mapa"><button type="button" data-mode="real">Relevo realista</button><button type="button" data-mode="chart">Carta 1942</button></div>
+      <div class="seg" role="group" aria-label="Exagero vertical do relevo"><span>Altura</span><button type="button" data-ex="10">10×</button><button type="button" data-ex="25">25×</button><button type="button" data-ex="50">50×</button></div>
+    </div>
+    <div id="loading">Gerando relevo, vegetação e cidade…</div>
     <div id="legend" aria-hidden="true">
-      <div class="lt"><b>Tanque</b> blindados</div><div class="lt"><b>Meia-lagarta</b> mecanizados</div><div class="lt"><b>Soldados</b> infantaria</div><div class="lt"><b>Avião</b> força aérea</div><div class="lt"><b>Tenda</b> QG de general</div><hr>
+      <div class="lt"><b>Tanque</b> blindados</div><div class="lt"><b>Meia-lagarta</b> mecanizados</div><div class="lt"><b>Soldados</b> infantaria</div><div class="lt"><b>Avião</b> força aérea</div><div class="lt"><b>Tenda</b> QG de general</div><div class="lt"><b>Faixa branca</b> na linha do tempo: tempestade ou neblina</div><hr>
       <div><i style="--c:#7d9cc0"></i>Alemanha</div><div><i style="--c:#d6b43f"></i>Romênia</div>
       <div><i style="--c:#6fae73"></i>Itália</div><div><i style="--c:#cf8040"></i>Hungria</div>
       <div><i style="--c:#d24b3f"></i>URSS</div><div><i class="zone"></i>Zona do Eixo</div><div><i class="strip"></i>Faixa soviética</div><div><i class="rail"></i>Ferrovia</div>
@@ -201,6 +221,7 @@ button{font:inherit;color:inherit}
     <div class="track">
       <div id="months"></div>
       <div id="ticks"></div>
+      <div id="wxTicks" aria-label="Dias de tempestade, neblina e frio extremo"></div>
       <input id="slider" type="range" min="0" max="163" value="0" aria-label="Data da batalha">
     </div>
     <div class="speed" role="group" aria-label="Velocidade da linha do tempo">
@@ -214,10 +235,12 @@ button{font:inherit;color:inherit}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="data.js?v=202611110040"></script>
-<script src="city.js?v=202611110040"></script>
-<script src="chart.js?v=202611110040"></script>
-<script src="models.js?v=202611110040"></script>
-<script src="app.js?v=202611110040"></script>
-</body>
-</html>
+<script src="data.js"></script>
+<script src="city.js"></script>
+<script src="terrain.js"></script>
+<script src="weather.js"></script>
+<script src="chart.js"></script>
+<script src="models.js"></script>
+<script src="app.js"></script>
+
+</body></html>

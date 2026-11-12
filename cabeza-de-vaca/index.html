@@ -263,6 +263,17 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tl-tick.cur::after { background: var(--accent); opacity: 1; width: 4px; left: 3px; top: -3px; height: 22px; }
 .tl-years { position: relative; height: 14px; font: 400 .7rem var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 .tl-years span { position: absolute; transform: translateX(-50%); }
+.tl-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; }
+.tl-body { min-width: 0; }
+.tl-play { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--accent); background: transparent; cursor: pointer; display: grid; place-items: center; padding: 0; touch-action: manipulation; }
+.tl-play::before { content: ""; border-left: 12px solid var(--accent); border-top: 7.5px solid transparent; border-bottom: 7.5px solid transparent; margin-left: 4px; }
+.tl-play.on { background: var(--accent); }
+.tl-play.on::before { border: 0; margin: 0; width: 12px; height: 14px; background: linear-gradient(90deg, var(--panel) 0 34%, transparent 34% 66%, var(--panel) 66%); }
+.tl-speed { display: flex; gap: 2px; border: 1px solid var(--rule); border-radius: 8px; padding: 2px; }
+.tl-speed button { min-width: 34px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 500 .74rem var(--f-mono); cursor: pointer; padding: 0 5px; touch-action: manipulation; }
+.tl-speed button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+@media (pointer: coarse) { .tl-play { width: 48px; height: 48px; } .tl-speed button { min-width: 44px; height: 40px; font-size: .85rem; } }
+@media (max-width: 560px) { .tl-row { grid-template-columns: auto minmax(0, 1fr); } .tl-speed { grid-column: 1 / -1; justify-self: end; } }
 
 /* Relação (cartão) */
 .log { display: grid; gap: 14px; min-width: 0; }
@@ -487,8 +498,19 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       <div class="timeline" aria-label="Linha do tempo">
         <div class="tl-head"><span>Linha do tempo</span><span id="tl-date"></span></div>
-        <div class="tl-track" id="tl-track"></div>
-        <div class="tl-years" id="tl-years"></div>
+        <div class="tl-row">
+          <button type="button" class="tl-play" id="tl-play" aria-label="Reproduzir a viagem" title="Reproduzir (espaço)"></button>
+          <div class="tl-body">
+            <div class="tl-track" id="tl-track"></div>
+            <div class="tl-years" id="tl-years"></div>
+          </div>
+          <div class="tl-speed" role="group" aria-label="Velocidade da reprodução">
+            <button type="button" data-speed="0.5" aria-pressed="false">½×</button>
+            <button type="button" data-speed="1" aria-pressed="true">1×</button>
+            <button type="button" data-speed="2" aria-pressed="false">2×</button>
+            <button type="button" data-speed="4" aria-pressed="false">4×</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2052,7 +2074,42 @@ function focus3(i, dur) {
   if (!s.leg && STOPS[i + 1] && STOPS[i + 1].leg) pts = pts.concat(STOPS[i + 1].leg.coordinates.slice(0, 2));
   if (T3) T3.fit(pts, { minKm: 520, pad: 120, dur });
 }
-function go(i, dur) {
+let playing = false, playTimer = null, speed = 1;
+try { const sv = parseFloat(localStorage.getItem('cdv-speed')); if ([0.5, 1, 2, 4].includes(sv)) speed = sv; } catch (e) {}
+function legDur(i) { const s = STOPS[i]; return (!s.leg || reduced) ? 0 : Math.min(2400, 900 + s.km * 0.12); }
+function schedule() {
+  clearTimeout(playTimer);
+  if (!playing) return;
+  playTimer = setTimeout(() => {
+    if (!playing) return;
+    if (cur >= STOPS.length - 1) { setPlay(false); return; }
+    go(cur + 1, 1100 / Math.max(1, speed), true);
+    schedule();
+  }, (1100 + 350 + legDur(cur) + 3200) / speed);
+}
+function setPlay(on) {
+  playing = on;
+  const b = document.getElementById('tl-play');
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-label', on ? 'Pausar a viagem' : 'Reproduzir a viagem');
+  b.title = on ? 'Pausar (espaço)' : 'Reproduzir (espaço)';
+  if (!on) { clearTimeout(playTimer); return; }
+  if (cur >= STOPS.length - 1) go(0, undefined, true);
+  schedule();
+}
+document.getElementById('tl-play').onclick = () => setPlay(!playing);
+document.querySelectorAll('.tl-speed button').forEach(b => {
+  b.setAttribute('aria-pressed', parseFloat(b.dataset.speed) === speed);
+  b.addEventListener('click', () => {
+    speed = parseFloat(b.dataset.speed);
+    document.querySelectorAll('.tl-speed button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    try { localStorage.setItem('cdv-speed', speed); } catch (e) {}
+    if (playing) schedule();
+  });
+});
+
+function go(i, dur, auto) {
+  if (!auto && playing) setPlay(false);
   cur = Math.max(0, Math.min(STOPS.length - 1, i));
   renderCard();
   focus3(cur, dur === undefined ? 1100 : dur);
@@ -2072,6 +2129,7 @@ document.addEventListener('keydown', e => {
   if (e.target.closest('input, textarea')) return;
   if (e.key === 'ArrowRight') { go(cur + 1); e.preventDefault(); }
   if (e.key === 'ArrowLeft') { go(cur - 1); e.preventDefault(); }
+  if (e.key === ' ' && !e.target.closest('button')) { setPlay(!playing); e.preventDefault(); }
 });
 document.querySelectorAll('[data-layer]').forEach(b => b.addEventListener('click', () => setLayer(b.dataset.layer)));
 function setLayer(l) {

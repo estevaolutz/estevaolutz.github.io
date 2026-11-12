@@ -1,0 +1,722 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Dente de Leão</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Palco escuro de tela cheia: a flor é uma nuvem de pontos em cores de espectrograma. Título no alto, ajustes numa gaveta. */
+:root{
+  --bg:#04050a;
+  --ink:#d8e0e4;
+  --dim:#7a8590;
+  --line:rgba(216,224,228,.14);
+  --panel:rgba(7,9,15,.8);
+  --accent:#7fe3d6;
+  --serif:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hidden;font-family:var(--mono);font-size:12px;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#stage{position:fixed;inset:0}
+#stage canvas{display:block;touch-action:none}
+.vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 42%,transparent 50%,rgba(0,0,0,.6) 100%)}
+.scan{position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(to bottom,rgba(255,255,255,.018) 0 1px,transparent 1px 3px);mix-blend-mode:screen}
+
+.top{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding-top:calc(env(safe-area-inset-top,0px) + 14px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none;transition:opacity .4s}
+.top > *{pointer-events:auto}
+h1{margin:0;font-family:var(--serif);font-style:italic;font-weight:500;font-size:28px;line-height:1;letter-spacing:.01em}
+.count{margin-top:6px;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.count b{color:var(--ink);font-weight:500}
+.micline{margin-top:8px;width:120px;height:2px;background:var(--line);border-radius:1px;overflow:hidden}
+.micline i{display:block;height:100%;width:0;background:var(--accent)}
+
+button{font:inherit;font-size:11px;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:3px;padding:9px 10px;cursor:pointer;letter-spacing:.06em}
+button:hover{border-color:rgba(127,227,214,.45)}
+button:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+button.on{background:rgba(127,227,214,.12);border-color:var(--accent);color:var(--accent)}
+#setBtn{background:var(--panel);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+#panel{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 62px);width:min(280px,calc(100vw - 32px));box-sizing:border-box;max-height:calc(100% - env(safe-area-inset-top,0px) - 80px);overflow-y:auto;
+  padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:4px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:13px}
+.row{display:flex;flex-direction:column;gap:6px}
+.row label{display:flex;justify-content:space-between;color:var(--dim);text-transform:uppercase;letter-spacing:.09em;font-size:10px}
+.row label span{color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:22px}
+.toggles{display:flex;flex-direction:column;gap:9px;color:var(--dim)}
+.toggles label{display:flex;align-items:center;gap:9px;cursor:pointer}
+.toggles input{accent-color:var(--accent);margin:0;width:16px;height:16px}
+.meter{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--accent)}
+.legend{height:6px;border-radius:1px;background:linear-gradient(90deg,#080a29,#14389e,#0db8c7,#dbe661,#fff7e6)}
+.legend-l{display:flex;justify-content:space-between;color:var(--dim);font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px}
+.keys{color:var(--dim);font-size:10px;line-height:1.65;border-top:1px solid var(--line);padding-top:10px}
+.keys kbd{font-family:var(--mono);color:var(--ink);border:1px solid var(--line);border-radius:2px;padding:0 4px}
+#msg{color:#e6a98a;font-size:10px;line-height:1.5}
+#msg:empty{display:none}
+
+#ring{position:fixed;left:0;top:0;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;border:1px solid var(--accent);opacity:0;pointer-events:none}
+#hint{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 124px);text-align:center;color:var(--dim);letter-spacing:.08em;font-size:11px;pointer-events:none;transition:opacity 1.6s;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;background:rgba(4,5,10,.55);
+  padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));cursor:pointer;transition:opacity .8s}
+#start h2{margin:0;font-family:var(--serif);font-style:italic;font-weight:400;font-size:42px;line-height:1}
+#start p{margin:0;max-width:30ch;color:var(--dim);line-height:1.6;letter-spacing:.03em}
+#start .go{border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:12px 26px;letter-spacing:.14em;text-transform:uppercase;font-size:11px}
+#start.gone{opacity:0;pointer-events:none}
+#blowBtn{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translateX(-50%);width:80px;height:80px;padding:0;border:none;border-radius:50%;
+  background:conic-gradient(var(--accent) calc(var(--p,0) * 360deg),rgba(216,224,228,.16) 0);touch-action:none;transition:opacity .4s;-webkit-touch-callout:none}
+#blowBtn span{position:absolute;inset:3px;border-radius:50%;background:rgba(7,9,15,.82);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;
+  color:var(--accent);font-size:10px;letter-spacing:.14em;text-transform:uppercase;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#blowBtn em{font-style:normal;font-size:9px;color:var(--dim);letter-spacing:.06em;font-variant-numeric:tabular-nums}
+#blowBtn.active span{background:rgba(20,40,44,.85)}
+.clean #blowBtn{opacity:0;pointer-events:none}
+.chips{display:flex;gap:6px}
+.chips button{flex:1;padding:8px 4px}
+.clean .top{opacity:0;pointer-events:none}
+.clean .top *{pointer-events:none}
+@media (prefers-reduced-motion:reduce){.top,#hint,#start{transition:none}}
+</style>
+<div id="stage"></div>
+<div class="scan"></div>
+<div class="vignette"></div>
+<div id="ring"></div>
+
+<div class="top">
+  <div>
+    <h1>Dente de Leão</h1>
+    <div class="count" id="count">pontos <b>0</b> · na flor <b>0</b> · no ar <b>0</b></div>
+  </div>
+  <button id="setBtn" aria-expanded="false" aria-controls="panel">Ajustes</button>
+</div>
+
+<div id="panel" hidden>
+  <div class="row">
+    <label for="power">Força do sopro <span id="powerV">1.0</span></label>
+    <input id="power" type="range" min="0.3" max="2.5" step="0.05" value="1">
+  </div>
+  <div class="row">
+    <label for="breeze">Brisa <span id="breezeV">0.6</span></label>
+    <input id="breeze" type="range" min="0" max="2" step="0.05" value="0.6">
+  </div>
+  <div class="row">
+    <label for="turb">Turbulência <span id="turbV">1.0</span></label>
+    <input id="turb" type="range" min="0" max="2.5" step="0.05" value="1">
+  </div>
+  <div class="row">
+    <label for="trail">Comprimento do rastro <span id="trailV">1.0</span></label>
+    <input id="trail" type="range" min="0" max="1" step="0.05" value="1">
+  </div>
+  <div class="row">
+    <label for="psize">Tamanho dos pontos <span id="psizeV">1.0</span></label>
+    <input id="psize" type="range" min="0.4" max="3" step="0.05" value="1.3">
+  </div>
+  <div class="row">
+    <label for="gain">Brilho <span id="gainV">1.0</span></label>
+    <input id="gain" type="range" min="0.3" max="3" step="0.05" value="1.4">
+  </div>
+  <div class="row">
+    <label for="bloom">Halo de luz <span id="bloomV">1.0</span></label>
+    <input id="bloom" type="range" min="0" max="2.5" step="0.05" value="1.1">
+  </div>
+  <div class="row">
+    <label>Cores</label>
+    <div class="chips" id="palChips">
+      <button data-m="0" class="on">Prisma</button>
+      <button data-m="2">Aurora</button>
+      <button data-m="1">Espectro</button>
+    </div>
+  </div>
+  <div class="toggles">
+    <label><input id="afterOn" type="checkbox"> Exposição longa (rastro de luz na tela)</label>
+    <label><input id="scanOn" type="checkbox" checked> Varredura</label>
+    <label><input id="binsOn" type="checkbox" checked> Faixas de frequência</label>
+    <label><input id="autoOrbit" type="checkbox" checked> Giro automático da câmera</label>
+    <label><input id="autoRegrow" type="checkbox" checked> Regenerar sozinho</label>
+  </div>
+  <div style="display:flex;gap:6px">
+    <button id="regrowBtn" style="flex:1">Regenerar</button>
+    <button id="cleanBtn" style="flex:1">Tela limpa</button>
+  </div>
+  <div class="keys">
+    Toque e segure na tela para soprar. O sopro sai da câmera na direção do dedo e fica mais forte quanto mais você segura. Arraste para girar, pince para zoom.
+    Na tela limpa, dois toques rápidos trazem os controles de volta.<br>
+    No computador: <kbd>R</kbd> regenera · <kbd>H</kbd> tela limpa
+  </div>
+</div>
+
+<div id="hint">segure o botão para soprar · quanto mais tempo, mais forte</div>
+<button id="blowBtn" aria-label="Segure para soprar"><span>Soprar<em id="blowPct">0%</em></span></button>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/AfterimageShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/AfterimagePass.js"></script>
+<script>
+(() => {
+'use strict';
+
+const coarse = matchMedia('(pointer:coarse)').matches;
+const qs = new URLSearchParams(location.search);
+const N   = Math.max(40, Math.min(1500, parseInt(qs.get('n')) || (coarse ? 200 : 260)));
+const F   = Math.round(N * 1.8);
+const FIL = coarse ? 18 : 24;           // filamentos do pápus
+const FPTS = coarse ? 5 : 6;            // pontos por filamento
+const Rr  = 0.11;
+const ACH = 0.07, BEAK = 0.62, TIP = ACH + BEAK;
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rnd = mulberry32(7);
+const jit = s => (rnd() - .5) * s;
+
+/* ---------- cena ---------- */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04050a);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 200);
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+const DPR = Math.min(2, devicePixelRatio);
+renderer.setPixelRatio(DPR);
+renderer.setSize(innerWidth, innerHeight);
+document.getElementById('stage').appendChild(renderer.domElement);
+
+/* ---------- material de pontos: discos nítidos com núcleo brilhante e cor por matiz ---------- */
+const uniforms = {
+  uSize: { value: 0.0072 }, uScale: { value: 1 }, uScanY: { value: 0 }, uScanOn: { value: 1 },
+  uBins: { value: 1 }, uLevel: { value: 0 }, uGain: { value: 1.4 }, uMode: { value: 0 }, uHue: { value: 0 }
+};
+function updScale() { uniforms.uScale.value = innerHeight * DPR / (2 * Math.tan(camera.fov * Math.PI / 360)); }
+updScale();
+const pointMat = new THREE.ShaderMaterial({
+  uniforms, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+  vertexShader: `
+    attribute float aI; attribute float aA; attribute float aH;
+    uniform float uSize, uScale, uScanY, uScanOn, uBins, uLevel;
+    varying float vI; varying float vA; varying float vH;
+    void main(){
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vec4 mv = viewMatrix * wp;
+      float d = max(0.05, -mv.z);
+      float scan = uScanOn * exp(-pow((wp.y - uScanY) / 0.11, 2.0));
+      float bins = mix(1.0, 0.8 + 0.2 * step(0.5, fract(wp.y * 26.0)), uBins);
+      vI = (aI + scan * 0.6 + uLevel * 0.22) * bins;
+      vA = aA * exp(-pow(d * 0.04, 2.0));
+      vH = aH;
+      gl_PointSize = clamp(uSize * uScale / d, 1.5, 11.0);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform float uGain, uMode, uHue;
+    varying float vI; varying float vA; varying float vH;
+    vec3 hsv(float h, float s, float v){ vec3 p = abs(fract(h + vec3(0., 2./3., 1./3.)) * 6. - 3.); return v * mix(vec3(1.), clamp(p - 1., 0., 1.), s); }
+    vec3 pal(float t){
+      t = clamp(t, 0.0, 1.0);
+      vec3 c0 = vec3(.03,.04,.16), c1 = vec3(.08,.22,.62), c2 = vec3(.05,.72,.78), c3 = vec3(.86,.90,.38), c4 = vec3(1.,.97,.90);
+      if (t < .25) return mix(c0, c1, t / .25);
+      if (t < .50) return mix(c1, c2, (t - .25) / .25);
+      if (t < .75) return mix(c2, c3, (t - .50) / .25);
+      return mix(c3, c4, (t - .75) / .25);
+    }
+    void main(){
+      if (vA < 0.01) discard;
+      vec2 c = gl_PointCoord - 0.5; float r = length(c);
+      if (r > 0.5) discard;
+      float shape = smoothstep(0.5, 0.18, r) * 0.75 + smoothstep(0.2, 0.0, r) * 0.7;
+      float I = clamp(vI, 0.0, 1.3);
+      float s = mix(0.92, 0.15, smoothstep(0.85, 1.25, I));
+      float v = 0.3 + 0.85 * I;
+      vec3 col;
+      if (uMode < 0.5)      col = hsv(fract(vH + uHue), s, v);
+      else if (uMode < 1.5) col = pal(I) * (0.3 + 0.8 * I);
+      else                  col = hsv(mix(0.36, 0.88, 0.5 + 0.5 * sin(6.2832 * (vH + uHue))), s, v);
+      gl_FragColor = vec4(col * vA * shape * 0.8 * uGain, 1.0);
+    }`
+});
+
+function makeCloud(pos, inten, hue) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute('aI', new THREE.BufferAttribute(new Float32Array(inten), 1));
+  g.setAttribute('aA', new THREE.BufferAttribute(new Float32Array(inten.length).fill(1), 1));
+  g.setAttribute('aH', new THREE.BufferAttribute(new Float32Array(hue), 1));
+  const p = new THREE.Points(g, pointMat); p.frustumCulled = false; return p;
+}
+
+/* ---------- planta em pontos: talo, pescoço, receptáculo, brácteas ---------- */
+const plant = new THREE.Group(); plant.position.set(0, -7.4, 0); scene.add(plant);
+const head  = new THREE.Group(); head.position.set(0, 7.4, 0); plant.add(head);
+let staticPts = 0;
+{
+  const P = [], I = [], Hh = [];
+  let curH = .36;
+  const add = (x, y, z, i) => { P.push(x, y, z); I.push(i); Hh.push(curH + (rnd() - .5) * .06); };
+  const stemCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, -0.08, 0), new THREE.Vector3(0.02, -1.2, 0.01),
+    new THREE.Vector3(0.07, -3.0, -0.04), new THREE.Vector3(0.05, -5.0, 0.04),
+    new THREE.Vector3(-0.02, -7.6, 0)
+  ]);
+  const nStem = coarse ? 8000 : 12000, tg = new THREE.Vector3(), up = new THREE.Vector3(1, 0, 0), b1 = new THREE.Vector3(), b2 = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let k = 0; k < nStem; k++) {
+    const u = Math.pow(rnd(), 0.8);
+    stemCurve.getPointAt(u, c); stemCurve.getTangentAt(u, tg);
+    b1.crossVectors(tg, up).normalize(); b2.crossVectors(tg, b1).normalize();
+    const a = rnd() * Math.PI * 2, r = 0.062 * (0.94 + rnd() * 0.1);
+    const lit = 0.5 + 0.5 * Math.cos(a - 0.8);       // um lado mais "quente"
+    add(c.x + (b1.x * Math.cos(a) + b2.x * Math.sin(a)) * r, c.y + (b1.y * Math.cos(a) + b2.y * Math.sin(a)) * r, c.z + (b1.z * Math.cos(a) + b2.z * Math.sin(a)) * r,
+      (rnd() < .06 ? .66 : .3 + lit * .24 + rnd() * .08) * (1 - u * .22));
+  }
+  curH = .3;
+  for (let k = 0; k < 400; k++) {                      // pescoço
+    const a = rnd() * Math.PI * 2, y = -0.02 - rnd() * 0.14, r = 0.085 - (y + 0.02) / -0.14 * 0.023;
+    add(Math.cos(a) * r, y, Math.sin(a) * r, .22 + rnd() * .1);
+  }
+  curH = .11;
+  for (let k = 0; k < (coarse ? 900 : 1400); k++) {   // receptáculo
+    const z = rnd() * 2 - 1, a = rnd() * Math.PI * 2, r = Math.sqrt(1 - z * z);
+    add(Math.cos(a) * r * Rr, z * Rr * .88, Math.sin(a) * r * Rr, .46 + rnd() * .16);
+  }
+  curH = .27;
+  for (let b = 0; b < 15; b++) {                       // brácteas viradas para baixo
+    const a = b / 15 * Math.PI * 2 + rnd() * 0.2, ca = Math.cos(a), sa = Math.sin(a), L = 0.85 + rnd() * 0.3;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(ca * 0.07, -0.07, sa * 0.07), new THREE.Vector3(ca * 0.17, -0.12, sa * 0.17),
+      new THREE.Vector3(ca * 0.23 * L, -0.32 * L, sa * 0.23 * L), new THREE.Vector3(ca * 0.2 * L, -0.6 * L, sa * 0.2 * L)
+    ]);
+    for (let k = 0; k < 90; k++) {
+      const u = rnd(); curve.getPointAt(u, c);
+      add(c.x + jit(.03), c.y + jit(.02), c.z + jit(.03), .16 + (1 - u) * .14 + rnd() * .05);
+    }
+  }
+  head.add(makeCloud(P, I, Hh));
+  staticPts = I.length;
+}
+
+/* ---------- molde de uma semente em pontos ---------- */
+let tplP, tplI, tplO, PPS;
+{
+  const P = [], I = [], O = [];
+  let off = 0;
+  const add = (x, y, z, i) => { P.push(x, y, z); I.push(i); O.push(off); };
+  off = -.1;
+  for (let k = 0; k < 4; k++) { const f = k / 3; add(jit(.006), f * ACH, jit(.006), .2 + f * .08); }      // aquênio
+  for (let k = 1; k <= 11; k++) { const f = k / 12; off = -.08 + f * .08; add(jit(.003), ACH + f * BEAK, jit(.003), .3 + f * .25); } // bico
+  off = 0;
+  add(0, TIP, 0, 1.0); add(jit(.01), TIP + .005, jit(.01), .95);                                              // núcleo do pápus
+  const D = Math.PI / 180;
+  for (let k = 0; k < FIL; k++) {
+    const th = k / FIL * Math.PI * 2 + jit(.2);
+    const a1 = (68 + rnd() * 9) * D, a2 = (85 + rnd() * 12) * D;
+    const l1 = .15 + rnd() * .035, l2 = .13 + rnd() * .05;
+    const x1 = Math.sin(a1) * Math.cos(th) * l1, y1 = TIP + Math.cos(a1) * l1, z1 = Math.sin(a1) * Math.sin(th) * l1;
+    const x2 = x1 + Math.sin(a2) * Math.cos(th) * l2, y2 = y1 + Math.cos(a2) * l2, z2 = z1 + Math.sin(a2) * Math.sin(th) * l2;
+    const L1 = l1, L2 = l2, TOT = L1 + L2;
+    for (let s = 1; s <= FPTS; s++) {
+      const d = s / FPTS * TOT;
+      let x, y, z;
+      if (d <= L1) { const f = d / L1; x = x1 * f; y = TIP + (y1 - TIP) * f; z = z1 * f; }
+      else { const f = (d - L1) / L2; x = x1 + (x2 - x1) * f; y = y1 + (y2 - y1) * f; z = z1 + (z2 - z1) * f; }
+      off = (s / FPTS) * .14;
+      add(x + jit(.004), y + jit(.004), z + jit(.004), .82 - (s / FPTS) * .42 + rnd() * .06);
+    }
+  }
+  tplP = new Float32Array(P); tplI = new Float32Array(I); tplO = new Float32Array(O); PPS = I.length;
+}
+
+/* ---------- buffers das sementes ---------- */
+const TOTAL = N + F;
+const posArr = new Float32Array(TOTAL * PPS * 3), intArr = new Float32Array(TOTAL * PPS), alpArr = new Float32Array(TOTAL * PPS), hueArr = new Float32Array(TOTAL * PPS);
+const seedGeo = new THREE.BufferGeometry();
+const posAttr = new THREE.BufferAttribute(posArr, 3).setUsage(THREE.DynamicDrawUsage);
+const intAttr = new THREE.BufferAttribute(intArr, 1).setUsage(THREE.DynamicDrawUsage);
+const alpAttr = new THREE.BufferAttribute(alpArr, 1).setUsage(THREE.DynamicDrawUsage);
+const hueAttr = new THREE.BufferAttribute(hueArr, 1).setUsage(THREE.DynamicDrawUsage);
+seedGeo.setAttribute('position', posAttr); seedGeo.setAttribute('aI', intAttr); seedGeo.setAttribute('aA', alpAttr); seedGeo.setAttribute('aH', hueAttr);
+const seedPts = new THREE.Points(seedGeo, pointMat); seedPts.frustumCulled = false; scene.add(seedPts);
+
+/* rastro: histórico do núcleo de cada semente voando, desenhado como pontos que se apagam */
+const TR = 60, TR_DT = 1 / 40;
+let trailLen = 28;
+const trHist = new Float32Array(Math.round(N * 1.8) * TR * 3), trHead = new Int16Array(Math.round(N * 1.8)), trAcc = new Float32Array(Math.round(N * 1.8));
+const trPos = new Float32Array(trHist.length), trInt = new Float32Array(trHist.length / 3), trAlp = new Float32Array(trHist.length / 3), trHue = new Float32Array(trHist.length / 3);
+const trGeo = new THREE.BufferGeometry();
+const trPosAttr = new THREE.BufferAttribute(trPos, 3).setUsage(THREE.DynamicDrawUsage);
+const trIntAttr = new THREE.BufferAttribute(trInt, 1).setUsage(THREE.DynamicDrawUsage);
+const trAlpAttr = new THREE.BufferAttribute(trAlp, 1).setUsage(THREE.DynamicDrawUsage);
+const trHueAttr = new THREE.BufferAttribute(trHue, 1).setUsage(THREE.DynamicDrawUsage);
+trGeo.setAttribute('position', trPosAttr); trGeo.setAttribute('aI', trIntAttr); trGeo.setAttribute('aA', trAlpAttr); trGeo.setAttribute('aH', trHueAttr);
+const trPts = new THREE.Points(trGeo, pointMat); trPts.frustumCulled = false; scene.add(trPts);
+function trailReset(j, x, y, z) {
+  for (let k = 0; k < TR; k++) { const o = (j * TR + k) * 3; trHist[o] = x; trHist[o+1] = y; trHist[o+2] = z; }
+  trHead[j] = 0; trAcc[j] = 0;
+}
+function trailClear(j) { trAlp.fill(0, j * TR, (j + 1) * TR); }
+function trailWrite(j, x, y, z, dt, fade, heat, hue) {
+  trAcc[j] += dt;
+  if (trAcc[j] >= TR_DT) { trAcc[j] = 0; trHead[j] = (trHead[j] + 1) % TR; }
+  const h = trHead[j], ho = (j * TR + h) * 3;
+  trHist[ho] = x; trHist[ho+1] = y; trHist[ho+2] = z;
+  for (let k = 0; k < TR; k++) {
+    const src = (j * TR + ((h - k + TR) % TR)) * 3, dst = (j * TR + k) * 3, di = j * TR + k;
+    trPos[dst] = trHist[src]; trPos[dst+1] = trHist[src+1]; trPos[dst+2] = trHist[src+2];
+    if (k === 0 || k >= trailLen) { trAlp[di] = 0; continue; }
+    const f = 1 - k / trailLen;
+    trAlp[di] = fade * Math.pow(f, 1.4);
+    trInt[di] = .35 + heat * 1.3 + f * .45;
+    trHue[di] = hue + k * .005;
+  }
+}
+
+const cleared = new Uint8Array(TOTAL);
+const _Y = new THREE.Vector3(0, 1, 0), _a = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
+
+function writeSeed(idx, px, py, pz, ax, ay, az, spin, s, alpha, heat, hue) {
+  _a.set(ax, ay, az); _q.setFromUnitVectors(_Y, _a); _q2.setFromAxisAngle(_Y, spin); _q.multiply(_q2);
+  _m.makeRotationFromQuaternion(_q); const e = _m.elements;
+  const o3 = idx * PPS * 3, o1 = idx * PPS;
+  for (let v = 0, t = 0; v < PPS; v++, t += 3) {
+    const x = tplP[t] * s, y = tplP[t+1] * s, z = tplP[t+2] * s;
+    posArr[o3+t]   = px + e[0]*x + e[4]*y + e[8]*z;
+    posArr[o3+t+1] = py + e[1]*x + e[5]*y + e[9]*z;
+    posArr[o3+t+2] = pz + e[2]*x + e[6]*y + e[10]*z;
+    intArr[o1+v] = tplI[v] + heat;
+    hueArr[o1+v] = hue + tplO[v];
+    alpArr[o1+v] = alpha;
+  }
+  cleared[idx] = 0;
+}
+function clearSeed(idx) {
+  if (cleared[idx]) return;
+  alpArr.fill(0, idx * PPS, (idx + 1) * PPS);
+  cleared[idx] = 1;
+}
+
+/* ---------- vagas da flor ---------- */
+const H = { hue: new Float32Array(N), n: new Float32Array(N * 3), on: new Uint8Array(N), spin: new Float32Array(N), scale: new Float32Array(N), grip: new Float32Array(N), phase: new Float32Array(N), growT: new Float32Array(N) };
+const GOLD = Math.PI * (3 - Math.sqrt(5));
+for (let i = 0; i < N; i++) {
+  const y = 1 - (i + .5) / N * 1.62, r = Math.sqrt(1 - y * y), ph = i * GOLD;
+  let nx = Math.cos(ph) * r + jit(.04), ny = y + jit(.04), nz = Math.sin(ph) * r + jit(.04);
+  const l = Math.hypot(nx, ny, nz); H.n[i*3] = nx / l; H.n[i*3+1] = ny / l; H.n[i*3+2] = nz / l;
+  H.spin[i] = rnd() * 6.283; H.scale[i] = .9 + rnd() * .2; H.phase[i] = rnd() * 100;
+  H.grip[i] = 1.1 + 3.6 * Math.pow(rnd(), 1.4); H.on[i] = 1; H.growT[i] = -10;
+  H.hue[i] = (Math.atan2(H.n[i*3+2], H.n[i*3]) / 6.2832 + .5) * .8 + H.n[i*3+1] * .14;
+}
+
+/* ---------- sementes voando ---------- */
+const FL = { hue: new Float32Array(F), on: new Uint8Array(F), p: new Float32Array(F * 3), v: new Float32Array(F * 3), a: new Float32Array(F * 3), spin: new Float32Array(F), spinR: new Float32Array(F), scale: new Float32Array(F), phase: new Float32Array(F), t: new Float32Array(F), fade: new Float32Array(F) };
+let flPtr = 0;
+function spawnFlyer(px, py, pz, ax, ay, az, vx, vy, vz, spin, scale, phase, hue) {
+  let j = -1;
+  for (let k = 0; k < F; k++) { const c = (flPtr + k) % F; if (!FL.on[c]) { j = c; break; } }
+  if (j < 0) j = flPtr;
+  flPtr = (j + 1) % F;
+  FL.on[j] = 1; FL.t[j] = 0; FL.fade[j] = 1;
+  trailReset(j, px + ax * TIP * scale, py + ay * TIP * scale, pz + az * TIP * scale);
+  FL.p[j*3] = px; FL.p[j*3+1] = py; FL.p[j*3+2] = pz;
+  FL.a[j*3] = ax; FL.a[j*3+1] = ay; FL.a[j*3+2] = az;
+  FL.v[j*3] = vx; FL.v[j*3+1] = vy; FL.v[j*3+2] = vz;
+  FL.spin[j] = spin; FL.spinR[j] = (Math.random() - .5) * 3; FL.scale[j] = scale; FL.phase[j] = phase; FL.hue[j] = hue;
+}
+
+/* ---------- vento ---------- */
+const jet = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: -1, S: 0, speed: 0 };
+let breezeAmt = .6, turbAmt = 1, power = 1;
+const W = [0, 0, 0];
+function jetWind(px, py, pz, out) {
+  out[0] = out[1] = out[2] = 0;
+  if (jet.speed < .01) return;
+  const rx = px - jet.ox, ry = py - jet.oy, rz = pz - jet.oz;
+  const a = rx * jet.dx + ry * jet.dy + rz * jet.dz;
+  if (a < .15) return;
+  const qx = rx - jet.dx * a, qy = ry - jet.dy * a, qz = rz - jet.dz * a;
+  const w = .32 + a * .22, prof = Math.exp(-(qx*qx + qy*qy + qz*qz) / (w * w));
+  const sp = jet.speed * prof / (1 + .07 * a);
+  out[0] = jet.dx * sp + qx * sp * .18; out[1] = jet.dy * sp + qy * sp * .18; out[2] = jet.dz * sp + qz * sp * .18;
+}
+function breeze(t, out) {
+  out[0] = breezeAmt * (.35 + .25 * Math.sin(t * .13));
+  out[1] = breezeAmt * .04;
+  out[2] = breezeAmt * .16 * Math.sin(t * .071 + 1);
+}
+
+/* ---------- câmera ---------- */
+const orbit = { theta: .5, phi: 1.42, r: innerHeight > innerWidth ? 7.4 : 5.2, target: new THREE.Vector3(0, -.55, 0) };
+function placeCamera() {
+  const sp = Math.sin(orbit.phi);
+  camera.position.set(orbit.target.x + orbit.r * sp * Math.sin(orbit.theta), orbit.target.y + orbit.r * Math.cos(orbit.phi), orbit.target.z + orbit.r * sp * Math.cos(orbit.theta));
+  camera.lookAt(orbit.target);
+}
+
+/* ---------- toque e mouse ---------- */
+const clock = new THREE.Clock();
+const mouse = new THREE.Vector2(0, 0);
+const ring = document.getElementById('ring'), hint = document.getElementById('hint');
+const cv = renderer.domElement;
+const ptrs = new Map();
+let mode = null, holdTimer = 0, startX = 0, startY = 0, lastX = 0, lastY = 0, pinchD = 0, pinchR = 0;
+let heldTouch = false, heldKey = false, lastInteract = -99, aimX = 0, aimY = 0, lastTap = 0, holdFallback = true;
+
+function setAim(x, y) { aimX = x; aimY = y; mouse.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); }
+function startBlowAt(x, y) { mode = 'blow'; heldTouch = true; setAim(x, y); hideHint(); }
+function pinchDist() { const p = [...ptrs.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); }
+
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  lastInteract = clock.elapsedTime;
+  if (e.pointerType === 'mouse' && e.button === 2) { startBlowAt(e.clientX, e.clientY); return; }
+  if (ptrs.size === 1) {
+    startX = lastX = e.clientX; startY = lastY = e.clientY; mode = 'pending';
+    clearTimeout(holdTimer);
+    if (holdFallback) holdTimer = setTimeout(() => { if (mode === 'pending') startBlowAt(lastX, lastY); }, 230);
+    const now = performance.now();
+    if (document.body.classList.contains('clean') && now - lastTap < 320) setClean(false);
+    lastTap = now;
+  } else if (ptrs.size === 2) {
+    clearTimeout(holdTimer); heldTouch = false; mode = 'pinch'; pinchD = pinchDist(); pinchR = orbit.r;
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (mode === 'pinch' && ptrs.size === 2) {
+    orbit.r = Math.min(16, Math.max(1.6, pinchR * pinchD / Math.max(1, pinchDist())));
+  } else if (mode === 'pending') {
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) { clearTimeout(holdTimer); mode = 'orbit'; }
+  }
+  if (mode === 'orbit') {
+    orbit.theta -= (e.clientX - lastX) * .006;
+    orbit.phi = Math.min(2.6, Math.max(.35, orbit.phi - (e.clientY - lastY) * .006));
+  } else if (mode === 'blow') setAim(e.clientX, e.clientY);
+  lastX = e.clientX; lastY = e.clientY; lastInteract = clock.elapsedTime;
+});
+function endPtr(e) {
+  ptrs.delete(e.pointerId);
+  if (ptrs.size === 0) { clearTimeout(holdTimer); mode = null; heldTouch = false; }
+  else if (mode === 'pinch' && ptrs.size === 1) { const p = [...ptrs.values()][0]; lastX = p.x; lastY = p.y; mode = 'orbit'; }
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('wheel', e => { e.preventDefault(); orbit.r = Math.min(16, Math.max(1.6, orbit.r * Math.exp(e.deltaY * .001))); lastInteract = clock.elapsedTime; }, { passive: false });
+
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); heldKey = true; if (document.activeElement) document.activeElement.blur(); }
+  else if (e.code === 'KeyR') regrow();
+  else if (e.code === 'KeyH') setClean(!document.body.classList.contains('clean'));
+});
+addEventListener('keyup', e => { if (e.code === 'Space') heldKey = false; });
+addEventListener('blur', () => { heldKey = heldTouch = heldBtn = false; });
+let heldBtn = false, holdT = 0;
+const blowBtn = document.getElementById('blowBtn'), blowPct = document.getElementById('blowPct');
+blowBtn.addEventListener('pointerdown', e => { e.preventDefault(); try { blowBtn.setPointerCapture(e.pointerId); } catch (_) {} heldBtn = true; blowBtn.classList.add('active'); hideHint(); });
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => blowBtn.addEventListener(ev, () => { heldBtn = false; blowBtn.classList.remove('active'); }));
+blowBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ---------- painel ---------- */
+const panel = document.getElementById('panel'), setBtn = document.getElementById('setBtn');
+function openPanel(on) { panel.hidden = !on; setBtn.classList.toggle('on', on); setBtn.setAttribute('aria-expanded', String(on)); }
+setBtn.addEventListener('click', () => openPanel(panel.hidden));
+function setClean(on) { document.body.classList.toggle('clean', on); if (on) openPanel(false); }
+document.getElementById('cleanBtn').addEventListener('click', () => setClean(true));
+document.getElementById('regrowBtn').addEventListener('click', regrow);
+function bindRange(id, fn) {
+  const el = document.getElementById(id), out = document.getElementById(id + 'V');
+  const upd = () => { fn(+el.value); out.textContent = (+el.value).toFixed(1); };
+  el.addEventListener('input', upd); upd();
+}
+bindRange('power', v => power = v);
+bindRange('breeze', v => breezeAmt = v);
+bindRange('turb', v => turbAmt = v);
+bindRange('psize', v => uniforms.uSize.value = 0.0072 * v);
+bindRange('gain', v => uniforms.uGain.value = v);
+bindRange('trail', v => trailLen = Math.round(v * TR));
+const autoOrbitEl = document.getElementById('autoOrbit'), autoRegrowEl = document.getElementById('autoRegrow');
+const scanEl = document.getElementById('scanOn'), binsEl = document.getElementById('binsOn');
+
+let hintGone = false;
+function hideHint() { if (!hintGone) { hintGone = true; hint.style.opacity = 0; } }
+
+setTimeout(hideHint, 9000);
+
+/* ---------- regenerar ---------- */
+let lastDetach = 0;
+function regrow() {
+  const now = clock.elapsedTime;
+  for (let i = 0; i < N; i++) if (!H.on[i]) {
+    H.on[i] = 1; H.growT[i] = now + Math.random() * 1.6;
+    H.spin[i] = Math.random() * 6.283; H.grip[i] = 1.1 + 3.6 * Math.pow(Math.random(), 1.4);
+  }
+}
+
+/* ---------- loop ---------- */
+const ray = new THREE.Raycaster();
+const hq = new THREE.Quaternion(), hv = new THREE.Vector3(), hp = new THREE.Vector3(), hs = new THREE.Vector3();
+const tilt = { x: 0, z: 0, vx: 0, vz: 0 };
+const B = [0, 0, 0];
+const aimNDC = new THREE.Vector2();
+let countTimer = 0, scanPhase = 0;
+const countEl = document.getElementById('count');
+
+placeCamera();
+
+/* halo (bloom) e exposição longa; se as bibliotecas não carregarem, desenha direto */
+let composer = null, bloom = null, after = null;
+try {
+  if (THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass) {
+    composer = new THREE.EffectComposer(renderer);
+    composer.setPixelRatio && composer.setPixelRatio(DPR);
+    composer.setSize(innerWidth, innerHeight);
+    composer.addPass(new THREE.RenderPass(scene, camera));
+    if (THREE.AfterimagePass) { after = new THREE.AfterimagePass(0.88); after.enabled = false; composer.addPass(after); }
+    bloom = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.1, 0.5, 0.04);
+    composer.addPass(bloom);
+  }
+} catch (e) { composer = null; }
+bindRange('bloom', v => { if (bloom) bloom.strength = v; });
+const afterEl = document.getElementById('afterOn');
+afterEl.addEventListener('change', () => { if (after) after.enabled = afterEl.checked; });
+document.querySelectorAll('#palChips button').forEach(b => b.addEventListener('click', () => {
+  uniforms.uMode.value = +b.dataset.m;
+  document.querySelectorAll('#palChips button').forEach(x => x.classList.toggle('on', x === b));
+}));
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 1 / 20), t = clock.elapsedTime;
+
+  if (autoOrbitEl.checked && t - lastInteract > 4 && mode !== 'orbit') orbit.theta += dt * .035;
+  placeCamera();
+  head.getWorldPosition(hp);
+
+  // sopro
+  // quanto mais tempo segura, mais forte: começa num sopro leve e chega ao máximo em ~3 s
+  const holding = heldTouch || heldKey || heldBtn;
+  holdT = holding ? holdT + dt : 0;
+  const tgt = holding ? .15 + .85 * Math.min(1, holdT / 3) : 0;
+  jet.S += (tgt - jet.S) * Math.min(1, dt * (tgt > jet.S ? 6 : 2.4));
+  jet.speed = 7 * power * jet.S;
+  if (heldTouch) aimNDC.copy(mouse);
+  else { hs.copy(hp).project(camera); aimNDC.set(hs.x, hs.y); aimX = (hs.x + 1) / 2 * innerWidth; aimY = (1 - hs.y) / 2 * innerHeight; }
+  ray.setFromCamera(aimNDC, camera);
+  const d = ray.ray.direction;
+  jet.ox = camera.position.x + d.x * .1; jet.oy = camera.position.y + d.y * .1; jet.oz = camera.position.z + d.z * .1;
+  jet.dx = d.x; jet.dy = d.y; jet.dz = d.z;
+  if (jet.S > .05) lastInteract = Math.max(lastInteract, t - 3);
+  ring.style.opacity = (heldTouch ? jet.S * .7 : 0).toFixed(3);
+  blowBtn.style.setProperty('--p', jet.S.toFixed(3));
+  blowPct.textContent = Math.round(jet.S * 100) + '%';
+  ring.style.transform = `translate(${aimX}px,${aimY}px) scale(${(.6 + jet.S * .8).toFixed(3)})`;
+
+  // varredura e reação ao sopro
+  scanPhase = (scanPhase + dt / 6.5) % 1;
+  uniforms.uScanY.value = 1.4 - scanPhase * 9.2;
+  uniforms.uScanOn.value = scanEl.checked ? 1 : 0;
+  uniforms.uBins.value = binsEl.checked ? 1 : 0;
+  uniforms.uLevel.value += (jet.S - uniforms.uLevel.value) * Math.min(1, dt * 6);
+
+  breeze(t, B);
+  jetWind(hp.x, hp.y, hp.z, W);
+  const tx = B[0] * .035 + W[0] * .02, tz = B[2] * .035 + W[2] * .02;
+  tilt.vx += ((tx + Math.sin(t * .9) * .004 * breezeAmt - tilt.x) * 9 - tilt.vx * 2.2) * dt;
+  tilt.vz += ((tz + Math.sin(t * .7 + 2) * .004 * breezeAmt - tilt.z) * 9 - tilt.vz * 2.2) * dt;
+  tilt.x += tilt.vx * dt; tilt.z += tilt.vz * dt;
+  plant.rotation.set(tilt.z, 0, -tilt.x);
+  plant.updateMatrixWorld(true);
+  head.getWorldQuaternion(hq);
+  const M = head.matrixWorld;
+
+  let attached = 0;
+  for (let i = 0; i < N; i++) {
+    if (!H.on[i]) { clearSeed(i); continue; }
+    attached++;
+    const g = Math.min(1, Math.max(0, (t - H.growT[i]) / 1.4)), grow = g * g * (3 - 2 * g);
+    if (grow <= 0) { clearSeed(i); continue; }
+    hv.set(H.n[i*3], H.n[i*3+1], H.n[i*3+2]).multiplyScalar(Rr).applyMatrix4(M);
+    const bx = hv.x, by = hv.y, bz = hv.z;
+    hv.set(H.n[i*3], H.n[i*3+1], H.n[i*3+2]).applyQuaternion(hq);
+    let ax = hv.x, ay = hv.y, az = hv.z;
+    const s = H.scale[i] * grow;
+    let heat = 0;
+    jetWind(bx + ax * TIP * s, by + ay * TIP * s, bz + az * TIP * s, W);
+    const wl = Math.hypot(W[0], W[1], W[2]);
+    if (wl > .02) {
+      const dx = W[0] / wl, dy = W[1] / wl, dz = W[2] / wl;
+      const face = -(ax * dx + ay * dy + az * dz);
+      const eff = wl * (.25 + .75 * Math.max(0, face));
+      if (grow > .9 && eff > H.grip[i] && Math.random() < dt * 7) {
+        const pop = .5 + Math.random() * .6;
+        spawnFlyer(bx, by, bz, ax, ay, az, W[0] * .35 + ax * pop, W[1] * .35 + ay * pop, W[2] * .35 + az * pop, H.spin[i], H.scale[i], H.phase[i], H.hue[i]);
+        H.on[i] = 0; lastDetach = t; clearSeed(i); attached--; continue;
+      }
+      const ratio = eff / H.grip[i];
+      heat = Math.min(.35, ratio * .3);
+      const tr = Math.min(.35, ratio * .25) * (.7 + .3 * Math.sin(t * 23 + H.phase[i]));
+      const dp = dx * ax + dy * ay + dz * az;
+      ax += (dx - ax * dp) * tr; ay += (dy - ay * dp) * tr; az += (dz - az * dp) * tr;
+      const l = Math.hypot(ax, ay, az); ax /= l; ay /= l; az /= l;
+    }
+    writeSeed(i, bx, by, bz, ax, ay, az, H.spin[i], s, grow, heat, H.hue[i]);
+  }
+
+  let flying = 0;
+  const K = 2.6, G = -.34, tA = .32 * turbAmt * (1 + jet.S * .8);
+  for (let j = 0; j < F; j++) {
+    const idx = N + j;
+    if (!FL.on[j]) { if (!cleared[idx]) trailClear(j); clearSeed(idx); continue; }
+    flying++;
+    const o = j * 3; let px = FL.p[o], py = FL.p[o+1], pz = FL.p[o+2];
+    const ph = FL.phase[j];
+    jetWind(px, py, pz, W);
+    const airX = B[0] + W[0] + tA * (Math.sin(1.3*py + .4*t + ph) + .5*Math.sin(.7*pz - .3*t));
+    const airY = B[1] + W[1] + tA * (.6*Math.sin(1.1*pz + .35*t + ph*.7) + .4*Math.sin(.9*px + .2*t));
+    const airZ = B[2] + W[2] + tA * (Math.sin(1.2*px - .37*t + ph*1.3) + .5*Math.sin(.8*py + .25*t));
+    let vx = FL.v[o], vy = FL.v[o+1], vz = FL.v[o+2];
+    vx += (airX - vx) * K * dt; vy += ((airY - vy) * K + G) * dt; vz += (airZ - vz) * K * dt;
+    px += vx * dt; py += vy * dt; pz += vz * dt;
+    FL.v[o] = vx; FL.v[o+1] = vy; FL.v[o+2] = vz;
+    FL.p[o] = px; FL.p[o+1] = py; FL.p[o+2] = pz;
+    let rx = airX - vx, ry = airY - vy + .25, rz = airZ - vz;
+    const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+    const k = Math.min(1, dt * 2.5);
+    let ax = FL.a[o] + (rx - FL.a[o]) * k, ay = FL.a[o+1] + (ry - FL.a[o+1]) * k, az = FL.a[o+2] + (rz - FL.a[o+2]) * k;
+    const al = Math.hypot(ax, ay, az) || 1; ax /= al; ay /= al; az /= al;
+    FL.a[o] = ax; FL.a[o+1] = ay; FL.a[o+2] = az;
+    FL.spin[j] += FL.spinR[j] * dt;
+    FL.t[j] += dt;
+    if (FL.t[j] > 50 || py < -8 || Math.hypot(px, py, pz) > 32) FL.fade[j] -= dt * .5;
+    if (FL.fade[j] <= 0) { FL.on[j] = 0; trailClear(j); clearSeed(idx); continue; }
+    const speed = Math.hypot(vx, vy, vz);
+    const heatF = Math.min(.45, speed * .1), sc = FL.scale[j];
+    writeSeed(idx, px, py, pz, ax, ay, az, FL.spin[j], sc, Math.max(0, FL.fade[j]), heatF, FL.hue[j]);
+    trailWrite(j, px + ax * TIP * sc, py + ay * TIP * sc, pz + az * TIP * sc, dt, Math.max(0, FL.fade[j]), heatF, FL.hue[j]);
+  }
+
+  if (autoRegrowEl.checked && attached < N * .05 && t - lastDetach > (attached === 0 ? 6 : 14)) regrow();
+
+  posAttr.needsUpdate = intAttr.needsUpdate = alpAttr.needsUpdate = hueAttr.needsUpdate = true;
+  trPosAttr.needsUpdate = trIntAttr.needsUpdate = trAlpAttr.needsUpdate = trHueAttr.needsUpdate = true;
+  uniforms.uHue.value = (uniforms.uHue.value + dt * .012) % 1;
+  if (composer) composer.render(); else renderer.render(scene, camera);
+
+  countTimer -= dt;
+  if (countTimer <= 0) {
+    countTimer = .25;
+    const pts = staticPts + (attached + flying) * PPS;
+    countEl.innerHTML = `pontos <b>${pts.toLocaleString('pt-BR')}</b> · na flor <b>${attached}</b> · no ar <b>${flying}</b>`;
+  }
+}
+frame();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); updScale();
+  if (composer) composer.setSize(innerWidth, innerHeight);
+});
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,617 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Medidor SPL</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: instrumento de bancada — painel LCD + controles à esquerda, analisadores (RTA, histórico) à direita, registro e calibração abaixo */
+:root{
+  --bg:#E3E6E9; --panel:#F3F4F5; --ink:#1A2128; --muted:#5A6672; --line:#C3CAD0;
+  --lcd:#C6D0BB; --lcd-ink:#1D2A1B; --lcd-dim:rgba(29,42,27,.38);
+  --accent:#D9531C; --signal:#2B6688; --ok:#2E8656; --warn:#B9800A; --crit:#C2311E;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#13171B; --panel:#1B2126; --ink:#E4E8EB; --muted:#8B97A1; --line:#2B333A;
+  --lcd:#0D2A2B; --lcd-ink:#A9EEDB; --lcd-dim:rgba(169,238,219,.32);
+  --accent:#FF7A3D; --signal:#5FA8D3; --ok:#4FBF84; --warn:#E3AC2E; --crit:#FF5A44; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#13171B; --panel:#1B2126; --ink:#E4E8EB; --muted:#8B97A1; --line:#2B333A;
+  --lcd:#0D2A2B; --lcd-ink:#A9EEDB; --lcd-dim:rgba(169,238,219,.32);
+  --accent:#FF7A3D; --signal:#5FA8D3; --ok:#4FBF84; --warn:#E3AC2E; --crit:#FF5A44; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+.app{max-width:1180px;margin:0 auto;padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 16px}
+.top h1{margin:0;font-family:var(--f-display);font-weight:700;font-size:30px;letter-spacing:.02em;text-transform:uppercase;line-height:1}
+.top p{margin:4px 0 0;color:var(--muted);font-family:var(--f-display);font-size:15px;letter-spacing:.06em;text-transform:uppercase}
+.chip{font-family:var(--f-display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--muted);display:inline-flex;gap:6px;align-items:center;background:var(--panel)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.chip.live i{background:var(--ok)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media(min-width:900px){.grid{grid-template-columns:minmax(0,5fr) minmax(0,6fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.ph{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.ph h2{margin:0;font-family:var(--f-display);font-weight:600;font-size:16px;letter-spacing:.1em;text-transform:uppercase}
+.ph small{color:var(--muted);font-size:13px}
+/* LCD */
+.lcd{background:var(--lcd);color:var(--lcd-ink);border-radius:8px;padding:12px 14px 14px;box-shadow:inset 0 2px 0 rgba(0,0,0,.12),inset 0 0 0 1px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:8px;font-family:var(--f-num)}
+.flags{display:flex;gap:10px;align-items:center;font-family:var(--f-display);font-weight:700;font-size:13px;letter-spacing:.12em}
+.flags span{color:var(--lcd-dim)}
+.flags span.on{color:var(--lcd-ink)}
+.flags span.over.on{color:var(--crit)}
+.flags span.rec.on{color:var(--crit);animation:blink 1s steps(2) infinite}
+.flags .desc{margin-left:auto;font-family:var(--f-num);font-size:15px;color:var(--lcd-ink);letter-spacing:0}
+@keyframes blink{50%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){.flags span.rec.on{animation:none}}
+.big{display:flex;align-items:baseline;gap:10px;justify-content:flex-end}
+.big .lab{margin-right:auto;font-size:22px;font-weight:700;align-self:flex-start}
+.big .lab sub{font-size:.62em}
+.big .val{font-size:clamp(64px,17vw,104px);font-weight:700;line-height:.95;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.big .unit{font-size:22px;font-weight:700}
+.bar{position:relative;height:16px;border:1.5px solid var(--lcd-ink);border-radius:2px;overflow:hidden}
+.bar .fill{position:absolute;inset:0 auto 0 0;width:0;background:repeating-linear-gradient(90deg,var(--lcd-ink) 0 5px,transparent 5px 7px)}
+.bar .mk{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--lcd-ink);left:0;opacity:0}
+.bar .mk.leq{background:var(--accent)}
+.scale{display:flex;justify-content:space-between;font-size:11px;color:var(--lcd-dim);margin-top:-4px}
+.subs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;border-top:1px solid var(--lcd-dim);padding-top:8px}
+.subs div{display:flex;flex-direction:column;min-width:0}
+.subs b{font-size:12px;font-weight:500;color:var(--lcd-dim);white-space:nowrap}
+.subs span{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.meta{display:flex;justify-content:space-between;font-size:12px;color:var(--lcd-dim)}
+/* Controls */
+.ctl{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld>label,.lbl{font-family:var(--f-display);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--bg)}
+.seg button{font-family:var(--f-num);font-weight:700;font-size:15px;min-width:42px;padding:8px 10px;border:0;background:transparent;color:var(--ink);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.seg.sm button{font-size:13px;min-width:0;padding:6px 9px;font-family:var(--f-display);letter-spacing:.06em}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btn{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;padding:9px 14px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--signal);border-color:var(--signal);color:#fff}
+.btn.rec .dot{width:10px;height:10px;border-radius:50%;background:var(--crit)}
+.btn.rec[aria-pressed="true"]{background:var(--crit);border-color:var(--crit);color:#fff}
+.btn.rec[aria-pressed="true"] .dot{background:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select,input[type=number]{font-family:var(--f-body);font-size:15px;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);min-width:0}
+input[type=number]{width:110px;font-family:var(--f-num)}
+.msg{font-size:14px;padding:10px 12px;border-radius:7px;border:1px solid var(--warn);color:var(--ink);background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.note{font-size:13px;color:var(--muted);margin:0}
+/* Tables */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.06em;color:var(--muted)}
+td{font-family:var(--f-num);font-size:14px}
+th:first-child,td:first-child{text-align:left}
+tr.sel td{background:color-mix(in srgb,var(--signal) 12%,transparent)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.kv div{border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:flex;flex-direction:column;background:var(--bg)}
+.kv b{font-family:var(--f-display);font-weight:600;font-size:12px;letter-spacing:.06em;color:var(--muted)}
+.kv span{font-family:var(--f-num);font-weight:700;font-size:17px;font-variant-numeric:tabular-nums}
+canvas{display:block;width:100%;border-radius:6px;background:var(--bg)}
+#rta{height:260px}#hist{height:190px}
+.opts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px;color:var(--muted);align-items:center}
+.opts label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.bottom{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media(min-width:900px){.bottom{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}}
+.recstat{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--f-num);font-size:14px}
+.recstat b{font-family:var(--f-display);font-weight:600;color:var(--muted);letter-spacing:.06em;margin-right:4px}
+details.guide{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+details.guide summary{cursor:pointer;font-family:var(--f-display);font-weight:600;font-size:16px;letter-spacing:.1em;text-transform:uppercase}
+.gl{display:grid;grid-template-columns:minmax(0,1fr);gap:4px 24px;margin-top:10px}
+@media(min-width:760px){.gl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.gl p{margin:6px 0;max-width:62ch;font-size:14px}
+.gl code{font-family:var(--f-num);font-weight:700;font-size:13px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>Medidor SPL</h1>
+      <p>Ponderação A · B · C · Z — tempo F · S · I — Leq — RTA</p>
+    </div>
+    <span class="chip" id="srcChip"><i></i><span id="srcTxt">Parado</span></span>
+  </header>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel" aria-label="Leitura">
+        <div class="lcd">
+          <div class="flags">
+            <span class="over" id="fOver">OVER</span>
+            <span class="rec" id="fRec">REC</span>
+            <span id="fPause">PAUSA</span>
+            <span id="fCal">NÃO CAL</span>
+            <span class="desc" id="tElapsed">00:00:00</span>
+          </div>
+          <div class="big">
+            <span class="lab" id="bigLab">L<sub>AF</sub></span>
+            <span class="val" id="bigVal">--.-</span>
+            <span class="unit">dB</span>
+          </div>
+          <div class="bar" aria-hidden="true"><div class="fill" id="barFill"></div><div class="mk" id="mkMax"></div><div class="mk leq" id="mkLeq"></div></div>
+          <div class="scale" aria-hidden="true"><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span><span>120</span><span>140</span></div>
+          <div class="subs">
+            <div><b id="sLeqL">LAeq</b><span id="sLeq">--.-</span></div>
+            <div><b id="sMaxL">LAFmax</b><span id="sMax">--.-</span></div>
+            <div><b id="sMinL">LAFmin</b><span id="sMin">--.-</span></div>
+            <div><b id="sPkL">LCpico</b><span id="sPk">--.-</span></div>
+          </div>
+          <div class="meta"><span id="metaSrc">fonte: —</span><span id="metaFs">— kHz</span></div>
+        </div>
+
+        <div class="ctl">
+          <div class="fld"><span class="lbl" id="lblW">Ponderação de frequência</span>
+            <div class="seg" role="group" aria-labelledby="lblW" id="segW">
+              <button type="button" data-w="0" aria-pressed="true">A</button><button type="button" data-w="1" aria-pressed="false">B</button><button type="button" data-w="2" aria-pressed="false">C</button><button type="button" data-w="3" aria-pressed="false">Z</button>
+            </div></div>
+          <div class="fld"><span class="lbl" id="lblT">Ponderação de tempo</span>
+            <div class="seg" role="group" aria-labelledby="lblT" id="segT">
+              <button type="button" data-t="0" aria-pressed="true" title="Fast, 125 ms">F</button><button type="button" data-t="1" aria-pressed="false" title="Slow, 1 s">S</button><button type="button" data-t="2" aria-pressed="false" title="Impulse, 35 ms subida / 1,5 s descida">I</button>
+            </div></div>
+        </div>
+
+        <div class="btns">
+          <button type="button" class="btn primary" id="bMic">Iniciar microfone</button>
+          <button type="button" class="btn" id="bPause" disabled>Pausar</button>
+          <button type="button" class="btn" id="bReset">Zerar</button>
+          <button type="button" class="btn rec" id="bRec" aria-pressed="false" disabled><span class="dot"></span>Gravar dados</button>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn" id="bDemo">Sinal de demonstração</button>
+          <label class="btn" for="fileIn">Analisar arquivo de áudio</label>
+          <input type="file" id="fileIn" accept="audio/*" class="vh">
+          <label class="opts" id="monWrap" hidden><input type="checkbox" id="monitor"> ouvir o arquivo</label>
+        </div>
+        <div class="fld" id="devWrap" hidden><label for="devSel">Entrada de áudio</label><select id="devSel"></select></div>
+        <div class="msg" id="msg" hidden></div>
+      </section>
+
+      <section class="panel" aria-label="Integração">
+        <div class="ph"><h2>Leq e integração</h2><small id="durTxt">desde o último zerar · 0 s</small></div>
+        <div class="tw"><table id="tbl">
+          <thead><tr><th>Pond.</th><th>Leq</th><th>LE (SEL)</th><th>Lpico</th><th id="thMax">LFmax</th><th id="thMin">LFmin</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="kv" id="kv"></div>
+        <p class="note" id="lnNote">Percentis LN calculados sobre L<sub>AF</sub>.</p>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel" aria-label="RTA">
+        <div class="ph"><h2>RTA</h2>
+          <div class="seg sm" role="group" aria-label="Resolução" id="segB">
+            <button type="button" data-b="third" aria-pressed="true">1/3 oitava</button><button type="button" data-b="oct" aria-pressed="false">1/1 oitava</button>
+          </div></div>
+        <canvas id="rta" role="img" aria-label="Analisador de espectro em tempo real por bandas"></canvas>
+        <div class="opts">
+          <label><input type="checkbox" id="oPk" checked> pico retido</label>
+          <label><input type="checkbox" id="oLeq" checked> Leq por banda</label>
+          <span id="rtaCap">níveis em dB(A)</span>
+        </div>
+      </section>
+      <section class="panel" aria-label="Histórico">
+        <div class="ph"><h2>Histórico</h2>
+          <div class="seg sm" role="group" aria-label="Janela" id="segH">
+            <button type="button" data-h="30" aria-pressed="true">30 s</button><button type="button" data-h="120" aria-pressed="false">2 min</button><button type="button" data-h="300" aria-pressed="false">5 min</button>
+          </div></div>
+        <canvas id="hist" role="img" aria-label="Nível sonoro ao longo do tempo"></canvas>
+        <div class="opts"><span id="histCap">linha cheia: LAF · tracejada: LAeq acumulado</span></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <section class="panel" aria-label="Gravação de dados">
+      <div class="ph"><h2>Gravação de dados</h2><small>registra níveis, não áudio</small></div>
+      <div class="ctl">
+        <div class="fld"><label for="recInt">Intervalo</label>
+          <select id="recInt"><option value="0.1">100 ms</option><option value="0.5">500 ms</option><option value="1" selected>1 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="60">1 min</option></select></div>
+        <div class="fld"><label for="recFmt">Formato CSV</label>
+          <select id="recFmt"><option value="br" selected>Excel BR ( ; e vírgula )</option><option value="int">Internacional ( , e ponto )</option></select></div>
+        <label class="opts"><input type="checkbox" id="recBands"> incluir bandas de 1/3 de oitava</label>
+      </div>
+      <div class="recstat"><span><b>LINHAS</b><span id="rRows">0</span></span><span><b>DURAÇÃO</b><span id="rDur">00:00:00</span></span><span><b>ESTADO</b><span id="rState">parado</span></span></div>
+      <div class="tw"><table id="recTbl"><thead><tr><th>Hora</th><th>LAeq</th><th>LCeq</th><th>LZeq</th><th>LAFmax</th><th>LCpico</th></tr></thead><tbody><tr><td colspan="6" style="text-align:left;font-family:var(--f-body);color:var(--muted)">Toque em Gravar dados com uma medição em andamento. Cada linha guarda os níveis do intervalo.</td></tr></tbody></table></div>
+      <div class="btns"><button type="button" class="btn" id="bExport" disabled>Exportar CSV</button><button type="button" class="btn" id="bClear" disabled>Limpar registro</button></div>
+    </section>
+
+    <section class="panel" aria-label="Calibração">
+      <div class="ph"><h2>Calibração</h2><small id="calState">padrão, não calibrado</small></div>
+      <p class="note">Microfones de celular e notebook não são calibrados. Use um calibrador acústico (94 ou 114 dB a 1 kHz) ou compare com um decibelímetro de referência no mesmo ponto e ajuste aqui.</p>
+      <div class="ctl">
+        <div class="fld"><label for="calOff">dB SPL em 0 dBFS</label><input type="number" id="calOff" step="0.1" value="120.0"></div>
+        <div class="fld"><label for="calRef">Referência (dB)</label><input type="number" id="calRef" step="0.1" value="94.0"></div>
+        <button type="button" class="btn" id="bCal">Calibrar com LZS atual</button>
+      </div>
+      <p class="note" id="micInfo">Processamento do navegador (cancelamento de eco, supressão de ruído, ganho automático) é desligado ao abrir o microfone.</p>
+    </section>
+  </div>
+
+  <details class="guide">
+    <summary>Como ler as medições</summary>
+    <div class="gl">
+      <div>
+        <p><code>A</code> aproxima a sensibilidade do ouvido a níveis baixos e atenua graves e agudos. É a ponderação exigida para ruído ambiental e ocupacional.</p>
+        <p><code>B</code> fica entre A e C. Vem da norma antiga IEC 60651 e saiu do corpo da IEC 61672; está aqui para comparação.</p>
+        <p><code>C</code> é quase plana, com pouca atenuação de graves. Usada para pico (LCpico) e para música ao vivo, onde o grave importa.</p>
+        <p><code>Z</code> é plana (zero). Mostra a pressão sonora sem correção.</p>
+        <p><code>F</code> Fast, constante de 125 ms. <code>S</code> Slow, 1 s. <code>I</code> Impulse, sobe em 35 ms e desce em 1,5 s.</p>
+      </div>
+      <div>
+        <p><code>Leq</code> nível contínuo equivalente: a média de energia no período. Escreve-se com a ponderação e a duração, como LAeq,5min.</p>
+        <p><code>LE</code> (SEL) nível de exposição sonora: toda a energia do período comprimida em 1 segundo. Bom para eventos isolados.</p>
+        <p><code>Lmax / Lmin</code> maior e menor nível com a ponderação de tempo escolhida. <code>Lpico</code> maior valor instantâneo, sem constante de tempo.</p>
+        <p><code>LN</code> nível excedido em N% do tempo. L10 indica os picos frequentes, L90 o ruído de fundo.</p>
+        <p><code>LEX,8h</code> LAeq normalizado para uma jornada de 8 h. <code>LC−LA</code> indica o quanto de grave há no som. 85 dB(A) diários é a referência comum de risco auditivo.</p>
+      </div>
+    </div>
+  </details>
+</div>
+
+<script>
+(()=>{
+"use strict";
+/* ---------- DSP worklet: ponderações A/B/C/Z (IEC, transformação bilinear com pré-distorção), detectores F/S/I, energia e pico ---------- */
+const WK=`
+class SplProc extends AudioWorkletProcessor{
+ constructor(){
+  super();
+  const fs=sampleRate,K=2*fs,pw=f=>2*Math.PI*f;
+  const w1=pw(20.598997),w2=pw(107.65265),w3=pw(737.86223),w5=pw(158.48932);
+  const bq=(b2,b1,b0,a2,a1,a0)=>{const k2=K*K,A0=a2*k2+a1*K+a0;return [(b2*k2+b1*K+b0)/A0,(2*b0-2*b2*k2)/A0,(b2*k2-b1*K+b0)/A0,(2*a0-2*a2*k2)/A0,(a2*k2-a1*K+a0)/A0]};
+  const fo=(b1,b0,a1,a0)=>{const A0=a1*K+a0;return [(b1*K+b0)/A0,(b0-b1*K)/A0,0,(a0-a1*K)/A0,0]};
+  const hp2=w=>bq(1,0,0,1,2*w,w*w);
+  const H=(d,f)=>{const om=2*Math.PI*f/fs,c1=Math.cos(om),s1=-Math.sin(om),c2=Math.cos(2*om),s2=-Math.sin(2*om);let g=1;for(const s of d){g*=Math.hypot(s[0]+s[1]*c1+s[2]*c2,s[1]*s1+s[2]*s2)/Math.hypot(1+s[3]*c1+s[4]*c2,s[3]*s1+s[4]*s2)}return g};
+  // polo duplo de 12194 Hz por casamento de polos (matched-z) + zero ajustado para seguir a curva A até 20 kHz
+  const p=Math.exp(-2*Math.PI*12194.217/fs),lpz=b=>[1,2*b,b*b,-2*p,p*p];
+  const tA=f=>{const f2=f*f,a=20.6*20.6,dd=12194*12194;return 20*Math.log10(dd*f2*f2/((f2+a)*Math.sqrt((f2+107.7*107.7)*(f2+737.9*737.9))*(f2+dd)))+2.0};
+  let best=1e9,beta=0;
+  for(let b=0;b<=1;b+=0.005){const d=[hp2(w1),bq(1,0,0,1,w2+w3,w2*w3),lpz(b)],g=H(d,1000);let err=0;for(let f=1000;f<=Math.min(20000,fs*0.45);f*=1.06)err=Math.max(err,Math.abs(20*Math.log10(H(d,f)/g)-tA(f)));if(err<best){best=err;beta=b}}
+  const D=[[hp2(w1),bq(1,0,0,1,w2+w3,w2*w3),lpz(beta)],[hp2(w1),fo(1,0,1,w5),lpz(beta)],[hp2(w1),lpz(beta)]];
+  for(const d of D){const g=H(d,1000);d[0][0]/=g;d[0][1]/=g;d[0][2]/=g}
+  this.sec=D.map(d=>d.map(c=>Float64Array.from([c[0],c[1],c[2],c[3],c[4],0,0])));
+  this.R=Math.exp(-2*Math.PI*2/fs);this.xp=0;this.yp=0;
+  this.aF=1-Math.exp(-1/(0.125*fs));this.aS=1-Math.exp(-1/fs);this.aIr=1-Math.exp(-1/(0.035*fs));this.aId=1-Math.exp(-1/(1.5*fs));
+  this.d=new Float64Array(12);this.m35=new Float64Array(4);this.mx=new Float64Array(12);this.mn=new Float64Array(12).fill(Infinity);
+  this.e=new Float64Array(4);this.pk=new Float64Array(4);this.cnt=0;this.N=Math.round(fs*0.05);this.clip=false;
+ }
+ ch(w,s){
+  const e2=s*s,d=this.d,b=w*3;this.e[w]+=e2;const a=s<0?-s:s;if(a>this.pk[w])this.pk[w]=a;
+  d[b]+=this.aF*(e2-d[b]);d[b+1]+=this.aS*(e2-d[b+1]);const m35=this.m35[w]+=this.aIr*(e2-this.m35[w]);d[b+2]=m35>d[b+2]?m35:d[b+2]+this.aId*(m35-d[b+2]);
+  for(let k=b;k<b+3;k++){const v=d[k];if(v>this.mx[k])this.mx[k]=v;if(v<this.mn[k])this.mn[k]=v}
+ }
+ process(inputs){
+  const inp=inputs[0],x=inp&&inp[0];if(!x)return true;
+  for(let i=0;i<x.length;i++){
+   const v=x[i];if(v>=0.999||v<=-0.999)this.clip=true;
+   const y0=v-this.xp+this.R*this.yp;this.xp=v;this.yp=y0;
+   this.ch(3,y0);
+   for(let w=0;w<3;w++){let s=y0;const ss=this.sec[w];for(let j=0;j<ss.length;j++){const c=ss[j],o=c[0]*s+c[5];c[5]=c[1]*s-c[3]*o+c[6];c[6]=c[2]*s-c[4]*o;s=o}this.ch(w,s)}
+   if(++this.cnt>=this.N){
+    this.port.postMessage({n:this.cnt,e:Array.from(this.e),pk:Array.from(this.pk),d:Array.from(this.d),mx:Array.from(this.mx),mn:Array.from(this.mn),clip:this.clip});
+    this.e.fill(0);this.pk.fill(0);this.mx.fill(0);this.mn.fill(Infinity);this.clip=false;this.cnt=0;
+   }
+  }
+  return true;
+ }
+}
+registerProcessor('spl-proc',SplProc);`;
+
+/* ---------- constantes ---------- */
+const W=['A','B','C','Z'],T=['F','S','I'];
+const THIRD=['25','31.5','40','50','63','80','100','125','160','200','250','315','400','500','630','800','1k','1.25k','1.6k','2k','2.5k','3.15k','4k','5k','6.3k','8k','10k','12.5k','16k','20k'];
+const OCT=['31.5','63','125','250','500','1k','2k','4k','8k','16k'];
+const FC3=THIRD.map((_,i)=>1000*Math.pow(10,(i-16)/10));
+const FC1=OCT.map((_,j)=>FC3[3*j+1]);
+const HBINS=1700,HMIN=-160; // histograma em dBFS, passo 0,1 dB
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+function wdb(w,f){ // correção analítica IEC 61672 / IEC 60651 (B)
+  if(w===3)return 0;const f2=f*f,a=20.6*20.6,d=12194*12194;
+  if(w===0)return 20*Math.log10(d*f2*f2/((f2+a)*Math.sqrt((f2+107.7*107.7)*(f2+737.9*737.9))*(f2+d)))+2.0;
+  if(w===1)return 20*Math.log10(d*f2*f/((f2+a)*Math.sqrt(f2+158.5*158.5)*(f2+d)))+0.17;
+  return 20*Math.log10(d*f2/((f2+a)*(f2+d)))+0.06;
+}
+
+/* ---------- estado ---------- */
+const st={w:0,t:0,band:'third',hwin:30,cal:parseFloat(store.get('spl.cal','120'))||120,calibrated:store.get('spl.calok','0')==='1',
+  ctx:null,node:null,an:null,inBus:null,mon:null,src:null,stream:null,demoTimer:null,kind:null,fs:48000,
+  paused:false,warmUntil:0,live:null,clipT:0,rec:false,rows:[],recT0:0};
+let S,R;
+function newAcc(withHist){return {E:new Float64Array(4),N:0,max:new Float64Array(12),min:new Float64Array(12).fill(Infinity),pk:new Float64Array(4),
+  hist:withHist?Array.from({length:12},()=>new Uint32Array(HBINS)):null,bandE:new Float64Array(30),bandT:0}}
+function resetS(){S=newAcc(true);S.bandPk=new Float64Array(30);H.len=0;H.i=0;}
+const H={n:3000,i:0,len:0,d:new Float32Array(3000*12),leq:new Float32Array(3000*4)};
+resetS();
+
+const L=ms=>ms>0?10*Math.log10(ms)+st.cal:-Infinity;
+const fmt=v=>Number.isFinite(v)?v.toFixed(1):'--.-';
+const hms=s=>{s=Math.floor(s);return [s/3600|0,(s/60|0)%60,s%60].map(n=>String(n).padStart(2,'0')).join(':')};
+const accOn=()=>st.kind&&!st.paused&&performance.now()>st.warmUntil;
+
+/* ---------- áudio ---------- */
+async function ensureCtx(){
+  if(st.ctx){if(st.ctx.state==='suspended')await st.ctx.resume();return}
+  const ctx=new AudioContext({latencyHint:'interactive'});st.ctx=ctx;st.fs=ctx.sampleRate;
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WK],{type:'application/javascript'})));
+  const inBus=ctx.createGain();inBus.channelCount=1;inBus.channelCountMode='explicit';inBus.channelInterpretation='speakers';
+  const node=new AudioWorkletNode(ctx,'spl-proc',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});
+  const an=ctx.createAnalyser();an.fftSize=32768;an.smoothingTimeConstant=0;
+  const sink=ctx.createGain();sink.gain.value=0;
+  inBus.connect(node);inBus.connect(an);node.connect(sink);an.connect(sink);sink.connect(ctx.destination);
+  const mon=ctx.createGain();mon.gain.value=0;mon.connect(ctx.destination);
+  node.port.onmessage=e=>onMsg(e.data);
+  Object.assign(st,{inBus,node,an,mon});
+  st.fbuf=new Float32Array(an.frequencyBinCount);
+  st.binBand=new Int8Array(an.frequencyBinCount).fill(-1);
+  for(let k=1;k<an.frequencyBinCount;k++){const f=k*st.fs/an.fftSize;const i=Math.round(10*Math.log10(f/1000))+16;if(i>=0&&i<30)st.binBand[k]=i}
+  st.bandNow=new Float64Array(30);
+  if(ctx.state==='suspended')await ctx.resume();
+}
+function stopSource(){
+  if(st.demoTimer){clearInterval(st.demoTimer);st.demoTimer=null}
+  if(st.src){try{st.src.stop&&st.src.stop()}catch(e){}try{st.src.disconnect()}catch(e){}st.src=null}
+  if(st.demoNodes){st.demoNodes.forEach(n=>{try{n.stop&&n.stop()}catch(e){}try{n.disconnect()}catch(e){}});st.demoNodes=null}
+  if(st.stream){st.stream.getTracks().forEach(t=>t.stop());st.stream=null}
+  if(st.mon)st.mon.gain.value=0;
+  st.kind=null;$('monWrap').hidden=true;
+}
+function started(kind,label){
+  st.kind=kind;st.paused=false;st.warmUntil=performance.now()+(kind==='file'?300:2500);
+  $('bPause').disabled=false;$('bRec').disabled=false;$('bPause').textContent='Pausar';
+  $('metaSrc').textContent='fonte: '+label;$('metaFs').textContent=(st.fs/1000).toFixed(1)+' kHz';
+  $('srcTxt').textContent=label;$('srcChip').classList.add('live');
+  $('bMic').textContent=kind==='mic'?'Parar microfone':'Iniciar microfone';
+}
+function stopped(){
+  stopSource();$('srcTxt').textContent='Parado';$('srcChip').classList.remove('live');$('bMic').textContent='Iniciar microfone';
+  $('bPause').disabled=true;if(st.rec)toggleRec();$('bRec').disabled=true;
+}
+function showMsg(t){const m=$('msg');m.textContent=t||'';m.hidden=!t}
+
+async function startMic(deviceId){
+  showMsg('');
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw Object.assign(new Error('sem API'),{name:'NotSupportedError'});
+    await ensureCtx();stopSource();
+    const c={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1};
+    if(deviceId)c.deviceId={exact:deviceId};
+    const stream=await navigator.mediaDevices.getUserMedia({audio:c});
+    st.stream=stream;st.src=st.ctx.createMediaStreamSource(stream);st.src.connect(st.inBus);
+    const tr=stream.getAudioTracks()[0],s=tr.getSettings?tr.getSettings():{};
+    started('mic','Microfone');
+    $('micInfo').textContent=`Entrada: ${tr.label||'microfone'} · eco ${s.echoCancellation?'LIGADO':'desligado'} · ruído ${s.noiseSuppression?'LIGADO':'desligado'} · ganho auto ${s.autoGainControl?'LIGADO':'desligado'}`+((s.echoCancellation||s.noiseSuppression||s.autoGainControl)?' — este navegador não aceitou desligar tudo; as leituras podem ficar baixas.':'');
+    listDevices(tr.getSettings&&s.deviceId);
+  }catch(err){
+    stopped();
+    const n=err&&err.name;
+    if(n==='NotAllowedError'||n==='SecurityError'||n==='NotSupportedError')
+      showMsg('O microfone foi bloqueado nesta visualização. Para medir ao vivo, abra o arquivo HTML do Medidor SPL direto em um navegador (Chrome, Edge, Firefox ou Safari) e permita o microfone. Aqui você pode usar o sinal de demonstração ou analisar um arquivo de áudio.');
+    else if(n==='NotFoundError')showMsg('Nenhum microfone encontrado. Conecte uma entrada de áudio e tente de novo.');
+    else showMsg('Não foi possível abrir o microfone ('+(err&&err.message||n)+').');
+  }
+}
+async function listDevices(cur){
+  try{const ds=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+    if(ds.length<2){$('devWrap').hidden=true;return}
+    const sel=$('devSel');sel.innerHTML='';ds.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||('Entrada '+(i+1));if(d.deviceId===cur)o.selected=true;sel.appendChild(o)});
+    $('devWrap').hidden=false;}catch(e){}
+}
+async function startDemo(){
+  showMsg('');await ensureCtx();stopSource();
+  const ctx=st.ctx,len=ctx.sampleRate*8,buf=ctx.createBuffer(1,len,ctx.sampleRate),d=buf.getChannelData(0);
+  let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+  for(let i=0;i<len;i++){const w=Math.random()*2-1;b0=.99886*b0+w*.0555179;b1=.99332*b1+w*.0750759;b2=.969*b2+w*.153852;b3=.8665*b3+w*.3104856;b4=.55*b4+w*.5329522;b5=-.7616*b5-w*.016898;d[i]=(b0+b1+b2+b3+b4+b5+b6+w*.5362)*.11;b6=w*.115926}
+  const mk=(lp,g)=>{const s=ctx.createBufferSource();s.buffer=buf;s.loop=true;s.loopStart=Math.random()*4;const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=lp;const gn=ctx.createGain();gn.gain.value=g;s.connect(f);f.connect(gn);gn.connect(st.inBus);s.start(0,Math.random()*7);return [s,f,gn]};
+  const [s1,f1,g1]=mk(16000,0.05);           // ambiente
+  const [s2,f2,g2]=mk(700,0.0);              // veículo passando
+  const hum=ctx.createOscillator();hum.frequency.value=120;const gh=ctx.createGain();gh.gain.value=0.004;hum.connect(gh);gh.connect(st.inBus);hum.start();
+  st.demoNodes=[s1,f1,g1,s2,f2,g2,hum,gh];
+  const ev=()=>{const t=ctx.currentTime;const r=Math.random();
+    if(r<0.45){g2.gain.cancelScheduledValues(t);g2.gain.setValueAtTime(0.0,t);g2.gain.linearRampToValueAtTime(0.25+Math.random()*0.35,t+2.5);g2.gain.linearRampToValueAtTime(0,t+5.5)}
+    else if(r<0.7){const o=ctx.createBufferSource();o.buffer=buf;const gg=ctx.createGain();gg.gain.setValueAtTime(0.9,t);gg.gain.exponentialRampToValueAtTime(0.001,t+0.12);o.connect(gg);gg.connect(st.inBus);o.start(t,Math.random()*7,0.15)}
+    g1.gain.linearRampToValueAtTime(0.03+Math.random()*0.05,t+3);};
+  ev();st.demoTimer=setInterval(ev,4000);
+  started('demo','Demonstração');
+}
+async function startFile(file){
+  showMsg('');await ensureCtx();stopSource();
+  try{const ab=await file.arrayBuffer();const buf=await st.ctx.decodeAudioData(ab);
+    const s=st.ctx.createBufferSource();s.buffer=buf;s.connect(st.inBus);s.connect(st.mon);
+    st.mon.gain.value=$('monitor').checked?1:0;
+    s.onended=()=>{if(st.src===s){st.src=null;stopped();$('metaSrc').textContent='fonte: arquivo terminado'}};
+    s.start();st.src=s;started('file','Arquivo');$('monWrap').hidden=false;$('metaSrc').textContent='fonte: '+file.name;
+  }catch(e){showMsg('Não consegui ler este arquivo de áudio. Tente WAV, MP3, M4A ou OGG.')}
+}
+
+/* ---------- mensagens do DSP ---------- */
+let msgCount=0;
+function onMsg(m){
+  st.live=m;if(m.clip)st.clipT=performance.now();
+  if(accOn()){
+    for(let w=0;w<4;w++){S.E[w]+=m.e[w];if(m.pk[w]>S.pk[w])S.pk[w]=m.pk[w]}
+    S.N+=m.n;
+    for(let c=0;c<12;c++){if(m.mx[c]>S.max[c])S.max[c]=m.mx[c];if(m.mn[c]<S.min[c])S.min[c]=m.mn[c];
+      const v=m.d[c];if(v>0){let b=Math.round((10*Math.log10(v)-HMIN)*10);b=b<0?0:b>=HBINS?HBINS-1:b;S.hist[c][b]++}}
+    if(st.rec)recAcc(m);
+  }
+  if((++msgCount&1)===0&&st.kind){ // histórico a 10 Hz
+    const i=H.i;for(let c=0;c<12;c++)H.d[i*12+c]=m.d[c]>0?10*Math.log10(m.d[c]):NaN;
+    for(let w=0;w<4;w++)H.leq[i*4+w]=S.N?10*Math.log10(S.E[w]/S.N):NaN;
+    H.i=(i+1)%H.n;if(H.len<H.n)H.len++;
+  }
+}
+
+/* ---------- gravação ---------- */
+function toggleRec(){
+  st.rec=!st.rec;const b=$('bRec');b.setAttribute('aria-pressed',String(st.rec));
+  b.lastChild.textContent=st.rec?'Parar gravação':'Gravar dados';
+  if(st.rec){R=newAcc(false);if(!st.rows.length)st.recT0=Date.now();st.recStartPerf=performance.now()}
+  $('rState').textContent=st.rec?'gravando':'parado';
+  updRec();
+}
+function recAcc(m){
+  for(let w=0;w<4;w++){R.E[w]+=m.e[w];if(m.pk[w]>R.pk[w])R.pk[w]=m.pk[w]}
+  R.N+=m.n;for(let c=0;c<12;c++){if(m.mx[c]>R.max[c])R.max[c]=m.mx[c];if(m.mn[c]<R.min[c])R.min[c]=m.mn[c]}
+  const iv=parseFloat($('recInt').value);
+  if(R.N>=iv*st.fs){
+    const now=new Date(),c=st.cal;const leq=w=>10*Math.log10(R.E[w]/R.N)+c;
+    const row={t:now,el:(now-st.recT0)/1000,v:[leq(0),leq(1),leq(2),leq(3),
+      10*Math.log10(R.max[0])+c,10*Math.log10(R.min[0])+c,10*Math.log10(R.max[1])+c,
+      20*Math.log10(R.pk[2])+c,20*Math.log10(R.pk[3])+c, 10*Math.log10(m.d[st.w*3+st.t])+c],
+      sel:'L'+W[st.w]+T[st.t],bands:null};
+    if($('recBands').checked&&R.bandT>0)row.bands=Array.from(R.bandE,e=>10*Math.log10(e/R.bandT)+c);
+    st.rows.push(row);R=newAcc(false);updRec(true);
+  }
+}
+let lastRecUI=0;
+function updRec(force){
+  const n=st.rows.length;$('rRows').textContent=n;$('bExport').disabled=!n;$('bClear').disabled=!n;
+  $('rDur').textContent=hms(n?st.rows[n-1].el:0);
+  const now=performance.now();if(!force&&now-lastRecUI<500)return;lastRecUI=now;
+  if(!n)return;const tb=$('recTbl').tBodies[0];tb.innerHTML='';
+  st.rows.slice(-6).reverse().forEach(r=>{const tr=document.createElement('tr');
+    [r.t.toLocaleTimeString('pt-BR')+(parseFloat($('recInt').value)<1?'.'+String(r.t.getMilliseconds()).padStart(3,'0').slice(0,1):''),fmt(r.v[0]),fmt(r.v[2]),fmt(r.v[3]),fmt(r.v[4]),fmt(r.v[7])].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.appendChild(td)});tb.appendChild(tr)});
+}
+function csv(){
+  const br=$('recFmt').value==='br',sep=br?';':',',num=v=>Number.isFinite(v)?(br?v.toFixed(1).replace('.',','):v.toFixed(1)):'';
+  const anyB=st.rows.some(r=>r.bands);
+  const head=['data_hora','t_s','LAeq','LBeq','LCeq','LZeq','LAFmax','LAFmin','LBFmax','LCpico','LZpico','L_instantaneo','ponderacao_inst'];
+  if(anyB)THIRD.forEach(b=>head.push('LZeq_'+b+'Hz'));
+  const lines=['# Medidor SPL — registro de niveis (dB re 20 uPa)','# calibracao: '+st.cal.toFixed(1)+' dB SPL em 0 dBFS'+(st.calibrated?'':' (nao calibrado)')+'; intervalo '+$('recInt').value+' s; taxa '+st.fs+' Hz',head.join(sep)];
+  for(const r of st.rows){const iso=new Date(r.t.getTime()-r.t.getTimezoneOffset()*60000).toISOString().slice(0,23).replace('T',' ');
+    const a=[iso,br?r.el.toFixed(2).replace('.',','):r.el.toFixed(2)].concat(r.v.map(num),[r.sel]);
+    if(anyB)(r.bands||new Array(30).fill(NaN)).forEach(v=>a.push(num(v)));lines.push(a.join(sep))}
+  return '﻿'+lines.join('\r\n');
+}
+const dlP=(window.claude&&typeof window.claude.use==='function')?window.claude.use('downloads').catch(()=>null):Promise.resolve(null);
+async function exportCsv(){
+  const data=csv(),d=new Date(),name='spl-registro-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'.csv';
+  const dl=await dlP;
+  if(dl){try{await dl.save({filename:name,data});showMsg('')}catch(e){if(e&&e.code!=='declined')showMsg('Não foi possível salvar o CSV nesta visualização ('+(e&&e.code||'erro')+').')}return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'text/csv'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+}
+
+/* ---------- canvas ---------- */
+let colors={};function readColors(){const cs=getComputedStyle(document.documentElement);['--ink','--muted','--line','--signal','--accent','--warn','--crit','--bg'].forEach(k=>colors[k]=cs.getPropertyValue(k).trim())}
+readColors();matchMedia('(prefers-color-scheme: dark)').addEventListener('change',readColors);new MutationObserver(readColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+function fit(cv){const r=cv.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);return [g,r.width,r.height]}
+
+function drawRTA(){
+  const [g,w,h]=fit($('rta'));g.clearRect(0,0,w,h);
+  const padL=34,padR=8,padT=10,padB=26,pw=w-padL-padR,ph=h-padT-padB,ymin=0,ymax=120,Y=v=>padT+ph*(1-(Math.min(ymax,Math.max(ymin,v))-ymin)/(ymax-ymin));
+  g.font='11px "JetBrains Mono",monospace';g.textAlign='right';g.textBaseline='middle';
+  for(let v=0;v<=120;v+=20){g.strokeStyle=colors['--line'];g.lineWidth=1;g.beginPath();g.moveTo(padL,Y(v)+.5);g.lineTo(w-padR,Y(v)+.5);g.stroke();g.fillStyle=colors['--muted'];g.fillText(String(v),padL-6,Y(v))}
+  const oct=st.band==='oct',labels=oct?OCT:THIRD,fc=oct?FC1:FC3,n=labels.length,bw=pw/n;
+  const getMs=(arr,i)=>oct?arr[3*i]+arr[3*i+1]+arr[3*i+2]:arr[i];
+  const has=!!st.bandNow&&st.kind;
+  for(let i=0;i<n;i++){
+    const x=padL+i*bw,corr=wdb(st.w,fc[i]);
+    if(has){const v=L(getMs(st.bandNow,i))+corr;if(Number.isFinite(v)){g.fillStyle=v>100?colors['--crit']:v>85?colors['--warn']:colors['--signal'];const y=Y(v);g.fillRect(x+bw*.12,y,bw*.76,Y(ymin)-y)}}
+    if($('oPk').checked&&S.bandPk){const v=L(getMs(S.bandPk,i))+corr;if(Number.isFinite(v)){g.fillStyle=colors['--ink'];g.fillRect(x+bw*.12,Y(v)-1,bw*.76,2)}}
+    if($('oLeq').checked&&S.bandT>0){const v=L(getMs(S.bandE,i)/S.bandT)+corr;if(Number.isFinite(v)){g.fillStyle=colors['--accent'];g.beginPath();g.arc(x+bw/2,Y(v),3,0,7);g.fill()}}
+    const show=oct||(i%3===1)||(bw>26);
+    if(show){g.save();g.fillStyle=colors['--muted'];g.textAlign='center';g.textBaseline='top';g.fillText(labels[i],x+bw/2,h-padB+6);g.restore()}
+  }
+  if(!has){g.fillStyle=colors['--muted'];g.textAlign='center';g.font='14px Barlow,system-ui,sans-serif';g.fillText('Inicie uma fonte para ver o espectro por bandas',padL+pw/2,padT+ph/2)}
+}
+function drawHist(){
+  const [g,w,h]=fit($('hist'));g.clearRect(0,0,w,h);
+  const padL=34,padR=8,padT=10,padB=22,pw=w-padL-padR,ph=h-padT-padB,ymin=20,ymax=130,Y=v=>padT+ph*(1-(Math.min(ymax,Math.max(ymin,v))-ymin)/(ymax-ymin));
+  g.font='11px "JetBrains Mono",monospace';g.textAlign='right';g.textBaseline='middle';
+  for(let v=30;v<=130;v+=20){g.strokeStyle=colors['--line'];g.lineWidth=1;g.beginPath();g.moveTo(padL,Y(v)+.5);g.lineTo(w-padR,Y(v)+.5);g.stroke();g.fillStyle=colors['--muted'];g.fillText(String(v),padL-6,Y(v))}
+  const pts=Math.min(H.len,st.hwin*10),X=k=>padL+pw*(1-(pts-1-k)/(st.hwin*10-1));
+  g.textAlign='center';g.textBaseline='top';g.fillStyle=colors['--muted'];
+  const step=st.hwin<=30?10:st.hwin<=120?30:60;for(let s=0;s<=st.hwin;s+=step){const x=padL+pw*(1-s/st.hwin);g.fillText(s?'-'+s+'s':'agora',Math.min(w-padR-14,Math.max(padL+10,x)),h-padB+6)}
+  if(pts<2){g.font='14px Barlow,system-ui,sans-serif';g.textBaseline='middle';g.fillText('O nível aparece aqui ao longo do tempo',padL+pw/2,padT+ph/2);return}
+  const ch=st.w*3+st.t,line=(get,col,dash)=>{g.strokeStyle=col;g.lineWidth=dash?1.5:1.6;g.setLineDash(dash?[5,4]:[]);g.beginPath();let pen=false;for(let k=0;k<pts;k++){const idx=(H.i-pts+k+H.n)%H.n,v=get(idx);if(!Number.isFinite(v)){pen=false;continue}const x=X(k),y=Y(v+st.cal);pen?g.lineTo(x,y):g.moveTo(x,y);pen=true}g.stroke();g.setLineDash([])};
+  line(i=>H.d[i*12+ch],colors['--signal'],false);line(i=>H.leq[i*4+st.w],colors['--accent'],true);
+}
+
+/* ---------- UI de leitura ---------- */
+function setMk(el,v){if(!Number.isFinite(v)){el.style.opacity=0;return}el.style.opacity=1;el.style.left=Math.max(0,Math.min(100,(v-20)/1.2))+'%'}
+function ln(ch,p){const h=S.hist[ch];let tot=0;for(let i=0;i<HBINS;i++)tot+=h[i];if(!tot)return -Infinity;const tgt=tot*p/100;let acc=0;for(let i=HBINS-1;i>=0;i--){acc+=h[i];if(acc>=tgt)return HMIN+i/10+st.cal}return -Infinity}
+let lastNum=0,lastTbl=0,lastRta=0,prevF=performance.now();
+function labels(){
+  const w=W[st.w],t=T[st.t];
+  $('bigLab').innerHTML='L<sub>'+w+t+'</sub>';$('sLeqL').textContent='L'+w+'eq';$('sMaxL').textContent='L'+w+t+'max';$('sMinL').textContent='L'+w+t+'min';
+  $('sPkL').textContent='L'+(st.w===3?'Z':'C')+'pico';
+  $('thMax').textContent='L'+t+'max';$('thMin').textContent='L'+t+'min';
+  $('lnNote').innerHTML='Percentis LN calculados sobre L<sub>'+w+t+'</sub>.';
+  $('rtaCap').textContent=st.w===3?'níveis em dB(Z), sem ponderação':'níveis em dB('+w+')';
+  $('histCap').textContent='linha cheia: L'+w+t+' · tracejada: L'+w+'eq acumulado';
+}
+function tables(){
+  const tb=$('tbl').tBodies[0],dur=S.N/st.fs;tb.innerHTML='';
+  for(let w=0;w<4;w++){const leq=S.N?L(S.E[w]/S.N):-Infinity,tr=document.createElement('tr');if(w===st.w)tr.className='sel';
+    [W[w],fmt(leq),fmt(leq+10*Math.log10(Math.max(dur,1e-9))),fmt(L(S.pk[w]*S.pk[w])),fmt(L(S.max[w*3+st.t])),fmt(S.min[w*3+st.t]===Infinity?-Infinity:L(S.min[w*3+st.t]))].forEach((x,i)=>{const td=document.createElement('td');td.textContent=x;tr.appendChild(td)});tb.appendChild(tr)}
+  const ch=st.w*3+st.t,la=S.N?L(S.E[0]/S.N):-Infinity,lc=S.N?L(S.E[2]/S.N):-Infinity;
+  const items=[['L1',ln(ch,1)],['L5',ln(ch,5)],['L10',ln(ch,10)],['L50',ln(ch,50)],['L90',ln(ch,90)],['L95',ln(ch,95)],['L99',ln(ch,99)],['LEX,8h',dur>0?la+10*Math.log10(dur/28800):-Infinity],['LC−LA',lc-la]];
+  $('kv').innerHTML=items.map(([k,v])=>`<div><b>${k}</b><span>${fmt(v)}</span></div>`).join('');
+  $('durTxt').textContent='desde o último zerar · '+hms(dur);
+}
+function frame(now){
+  const dt=Math.min(0.2,(now-prevF)/1000);prevF=now;
+  const m=st.live,ch=st.w*3+st.t;
+  $('fOver').classList.toggle('on',now-st.clipT<1000);$('fRec').classList.toggle('on',st.rec);$('fPause').classList.toggle('on',st.paused);$('fCal').classList.toggle('on',!st.calibrated);
+  if(m&&st.kind){
+    const v=L(m.d[ch]);$('barFill').style.width=Math.max(0,Math.min(100,(v-20)/1.2))+'%';
+    if(now-lastNum>(st.t===1?250:125)){lastNum=now;$('bigVal').textContent=fmt(v);
+      const leq=S.N?L(S.E[st.w]/S.N):-Infinity,pw=st.w===3?3:2;
+      $('sLeq').textContent=fmt(leq);$('sMax').textContent=fmt(L(S.max[ch]));$('sMin').textContent=fmt(S.min[ch]===Infinity?-Infinity:L(S.min[ch]));$('sPk').textContent=fmt(L(S.pk[pw]*S.pk[pw]));
+      setMk($('mkLeq'),leq);setMk($('mkMax'),L(S.max[ch]));$('tElapsed').textContent=hms(S.N/st.fs);}
+  }
+  if(st.an&&st.kind&&now-lastRta>40){
+    const fdt=(now-lastRta)/1000;lastRta=now;st.an.getFloatFrequencyData(st.fbuf);
+    const raw=new Float64Array(30),fb=st.fbuf,bb=st.binBand;
+    for(let k=1;k<fb.length;k++){const i=bb[k];if(i>=0){const x=fb[k];if(x>-300)raw[i]+=Math.pow(10,x/10)}}
+    const a=1-Math.exp(-Math.min(fdt,0.2)/(st.t===1?1:0.125)),on=accOn();
+    for(let i=0;i<30;i++){const ms=raw[i]*2/0.3046;st.bandNow[i]+=a*(ms-st.bandNow[i]);
+      if(on){S.bandE[i]+=st.bandNow[i]*fdt;if(st.bandNow[i]>S.bandPk[i])S.bandPk[i]=st.bandNow[i];if(st.rec&&R)R.bandE[i]+=st.bandNow[i]*fdt}}
+    if(on){S.bandT+=fdt;if(st.rec&&R)R.bandT+=fdt}
+    drawRTA();
+  }
+  if(now-lastTbl>300){lastTbl=now;tables();drawHist();if(!st.kind)drawRTA();if(st.rec)updRec()}
+  requestAnimationFrame(frame);
+}
+
+/* ---------- eventos ---------- */
+function seg(id,attr,fn){$(id).addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));fn(b.dataset[attr])})}
+seg('segW','w',v=>{st.w=+v;labels();lastNum=0;lastTbl=0});
+seg('segT','t',v=>{st.t=+v;labels();lastNum=0;lastTbl=0});
+seg('segB','b',v=>{st.band=v;drawRTA()});
+seg('segH','h',v=>{st.hwin=+v;drawHist()});
+$('bMic').addEventListener('click',()=>{if(st.kind==='mic')stopped();else startMic()});
+$('bDemo').addEventListener('click',startDemo);
+$('fileIn').addEventListener('change',e=>{const f=e.target.files[0];if(f)startFile(f);e.target.value=''});
+$('monitor').addEventListener('change',e=>{if(st.mon)st.mon.gain.value=e.target.checked?1:0});
+$('devSel').addEventListener('change',e=>startMic(e.target.value));
+$('bPause').addEventListener('click',()=>{st.paused=!st.paused;$('bPause').textContent=st.paused?'Continuar':'Pausar'});
+$('bReset').addEventListener('click',()=>{resetS();lastTbl=0;$('bigVal').textContent=st.kind?$('bigVal').textContent:'--.-'});
+$('bRec').addEventListener('click',toggleRec);
+$('bExport').addEventListener('click',exportCsv);
+$('bClear').addEventListener('click',()=>{st.rows=[];if(st.rec){st.recT0=Date.now();R=newAcc(false)}updRec(true);const tb=$('recTbl').tBodies[0];tb.innerHTML='<tr><td colspan="6" style="text-align:left;font-family:var(--f-body);color:var(--muted)">Registro limpo.</td></tr>'});
+function setCal(v,ok){st.cal=v;st.calibrated=ok;store.set('spl.cal',String(v));store.set('spl.calok',ok?'1':'0');$('calOff').value=v.toFixed(1);$('calState').textContent=ok?'calibrado':'padrão, não calibrado';lastNum=0;lastTbl=0}
+$('calOff').addEventListener('change',e=>{const v=parseFloat(e.target.value);if(Number.isFinite(v))setCal(v,true)});
+$('bCal').addEventListener('click',()=>{const ref=parseFloat($('calRef').value),m=st.live;
+  if(!st.kind||!m||!(m.d[10]>0)){showMsg('Inicie o microfone com o calibrador (ou o som de referência) tocando, espere a leitura estabilizar e calibre.');return}
+  if(!Number.isFinite(ref)){showMsg('Informe o nível de referência em dB.');return}
+  setCal(ref-10*Math.log10(m.d[10]),true);showMsg('')});
+setCal(st.cal,st.calibrated);labels();tables();
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

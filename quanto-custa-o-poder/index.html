@@ -41,11 +41,22 @@ h1{font-family:var(--f-display);font-stretch:72%;font-weight:850;font-size:clamp
 .ticker .val{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:clamp(28px,5.6vw,48px);line-height:1.1;color:var(--gold);overflow-wrap:anywhere}
 .ticker p{margin:0;color:var(--muted);max-width:56ch;font-size:13.5px}
 .summary .live{display:block;margin-top:2px;font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:12px;font-weight:500;color:var(--muted)}
-.ptabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 12px;margin-bottom:4px;scrollbar-width:thin}
-.ptab{appearance:none;flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);display:flex;gap:6px;align-items:baseline;white-space:nowrap}
+.split{display:grid;grid-template-columns:232px minmax(0,1fr);gap:20px;align-items:start;padding-bottom:40px}
+.split.solo{grid-template-columns:minmax(0,1fr)}
+.pane{min-width:0}
+.ptabs{display:flex;flex-direction:column;gap:4px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 62px);max-height:calc(100vh - 90px);overflow-y:auto;padding:2px 4px 2px 0;scrollbar-width:thin}
+.ptabs .lbl{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:2px 4px 6px}
+.pick{border:1px dashed var(--line);border-radius:6px;padding:28px 22px;color:var(--muted);background:var(--surface);max-width:60ch}
+.pick b{color:var(--ink)}
+@media (max-width:760px){.split{grid-template-columns:1fr}.ptabs{position:static;max-height:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.ptabs .lbl{grid-column:1/-1}}
+.ptab{appearance:none;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:8px 10px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;gap:8px;align-items:baseline;text-align:left;min-width:0}
+.ptab .nmp{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ptab .chev{display:inline-block;width:10px;color:var(--muted);transition:transform .15s}
+.ptab[aria-expanded="true"] .chev{transform:rotate(90deg)}
 .ptab .ct{font-family:var(--f-mono);font-size:11px;font-weight:500}
 .ptab:hover{border-color:var(--accent)}
-.ptab[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.ptab[aria-expanded="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.ptab[aria-expanded="true"] .chev,.ptab[aria-expanded="true"] .ct{color:var(--bg)}
 .av img,.av span{width:100%;height:100%}
 
 /* Abas */
@@ -62,7 +73,7 @@ nav.tabs .wrap::-webkit-scrollbar{display:none}
 .summary dt{font-size:12px;color:var(--muted)}
 .summary dd{margin:4px 0 0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:20px;overflow-wrap:anywhere}
 .summary dd.money{color:var(--gold)}
-@media (max-width:720px){.summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:720px){.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary dd{font-size:16px}}
 
 /* Controles */
 .controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
@@ -71,7 +82,7 @@ nav.tabs .wrap::-webkit-scrollbar{display:none}
 .controls select{flex:0 1 auto}
 
 /* Grade */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding-bottom:40px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
 .card{appearance:none;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px;cursor:pointer;display:grid;grid-template-columns:44px 1fr;gap:4px 12px;align-items:center;min-width:0}
 .card:hover{border-color:var(--accent)}
 .av{overflow:hidden;width:44px;height:44px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:15px;grid-row:span 2}
@@ -162,7 +173,9 @@ footer p{margin:0 0 4px;max-width:70ch}
   <dl class="summary" id="summary"></dl>
   <div id="emptyBox"></div>
   <div id="tabNote"></div>
-  <div class="ptabs" id="ptabs" role="tablist" aria-label="Partidos"></div>
+  <div class="split" id="split">
+  <nav class="ptabs" id="ptabs" aria-label="Partidos"></nav>
+  <div class="pane">
   <div class="controls" id="controls">
     <input id="q" type="search" placeholder="Buscar por nome" aria-label="Buscar por nome">
     <select id="f1" aria-label="Filtro"></select>
@@ -174,6 +187,8 @@ footer p{margin:0 0 4px;max-width:70ch}
     </select>
   </div>
   <div class="grid" id="grid"></div>
+  </div>
+  </div>
 </main>
 
 <footer class="wrap">
@@ -375,17 +390,23 @@ function renderControls(){
 
 function renderGrupos(inst, ms){
   const box = $("#ptabs");
+  $("#split").classList.toggle("solo", !inst.grupo || !ms.length);
   if(!inst.grupo || !ms.length){ box.hidden = true; box.innerHTML = ""; return; }
   box.hidden = false;
   const cnt = {}; ms.forEach(m=>{ const k=m[inst.grupo]; if(k) cnt[k]=(cnt[k]||0)+1; });
   const ks = Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b,"pt-BR"));
-  if(grupoSel[cur] && !cnt[grupoSel[cur]]) grupoSel[cur] = "";
-  const sel = grupoSel[cur]||"";
+  if(grupoSel[cur] && !cnt[grupoSel[cur]]) grupoSel[cur] = null;
+  const sel = grupoSel[cur] ?? null;
   const all = inst.grupo==="partido" ? "Todos os partidos" : "Todos os tribunais";
   box.setAttribute("aria-label", inst.grupo==="partido" ? "Partidos" : "Tribunais");
-  box.innerHTML = [["",all,ms.length],...ks.map(k=>[k,k,cnt[k]])].map(([k,l,n])=>
-    `<button class="ptab" role="tab" data-g="${esc(k)}" aria-pressed="${k===sel}">${esc(l)}<span class="ct">${n}</span></button>`).join("");
-  box.querySelectorAll(".ptab").forEach(b=>b.onclick=()=>{ grupoSel[cur]=b.dataset.g; renderGrupos(inst, ms); renderSummary(); renderGrid(); });
+  box.innerHTML = `<div class="lbl">${inst.grupo==="partido"?"Partidos":"Tribunais"}</div>` + [["",all,ms.length],...ks.map(k=>[k,k,cnt[k]])].map(([k,l,n])=>
+    `<button class="ptab" data-g="${esc(k)}" aria-expanded="${k===sel}" aria-controls="grid"><span class="nmp"><span class="chev" aria-hidden="true">›</span> ${esc(l)}</span><span class="ct">${n}</span></button>`).join("");
+  box.querySelectorAll(".ptab").forEach(b=>b.onclick=()=>{
+    const g = b.dataset.g;
+    grupoSel[cur] = grupoSel[cur]===g ? null : g;
+    renderGrupos(inst, ms); renderSummary(); renderGrid();
+    if(grupoSel[cur]!=null && innerWidth<=760) $("#controls").scrollIntoView({behavior:"smooth",block:"start"});
+  });
 }
 
 /* ---------- grade ---------- */
@@ -396,8 +417,14 @@ function renderGrid(){
   let ms = members(cur).filter(m=>{
     const n = (m.nome+" "+(m.nomeCivil||"")).toLowerCase().normalize("NFD").replace(/\p{M}/gu,"");
     const g = grupoSel[cur];
-    return (!q||n.includes(q)) && (!g||m[inst.grupo]===g) && (!v1||m[inst.f1]===v1) && (!v2||m[inst.f2]===v2);
+    return (!q||n.includes(q)) && (!g||!inst.grupo||m[inst.grupo]===g) && (!v1||m[inst.f1]===v1) && (!v2||m[inst.f2]===v2);
   });
+  const collapsed = inst.grupo && grupoSel[cur]==null && !q && members(cur).length;
+  $("#controls").querySelectorAll("select").forEach(x=>{ if(!x.dataset.keep) x.disabled = !!collapsed; });
+  if(collapsed){
+    $("#grid").innerHTML = `<div class="pick" style="grid-column:1/-1"><b>Escolha ${inst.grupo==="partido"?"um partido":"um tribunal"} na lista</b> para ver seus membros, ou "${inst.grupo==="partido"?"Todos os partidos":"Todos os tribunais"}" para ver a ${inst.key==="tribunais"?"lista completa":"casa inteira"}. A busca por nome procura em todos.</div>`;
+    return;
+  }
   ms.sort(so==="custo"?(a,b)=>custoMensal(b)-custoMensal(a):so==="gastos"?(a,b)=>(+b.gastos?.total||0)-(+a.gastos?.total||0):(a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
   $("#grid").innerHTML = ms.map(m=>{
     const tag = inst.tipo==="parl" ? `${esc(m.partido)}-${esc(m.uf)}` : esc(m.tribunal||inst.nome);

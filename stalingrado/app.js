@@ -856,6 +856,11 @@ function setZenith(on, quiet) {
   S.zen = on;
   const dir = camera.position.clone().sub(controls.target).normalize(), d = camera.position.distanceTo(controls.target);
   controls.enableRotate = !on; controls.screenSpacePanning = on;
+  // na vista zenital, arrastar (mouse esquerdo ou um dedo) desloca o mapa; na 3D, gira
+  controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+  controls.mouseButtons.RIGHT = on ? THREE.MOUSE.PAN : THREE.MOUSE.PAN;
+  controls.touches.ONE = on ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+  controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
   controls.minPolarAngle = 0; controls.maxPolarAngle = on ? 0.0009 : 1.4;
   if (!quiet) anim = { t0: performance.now(), dur: 900, fromT: controls.target.clone(), toT: controls.target.clone(), fromD: d, toD: on ? Math.max(d * 1.15, 8) : d, dir, toDir: on ? ZEN_DIR.clone() : TILT_DIR.clone() };
   $('zenBtn').setAttribute('aria-pressed', String(on)); $('zenBtn').textContent = on ? 'Vista 3D' : 'Vista zenital';

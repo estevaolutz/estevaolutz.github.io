@@ -1,0 +1,165 @@
+<meta charset="utf-8">
+<title>Dia D · Normandia 1944</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+/* Layout: a map table filling the screen; instruments float on its edges like a plotting room — title plate top-left, layers top-right, the clock and timeline as a brass rail along the bottom, the signal log as a drawer on the right. */
+:root{
+  --room:#0b1116; --room-2:#121b22;
+  --panel:rgba(13,20,27,.84); --panel-solid:#111a21; --line:rgba(196,212,224,.14); --line-2:rgba(196,212,224,.26);
+  --fg:#e8e6df; --muted:#97a3ab; --faint:#63707a;
+  --brass:#d9a441; --brass-2:#f1c46d;
+  --allied:#6ea6ef; --axis:#ec6656; --overprint:#b783c7;
+  --f-head:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-text:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--room);color:var(--fg);font:14px/1.45 var(--f-text);overflow:hidden;-webkit-font-smoothing:antialiased}
+#stage{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;outline:none}
+button,select,input{font:inherit;color:inherit}
+.panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:6px}
+.eyebrow{font:600 11px/1 var(--f-head);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+/* title plate */
+#plate{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));padding:12px 16px 12px;width:330px;max-width:calc(100vw - 32px);box-sizing:border-box}
+#plate h1{margin:6px 0 2px;font:700 28px/1.02 var(--f-head);letter-spacing:.02em;text-wrap:balance}
+#plate h1 span{color:var(--brass)}
+#plate p{margin:0;color:var(--muted);font-size:13px}
+/* right tools */
+#tools{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));width:260px;padding:12px;display:flex;flex-direction:column;gap:12px;max-height:calc(100% - 190px);overflow:auto;box-sizing:border-box}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line-2);background:transparent;border-radius:3px;padding:5px 8px;font:500 13px/1 var(--f-head);letter-spacing:.04em;cursor:pointer;color:var(--fg)}
+.chip:hover{border-color:var(--brass);color:var(--brass-2)}
+.chip[aria-pressed="true"]{background:var(--brass);border-color:var(--brass);color:#1a1307}
+.chip:focus-visible,.iconbtn:focus-visible,#track:focus-visible,.ev:focus-visible{outline:2px solid var(--brass-2);outline-offset:2px}
+.layers{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
+.layers label{display:flex;align-items:center;gap:6px;font:500 14px/1.2 var(--f-head);letter-spacing:.03em;cursor:pointer;color:var(--fg)}
+.layers input{accent-color:var(--brass);width:14px;height:14px;margin:0}
+.row{display:flex;align-items:center;gap:8px}
+.row input[type=range]{flex:1;accent-color:var(--brass)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+/* legend */
+#legend{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 8px}
+summary::marker{color:var(--brass)}
+#legend div{display:flex;align-items:center;gap:6px;font:500 13px/1.1 var(--f-head);color:var(--muted)}
+#legend canvas{width:34px;height:24px;flex:none}
+/* log drawer */
+#log{position:fixed;left:max(16px,env(safe-area-inset-left,0px));top:calc(148px + env(safe-area-inset-top,0px));bottom:calc(150px + env(safe-area-inset-bottom,0px));width:330px;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
+#log header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px 8px;border-bottom:1px solid var(--line)}
+#events{overflow:auto;padding:4px 0}
+.ev{display:grid;grid-template-columns:52px 1fr;gap:2px 10px;padding:7px 12px;cursor:pointer;border-left:3px solid transparent;opacity:.5}
+.ev:hover{background:rgba(255,255,255,.04)}
+.ev.past{opacity:.82}
+.ev.now{opacity:1;background:rgba(217,164,65,.10);border-left-color:var(--brass)}
+.ev time{font:500 12px/1.4 var(--f-mono);color:var(--brass-2)}
+.ev b{font:600 15px/1.2 var(--f-head);letter-spacing:.02em}
+.ev b.G{color:#f2a196}
+.ev p{grid-column:2;margin:0;font-size:13px;line-height:1.4;color:var(--muted)}
+/* unit card */
+#card{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(150px + env(safe-area-inset-bottom,0px));width:340px;padding:14px 16px;max-height:calc(100% - 200px);overflow:auto;box-sizing:border-box;z-index:3}
+#card .top{display:flex;gap:12px;align-items:flex-start}
+#card canvas{width:64px;height:46px;flex:none}
+#card h2{margin:2px 0 4px;font:700 21px/1.05 var(--f-head);text-wrap:balance}
+#card dl{display:grid;grid-template-columns:92px 1fr;gap:5px 10px;margin:12px 0 0;font-size:13px}
+#card dt{font:600 11px/1.6 var(--f-head);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+#card dd{margin:0;color:var(--fg)}
+#card .actions{display:flex;gap:8px;margin-top:12px}
+.close{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:0 2px}
+/* timeline rail */
+#rail{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));padding:10px 14px 12px;display:grid;grid-template-columns:auto auto 1fr auto;gap:6px 16px;align-items:center}
+#clock{font:600 40px/1 var(--f-mono);letter-spacing:-.02em;color:var(--brass-2);min-width:4.2ch}
+#date{font:500 13px/1.25 var(--f-head);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#date strong{display:block;color:var(--fg);font-weight:600;letter-spacing:.04em;font-size:15px}
+.iconbtn{width:44px;height:44px;border-radius:50%;border:1px solid var(--brass);background:rgba(217,164,65,.12);color:var(--brass-2);cursor:pointer;display:grid;place-items:center}
+.iconbtn:hover{background:rgba(217,164,65,.24)}
+.iconbtn svg{width:18px;height:18px;fill:currentColor}
+.transport{display:flex;align-items:center;gap:8px}
+.iconbtn.small{width:34px;height:34px;border-color:var(--line-2);background:transparent;color:var(--fg)}
+.iconbtn.small:hover{border-color:var(--brass);color:var(--brass-2)}
+.iconbtn.small svg{width:14px;height:14px}
+#trackwrap{grid-column:1/-1;position:relative;height:44px}
+#track{position:absolute;inset:0;width:100%;height:100%;cursor:pointer;border-radius:3px;touch-action:none}
+#speeds{display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+#autocam{margin-left:10px}
+#speeds .eyebrow{margin-right:4px}
+#tip{position:fixed;pointer-events:none;padding:6px 9px;font:500 13px/1.2 var(--f-head);letter-spacing:.03em;background:var(--panel-solid);border:1px solid var(--line-2);border-radius:4px;transform:translate(12px,12px);white-space:nowrap}
+#loading{position:fixed;inset:0;display:grid;place-items:center;background:var(--room);z-index:20;transition:opacity .6s}
+#loading div{text-align:center}
+#loading .bar{width:220px;height:2px;background:var(--line);margin:14px auto 0;overflow:hidden}
+#loading .bar i{display:block;height:100%;width:0;background:var(--brass);transition:width .3s}
+#loading h2{margin:0;font:700 26px/1 var(--f-head);letter-spacing:.06em}
+#togglelog{display:none}
+.hint{color:var(--faint);font-size:12px}
+@media (max-width:1100px){
+  #tools{width:230px}
+  #log{width:280px}
+  #plate{width:280px}
+  #card{width:300px}
+}
+@media (max-width:700px){
+  #plate{padding:8px 12px}
+  #plate h1{font-size:22px}
+  #plate p{display:none}
+  #tools{top:auto;bottom:calc(150px + env(safe-area-inset-bottom,0px));right:max(16px,env(safe-area-inset-right,0px));left:max(16px,env(safe-area-inset-left,0px));width:auto;max-height:40%}
+  #tools.collapsed>*:not(.toolhead){display:none}
+  #log{left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));width:auto;top:auto;max-height:42%;bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+  #plate{width:auto}
+  #log.hiddenm{display:none}
+  #togglelog{display:inline-block}
+  #card{left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));width:auto;bottom:calc(150px + env(safe-area-inset-bottom,0px));max-height:45%}
+  #clock{font-size:30px}
+  #rail{grid-template-columns:auto 1fr auto;gap:6px 10px}
+  #date{display:none}
+  #speeds .eyebrow{display:none}
+}
+.toolhead{display:flex;align-items:center;justify-content:space-between}
+@media (prefers-reduced-motion:reduce){#loading{transition:none}}
+</style>
+
+<canvas id="stage" tabindex="0" aria-label="Maquete 3D da Normandia em 6 de junho de 1944"></canvas>
+
+<div id="loading"><div><div class="eyebrow">Operação Neptune</div><h2>Montando a maquete</h2><div class="bar"><i id="loadbar"></i></div></div></div>
+
+<header id="plate" class="panel">
+  <div class="eyebrow">Operação Overlord · Neptune</div>
+  <h1>Dia D <span>·</span> 6 de junho de 1944</h1>
+  <p>Arraste para girar, role para aproximar. Toque numa unidade para ver a ficha.</p>
+</header>
+
+<aside id="tools" class="panel collapsed" aria-label="Controles do mapa">
+  <div class="toolhead"><span class="eyebrow">Setores</span><button class="chip" id="toolstoggle" type="button" aria-expanded="false">Camadas</button></div>
+  <div class="presets" id="presets"></div>
+  <div>
+    <div class="eyebrow" style="margin-bottom:8px">Camadas</div>
+    <div class="layers" id="layers"></div>
+  </div>
+  <div>
+    <div class="eyebrow" style="margin-bottom:6px">Exagero do relevo</div>
+    <div class="row"><input type="range" id="exag" min="1" max="14" step="0.5" value="6" aria-label="Exagero vertical do relevo"><span class="mono" id="exagv">6×</span></div>
+  </div>
+  <details id="legendbox">
+    <summary class="eyebrow" style="cursor:pointer;margin-bottom:8px">Legenda e comandos fora do mapa</summary>
+    <div id="legend"></div>
+    <div id="offmap" style="margin-top:12px"></div>
+  </details>
+</aside>
+
+<section id="log" class="panel" aria-label="Diário de eventos">
+  <header><span class="eyebrow">Diário de operações</span><span class="hint mono" id="evcount"></span></header>
+  <div id="events"></div>
+</section>
+
+<section id="card" class="panel" hidden aria-live="polite"></section>
+
+<footer id="rail" class="panel">
+  <div class="transport"><button class="iconbtn small" id="prevev" type="button" aria-label="Acontecimento anterior" title="Acontecimento anterior (,)"><svg viewBox="0 0 24 24"><path d="M6 5h2.4v14H6zM20 5v14L9.5 12z"/></svg></button><button class="iconbtn" id="play" type="button" aria-label="Reproduzir"><svg viewBox="0 0 24 24" id="playicon"><path d="M7 4.5v15l13-7.5z"/></svg></button><button class="iconbtn small" id="nextev" type="button" aria-label="Próximo acontecimento" title="Próximo acontecimento (.)"><svg viewBox="0 0 24 24"><path d="M15.6 5H18v14h-2.4zM4 5v14l10.5-7z"/></svg></button></div>
+  <div class="row" style="gap:14px"><div id="clock" class="mono" aria-live="off">00:00</div><div id="date"><strong>Terça, 6 jun 1944</strong><span id="phase">Noite</span></div></div>
+  <div></div>
+  <div id="speeds"><span class="eyebrow">Velocidade</span><button class="chip" id="autocam" type="button" aria-pressed="true" title="A câmera acompanha os acontecimentos durante a reprodução">Câmera automática</button><button class="chip togglelogbtn" id="togglelog" type="button">Diário</button></div>
+  <div id="trackwrap"><canvas id="track" tabindex="0" aria-label="Linha do tempo de 5 de junho, 22h00, a 7 de junho, 00h00"></canvas></div>
+</footer>
+
+<div id="tip" hidden></div>

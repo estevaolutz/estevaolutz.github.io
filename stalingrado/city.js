@@ -48,7 +48,7 @@ SG.CITY.DIVS = [
     start:'1942-09-22', end:'1943-02-02', fate:'Manteve as encostas leste de Mamayev Kurgan até o fim.' },
   { id:'d308', side:'su', nat:'su', type:'inf', ech:'XX', short:'308ª',
     name:'308ª Divisão de Fuzileiros', cmd:'Leonty Gurtiev', parent:'62º Exército',
-    men:'~8 000 (siberianos)',
+    men:'Siberianos; ~12 000 ao partir da Sibéria',
     eq:['Fuzis e submetralhadoras','Canhões de 45 mm em tiro direto','Morteiros de 82 mm'],
     notes:'Entrou na luta pela fábrica Barrikady em 2–3 out. No fim de outubro restavam algumas centenas de homens.',
     path:[['1942-10-02',48.776,1.1],['1942-10-25',48.774,0.5],['1942-11-10',48.772,0.3]],

@@ -379,6 +379,73 @@ const units = SG.UNITS.concat(DIVS).map(u => {
   const lbl = addLabel(u.short, new THREE.Vector3(), 'unit ' + u.side);
   return { u, path, start, end, model, symImg: symbolTex(u).image, lbl, pos: new THREE.Vector3(), head: 0, on: false, phase: Math.random() * 6.28 };
 });
+// ---------- efetivo ao longo do tempo ----------
+const ECH_REF = { XXXX: 90000, XXX: 35000, XX: 10000, X: 4000 };
+units.forEach(un => {
+  const st = SG.STR[un.u.id]; un.st = st || null;
+  if (!st) return;
+  un.sp = st.p.map(([d, men, tk, est]) => ({ t: day(d), men, tk: tk || 0, est: !!est }));
+  un.maxMen = Math.max(...un.sp.map(p => p.men)); un.maxTk = Math.max(...un.sp.map(p => p.tk));
+});
+function strengthAt(un, t) {
+  const p = un.sp; if (!p) return null;
+  if (t <= p[0].t) return { men: p[0].men, tk: p[0].tk, est: p[0].est };
+  if (t >= p[p.length - 1].t) return { men: p[p.length - 1].men, tk: p[p.length - 1].tk, est: p[p.length - 1].est };
+  for (let i = 1; i < p.length; i++) if (t <= p[i].t) {
+    const a = p[i - 1], b = p[i], f = (t - a.t) / (b.t - a.t || 1);
+    const exact = f < 0.02 ? !a.est : f > 0.98 ? !b.est : false;
+    return { men: a.men + (b.men - a.men) * f, tk: a.tk + (b.tk - a.tk) * f, est: !exact };
+  }
+}
+const fmtMen = n => n >= 10000 ? Math.round(n / 1000) + ' mil' : n >= 1000 ? (Math.round(n / 100) / 10).toString().replace('.', ',') + ' mil' : String(Math.round(n / 10) * 10);
+// área ocupada: elipse de frente × profundidade, colada ao relevo e orientada contra o inimigo mais próximo
+const FP_SEG = 28, FP_RING = 5;
+const fpMats = {}; const fpMat = c => fpMats[c] || (fpMats[c] = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
+const fpLineMats = {}; const fpLineMat = c => fpLineMats[c] || (fpLineMats[c] = new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.75, depthWrite: false }));
+units.forEach(un => {
+  if (!un.st || !un.st.f) return;
+  const nv = 1 + FP_SEG * FP_RING, pos = new Float32Array(nv * 3), idx = [];
+  for (let r = 0; r < FP_RING; r++) for (let k = 0; k < FP_SEG; k++) {
+    const a = r === 0 ? 0 : 1 + (r - 1) * FP_SEG + k, b = 1 + r * FP_SEG + k, c = 1 + r * FP_SEG + (k + 1) % FP_SEG, d = r === 0 ? 0 : 1 + (r - 1) * FP_SEG + (k + 1) % FP_SEG;
+    if (r === 0) idx.push(0, b, c); else idx.push(a, b, c, a, c, d);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx);
+  const col = SG.NAT[un.u.nat].color, m = new THREE.Mesh(g, fpMat(col)); m.renderOrder = 3; m.frustumCulled = false;
+  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array((FP_SEG + 1) * 3), 3));
+  const ln = new THREE.Line(lg, fpLineMat(col)); ln.renderOrder = 3; ln.frustumCulled = false;
+  const grp = new THREE.Group(); grp.add(m, ln); grp.visible = false; scene.add(grp);
+  un.fp = { grp, g, lg, ang: 0, key: '' };
+});
+function enemyDir(un) {
+  let best = null, bd = 1e9;
+  for (const o of units) {
+    if (!o.on || o.u.side === un.u.side || o.u.type === 'air' || !!o.u.div !== !!un.u.div) continue;
+    const d = Math.hypot(o.pos.x - un.pos.x, o.pos.z - un.pos.z); if (d < bd && d > 1e-3) { bd = d; best = o; }
+  }
+  if (!best || bd > (un.u.div ? 8 : 160)) return null;
+  return Math.atan2(best.pos.z - un.pos.z, best.pos.x - un.pos.x);
+}
+function updateFootprint(un, t) {
+  const fp = un.fp; if (!fp) return;
+  const show = un.on && S.filt.fp; fp.grp.visible = show; if (!show) return;
+  const sv = strengthAt(un, t), ratio = clamp(sv.men / un.maxMen, 0, 1);
+  const front = (S.cityView && un.st.fc ? un.st.fc : un.st.f) * (0.45 + 0.55 * Math.sqrt(ratio)) / 1.11;
+  const depth = front * (un.u.div ? 0.42 : un.u.ech === 'XXXX' ? 0.3 : 0.36);
+  const dir = enemyDir(un); if (dir != null) fp.ang = dir;
+  const key = [un.pos.x.toFixed(2), un.pos.z.toFixed(2), front.toFixed(3), fp.ang.toFixed(2)].join(',');
+  if (key === fp.key) return; fp.key = key;
+  // eixo da frente perpendicular à direção do inimigo; profundidade ao longo dela
+  const ux = -Math.sin(fp.ang), uz = Math.cos(fp.ang), vx = Math.cos(fp.ang), vz = Math.sin(fp.ang);
+  const pos = fp.g.attributes.position.array, lp = fp.lg.attributes.position.array, lift = un.u.div ? 0.02 : 0.08;
+  const put = (k, a, b) => { const x = un.pos.x + ux * a + vx * b, z = un.pos.z + uz * a + vz * b; pos[k * 3] = x; pos[k * 3 + 1] = heightAt(x, z) + lift; pos[k * 3 + 2] = z; };
+  put(0, 0, 0);
+  for (let r = 1; r <= FP_RING; r++) for (let k = 0; k < FP_SEG; k++) {
+    const th = k / FP_SEG * Math.PI * 2, f = r / FP_RING; put(1 + (r - 1) * FP_SEG + k, Math.cos(th) * front / 2 * f, Math.sin(th) * depth / 2 * f);
+  }
+  for (let k = 0; k <= FP_SEG; k++) { const i = 1 + (FP_RING - 1) * FP_SEG + k % FP_SEG; lp[k * 3] = pos[i * 3]; lp[k * 3 + 1] = pos[i * 3 + 1] + 0.005; lp[k * 3 + 2] = pos[i * 3 + 2]; }
+  fp.g.attributes.position.needsUpdate = true; fp.lg.attributes.position.needsUpdate = true;
+}
+
 function unitLL(un, t) {
   const p = un.path; if (t <= p[0].t) return p[0]; if (t >= p[p.length - 1].t) return p[p.length - 1];
   for (let i = 1; i < p.length; i++) if (t <= p[i].t) { const a = p[i - 1], b = p[i], f = (t - a.t) / (b.t - a.t || 1); return { lo: a.lo + (b.lo - a.lo) * f, la: a.la + (b.la - a.la) * f }; }
@@ -502,7 +569,7 @@ function applyWx(camD) {
 }
 
 // ---------- estado ----------
-const S = { t: 0, playing: false, speed: 5, sel: null, filt: { ax: true, su: true, hq: true, ar: true, lb: true, wx: true }, tab: 'op', curEvent: -1, cityView: false, wx: CLEAR, wxEntry: undefined };
+const S = { t: 0, playing: false, speed: 5, sel: null, filt: { ax: true, su: true, hq: true, ar: true, lb: true, wx: true, fp: true }, tab: 'op', curEvent: -1, cityView: false, wx: CLEAR, wxEntry: undefined };
 const BASE_DPS = 4; // 1× = 4 dias por segundo
 
 const PHASES = [
@@ -542,16 +609,24 @@ function update() {
   $('modeChip').hidden = !S.cityView;
   townDots.forEach(d => d.visible = MODE === 'chart' && !S.cityView);
   // unidades
+  units.forEach(un => { if (un.fp && !(t >= un.start && t <= un.end + 0.999)) un.fp.grp.visible = false; });
   units.forEach(un => {
     const on = t >= un.start && t <= un.end + 0.999 && S.filt[un.u.side] && (!!un.u.div === S.cityView);
     un.on = on; un.model.visible = on; un.lbl.vis = on && S.filt.lb;
-    if (!on) return;
+    if (!on) { if (un.fp) un.fp.grp.visible = false; return; }
     const ll = unitLL(un, t), g = G(ll.lo, ll.la, 0);
     un.pos.copy(g);
     const a = unitLL(un, t - 1.5), b = unitLL(un, t + 1.5), pa = P(a.lo, a.la), pb = P(b.lo, b.la);
     if (Math.hypot(pb.x - pa.x, pb.z - pa.z) > 1e-3) un.head = Math.atan2(-(pb.z - pa.z), pb.x - pa.x);
     else if (un.head === 0) un.head = un.u.side === 'ax' ? 0 : Math.PI;
+    if (un.sp) {
+      const sv = strengthAt(un, t); un.str = sv;
+      un.sizeK = un.u.type === 'air' ? 1 : clamp(Math.sqrt(sv.men / ECH_REF[un.u.ech]), 0.45, 1.6);
+      const txt = un.u.short + ' · ' + (un.st.unit ? Math.round(sv.men) + ' ' + un.st.unit : fmtMen(sv.men));
+      if (un.lbl.el.textContent !== txt) un.lbl.el.textContent = txt;
+    }
   });
+  units.forEach(un => { if (un.fp) updateFootprint(un, t); else if (un.fp) un.fp.grp.visible = false; });
   // QGs
   hqs.forEach(q => {
     const s = q.stays.find(s => t >= s.a && t <= s.b); q.cur = s || null;
@@ -616,6 +691,29 @@ function renderOp() {
   $('opNext').onclick = () => gotoEvent(S.curEvent + 1);
   $('opFocus').onclick = () => focusOn(e.focus);
 }
+function renderStr(un) {
+  if (!un.sp || !$('strChart')) return;
+  const sv = strengthAt(un, S.t), unit = un.st.unit;
+  $('strMen').textContent = unit ? Math.round(sv.men) + ' ' + unit : Math.round(sv.men / 100) * 100 >= 1000 ? (Math.round(sv.men / 100) * 100).toLocaleString('pt-BR') + ' homens' : Math.round(sv.men / 10) * 10 + ' homens';
+  $('strTk').textContent = un.maxTk ? ' · ' + Math.round(sv.tk) + ' tanques' : '';
+  $('strEst').hidden = !sv.est;
+  $('strBar').style.width = (sv.men / un.maxMen * 100).toFixed(1) + '%';
+  $('strBar').style.background = SG.NAT[un.u.nat].color;
+  $('strSrc').textContent = 'Fontes: ' + un.st.src.split(',').map(k => SG.STR_SRC[k] || k).join('; ') + '. Pontos vazados = estimativa.';
+  const cv = $('strChart'), g = cv.getContext('2d'), W = cv.width, H = cv.height, pad = 26, p = un.sp;
+  const t0 = 0, t1 = NDAYS, X = t => pad + (t - t0) / (t1 - t0) * (W - pad * 2), Y = v => H - 22 - v / un.maxMen * (H - 40);
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(230,226,214,.15)'; g.lineWidth = 1; g.beginPath(); g.moveTo(pad, H - 22); g.lineTo(W - pad, H - 22); g.stroke();
+  g.fillStyle = 'rgba(142,153,157,1)'; g.font = '20px "IBM Plex Mono", monospace';
+  [['1942-09-01', 'set'], ['1942-11-01', 'nov'], ['1943-01-01', 'jan']].forEach(([d, n]) => g.fillText(n, X(day(d)) - 14, H - 2));
+  const col = SG.NAT[un.u.nat].color;
+  g.beginPath(); p.forEach((q, i) => i ? g.lineTo(X(q.t), Y(q.men)) : g.moveTo(X(q.t), Y(q.men)));
+  g.lineTo(X(p[p.length - 1].t), H - 22); g.lineTo(X(p[0].t), H - 22); g.closePath(); g.fillStyle = col + '33'; g.fill();
+  g.beginPath(); p.forEach((q, i) => i ? g.lineTo(X(q.t), Y(q.men)) : g.moveTo(X(q.t), Y(q.men))); g.strokeStyle = col; g.lineWidth = 3; g.stroke();
+  p.forEach(q => { g.beginPath(); g.arc(X(q.t), Y(q.men), 6, 0, 7); if (q.est) { g.fillStyle = '#141b20'; g.fill(); g.strokeStyle = col; g.lineWidth = 2.5; g.stroke(); } else { g.fillStyle = col; g.fill(); } });
+  const xt = X(clamp(S.t, t0, t1)); g.strokeStyle = '#c9a35a'; g.lineWidth = 2; g.beginPath(); g.moveTo(xt, 6); g.lineTo(xt, H - 22); g.stroke();
+  g.fillStyle = 'rgba(230,226,214,.8)'; g.fillText(fmtMen(un.maxMen), 4, 22);
+}
 function natChip(n) { return `<span class="chip" style="--c:${SG.NAT[n].color}">${SG.NAT[n].name}</span>`; }
 function renderSel(soft) {
   const box = $('unitBody'), s = S.sel;
@@ -623,18 +721,23 @@ function renderSel(soft) {
   if (s.kind === 'unit') {
     const un = units.find(x => x.u.id === s.id), u = un.u;
     const status = S.t < un.start ? `Entra em cena em ${dateLabel(un.start)}` : S.t > un.end + 0.999 ? 'Fora de combate nesta data' : 'Em ação nesta data';
-    if (soft && box.dataset.id === u.id) { const st = box.querySelector('.status'); if (st) st.textContent = status; return; }
+    if (soft && box.dataset.id === u.id) { const st = box.querySelector('.status'); if (st) st.textContent = status; renderStr(un); return; }
     box.dataset.id = u.id;
     box.innerHTML = `<div class="u-head"><canvas id="uSym" width="192" height="152"></canvas><div>
       <div class="u-side ${u.side}">${u.side === 'ax' ? 'Eixo' : 'Exército Vermelho'} · ${({XXXX:'Exército',XXX:'Corpo',XX:'Divisão',X:'Brigada'})[u.ech]}</div>
       <h2 class="u-name">${esc(u.name)}</h2>${natChip(u.nat)}</div></div>
       <p class="status">${status}</p>
       <dl class="kv"><dt>Comando</dt><dd>${esc(u.cmd)}</dd><dt>Subordinado a</dt><dd>${esc(u.parent)}</dd>
-      <dt>Efetivo</dt><dd>${esc(u.men)}</dd><dt>Em cena</dt><dd class="num">${dateLabel(un.start)} – ${dateLabel(un.end)}</dd></dl>
+      <dt>Em cena</dt><dd class="num">${dateLabel(un.start)} – ${dateLabel(un.end)}</dd></dl>
+      ${un.sp ? `<h3>Efetivo</h3><div class="str"><div class="str-now"><b id="strMen"></b><span id="strTk"></span><span id="strEst" class="est">estimado</span></div>
+      <div class="str-bar"><i id="strBar"></i></div><canvas id="strChart" width="680" height="150"></canvas>
+      <p class="muted small" id="strSrc"></p></div>` : ''}
+      <p class="muted small">${un.sp ? "Nota: " : ""}${esc(u.men)}</p>
       <h3>Equipamento e composição</h3><ul class="eq">${u.eq.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
       <p>${esc(u.notes)}</p>${u.fate ? `<p class="fate"><b>Destino:</b> ${esc(u.fate)}</p>` : ''}
       <button class="btn ghost" id="uGo">Ir até a unidade</button>`;
     const c = $('uSym').getContext('2d'); c.drawImage(un.symImg, 0, 0);
+    renderStr(un);
     $('uGo').onclick = () => { if (!un.on) setT(un.start); const ll = unitLL(un, S.t); focusOn([ll.lo, ll.la, u.div ? 26 : 70]); };
   } else {
     const q = hqs.find(x => x.h.id === s.id), h = q.h;
@@ -769,7 +872,7 @@ function frame(now) {
     if (!un.on) return;
     const sel = S.sel && S.sel.id === un.u.id;
     const d = camera.position.distanceTo(un.pos), big = un.u.ech === 'XXXX' ? 1.2 : 1;
-    const s = (un.u.div ? clamp(d * 0.03, 0.14, 3.4) : clamp(d * 0.045, 1.2, 10)) * big * (sel ? 1.3 : 1);
+    const s = (un.u.div ? clamp(d * 0.03, 0.14, 3.4) : clamp(d * 0.045, 1.2, 10)) * (un.sizeK || big) * (sel ? 1.3 : 1);
     const m = un.model; m.scale.setScalar(s);
     if (un.u.type === 'air') {
       const ang = now * 0.00035 + un.phase, r = s * 1.6, alt = s * 2.6 + 2;

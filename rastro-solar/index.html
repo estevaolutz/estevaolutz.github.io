@@ -52,7 +52,7 @@ header{display:flex;align-items:center;gap:12px;justify-content:space-between}
 .stage{flex:1;min-height:0;position:relative;border-radius:14px;overflow:hidden;background:var(--panel);border:1px solid var(--line)}
 .view{position:absolute;inset:0}
 canvas{display:block;width:100%;height:100%;touch-action:none}
-#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#video{position:absolute;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none}
 #av{position:relative;z-index:1}
 .view .overlay-bar,.view .status{z-index:2}
 .overlay-bar{position:absolute;left:8px;right:8px;top:8px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
@@ -129,7 +129,7 @@ h3{font-family:var(--f-disp);font-size:15px;margin:14px 0 6px;font-weight:600}
 <body>
 <div class="app">
   <header>
-    <div class="brand"><i></i>Rastro Solar</div>
+    <div class="brand"><i></i>Rastro Solar <small style="font:500 11px var(--f-mono);color:var(--muted)">v4</small></div>
     <button class="loc" id="locBtn" aria-label="Trocar local"><b id="locName">Rio de Janeiro</b><span id="locCoords">−22,91° −43,17°</span></button>
   </header>
 
@@ -517,7 +517,13 @@ function drawAR(){
     const sk=ctx.createLinearGradient(0,Math.min(0,hy-H),0,Math.max(1,hy));sk.addColorStop(0,bandColor(a+12));sk.addColorStop(1,bandColor(a));
     ctx.fillStyle=sk;ctx.fillRect(0,0,W,H);
     poly3(ctx,cam,(()=>{const g=[];for(let i=0;i<72;i++){const v=dirV(i*5,0);g.push([v[0]*50,v[1]*50,-0.55]);}return g;})(),C.ground,null);
-  }else{ctx.fillStyle='rgba(0,0,0,.1)';ctx.fillRect(0,0,W,H);}
+  }else{
+    const v=$('video');
+    if(v.readyState>=2&&v.videoWidth){const k=Math.max(W/v.videoWidth,H/v.videoHeight),vw=v.videoWidth*k,vh=v.videoHeight*k;
+      ctx.drawImage(v,(W-vw)/2,(H-vh)/2,vw,vh);}
+    else{ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);}
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.fillRect(0,0,W,H);
+  }
   const {sv,sq}=drawScene(ctx,cam,'ar');
   // seta para o sol quando ele está fora da tela
   if(!sq||sq.x<0||sq.x>W||sq.y<0||sq.y>H){const dx=dot(sv,cam.right),dy=-dot(sv,cam.up),len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
@@ -539,7 +545,7 @@ function drawAR(){
 $('camBtn').onclick=async()=>{
   const v=$('video'),btn=$('camBtn');
   if(AR.cam){v.srcObject&&v.srcObject.getTracks().forEach(t=>t.stop());v.srcObject=null;AR.cam=false;btn.setAttribute('aria-pressed','false');btn.textContent='Ligar câmera';requestDraw();return;}
-  try{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});v.srcObject=st;await v.play();AR.cam=true;
+  try{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});v.srcObject=st;await v.play();AR.cam=true;requestAnimationFrame(camLoop);
     btn.setAttribute('aria-pressed','true');btn.textContent='Desligar câmera';
     if(!SEN.on){if(await enableSensors($('aStatus')))$('senBtn').setAttribute('aria-pressed','true');}
     $('aStatus').textContent='Aponte o celular para o céu. Incline para baixo para ver a bússola no chão.';requestDraw();}
@@ -654,6 +660,7 @@ function readouts(){
 
 // ============ Ciclo de desenho ============
 let drawQueued=false;
+function camLoop(){if(AR.cam&&S.view==='ar')requestDraw();if(AR.cam)requestAnimationFrame(camLoop);}
 function requestDraw(){if(drawQueued)return;drawQueued=true;requestAnimationFrame(()=>{drawQueued=false;
   if(S.view==='compass')drawCompass();else if(S.view==='ar')drawAR();else if(S.view==='day')drawDay();else drawYear();});}
 function update(){readouts();drawStrip();requestDraw();}
@@ -709,6 +716,6 @@ try{const v=localStorage.getItem('rastro-view');if(v&&v!=='compass'){const b=doc
 update();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>requestDraw());
 </script>
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(r=>r.update()).catch(()=>{}));</script>
 </body>
 </html>

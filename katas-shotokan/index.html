@@ -218,15 +218,19 @@ const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const md = s => esc(s).replace(/\*([^*]+)\*/g,"<em>$1</em>").replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
 
 function embusenSVG(n, big){
-  const e = EMB[n]; const st = e.start || [5,8]; const S=10;
+  /* Desenho do card: sai dos mesmos dados do passo a passo (STEPS), para os dois nunca divergirem */
+  const e = EMB[n]; const pts=[[0,0,0],...STEPS[n]];
+  const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+  const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+  const span=Math.max(x1-x0,y1-y0,1), k=(big?84:80)/span, ox=50-(x0+x1)/2*k, oy=(big?52:50)+(y0+y1)/2*k;
+  const P=p=>`${(ox+p[0]*k).toFixed(1)},${(oy-p[1]*k).toFixed(1)}`;
   let g = "";
-  if(big){ for(let i=1;i<10;i++){ g+=`<line class="em-grid" x1="${i*S}" y1="4" x2="${i*S}" y2="100"/><line class="em-grid" x1="0" y1="${i*S+4}" x2="100" y2="${i*S+4}"/>`; } }
-  const off = big?4:0;
-  const p = e.lines.map(l=>`<polyline class="em-path" stroke-width="${big?1.6:2.4}" points="${l.map(([x,y])=>`${x*S},${y*S+off}`).join(" ")}"/>`).join("");
-  const sx=st[0]*S, sy=st[1]*S+off;
+  if(big){ for(let i=1;i<10;i++){ g+=`<line class="em-grid" x1="${i*10}" y1="4" x2="${i*10}" y2="100"/><line class="em-grid" x1="0" y1="${i*10+4}" x2="100" y2="${i*10+4}"/>`; } }
+  const p = `<polyline class="em-path" stroke-width="${big?1.6:2.4}" points="${pts.map(P).join(" ")}"/>`;
+  const [sx,sy]=P(pts[0]).split(",");
   const start = `<circle class="em-start" cx="${sx}" cy="${sy}" r="${big?2.2:3.2}"/>`;
-  const labels = big ? `<text class="em-front" x="50" y="3.4" text-anchor="middle">正面 · shomen</text><circle class="em-start" cx="39" cy="107" r="1.6"/><text class="em-label" x="52" y="108.1" text-anchor="middle">início / fim</text>` : "";
-  return `<svg viewBox="0 ${big?-1:0} 100 ${big?112:100}" role="img" aria-label="Embusen de ${esc(KATAS[n-1].name)}: ${esc(e.shape)}">${g}${p}${start}${labels}</svg>`;
+  const labels = big ? `<text class="em-front" x="50" y="3.4" text-anchor="middle">正面 · shomen</text>` : "";
+  return `<svg viewBox="0 ${big?-1:0} 100 ${big?104:100}" role="img" aria-label="Embusen de ${esc(KATAS[n-1].name)}: ${esc(e.shape)}">${g}${p}${start}${labels}</svg>`;
 }
 
 
@@ -265,7 +269,7 @@ function rangeLabel(arr){
   return out.join(" · ");
 }
 
-const DIAG = {2:"heian-nidan",3:"heian-sandan",4:"heian-yondan",5:"heian-godan",7:"tekki-nidan"};
+const DIAG = {1:"heian-shodan",2:"heian-nidan",3:"heian-sandan",4:"heian-yondan",5:"heian-godan",7:"tekki-nidan"};
 const YOI = {6:"Heisoku-dachi",7:"Heisoku-dachi",8:"Heisoku-dachi"};
 
 function stepsSVG(k, active){

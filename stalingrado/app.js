@@ -679,7 +679,7 @@ function setMode(m) {
   MODE = m; store('stalingrado-mode', m);
   terrainMat.map = S.cityPlan ? null : getTex(m); terrainMat.needsUpdate = true;
   terrainMat.userData.snow.uReal.value = m === 'real' && !S.cityPlan ? 1 : 0; terrainMat.userData.snow.uAmt.value = S.cityPlan ? 0 : m === 'real' ? 1 : 0.4;
-  if (S.cityPlan) { terrainMat.color.set(0x000000); terrainMat.emissive.set(0xe9e1c9); }
+  if (S.cityPlan) { terrainMat.color.set(0x000000); terrainMat.emissive.set(0xf2e5ca); }
   if (!S.cityPlan) { terrainMat.color.set(0xffffff); terrainMat.emissive.set(0x000000); }
   setPlanta(m === 'chart' || S.cityPlan);
   flatPlan(S.cityPlan);
@@ -955,9 +955,9 @@ function frame(now) {
   labels.forEach(l => {
     let show = l.cls === 'unit ax' || l.cls === 'unit su' || l.cls.startsWith('hq') ? l.vis : S.filt.lb;
     if (l.cls === 'mark' || l.cls === 'ravine') show = S.cityView && S.filt.lb && !S.cityPlan;
-    if (S.cityPlan && (l.cls.startsWith('town') || l.cls === 'river' || l.cls === 'lake')) show = false;
     if (l.cls === 'town t1') show = S.filt.lb && camD < 260;
     if (l.cls === 'river' || l.cls === 'lake') show = S.filt.lb && camD < 420;
+    if (S.cityPlan && (l.cls.startsWith('town') || l.cls === 'river' || l.cls === 'lake')) show = false;
     if (show) {
       proj.copy(l.pos).project(camera);
       if (proj.z > 1 || proj.x < -1.1 || proj.x > 1.1 || proj.y < -1.1 || proj.y > 1.1) show = false;

@@ -28,30 +28,35 @@ const LON0 = 43.0, LAT0 = 49.05, KX = 100 * Math.cos(49 * Math.PI / 180), KZ = 1
 const P = (lon, lat) => ({ x: (lon - LON0) * KX, z: -(lat - LAT0) * KZ });
 const W = 580, H = 570, SX = small ? 380 : 540, SY = SX;
 
-// ---------- rios ----------
-const RIV = SG.RIVERS.map(r => {
-  const curve = new THREE.CatmullRomCurve3(r.pts.map(([lo, la]) => { const p = P(lo, la); return new THREE.Vector3(p.x, 0, p.z); }));
-  const n = Math.max(60, Math.round(curve.getLength() / 0.8));
-  return { r, pts: curve.getSpacedPoints(n) };
-});
-function riverXZ(z) {
-  const v = RIV[0].pts;
+// ---------- relevo real (Terrain Tiles/AWS, ajustado para 1942) ----------
+const RS = SG.demSampler(SG.DEMDATA.region), CS = SG.demSampler(SG.DEMDATA.city);
+function demM(lon, lat) { // [altura em m, água 0–1]; a cidade usa o recorte de 40 m
+  let h = RS.h(lon, lat), w = RS.w(lon, lat);
+  if (CS.inside(lon, lat)) { const e = CS.edge(lon, lat, 0.03); if (e > 0) { h += (CS.h(lon, lat) - h) * e; w += (CS.w(lon, lat) - w) * e; } }
+  return [h, w];
+}
+// rios com o traçado ajustado ao vale real
+const RPATH = SG.RIVERS.map(r => { const p = SG.RIVER_PATHS[r.name]; return { name: r.name, w: r.w, pts: p ? p.pts : r.pts }; });
+// margem direita (oeste) real do Volga na cidade; fora dela, o traçado ajustado do rio
+const BANKXY = SG.VOLGA_BANK.map(([lo, la]) => P(lo, la)), VPATH = RPATH[0].pts.map(([lo, la]) => P(lo, la));
+const BANK = SG.RIVERS[0].w / 2;
+function crossAt(v, z, off) {
   for (let i = 1; i < v.length; i++) {
     const a = v[i - 1], b = v[i];
-    if ((a.z - z) * (b.z - z) <= 0) { const f = (z - a.z) / ((b.z - a.z) || 1), dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1; return { x: a.x + dx * f, z, nx: -dz / L, nz: dx / L }; }
+    if ((a.z - z) * (b.z - z) <= 0) { const f = (z - a.z) / ((b.z - a.z) || 1), dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1, nx = -dz / L, nz = dx / L; return { x: a.x + dx * f + nx * off, z, nx, nz }; }
   }
-  return { x: v[0].x, z, nx: -1, nz: 0 };
+  return null;
 }
-const BANK = SG.RIVERS[0].w / 2;
+function riverXZ(z) { return crossAt(BANKXY, z, 0) || crossAt(VPATH, z, BANK) || { x: VPATH[0].x, z, nx: -1, nz: 0 }; }
 function cityLL(lat, km) {
-  const r = riverXZ(-(lat - LAT0) * KZ), u = BANK + km / 1.11;
+  const r = riverXZ(-(lat - LAT0) * KZ), u = km / 1.11;
   const x = r.x + r.nx * u, z = r.z + r.nz * u; return { lo: x / KX + LON0, la: LAT0 - z / KZ };
 }
-const kmFromBank = (x, z) => { const r = riverXZ(z); return ((x - r.x) * r.nx + (z - r.z) * r.nz - BANK) * 1.11; };
+const kmFromBank = (x, z) => { const r = riverXZ(z); return ((x - r.x) * r.nx + (z - r.z) * r.nz) * 1.11; };
 const C = SG.CITY;
 
 // ---------- relevo ----------
-const FIELD = SG.buildField({ W, H, N: small ? 768 : 1024, P, LON0, LAT0, KX, KZ });
+const FIELD = SG.buildField({ W, H, N: small ? 768 : 1024, P, LON0, LAT0, KX, KZ, region: RS });
 
 // malha com mais vértices na cidade: densidade alta em torno de Stalingrado e média na área da batalha
 function makeWarp(len, N, c, A1, s1, A2, s2) {
@@ -64,40 +69,17 @@ function makeWarp(len, N, c, A1, s1, A2, s2) {
   const idx = x => { const q = clamp((x + len / 2) / ds, 0, M - 1e-6), k0 = q | 0, f = q - k0; return (cum[k0] + (cum[k0 + 1] - cum[k0]) * f) * N; };
   return { pos, idx };
 }
-const CC = P(44.54, 48.72);
-const GX = makeWarp(W, SX, CC.x, 1.6, 120, 13, 7), GZ = makeWarp(H, SY, CC.z, 1.6, 105, 8, 17);
+const CC = P(44.56, 48.72);
+const GX = makeWarp(W, SX, CC.x, 1.6, 120, 18, 8), GZ = makeWarp(H, SY, CC.z, 1.6, 105, 10, 17);
+const llOf = (x, z) => [x / KX + LON0, LAT0 - z / KZ];
 
-// detalhe urbano analítico (m): barranco do Volga, Mamayev Kurgan e as ravinas
-const RAV = C.RAVINES.map(([n, lat, len]) => { const pts = []; for (let k = 0; k <= 24; k++) { const km = k / 24 * len; pts.push([(lat + Math.sin(k * 0.75) * 0.0012 + km * 0.0015 - 48.7) * 111, km]); } return { pts, len }; });
-function ravineDist(lat, km) {
-  const y = (lat - 48.7) * 111; let best = 1e9, len = 0;
-  for (const rv of RAV) for (let i = 1; i < rv.pts.length; i++) {
-    const a = rv.pts[i - 1], b = rv.pts[i], dx = b[1] - a[1], dy = b[0] - a[0];
-    const t = clamp(((km - a[1]) * dx + (y - a[0]) * dy) / (dx * dx + dy * dy || 1), 0, 1), ex = a[1] + dx * t - km, ey = a[0] + dy * t - y, d = Math.hypot(ex, ey);
-    if (d < best) { best = d; len = rv.len; }
-  }
-  return { d: best, len };
-}
-function cityM(x, z, base) {
-  const lat = LAT0 - z / KZ; if (lat < 48.5 || lat > 48.92) return base;
-  const r = riverXZ(z), km = ((x - r.x) * r.nx + (z - r.z) * r.nz - BANK) * 1.11;
-  if (km < -0.05 || km > 9.5) return base;
-  const wl = sstep(48.5, 48.56, lat) * sstep(48.92, 48.87, lat) * sstep(9.5, 6.5, km);
-  const lv = FIELD.heightM(r.x, r.z) - 2.5;
-  const prof = lv + 3 + 56 * sstep(0, 0.42, km) + 6 * Math.max(0, km - 0.42) + (SG.noise.fbm(x * 0.9, z * 0.9, 2) - 0.5) * 7;
-  let h = base + (prof - base) * wl;
-  const dk = Math.hypot((lat - 48.742) * 111, km - 1.1); h += 47 * Math.exp(-((dk / 0.55) ** 2)) * wl;
-  const rv = ravineDist(lat, km), cut = 32 * Math.exp(-((rv.d / 0.15) ** 2)) * sstep(rv.len * 1.08, rv.len * 0.55, km) * wl;
-  return Math.max(h - cut, Math.min(h, lv + 3));
-}
-
-// malha do terreno
+// malha do terreno (o leito dos rios fica 3 m abaixo da superfície da água)
 const NV = (SX + 1) * (SY + 1), HG = new Float32Array(NV);
 const tgeo = new THREE.BufferGeometry();
 {
   const pos = new Float32Array(NV * 3), uv = new Float32Array(NV * 2);
   for (let j = 0; j <= SY; j++) { const z = GZ.pos[j]; for (let i = 0; i <= SX; i++) {
-    const k = j * (SX + 1) + i, x = GX.pos[i], h = cityM(x, z, FIELD.heightM(x, z)) * M2U;
+    const k = j * (SX + 1) + i, x = GX.pos[i], [lon, lat] = llOf(x, z), [hm, wm] = demM(lon, lat), h = (hm - 3 * wm) * M2U;
     HG[k] = h; pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z; uv[k * 2] = (x + W / 2) / W; uv[k * 2 + 1] = 1 - (z + H / 2) / H;
   } }
   const idx = new Uint32Array(SX * SY * 6); let q = 0;
@@ -162,45 +144,61 @@ function makeOverlay(TS) {
   // ferrovias
   g.strokeStyle = 'rgba(52,45,40,0.85)'; g.lineWidth = Math.max(1.1, TS / 2048 * 1.3); g.lineJoin = 'round';
   SG.RAILWAYS.forEach(r => { path(r); g.stroke(); });
-  // lagos salgados e de água
-  SG.LAKES.forEach(([lo, la, rx, rz, rot, type]) => {
-    const [x, y] = pt(lo, la); g.save(); g.translate(x, y); g.rotate(rot);
-    g.beginPath(); g.ellipse(0, 0, rx / W * TS, rz / H * TS, 0, 0, 7);
-    if (type === 'salt') { g.fillStyle = 'rgba(232,228,216,0.95)'; g.fill(); g.strokeStyle = 'rgba(160,150,128,0.8)'; g.lineWidth = 2; g.stroke(); }
-    else { g.fillStyle = 'rgba(50,80,94,0.95)'; g.fill(); }
-    g.restore();
-  });
-  // lagoas e meandros abandonados nas várzeas
-  g.fillStyle = 'rgba(52,82,96,0.85)';
-  for (let q = 0; q < 2600; q++) {
-    const x = -W / 2 + rnd() * W, z = -H / 2 + rnd() * H, c2 = FIELD.cellAt(x, z);
-    if (FIELD.FLD[c2] !== 1 || rnd() > 0.5) continue;
-    g.beginPath(); g.ellipse(X(x), Zc(z), (0.15 + rnd() * 0.35) / W * TS, (0.06 + rnd() * 0.1) / W * TS, rnd() * 3, 0, 7); g.fill();
-  }
   return c;
 }
 function getTex(mode) {
   if (mode === 'real') {
-    if (!texReal) { const TS = 2048; texReal = SG.paintRealistic(FIELD, { size: TS, W, H, LON0, LAT0, KX, KZ, overlay: makeOverlay(TS), anisotropy: maxAniso }); }
+    if (!texReal) { const TS = 2048; texReal = SG.paintRealistic(FIELD, { size: TS, W, H, LON0, LAT0, KX, KZ, overlay: makeOverlay(TS), anisotropy: maxAniso, heightAt: (lo, la) => demM(lo, la)[0], waterAt: (lo, la) => demM(lo, la)[1] }); }
     return texReal;
   }
-  if (!texChart) texChart = SG.buildChart({ P, F: FIELD, W, H, cityLL, RIVERS: SG.RIVERS, size: bigTex ? 4096 : 2048, anisotropy: maxAniso });
+  if (!texChart) texChart = SG.buildChart({ P, F: FIELD, W, H, cityLL, RIVERS: RPATH, size: bigTex ? 4096 : 2048, anisotropy: maxAniso });
   return texChart;
 }
 
-// rios
-const waterMat = SG.iceify(new THREE.MeshStandardMaterial({ color: 0x3a6474, roughness: 0.55, metalness: 0, transparent: true, opacity: 0.92 }));
-for (const rv of RIV) {
-  const pts = rv.pts, vtx = [], idx = [], half = rv.r.w / 2 + 0.05;
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
-    const dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1, nx = -dz / L, nz = dx / L, p = pts[i];
-    const y = heightAt(p.x, p.z) + 0.035;
-    vtx.push(p.x + nx * half, y, p.z + nz * half, p.x - nx * half, y, p.z - nz * half);
-    if (i) { const o = (i - 1) * 2; idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
+// planta alemã de 1942 (Stalingrad-Süd, 1:25.000) estendida sobre o relevo da cidade
+let plantaMesh = null, plantaOn = MODE === 'chart';
+function buildPlanta() {
+  const pl = SG.PLANTA; if (!pl) return null;
+  const a = P(pl.lon[0], pl.lat[1]), b = P(pl.lon[1], pl.lat[0]);
+  const i0 = Math.max(0, Math.floor(GX.idx(a.x))), i1 = Math.min(SX, Math.ceil(GX.idx(b.x))), j0 = Math.max(0, Math.floor(GZ.idx(a.z))), j1 = Math.min(SY, Math.ceil(GZ.idx(b.z)));
+  const nx = i1 - i0 + 1, nz = j1 - j0 + 1, pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2), idx = [];
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const k = j * nx + i, x = clamp(GX.pos[i0 + i], a.x, b.x), z = clamp(GZ.pos[j0 + j], a.z, b.z);
+    pos[k * 3] = x; pos[k * 3 + 1] = heightAt(x, z) + 0.004; pos[k * 3 + 2] = z;
+    uv[k * 2] = (x - a.x) / (b.x - a.x); uv[k * 2 + 1] = 1 - (z - a.z) / (b.z - a.z);
+    if (i < nx - 1 && j < nz - 1) idx.push(k, k + nx, k + 1, k + 1, k + nx, k + nx + 1);
   }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(vtx, 3)); g.setIndex(idx);
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(vtx.length).map((_, i) => i % 3 === 1 ? 1 : 0), 3));
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  const tex = new THREE.TextureLoader().load(pl.file, () => { dirty = true; }); tex.anisotropy = maxAniso;
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  m.renderOrder = 2; scene.add(m); return m;
+}
+function setPlanta(on) {
+  plantaOn = on; if (on && !plantaMesh) plantaMesh = buildPlanta();
+  if (plantaMesh) plantaMesh.visible = on;
+  const b = $('plantaBtn'); if (b) b.setAttribute('aria-pressed', String(on));
+}
+
+// água: superfície construída a partir dos pixels de água do relevo real
+const waterMat = SG.iceify(new THREE.MeshStandardMaterial({ color: 0x3a6474, roughness: 0.55, metalness: 0, transparent: true, opacity: 0.92 }));
+{
+  const pos = [], idx = [];
+  const add = (S, skipCity) => {
+    const d = S.d, dl = (d.lon[1] - d.lon[0]) / d.W, db = (d.lat[1] - d.lat[0]) / d.H;
+    for (let j = 0; j < d.H; j++) for (let i = 0; i < d.W; i++) {
+      const c = j * d.W + i; if (d.w[c] < 128) continue;
+      const lo = d.lon[0] + i * dl, la = d.lat[1] - j * db;
+      if (skipCity && CS.inside(lo + dl / 2, la - db / 2, 0.012)) continue;
+      const p0 = P(lo, la), p1 = P(lo + dl, la - db), y = d.h[c] * M2U + 0.008, o = pos.length / 3;
+      pos.push(p0.x, y, p0.z, p1.x, y, p0.z, p0.x, y, p1.z, p1.x, y, p1.z);
+      idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3);
+    }
+  };
+  add(RS, true); add(CS, false);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(pos.length).map((_, i) => i % 3 === 1 ? 1 : 0), 3));
+  g.setIndex(idx);
   const m = new THREE.Mesh(g, waterMat); m.renderOrder = 1; scene.add(m);
 }
 
@@ -267,7 +265,8 @@ const cityBase = [], chimneys = [];
     for (let km = 0.14; km < wmax; km += 0.19) {
       const L = lat + (rnd() - 0.5) * 0.0003, K = km + (rnd() - 0.5) * 0.03;
       if (inFact(L, K)) continue;
-      if (ravineDist(L, K).d < 0.13) continue;
+      { const ll = cityLL(L, K), [h0, w0] = demM(ll.lo, ll.la), [h1] = demM(ll.lo + 0.0016, ll.la), [h2] = demM(ll.lo, ll.la + 0.0011);
+        if (w0 > 0.15 || Math.abs(h1 - h0) > 9 || Math.abs(h2 - h0) > 9) continue; }
       if (Math.hypot((L - 48.742) * 111, K - 1.1) < 0.42) continue;
       const e = K / wmax; if (rnd() < e * e * 0.8) continue;
       const center = L > 48.695 && L < 48.735 && K < 1.7;
@@ -334,12 +333,10 @@ C.MARKS.forEach(([n, lat, km]) => {
 {
   const mat = new THREE.LineBasicMaterial({ color: 0x2a2017, transparent: true, opacity: 0.6 });
   C.RAVINES.forEach(([n, lat, len]) => {
-    const pts = []; for (let k = 0; k <= 24; k++) { const km = k / 24 * len; pts.push(CG(lat + Math.sin(k * 0.75) * 0.0012 + km * 0.0015, km, 0.03)); }
-    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
     addLabel('ravina ' + n, CG(lat + len * 0.0009, len * 0.6, 0.3), 'ravine');
   });
 }
-SG.RIVERS.forEach(r => { const m = r.pts[Math.floor(r.pts.length * (r.name === 'Volga' ? 0.4 : 0.45))]; addLabel(r.name, G(m[0], m[1], 0.5), 'river'); });
+RPATH.forEach(r => { const m = r.pts[Math.floor(r.pts.length * (r.name === 'Volga' ? 0.4 : 0.45))]; addLabel(r.name, G(m[0], m[1], 0.5), 'river'); });
 // ---------- símbolos ----------
 function symbolTex(u) {
   const c = document.createElement('canvas'); c.width = 192; c.height = 152; const g = c.getContext('2d');
@@ -377,7 +374,7 @@ const DIVS = C.DIVS.map(u => ({ ...u, div: true, path: u.path.map(([d, lat, km])
 const units = SG.UNITS.concat(DIVS).map(u => {
   const path = u.path.map(([d, lo, la]) => ({ t: day(d), lo, la }));
   const start = u.start ? day(u.start) : path[0].t, end = day(u.end || SG.END);
-  const model = SG.makeModel(u.type, SG.NAT[u.nat].color, u.side);
+  const model = SG.makeModel(u.type, SG.NAT[u.nat].color, u.side, u.nat);
   model.userData.pick = { kind: 'unit', id: u.id }; scene.add(model); pickables.push(model);
   const lbl = addLabel(u.short, new THREE.Vector3(), 'unit ' + u.side);
   return { u, path, start, end, model, symImg: symbolTex(u).image, lbl, pos: new THREE.Vector3(), head: 0, on: false, phase: Math.random() * 6.28 };
@@ -578,11 +575,13 @@ function update() {
 }
 
 // ---------- estilo do mapa e exagero vertical ----------
+
 function setMode(m) {
   MODE = m; store('stalingrado-mode', m);
   terrainMat.map = getTex(m); terrainMat.needsUpdate = true;
   terrainMat.userData.snow.uReal.value = m === 'real' ? 1 : 0; terrainMat.userData.snow.uAmt.value = m === 'real' ? 1 : 0.4;
   [leafTrees, pineTrees, hutMesh].forEach(o => o.visible = m === 'real');
+  setPlanta(m === 'chart');
   document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
   update();
 }
@@ -591,6 +590,7 @@ document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
   $('loading').hidden = false; $('loading').textContent = b.dataset.mode === 'chart' ? 'Desenhando a carta…' : 'Pintando o terreno…';
   setTimeout(() => { setMode(b.dataset.mode); $('loading').hidden = true; }, 30);
 });
+$('plantaBtn').onclick = () => setPlanta(!plantaOn);
 document.querySelectorAll('[data-ex]').forEach(b => {
   b.setAttribute('aria-pressed', String(+b.dataset.ex === EX));
   b.onclick = () => {
@@ -775,7 +775,7 @@ function frame(now) {
       const ang = now * 0.00035 + un.phase, r = s * 1.6, alt = s * 2.6 + 2;
       m.position.set(un.pos.x + Math.cos(ang) * r, un.pos.y + alt, un.pos.z - Math.sin(ang) * r);
       m.rotation.set(0.35, ang + Math.PI / 2, 0, 'YXZ');
-      m.userData.prop.rotation.x = now * 0.05;
+      (m.userData.props || [m.userData.prop]).forEach(pr => pr.rotation.x = now * 0.05);
       un.lbl.pos.set(un.pos.x, un.pos.y + alt + s * 0.6, un.pos.z);
     } else {
       m.position.copy(un.pos); m.rotation.set(0, un.head, 0);
@@ -822,8 +822,21 @@ setTimeout(() => focusOn(t0 ? [43.4, 48.95, 360] : events[0].focus), 400);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (MODE === 'chart') { texChart = null; setMode('chart'); } });
 } // main
 
-setTimeout(() => {
-  try { main(); }
+async function loadDEM() {
+  const one = async cfg => {
+    const r = await fetch(cfg.file); if (!r.ok) throw new Error('relevo não encontrado (' + cfg.file + ')');
+    const bm = await createImageBitmap(await r.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+    const c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bm, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data, n = c.width * c.height, h = new Float32Array(n), w = new Uint8Array(n);
+    for (let k = 0; k < n; k++) { h[k] = (d[k * 4] * 256 + d[k * 4 + 1]) / 100 - 100; w[k] = d[k * 4 + 2]; }
+    return { h, w, W: c.width, H: c.height, lon: cfg.lon, lat: cfg.lat };
+  };
+  const [region, city] = await Promise.all([one(SG.DEM.region), one(SG.DEM.city)]);
+  SG.DEMDATA = { region, city };
+}
+setTimeout(async () => {
+  try { document.getElementById('loading').textContent = 'Carregando o relevo real…'; await loadDEM(); document.getElementById('loading').textContent = 'Gerando relevo, vegetação e cidade…'; await new Promise(r => setTimeout(r, 30)); main(); }
   catch (e) { const l = document.getElementById('loading'); if (l) { l.hidden = false; l.textContent = 'Não foi possível gerar o mapa: ' + e.message; } throw e; }
 }, 40);
 })();

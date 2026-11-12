@@ -148,6 +148,11 @@ button:focus-visible, .myth:focus-visible, .stop:focus-visible { outline: 2px so
 .tl-head { display: flex; align-items: center; gap: 10px; }
 .tl-play { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--gold); color: var(--panel); display: grid; place-items: center; cursor: pointer; padding: 0; }
 .tl-play svg { width: 12px; height: 12px; fill: currentColor; }
+.tl-step { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--ink); display: grid; place-items: center; cursor: pointer; padding: 0; margin: 0 -4px; }
+.tl-step svg { width: 10px; height: 10px; fill: currentColor; }
+.tl-step:disabled { opacity: .35; cursor: default; }
+.tl-step:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (pointer: coarse) { .tl-step { width: 36px; height: 36px; } }
 .tl-play:focus-visible, .tl-speed button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .tl-speed { flex: none; display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--panel); }
 .tl-sl { font: 600 10px var(--f-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 6px 0 4px; }
@@ -277,7 +282,7 @@ button:focus-visible, .myth:focus-visible, .stop:focus-visible { outline: 2px so
       <div class="polkey" id="polkey"></div>
     </div>
     <div class="timeline" id="timeline">
-      <div class="tl-head"><button type="button" class="tl-play" id="tlPlay" aria-label="Rodar linha do tempo"></button><span class="tl-year" id="tlYear"></span><span class="tl-note" id="tlNote"></span><div class="tl-speed" role="group" aria-label="Velocidade"><span class="tl-sl">Velocidade</span><button type="button" data-s="0.25">¼×</button><button type="button" data-s="0.5">½×</button><button type="button" data-s="1">1×</button><button type="button" data-s="2">2×</button><button type="button" data-s="4">4×</button></div></div>
+      <div class="tl-head"><button type="button" class="tl-step" id="tlPrev" aria-label="Marco anterior"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 4.5 8 11 13.5z"/></svg></button><button type="button" class="tl-play" id="tlPlay" aria-label="Rodar linha do tempo"></button><button type="button" class="tl-step" id="tlNext" aria-label="Próximo marco"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5 11.5 8 5 13.5z"/></svg></button><span class="tl-year" id="tlYear"></span><span class="tl-note" id="tlNote"></span><div class="tl-speed" role="group" aria-label="Velocidade"><span class="tl-sl">Velocidade</span><button type="button" data-s="0.25">¼×</button><button type="button" data-s="0.5">½×</button><button type="button" data-s="1">1×</button><button type="button" data-s="2">2×</button><button type="button" data-s="4">4×</button></div></div>
       <div class="tl-track"><div class="tl-lanes" id="tlLanes"></div><div class="tl-ticks" id="tlTicks"></div>
         <input type="range" id="year" min="-275" max="120" step="1" aria-label="Ano"></div>
     </div>
@@ -1646,6 +1651,7 @@ function updateTimeline() {
   for (const d of document.querySelectorAll(".tl-lane")) d.classList.toggle("on", state.myth ? d.dataset.id === state.myth.id : activeGen(GENS.find(g => g.id === d.dataset.id), y));
   for (const b of document.querySelectorAll(".myth[data-id]")) b.classList.toggle("dim", !activeGen(GENS.find(g => g.id === b.dataset.id), y, 30));
   renderPolKey();
+  try { updateTlSteps(); } catch (e) {}
 }
 function activeGen(g, y, pad = 3) { const ys = g.paradas.map(p => p.ano); return y >= Math.min(...ys) - pad && y <= Math.max(...ys) + pad; }
 let yearRaf = 0;
@@ -1695,6 +1701,29 @@ for (const b of document.querySelectorAll(".tl-speed button")) b.onclick = () =>
   if (state.playing && state.seg >= 1) schedulePlay();
 };
 renderSpeed();
+/* anterior / próximo na linha do tempo: paradas da campanha aberta, ou marcos do período */
+const TL_MARKS = [...new Set([...DATA.marcos.map(m => m[0]), ...GENS.map(g => Math.min(...g.paradas.map(p => p.ano)))])].filter(y => y >= YMIN && y <= YMAX).sort((a, b) => a - b);
+const tlPrev = document.getElementById("tlPrev"), tlNext = document.getElementById("tlNext");
+function updateTlSteps() {
+  const m = state.myth;
+  if (m) {
+    tlPrev.disabled = state.cur <= 0; tlNext.disabled = state.cur >= m.paradas.length - 1;
+    tlPrev.setAttribute("aria-label", "Parada anterior"); tlNext.setAttribute("aria-label", "Próxima parada");
+  } else {
+    tlPrev.disabled = !TL_MARKS.some(y => y < state.yearInt); tlNext.disabled = !TL_MARKS.some(y => y > state.yearInt);
+    tlPrev.setAttribute("aria-label", "Marco anterior"); tlNext.setAttribute("aria-label", "Próximo marco");
+  }
+  tlPrev.title = tlPrev.getAttribute("aria-label"); tlNext.title = tlNext.getAttribute("aria-label");
+}
+function tlStep(d) {
+  if (state.myth) { stopPlay(); goTo(state.cur + d, d > 0); return; }
+  stopSweep();
+  const y = d > 0 ? TL_MARKS.find(v => v > state.yearInt) : [...TL_MARKS].reverse().find(v => v < state.yearInt);
+  if (y !== undefined) setYear(y, true);
+}
+tlPrev.onclick = () => tlStep(-1);
+tlNext.onclick = () => tlStep(1);
+updateTlSteps();
 
 /* curvas entre paradas */
 function ctrl(a, b) { const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1]; return [mx - dy * .16, my + dx * .16]; }
@@ -2095,6 +2124,7 @@ function renderControls() {
   );
   const p = m.paradas[state.cur];
   const pr = el("span", "prog", `${String(state.cur + 1).padStart(2, "0")} / ${String(m.paradas.length).padStart(2, "0")} · ${p.tempo}`); ctr.append(pr);
+  try { updateTlSteps(); } catch (e) {}
 }
 function renderStopsState() {
   const ol = document.getElementById("stops"); if (!ol) return;

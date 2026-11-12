@@ -105,6 +105,11 @@ details.crewbox[open] { padding-bottom: 8px; }
 .cbtn:disabled { opacity: .35; cursor: default; }
 .cbtn.play { background: var(--c, var(--accent)); border-color: transparent; color: #fff; width: 44px; height: 44px; }
 .cbtn svg { width: 16px; height: 16px; fill: currentColor; }
+.cspeed { display: flex; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-left: 4px; }
+.cspeed button { min-width: 28px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 500 11.5px var(--f-mono); cursor: pointer; padding: 0 3px; }
+.cspeed button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.cspeed button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .cspeed button { min-width: 38px; height: 36px; } }
 .prog { margin-left: auto; font: 500 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 
 .stops { list-style: none; margin: 4px 0 0; padding: 0; }
@@ -1389,7 +1394,9 @@ const layout = (zoom, g) => {
 /* ---------- Estado ---------- */
 let cur = null;          /* { e, i } */
 let marks = [], segEls = [];
-let playing = null;
+let playing = null, speed = 1;
+try { const v = parseFloat(localStorage.getItem("antartida-speed")); if ([0.5, 1, 2, 4].includes(v)) speed = v; } catch (e) {}
+const playTick = () => { if (cur.i >= cur.e.stops.length - 1) { stopPlay(); return; } go(cur.i + 1, true); };
 const panel = document.getElementById("panel");
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = ([lon, lat]) => `${Math.abs(lat).toFixed(2)}° S · ${Math.abs(lon).toFixed(2)}° ${lon < 0 ? "O" : "L"}`;
@@ -1531,6 +1538,7 @@ const renderExp = e => {
         <button type="button" class="cbtn" id="c-prev" aria-label="Parada anterior">${ICON.prev}</button>
         <button type="button" class="cbtn play" id="c-play" aria-label="Reproduzir a viagem">${ICON.play}</button>
         <button type="button" class="cbtn" id="c-next" aria-label="Próxima parada">${ICON.next}</button>
+        <div class="cspeed" role="group" aria-label="Velocidade">${[0.5, 1, 2, 4].map(v => `<button type="button" data-s="${v}" aria-pressed="${v === speed}" title="Velocidade ${v === 0.5 ? "½" : v}×">${v === 0.5 ? "½" : v}×</button>`).join("")}</div>
         <div class="prog" id="c-prog"></div>
       </div>
       <ol class="stops" id="stops">${e.stops.map((s, i) => `
@@ -1550,6 +1558,12 @@ const renderExp = e => {
   panel.querySelector("#c-prev").onclick = () => { stopPlay(); go(cur.i - 1, false); };
   panel.querySelector("#c-next").onclick = () => { stopPlay(); go(cur.i + 1, true); };
   panel.querySelector("#c-play").onclick = togglePlay;
+  panel.querySelectorAll(".cspeed button").forEach(b => b.onclick = () => {
+    speed = +b.dataset.s;
+    panel.querySelectorAll(".cspeed button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    try { localStorage.setItem("antartida-speed", String(speed)); } catch (e) {}
+    if (playing) { clearInterval(playing); playing = setInterval(playTick, 4200 / speed); }
+  });
   panel.querySelectorAll(".stop").forEach(li => {
     li.addEventListener("click", () => { stopPlay(); go(+li.dataset.i, +li.dataset.i === cur.i + 1); if (innerWidth <= 820) box.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }); });
     li.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); stopPlay(); go(+li.dataset.i, false); } });
@@ -1600,9 +1614,8 @@ function togglePlay() {
   if (playing) { stopPlay(); return; }
   if (cur.i >= cur.e.stops.length - 1) go(0, false);
   const b = panel.querySelector("#c-play"); b.innerHTML = ICON.pause; b.setAttribute("aria-label", "Pausar");
-  const tick = () => { if (cur.i >= cur.e.stops.length - 1) { stopPlay(); return; } go(cur.i + 1, true); };
-  tick();
-  playing = setInterval(tick, 4200);
+  playTick();
+  playing = setInterval(playTick, 4200 / speed);
 }
 document.addEventListener("keydown", ev => {
   if (!cur || (ev.target.closest && ev.target.closest("input,textarea,summary"))) return;

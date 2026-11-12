@@ -68,6 +68,11 @@ button:focus-visible, .myth:focus-visible, .stop:focus-visible { outline: 2px so
   display: grid; place-items: center; cursor: pointer; }
 .cbtn.play { background: var(--gold); border-color: var(--gold); color: var(--panel); width: 44px; height: 44px; }
 .cbtn svg { width: 16px; height: 16px; fill: currentColor; }
+.cspeed { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--panel-2); flex: none; }
+.cspeed button { min-width: 28px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 600 11.5px var(--f-mono); cursor: pointer; padding: 0 3px; }
+.cspeed button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.cspeed button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (pointer: coarse) { .cspeed button { min-width: 38px; height: 36px; } }
 .prog { margin-left: auto; font: 500 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .stops { list-style: none; margin: 4px 0 0; padding: 0; position: relative; }
@@ -1578,6 +1583,7 @@ function draw() {
 
 /* loop de animação: roda enquanto há trecho sendo traçado ou pulso visível */
 let segStart = 0, segDur = 1100, playTimer = 0;
+let speed = 1; try { const v = parseFloat(localStorage.getItem("atlas-speed")); if ([0.5, 1, 2, 4].includes(v)) speed = v; } catch (e) {}
 function loop(now) {
   if (state.myth && state.seg < 1) {
     state.seg = reduce ? 1 : Math.min((now - segStart) / segDur, 1);
@@ -1608,7 +1614,7 @@ function schedulePlay() {
   clearTimeout(playTimer);
   if (!state.playing || !state.myth) return;
   if (state.cur >= state.myth.paradas.length - 1) { state.playing = false; renderControls(); return; }
-  { const _p = state.myth.paradas[state.cur] || {}; const _len = String(_p.texto || "").length + String(_p.sentido || "").length; playTimer = setTimeout(() => goTo(state.cur + 1), Math.min(70000, Math.max(reduce ? 4000 : 2600, _len * 40))); }
+  { const _p = state.myth.paradas[state.cur] || {}; const _len = String(_p.texto || "").length + String(_p.sentido || "").length; playTimer = setTimeout(() => goTo(state.cur + 1), Math.min(70000, Math.max(reduce ? 4000 : 2600, _len * 40)) / speed); }
 }
 
 /* ---------- painel ---------- */
@@ -1814,7 +1820,20 @@ function renderControls() {
     mk("play", state.playing ? ICON.pause : (end ? ICON.restart : ICON.play), state.playing ? "Pausar" : (end ? "Recomeçar" : "Reproduzir viagem"), togglePlay),
     mk("", ICON.next, "Próxima parada", () => { stopPlay(); goTo(state.cur + 1); })
   );
-  const pr = el("span", "prog", `${String(state.cur + 1).padStart(2, "0")} / ${String(m.paradas.length).padStart(2, "0")}`); ctr.append(pr);
+  const pr = el("span", "prog", `${String(state.cur + 1).padStart(2, "0")} / ${String(m.paradas.length).padStart(2, "0")}`); ctr.append(speedSeg(), pr);
+}
+function speedSeg() {
+  const g = el("div", "cspeed"); g.setAttribute("role", "group"); g.setAttribute("aria-label", "Velocidade");
+  [[0.5, "½×"], [1, "1×"], [2, "2×"], [4, "4×"]].forEach(([v, t]) => {
+    const b = el("button", "", t); b.type = "button"; b.setAttribute("aria-pressed", String(v === speed)); b.title = "Velocidade " + t;
+    b.onclick = () => {
+      speed = v; try { localStorage.setItem("atlas-speed", String(v)); } catch (e) {}
+      g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      if (state.playing && state.seg >= 1) schedulePlay();
+    };
+    g.append(b);
+  });
+  return g;
 }
 function renderStopsState() {
   const ol = document.getElementById("stops"); if (!ol) return;

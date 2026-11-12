@@ -247,6 +247,19 @@ body {
 .tlhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; padding: 0 14px 6px; }
 .tlhead h3 { margin: 0; font: 500 .72rem var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
 .tlhead span { font: 400 .74rem var(--f-mono); color: var(--muted); }
+.tl-ctrl { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.tl-play, .tl-step { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.tl-play { border: 0; background: var(--accent); color: var(--panel); }
+.tl-step { border: 1px solid var(--rule); background: var(--page); color: var(--ink); width: 30px; height: 30px; }
+.tl-step:disabled { opacity: .35; cursor: default; }
+.tl-play svg, .tl-step svg { width: 14px; height: 14px; fill: currentColor; }
+.tl-step svg { width: 12px; height: 12px; }
+.tl-speed { display: flex; align-items: center; gap: 2px; border: 1px solid var(--rule); border-radius: 8px; padding: 2px; background: var(--page); margin-left: 4px; }
+.tl-speed .sl { font: 500 .62rem var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 0 6px 0 4px; }
+.tl-speed button { min-width: 30px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 500 .72rem var(--f-mono); cursor: pointer; padding: 0 4px; }
+.tl-speed button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.tl-play:focus-visible, .tl-step:focus-visible, .tl-speed button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 560px) { .tl-speed .sl { display: none; } .tl-ctrl { margin-left: 0; width: 100%; } }
 .tlscroll { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
 #tl svg { display: block; }
 .tl-phase rect { fill: var(--page); stroke: var(--rule); }
@@ -512,7 +525,7 @@ body {
       </div>
 
       <div class="tlbox">
-        <div class="tlhead"><h3>Linha do tempo · 336–323 a.C.</h3><span>do reinado à morte, em escala real</span></div>
+        <div class="tlhead"><h3>Linha do tempo · 336–323 a.C.</h3><span>do reinado à morte, em escala real</span><div class="tl-ctrl"><button type="button" class="tl-step" id="tl-prev" aria-label="Parada anterior" title="Parada anterior (←)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 4.5 8 11 13.5z"/></svg></button><button type="button" class="tl-play" id="tl-play" aria-label="Reproduzir a campanha" title="Reproduzir (espaço)"></button><button type="button" class="tl-step" id="tl-next" aria-label="Próxima parada" title="Próxima parada (→)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5 11.5 8 5 13.5z"/></svg></button><div class="tl-speed" id="tl-speed" role="group" aria-label="Velocidade"><span class="sl">Velocidade</span><button type="button" data-s="0.5">½×</button><button type="button" data-s="1">1×</button><button type="button" data-s="2">2×</button><button type="button" data-s="4">4×</button></div></div></div>
         <div class="tlscroll" id="tlscroll"><div id="tl"></div></div>
       </div>
     </div>
@@ -2037,6 +2050,8 @@ const update = animateSeg => {
   document.getElementById("map-prev").disabled = k <= 0;
   document.getElementById("map-next").disabled = k >= vis.length - 1;
   document.getElementById("next").disabled = k >= vis.length - 1;
+  document.getElementById("tl-prev").disabled = k <= 0;
+  document.getElementById("tl-next").disabled = k >= vis.length - 1;
   document.getElementById("pos-leg").textContent = `${STOPS[cur].leg === "ida" ? "Avanço" : "Retorno"} · ${k + 1} de ${vis.length}`;
   document.getElementById("pos-name").textContent = STOPS[cur].name;
   document.getElementById("prog").style.width = ((k + 1) / vis.length * 100) + "%";
@@ -2082,6 +2097,50 @@ document.addEventListener("keydown", e => {
   if (e.key === "ArrowRight") step(1);
   if (e.key === "ArrowLeft") step(-1);
 });
+
+/* ---------- Reprodução automática da linha do tempo ---------- */
+const PLAY_BASE = 5200, SPEED_KEY = "alexandre-speed";
+const tlPlay = document.getElementById("tl-play");
+const ICO_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9.5-5.5z"/></svg>';
+const ICO_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>';
+let playing = false, playT = 0, playSpeed = 1;
+try { const v = parseFloat(localStorage.getItem(SPEED_KEY)); if ([0.5, 1, 2, 4].includes(v)) playSpeed = v; } catch (e) {}
+const atEnd = () => { const vis = visibleStops(); return vis.indexOf(STOPS[cur]) >= vis.length - 1; };
+const renderPlay = () => {
+  tlPlay.innerHTML = playing ? ICO_PAUSE : ICO_PLAY;
+  tlPlay.setAttribute("aria-label", playing ? "Pausar" : "Reproduzir a campanha");
+  tlPlay.setAttribute("aria-pressed", String(playing));
+};
+const schedule = () => {
+  clearTimeout(playT);
+  if (!playing) return;
+  playT = setTimeout(() => { if (atEnd()) { setPlaying(false); return; } step(1); schedule(); }, PLAY_BASE / playSpeed);
+};
+const setPlaying = on => { playing = on; renderPlay(); schedule(); };
+const togglePlay = () => {
+  if (playing) return setPlaying(false);
+  if (atEnd()) select(visibleStops()[0].i); else step(1);
+  setPlaying(true);
+};
+tlPlay.onclick = togglePlay;
+document.getElementById("tl-prev").onclick = () => step(-1);
+document.getElementById("tl-next").onclick = () => step(1);
+const speedBtns = [...document.querySelectorAll("#tl-speed button")];
+const renderSpeed = () => speedBtns.forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === playSpeed)));
+speedBtns.forEach(b => b.onclick = () => {
+  playSpeed = +b.dataset.s; renderSpeed();
+  try { localStorage.setItem(SPEED_KEY, String(playSpeed)); } catch (e) {}
+  schedule();
+});
+/* navegação manual durante a reprodução: recomeça a contagem a partir da parada escolhida */
+["prev", "next", "map-prev", "map-next", "tl-prev", "tl-next"].forEach(id => document.getElementById(id).addEventListener("click", () => { if (playing) schedule(); }));
+document.getElementById("tl").addEventListener("click", () => { if (playing) schedule(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== " " || e.defaultPrevented) return;
+  if (e.target.closest && e.target.closest("input,textarea,button,[role=button],summary,a")) return;
+  e.preventDefault(); togglePlay();
+});
+renderPlay(); renderSpeed();
 
 /* ---------- Camadas: mesclar antigo e atual; relevo; vegetação ---------- */
 const blend = document.getElementById("blend");

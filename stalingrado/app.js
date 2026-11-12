@@ -821,7 +821,9 @@ events.forEach((e, i) => {
   const b = document.createElement('button'); b.className = 'tick ' + e.k; b.style.left = (e.t / NDAYS * 100) + '%';
   b.title = shortDate(e.d) + ' · ' + e.title; b.setAttribute('aria-label', b.title); b.onclick = () => gotoEvent(i); ticks.appendChild(b);
 });
-function markTicks() { ticks.querySelectorAll('.tick').forEach((b, i) => b.classList.toggle('cur', i === S.curEvent)); }
+function markTicks() { ticks.querySelectorAll('.tick').forEach((b, i) => b.classList.toggle('cur', i === S.curEvent)); $('evPrev').disabled = S.curEvent <= 0; $('evNext').disabled = S.curEvent >= events.length - 1; }
+$('evPrev').onclick = () => gotoEvent(S.curEvent - 1);
+$('evNext').onclick = () => gotoEvent(S.curEvent + 1);
 const months = $('months');
 [['1942-09-01', 'set'], ['1942-10-01', 'out'], ['1942-11-01', 'nov'], ['1942-12-01', 'dez'], ['1943-01-01', 'jan 43'], ['1943-02-01', 'fev']].forEach(([d, n]) => {
   const s = document.createElement('span'); s.style.left = (day(d) / NDAYS * 100) + '%'; s.textContent = n; months.appendChild(s);

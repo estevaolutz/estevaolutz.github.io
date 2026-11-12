@@ -1,0 +1,1220 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Libras em Movimento</title>
+<meta name="theme-color" content="#0C7A64">
+<meta name="description" content="Curso de Libras com reconhecimento das mãos pela câmera.">
+<link rel="manifest" href="manifest.webmanifest">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Libras">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: palco da câmera fixo à esquerda (o "espelho"), conteúdo da aula rolando à direita; empilha no celular. */
+:root{
+  --bg:#EDF1EE; --surface:#FFFFFF; --sunk:#E3E9E5; --ink:#13231F; --muted:#56675F; --line:#CFDAD4;
+  --accent:#0C7A64; --accent-ink:#FFFFFF; --signal:#E2583A; --ok:#1C8F4E; --warn:#B57A06; --bad:#BE3B27;
+  --palm:#F2C9A8; --palm-line:#B07B57; --thumb:#E9AE85; --cam:#0D1714;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+  --r:14px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0E1513; --surface:#16211E; --sunk:#1D2a26; --ink:#E4EDE9; --muted:#93A59D; --line:#2A3a35;
+  --accent:#39C3A1; --accent-ink:#06231C; --signal:#FF7F5E; --ok:#4CC57F; --warn:#E3B040; --bad:#FF7461;
+  --palm:#C99A78; --palm-line:#8A5E40; --thumb:#B9825E; --cam:#050908; color-scheme:dark; }}
+:root[data-theme="dark"]{
+  --bg:#0E1513; --surface:#16211E; --sunk:#1D2a26; --ink:#E4EDE9; --muted:#93A59D; --line:#2A3a35;
+  --accent:#39C3A1; --accent-ink:#06231C; --signal:#FF7F5E; --ok:#4CC57F; --warn:#E3B040; --bad:#FF7461;
+  --palm:#C99A78; --palm-line:#8A5E40; --thumb:#B9825E; --cam:#050908; color-scheme:dark; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--f-body);
+  padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));padding-block:0 32px}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1}
+.wrap{max-width:1400px;margin:0 auto}
+
+/* topo */
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-block:18px 10px}
+.brand{display:flex;align-items:center;gap:12px;margin-right:auto}
+.brand svg{width:40px;height:40px;flex:none}
+.brand h1{font-size:clamp(1.35rem,2.6vw,1.8rem);font-weight:800;letter-spacing:-.02em}
+.brand small{display:block;color:var(--muted);font:600 .72rem/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;margin-top:4px}
+.overall{display:flex;align-items:center;gap:10px;font:600 .8rem var(--f-mono);color:var(--muted)}
+.overall .bar{width:120px;height:8px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.overall .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .4s}
+
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-block:6px 14px;scrollbar-width:none}
+.tabs button{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:8px 16px;white-space:nowrap;font-weight:700;font-size:.92rem}
+.tabs button[aria-current="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tabs .num{font:600 .72rem var(--f-mono);opacity:.6;margin-right:6px}
+
+.layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1150px){.layout{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+
+/* palco */
+.stage{position:sticky;top:12px;display:flex;flex-direction:column;gap:10px}
+.duo{display:flex;flex-direction:column;gap:10px}
+.duo .cam{max-height:calc(100vh - 330px);min-height:320px}
+.model{position:relative;display:grid;grid-template-columns:minmax(0,210px) minmax(0,1fr);grid-template-rows:auto 1fr;column-gap:18px;min-width:0;height:clamp(140px,21vh,190px);background:radial-gradient(circle at 18% 50%,var(--surface),var(--bg) 70%);border:1px solid var(--line);border-radius:var(--r);padding:10px 16px 10px 8px;overflow:hidden}
+.model-art{grid-column:1;grid-row:1/3;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
+.model-art .handart{width:100%;height:100%;max-width:none;aspect-ratio:auto;border:0;background:transparent;border-radius:0}
+.model-art .ha3,.model-art .ha{object-fit:contain}
+.model-art .handart{position:relative}
+.orbit-hint{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);font:600 .6rem var(--f-mono);letter-spacing:.04em;color:var(--muted);background:color-mix(in srgb,var(--surface) 80%,transparent);padding:2px 7px;border-radius:99px;white-space:nowrap;pointer-events:none;transition:opacity .4s}
+.orbit-hint.gone{opacity:0}
+@media (max-width:640px){.orbit-hint{display:none}}
+.model-head{grid-column:2;grid-row:1;display:flex;justify-content:space-between;align-items:center;gap:8px;padding-top:4px}
+.model-tag{font:600 .64rem var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--accent);text-align:right}
+.model-foot{grid-column:2;grid-row:2;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0}
+.model-title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.model-title b{font:800 clamp(2rem,3.4vw,2.8rem)/1 var(--f-display);letter-spacing:-.02em}
+.model-cap{font-size:.82rem;color:var(--muted)}
+.model-desc{margin:0;font-size:.95rem;line-height:1.4;max-width:60ch;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.model-empty{color:var(--muted);font-size:.9rem;text-align:center;padding:12px;max-width:22ch}
+.model-hidden{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--muted);font-size:.9rem}
+@media (max-width:900px){.stage{position:relative;top:0}}
+@media (max-width:640px){
+  .duo .cam{aspect-ratio:3/4;max-height:62vh}
+  .camtip{font-size:.86rem;left:8px;right:8px;bottom:8px}
+  .model{grid-template-columns:minmax(0,120px) minmax(0,1fr);height:150px;column-gap:10px}
+  .model-title b{font-size:1.7rem}
+  .model-desc{font-size:.84rem;-webkit-line-clamp:3}
+  .model-head .eyebrow{display:none}
+}
+.cam{position:relative;aspect-ratio:4/3;max-width:100%;border-radius:var(--r);overflow:hidden;background:var(--cam)}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-off{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;color:#DCE7E2}
+.cam-off p{max-width:38ch;margin:0;color:#A9BBB3;font-size:.95rem}
+.cam-off .err{color:#FFB4A3}
+.btn{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:10px;padding:11px 18px;background:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.small{padding:7px 12px;font-size:.88rem}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip{position:absolute;left:12px;top:12px;font:600 .74rem var(--f-mono);letter-spacing:.04em;background:rgba(5,10,9,.66);color:#E6F0EC;padding:6px 10px;border-radius:99px;display:flex;align-items:center;gap:7px}
+.chip i{width:8px;height:8px;border-radius:50%;background:#7d8b86}
+.chip[data-s="on"] i{background:#43d18f}.chip[data-s="wait"] i{background:#f0b84a}
+.hud{position:absolute;right:12px;top:12px;display:flex;align-items:center;gap:10px;background:rgba(5,10,9,.66);color:#fff;border-radius:16px;padding:6px 12px 6px 6px}
+.hud svg{width:56px;height:56px}
+.hud .tgt{font:800 1.9rem/1 var(--f-display)}
+.hud .pct{font:600 .66rem var(--f-mono);color:#cfe0d9;margin-top:2px;white-space:nowrap}
+.camtip{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(5,10,9,.74);color:#EEF5F2;border-radius:12px;padding:9px 13px;font-size:.95rem;line-height:1.35;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.camtip b{color:#fff}.camtip i{color:#a9bdb5;font-style:normal;font-size:.85em}
+.camtip .x{color:#FF8A70;font-weight:700}.camtip .ok{color:#5BE39B;font-weight:700}
+.fbhead{font:600 .7rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:16px}
+.hud .lbl{font:600 .66rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:#a7b8b1}
+.flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .25s}
+.flash.show{opacity:1}
+.flash span{font:800 clamp(2rem,6vw,3.4rem) var(--f-display);color:#fff;background:var(--ok);padding:10px 26px;border-radius:18px;transform:rotate(-3deg)}
+.meters{display:grid;grid-template-columns:1fr auto;gap:8px 14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.meter{height:10px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--signal);transition:width .12s}
+.meter.motion i{background:var(--accent)}
+.mlabel{font:600 .72rem var(--f-mono);color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.mval{font:600 .9rem var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;min-width:4ch}
+.guess{grid-column:1/-1;font-size:.92rem;color:var(--muted)}
+.guess b{color:var(--ink);font-family:var(--f-display);font-size:1.1rem}
+
+/* conteúdo */
+.content{min-width:0;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.eyebrow{font:600 .72rem var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.lead{color:var(--muted);max-width:62ch;margin:.4em 0 0}
+.modhead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.modhead h2{font-size:clamp(1.5rem,3vw,2.1rem);font-weight:800;letter-spacing:-.02em;margin-top:4px}
+.prog{font:600 .8rem var(--f-mono);color:var(--muted)}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap}
+.subtabs button{border:1px solid var(--line);background:transparent;border-radius:8px;padding:6px 12px;font-weight:700;font-size:.88rem}
+.subtabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.tile{position:relative;aspect-ratio:1;border:1px solid var(--line);background:var(--bg);border-radius:10px;font:700 1.25rem var(--f-display);display:flex;align-items:center;justify-content:center}
+.tile.wide{aspect-ratio:auto;padding:10px 6px;font-size:.92rem}
+.tiles.words{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
+.tgroup{font:600 .68rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.tgroup:first-child{margin-top:0}
+.tile[aria-current="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tile .dot{position:absolute;right:5px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.tile .mv{position:absolute;left:5px;bottom:3px;font:600 .58rem var(--f-mono);color:var(--muted)}
+.tile[aria-current="true"] .mv{color:var(--bg);opacity:.7}
+
+.sign{display:grid;grid-template-columns:190px minmax(0,1fr);gap:20px}
+.sign.solo{grid-template-columns:minmax(0,1fr)}
+@media (max-width:520px){.sign{grid-template-columns:minmax(0,1fr)}}
+.sign .big{font:800 clamp(3.6rem,8vw,5rem)/1 var(--f-display);letter-spacing:-.03em}
+.sign .bigw{font:800 clamp(1.8rem,4vw,2.4rem)/1.05 var(--f-display)}
+.handart{width:190px;max-width:100%;aspect-ratio:1;background:radial-gradient(circle at 50% 40%,var(--surface),var(--bg) 70%);border-radius:14px;border:1px solid var(--line);overflow:hidden}
+.ha,.ha3{width:100%;height:100%;display:block}
+.ha-skin{stroke:var(--palm);stroke-linecap:round}
+.ha-thumb{stroke:var(--thumb);stroke-linecap:round}
+.ha-out{stroke:var(--palm-line);stroke-linecap:round}
+.ha-palm{fill:var(--palm);stroke:var(--palm-line);stroke-width:1.8;stroke-linejoin:round}
+.ha-arm{fill:var(--palm);stroke:var(--palm-line);stroke-width:1.8;opacity:.5}
+.ha-crease{fill:none;stroke:var(--palm-line);stroke-width:1.2;opacity:.45;stroke-linecap:round}
+.ha-touch{fill:none;stroke:var(--signal);stroke-width:2.4;stroke-dasharray:3 3}
+.ha-trail{fill:none;stroke:var(--signal);stroke-width:2.4;stroke-dasharray:5 4;stroke-linecap:round;opacity:.85}
+.ha-head{fill:none;stroke:var(--signal);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.glycap{font:600 .66rem var(--f-mono);color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-top:6px;max-width:190px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font:600 .62rem var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px;margin-right:4px}
+.desc{margin:.6em 0 0;max-width:60ch}
+.tip{margin:.6em 0 0;padding:10px 12px;background:var(--bg);border-radius:10px;font-size:.92rem;color:var(--muted)}
+.tag{display:inline-block;font:600 .68rem var(--f-mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--sunk);color:var(--muted);margin-right:6px}
+.tag.mv{background:color-mix(in srgb, var(--accent) 16%, transparent);color:var(--accent)}
+.fb{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.fb:empty{display:none}
+.fb li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:.93rem;padding:6px 10px;border-radius:8px;background:var(--bg)}
+.fb li .ic{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 .72rem var(--f-mono);color:#fff;background:var(--line)}
+.fb li.ok .ic{background:var(--ok)}.fb li.mid .ic{background:var(--warn)}.fb li.no .ic{background:var(--bad)}
+.fb li .now{font:600 .74rem var(--f-mono);color:var(--muted)}
+.fb .wait{grid-template-columns:1fr;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spacer{flex:1}
+.spell{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.spell .sl{width:76px;border-radius:12px;border:2px solid var(--line);background:var(--bg);display:flex;flex-direction:column;align-items:center;padding:4px 4px 6px}
+.spell .mini{width:64px;height:64px;border:0;border-radius:8px;background:transparent}
+.spell .mini svg{width:100%;height:100%;display:block}
+.spell .sl b{font:800 1.35rem/1 var(--f-display);margin-top:2px}
+.spell .sl.cur{border-color:var(--signal)}
+.spell .sl.cur b{color:var(--signal)}
+.spell .sl.done{border-color:var(--ok);background:color-mix(in srgb, var(--ok) 14%, var(--bg))}
+.spell .sl.done b{color:var(--ok)}
+.spell .sl.skip{opacity:.5}
+.params{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.params div{background:var(--bg);border-radius:10px;padding:12px}
+.params b{display:block;font-family:var(--f-display);font-size:1.02rem}
+.params span{font-size:.88rem;color:var(--muted)}
+.params em{font:600 .7rem var(--f-mono);font-style:normal;color:var(--accent)}
+.steps{margin:.6em 0 0;padding-left:1.2em;max-width:62ch}
+.steps li{margin:.25em 0}
+.set{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:7px 14px;font-weight:700}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.quizbig{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.timer{height:8px;border-radius:99px;background:var(--sunk);overflow:hidden;margin-top:12px}
+.timer i{display:block;height:100%;background:var(--warn);width:100%}
+.score{font:800 2.6rem/1 var(--f-display);font-variant-numeric:tabular-nums}
+.tbl{width:100%;border-collapse:collapse;font-size:.92rem}
+.tbl td,.tbl th{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
+.tbl th{font:600 .7rem var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tbl td.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.tblwrap{overflow-x:auto}
+.note{font-size:.86rem;color:var(--muted)}
+a{color:var(--accent)}
+.count{font:800 4rem/1 var(--f-display);color:#fff;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;text-shadow:0 4px 18px rgba(0,0,0,.5)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="var(--accent)"/><path d="M13 29V17.5a2 2 0 0 1 4 0V12a2 2 0 0 1 4 0v-1a2 2 0 0 1 4 0v3a2 2 0 0 1 4 0v10c0 4-3 7-7 7h-2c-3 0-5-1-7-2z" fill="none" stroke="var(--accent-ink)" stroke-width="2.2" stroke-linejoin="round"/><path d="M8 13c-1.5 2-1.5 5 0 7M33 13c1.5 2 1.5 5 0 7" stroke="var(--accent-ink)" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      <div><h1>Libras em Movimento</h1><small>Curso com reconhecimento das mãos</small></div>
+    </div>
+    <div class="overall"><span id="ovTxt">0 de 0 sinais</span><div class="bar"><i id="ovBar"></i></div></div>
+  </header>
+  <nav class="tabs" id="tabs" aria-label="Módulos do curso"></nav>
+  <main class="layout">
+    <section class="stage" aria-label="Câmera e mão-modelo">
+      <div class="duo" id="duo">
+      <div class="cam" id="cam">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="cam-off" id="camOff">
+          <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#7FD9C1" stroke-width="1.6" aria-hidden="true"><path d="M7 20v-7.5a1.5 1.5 0 0 1 3 0V8a1.5 1.5 0 0 1 3 0v-.5a1.5 1.5 0 0 1 3 0V10a1.5 1.5 0 0 1 3 0v5.5c0 2.5-2 4.5-4.5 4.5H12c-2 0-3.5-.7-5-2"/></svg>
+          <button class="btn" id="camBtn">Ligar câmera</button>
+          <p id="camMsg">A câmera fica só no seu navegador. Nenhuma imagem é enviada para fora: o reconhecimento das mãos roda no próprio aparelho.</p>
+        </div>
+        <div class="chip" id="status" data-s="off"><i></i><span>Câmera desligada</span></div>
+        <div class="hud" id="hud" hidden>
+          <svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="23" stroke="rgba(255,255,255,.18)" stroke-width="6" fill="none"/><circle id="ring" cx="28" cy="28" r="23" stroke="#43d18f" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="144.5" stroke-dashoffset="144.5" transform="rotate(-90 28 28)"/></svg>
+          <div><div class="lbl" id="hudLbl">Faça</div><div class="tgt" id="hudTgt">A</div><div class="pct" id="hudPct">0%</div></div>
+        </div>
+        <div class="camtip" id="camTip" hidden></div>
+        <div class="count" id="count" hidden></div>
+        <div class="flash" id="flash"><span id="flashTxt">Isso!</span></div>
+      </div>
+      <aside class="model" id="model" aria-label="Mão-modelo">
+        <div class="model-head"><span class="eyebrow">Modelo</span><span class="model-tag" id="modelTag"></span></div>
+        <div class="model-art" id="modelArt"></div>
+        <div class="model-foot"><div class="model-title"><b id="modelLbl">–</b><span class="model-cap" id="modelCap">Escolha um sinal</span></div><p class="model-desc" id="modelDesc"></p></div>
+      </aside>
+      </div>
+    </section>
+    <section class="content" id="content"></section>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ================== DADOS DO CURSO ================== */
+// f: Indicador, Médio, Anelar, Mínimo — E esticado, C curvado, F fechado, K curvado/fechado, X tanto faz
+const MODULES = [
+ { id:'alfabeto', name:'Alfabeto manual', short:'Alfabeto', n:1,
+   intro:'A datilologia soletra nomes próprios, siglas e palavras que ainda não têm sinal. São 27 configurações: as 26 letras e o Ç. A maioria é estática; H, J, K, X, Z e Ç levam movimento.',
+   signs:[
+  {id:'A',spec:{f:'FFFF',th:'aSide',thumbShape:'A',knuckle:'fist'},desc:'Mão fechada, palma para a frente. O polegar fica encostado na lateral do indicador, apontando para cima.',tip:'Não confunda com o S, em que o polegar cruza na frente dos dedos.'},
+  {id:'B',spec:{f:'EEEE',th:'across',spread:false,dir:['hand','up']},desc:'Quatro dedos esticados e unidos, apontando para cima, palma para a frente. O polegar fica dobrado sobre a palma.'},
+  {id:'C',spec:{f:'CCCC',th:'open',spread:false},desc:'Dedos unidos e curvados, polegar também em arco, desenhando a letra C. A palma fica de lado.'},
+  {id:'D',spec:{f:'EKKK',th:'touchM',dir:['I','up']},desc:'Indicador esticado para cima. Médio, anelar e mínimo se curvam e tocam o polegar, formando um círculo.'},
+  {id:'E',spec:{f:'eeee',th:'eThumb',knuckle:'bent'},desc:'Todos os dedos curvados para baixo, com as pontas sobre o polegar dobrado na frente da palma. Palma para a frente.',tip:'Esta letra tem variação entre sinalizantes: há quem deixe o polegar mais esticado.'},
+  {id:'F',spec:{f:'CEEE',th:'beside'},desc:'Médio, anelar e mínimo esticados para cima. O indicador fica dobrado, apontando para a frente, e o polegar encosta na lateral dele.',tip:'O T é quase igual: muda só o polegar, que fica por dentro do indicador.'},
+  {id:'G',spec:{f:'EFFF',th:'beside',dir:['I','up']},desc:'Indicador esticado para cima e os outros dedos fechados. O polegar fica colado na lateral do indicador.',tip:'No L o polegar se afasta do indicador.'},
+  {id:'H',spec:{f:'EEFF',th:'between',spread:false,dir:['I','up']},motion:'rotate',desc:'Indicador e médio esticados para cima, anelar e mínimo fechados, polegar entre o indicador e o médio. Gire a mão pelo pulso até a palma ficar voltada para dentro.'},
+  {id:'I',spec:{f:'FFFE',th:'across',dir:['P','up']},desc:'Mão fechada com o dedo mínimo esticado para cima. Palma para a frente.'},
+  {id:'J',spec:{f:'FFFE',th:'across'},motion:'curve',desc:'Mesma forma do I. Gire a mão pelo pulso desenhando o gancho do J com a ponta do mínimo.'},
+  {id:'K',spec:{f:'EEFF',th:'between',spread:false,dir:['I','up']},motion:'up',desc:'Mesma forma do H: indicador e médio para cima com o polegar entre eles. Mova a mão para cima.'},
+  {id:'L',spec:{f:'EFFF',th:'out',dir:['I','up']},desc:'Indicador esticado para cima e polegar aberto para o lado, longe do indicador. Os outros dedos ficam fechados.'},
+  {id:'M',spec:{f:'EELK',dir:['M','down']},desc:'Indicador, médio e anelar esticados, apontando para baixo. O mínimo e o polegar ficam dobrados.'},
+  {id:'N',spec:{f:'EEKK',dir:['M','down']},desc:'Indicador e médio esticados, unidos e apontando para baixo. Anelar, mínimo e polegar dobrados.'},
+  {id:'O',spec:{f:'CCCC',th:'touchI'},desc:'Todos os dedos curvados, com as pontas encostando no polegar, formando um círculo. Palma de lado.'},
+  {id:'P',spec:{f:'EEFF',th:'between',dir:['I','fwd']},desc:'Indicador e médio esticados apontando para a frente, com o polegar entre eles. Anelar e mínimo fechados.',tip:'É a forma do K apontando para a frente, na horizontal.'},
+  {id:'Q',spec:{f:'EFFF',th:'beside',dir:['I','down']},desc:'Indicador esticado apontando para baixo, palma voltada para dentro, polegar encostado na lateral do indicador. Os outros dedos ficam fechados.'},
+  {id:'R',spec:{f:'EEFF',cross:true,dir:['I','up']},desc:'Indicador e médio esticados para cima e cruzados, com o indicador na frente. Anelar, mínimo e polegar dobrados.'},
+  {id:'S',spec:{f:'FFFF',th:'sFront',thumbShape:'S',knuckle:'fist'},desc:'Mão fechada, palma para a frente, com o polegar cruzando na frente dos outros dedos.'},
+  {id:'T',spec:{f:'CEEE',th:'touchI'},desc:'Médio, anelar e mínimo esticados. O indicador dobra para a frente e o polegar encosta por dentro dele.'},
+  {id:'U',spec:{f:'EEFF',th:'across',spread:false,dir:['I','up']},desc:'Indicador e médio esticados para cima e unidos. Os outros dedos fechados na frente da palma.'},
+  {id:'V',spec:{f:'EEFF',th:'across',spread:true,dir:['I','up']},desc:'Indicador e médio esticados para cima e separados, em V. Os outros dedos fechados.'},
+  {id:'W',spec:{f:'EEEF',th:'across',spread:true,dir:['I','up']},desc:'Indicador, médio e anelar esticados e separados. Mínimo e polegar dobrados.'},
+  {id:'X',spec:{f:'EFFF'},motion:'hook',desc:'Comece com o indicador esticado e os outros dedos fechados. Puxe a mão para trás enquanto dobra o indicador em gancho.'},
+  {id:'Y',spec:{f:'FFFE',th:'out'},desc:'Polegar e mínimo esticados; indicador, médio e anelar fechados. Palma para a frente.'},
+  {id:'Z',spec:{f:'EFFF'},motion:'zigzag',desc:'Com o indicador esticado e os outros dedos fechados, desenhe um Z no ar.',tip:'Algumas referências mostram o Z com médio, anelar e mínimo formando um círculo com o polegar, como no D.'},
+  {id:'Ç',spec:{f:'CCCC',th:'open'},motion:'tremor',desc:'Faça a forma do C e balance a mão num movimento trêmulo, curto e rápido.'}
+ ]},
+ { id:'numeros', name:'Números cardinais', short:'Números', n:2,
+   intro:'A Libras sinaliza números de quatro jeitos: cardinais, quantitativos, ordinais e monetários. Aqui estão os cardinais, usados em telefone, número da casa e conta bancária. Números longos são feitos dígito por dígito.',
+   signs:[
+  {id:'n1',label:'1',spec:{f:'EFFF',th:'across',dir:['I','up']},desc:'Indicador esticado para cima, demais dedos fechados. Palma voltada para você.'},
+  {id:'n2',label:'2',spec:{f:'EEFF',th:'across',spread:true,dir:['I','up']},desc:'Indicador e médio esticados e separados; os outros dedos fechados e unidos. Palma voltada para você.'},
+  {id:'n3',label:'3',spec:{f:'EEEF',th:'across',spread:true,dir:['I','up']},desc:'Indicador, médio e anelar esticados e separados. Palma voltada para você.'},
+  {id:'n4',label:'4',spec:{f:'EEEE',th:'across',spread:true},desc:'Indicador, médio, anelar e mínimo esticados e separados, com o polegar encostado na palma.'},
+  {id:'n5',label:'5',spec:{f:'CCFF',th:'across'},desc:'Indicador e médio flexionados, dobrados nas pontas; anelar e mínimo fechados, com o polegar sobre eles. Palma para a frente.'},
+  {id:'n6',label:'6',spec:{f:'KKKK',th:'tup'},desc:'Polegar esticado apontando para cima. Os outros dedos curvados encostam na parte de dentro do polegar, deixando um pequeno buraco. Palma para cima.'},
+  {id:'n7',label:'7',spec:{f:'EFFF',th:'beside',dir:['I','down']},desc:'Indicador apontando para baixo com o polegar encostado ao lado. Os outros dedos ficam fechados.',tip:'É a mesma configuração da letra Q.'},
+  {id:'n8',label:'8',spec:{f:'KKKK',th:'notOut',knuckle:'fist'},desc:'Mão fechada com a palma para fora e o polegar sobre os dedos.'},
+  {id:'n9',label:'9',spec:{f:'KKKK',th:'tdown'},desc:'Igual ao 6, mas com o polegar apontando para baixo e a palma para baixo.'},
+  {id:'n0',label:'0',spec:{f:'CCCC',th:'touchI'},desc:'Dedos curvados encostando no polegar, formando um círculo, como a letra O.'}
+ ]},
+ { id:'cotidiano', name:'Sinais do cotidiano', short:'Cotidiano', n:3,
+   intro:'Sinais de verdade combinam cinco parâmetros. As descrições seguem o dicionário da Sing Libras, mas vários sinais variam entre regiões: confira o vídeo no dicionário e, se o seu sinal for diferente, grave seus próprios exemplos no Treino. O reconhecimento passa a seguir a sua forma.',
+   signs:[
+  {id:'oi',g:'Saudações e cortesia',label:'OI',seq:['O','I'],desc:'Forma mais comum: faça a letra O e passe para a letra I, num movimento contínuo.'},
+  {id:'tchau',g:'Saudações e cortesia',label:'TCHAU',spec:{f:'EEEE'},motion:'wave',desc:'Mão aberta, palma para a frente, acenando de um lado para o outro.'},
+  {id:'bomdia',g:'Saudações e cortesia',label:'BOM DIA',seq:[{label:'Pontas dos dedos juntas',spec:{f:'CCCC',th:'touchI'}},{label:'Mão aberta',spec:{f:'EEEE',spread:true,th:'out'}},'D'],desc:'Junte as pontas dos dedos à frente do queixo e abra a mão (BOM). Em seguida, faça a letra D (DIA). Rosto tranquilo.'},
+  {id:'obrigado',g:'Saudações e cortesia',label:'OBRIGADO',spec:{f:'EEEE',spread:false},motion:'down',desc:'Mão aberta com os dedos unidos e as pontas perto do queixo. Leve a mão para a frente e para baixo.',tip:'Em algumas regiões o sinal sai da testa. A câmera não vê o rosto: comece com a mão alta, perto dele.'},
+  {id:'porfavor',g:'Saudações e cortesia',label:'POR FAVOR',two:'flat',motion:'pull',desc:'As duas mãos abertas e juntinhas na frente do peito, como um telhado deitado. Puxe as mãos em direção a você.'},
+  {id:'desculpa',g:'Saudações e cortesia',label:'DESCULPA',spec:{f:'FFFE',th:'out'},motion:'up',desc:'Mão em Y: polegar e mínimo esticados, os outros dedos fechados. Leve a mão até os dedos fechados tocarem o queixo. O biquinho completa o sinal.'},
+  {id:'ok',g:'Saudações e cortesia',label:'OK',seq:['O','K'],desc:'Faça a letra O e passe para a letra K, jogando-a para a frente, na altura do peito, sem encostar no corpo.'},
+  {id:'sim',g:'Respostas',label:'SIM',spec:{f:'KKKK',th:'notOut',knuckle:'fist'},motion:'nod',desc:'Mão fechada na forma do S, balançando para cima e para baixo, como quem acena com a cabeça.'},
+  {id:'nao',g:'Respostas',label:'NÃO',spec:{f:'EFFF',dir:['I','up']},motion:'shake',desc:'Indicador esticado para cima, balançando de um lado para o outro.'},
+  {id:'eu',g:'Pessoas',label:'EU',spec:{f:'XKKK'},motion:'pull',art:{ang:{I:[88,6,6]},view:{yaw:125}},desc:'Indicador apontando para o próprio peito. Leve a mão até tocar o peito.',tip:'Com o dedo virado para você, a câmera não enxerga a ponta dele. Por isso o app reconhece o EU pelo movimento: a mão indo em direção ao peito, afastando-se da câmera.'},
+  {id:'voce',g:'Pessoas',label:'VOCÊ',spec:{f:'XKKK'},motion:'push',art:{view:{yaw:55,pitch:65}},desc:'Indicador apontando para a pessoa com quem você fala, com a palma para baixo. Aqui, aponte para a câmera levando a mão um pouco à frente.',tip:'O app reconhece o VOCÊ pela mão indo em direção à câmera, com médio, anelar e mínimo fechados.'},
+  {id:'amigo',g:'Pessoas',label:'AMIGO',spec:{f:'EEEE',spread:false},motion:'tap',art:{view:{yaw:20,roll:-60}},desc:'Mão aberta, palma para cima, com o braço na diagonal e colado ao corpo. Dê dois toques no peito com a lateral da mão.'},
+  {id:'familia',g:'Pessoas',label:'FAMÍLIA',spec:{f:'CEEE',th:'beside'},motion:'circle',desc:'Mão em F, como no alfabeto, fazendo um giro na frente do corpo.'},
+  {id:'nome',g:'Pessoas',label:'NOME',two:'LL',desc:'As duas mãos em L, que se tocam na frente do corpo.'},
+  {id:'casa',g:'Lugares e coisas',label:'CASA',two:'roof',desc:'Duas mãos abertas, dedos unidos, com as pontas se tocando na frente do corpo, formando um telhado.'},
+  {id:'agua',g:'Lugares e coisas',label:'ÁGUA',spec:{f:'EFFF',th:'out',dir:['I','up']},motion:'flap',desc:'Mão em L com o polegar apoiado no queixo. O indicador sobe e desce.'},
+  {id:'cafe',g:'Lugares e coisas',label:'CAFÉ',spec:{f:'CEEE',th:'touchI'},motion:'up',desc:'Indicador e polegar juntos, como se segurassem a alça de uma xícara, e os outros dedos abertos. Leve a xícara até a boca.'},
+  {id:'pensar',g:'Ações',label:'PENSAR',spec:{f:'EFFF',th:'across'},motion:'up',desc:'Indicador esticado e os outros dedos fechados. Leve a ponta do indicador até encostar na têmpora, com cara de quem está pensando.'},
+  {id:'ajudar',g:'Ações',label:'AJUDAR',two:'stack',motion:'push',desc:'Uma mão aberta, com a palma para cima. O indicador da outra mão se apoia nela, perto do pulso, e a mão de baixo empurra a outra para a frente. A direção do empurrão mostra quem ajuda quem.'}
+ ]}
+];
+const WORDS=['LUA','SOL','PAZ','RIO','MAR','CASA','AMOR','VIDA','BOLO','FLOR','GATO','BOLA','PATO','SAPO','DADO','MESA','FOGO','NOME','AZUL','AMIGO','FESTA','PRAIA','LIVRO','MUNDO','NOITE','TERRA','VERDE','FRUTA','ABRAÇO','PRAÇA','ESCOLA','JANELA','BRASIL','SURDO','LIBRAS','FAMILIA','KIWI','XADREZ','YOGA','WIFI','HOJE','QUEIJO'];
+const MOTION_TXT={flap:'indicador sobe e desce',tap:'dois toques',circle:'girar em círculo',push:'levar a mão à frente',pull:'levar a mão ao peito',rotate:'girar o pulso',curve:'desenhar o J',up:'subir a mão',hook:'dobrar em gancho',zigzag:'desenhar o Z',tremor:'tremer',wave:'acenar',nod:'balançar p/ cima e baixo',shake:'balançar p/ os lados',down:'descer a mão',seq:'O → I',two:'duas mãos'};
+const ALL={}; MODULES.forEach(m=>m.signs.forEach(s=>{s.label=s.label||s.id;s.mod=m.id;ALL[s.id]=s;}));
+const lbl=s=>s.label;
+
+/* ================== ESTADO SALVO ================== */
+const store={get(k,d){try{const v=localStorage.getItem('lem_'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('lem_'+k,JSON.stringify(v))}catch(e){}}};
+const S={view:store.get('view','inicio'),sel:store.get('sel',{alfabeto:'A',numeros:'n1',cotidiano:'oi'}),sub:{alfabeto:'letras'},
+  done:store.get('done',{}),hand:store.get('hand','right'),samples:store.get('samples',{}),best:store.get('best',{}),word:0};
+
+/* ================== GEOMETRIA ================== */
+const FING={T:[1,2,3,4],I:[5,6,7,8],M:[9,10,11,12],R:[13,14,15,16],P:[17,18,19,20]};
+const vec=(a,b)=>[b.x-a.x,b.y-a.y,b.z-a.z];
+const len=u=>Math.hypot(u[0],u[1],u[2]);
+const nrm=u=>{const l=len(u)+1e-9;return[u[0]/l,u[1]/l,u[2]/l]};
+const ang=(u,w)=>{const d=(u[0]*w[0]+u[1]*w[1]+u[2]*w[2])/(len(u)*len(w)+1e-9);return Math.acos(Math.max(-1,Math.min(1,d)))*57.29578};
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+const c01=x=>x<0?0:x>1?1:x;
+const near=(d,a,b)=>c01((b-d)/(b-a));
+const far=(d,a,b)=>c01((d-a)/(b-a));
+
+function analyze(raw,isLeft,aspect){
+  const p=raw.map(q=>({x:(isLeft?1-q.x:q.x)*aspect,y:q.y,z:q.z*aspect}));
+  const P=dist(p[0],p[9])||1e-3;
+  const curl={};
+  for(const k of['I','M','R','P']){const[a,b,c,d]=FING[k];
+    curl[k]=ang(vec(p[0],p[a]),vec(p[a],p[b]))+ang(vec(p[a],p[b]),vec(p[b],p[c]))+ang(vec(p[b],p[c]),vec(p[c],p[d]));}
+  curl.T=ang(vec(p[1],p[2]),vec(p[2],p[3]))+ang(vec(p[2],p[3]),vec(p[3],p[4]));
+  const dir={I:nrm(vec(p[5],p[8])),M:nrm(vec(p[9],p[12])),R:nrm(vec(p[13],p[16])),P:nrm(vec(p[17],p[20])),T:nrm(vec(p[2],p[4])),hand:nrm(vec(p[0],p[9]))};
+  const d=(i,j)=>dist(p[i],p[j])/P;
+  const mid={x:(p[5].x+p[6].x+p[9].x+p[10].x)/4,y:(p[5].y+p[6].y+p[9].y+p[10].y)/4,z:(p[5].z+p[6].z+p[9].z+p[10].z)/4};
+  const th={dTI:Math.min(d(4,8),d(4,7)),dTM:Math.min(d(4,12),d(4,16),d(4,11)),dSide:Math.min(d(4,6),d(4,5),d(4,7)),
+    dAcross:Math.min(d(4,9),d(4,10),d(4,13),d(4,14)),dBetween:dist(p[4],mid)/P,dOut:d(4,5)};
+  const v1=vec(p[0],p[5]),v2=vec(p[0],p[17]);
+  const nz=(v1[0]*v2[1]-v1[1]*v2[0])/(Math.hypot(v1[0],v1[1])*Math.hypot(v2[0],v2[1])+1e-9);
+  // referencial da própria mão: u = para os dedos, sd = do mínimo para o indicador
+  const u=nrm(vec(p[0],p[9]));let sd=vec(p[17],p[5]);const k=sd[0]*u[0]+sd[1]*u[1]+sd[2]*u[2];sd=nrm([sd[0]-k*u[0],sd[1]-k*u[1],sd[2]-k*u[2]]);
+  const loc=(i,j)=>{const w=vec(p[j],p[i]);return{side:(w[0]*sd[0]+w[1]*sd[1]+w[2]*sd[2])/P,up:(w[0]*u[0]+w[1]*u[1]+w[2]*u[2])/P}};
+  const t5=loc(4,5);th.side=t5.side;th.up=t5.up;
+  const dT=nrm(vec(p[2],p[4]));th.tUp=dT[0]*u[0]+dT[1]*u[1]+dT[2]*u[2];th.tSide=dT[0]*sd[0]+dT[1]*sd[1]+dT[2]*sd[2];
+  const mcpB=['I','M','R','P'].map(k=>{const[a,b]=FING[k];return ang(vec(p[0],p[a]),vec(p[a],p[b]))});
+  const mcp=mcpB.reduce((x,y)=>x+y,0)/4;
+  return{p,P,curl,dir,th,nz,mcp,spreadIM:ang(dir.I,dir.M),spreadMR:ang(dir.M,dir.R),crossC:((p[8].x-p[12].x)*Math.sign(p[5].x-p[9].x))/P};
+}
+function sState(c,s){
+  const E=c01((90-c)/50),F=c01((c-130)/50),C=Math.min(c01((c-25)/30),c01((215-c)/50));
+  if(s==='e')return Math.min(c01((c-70)/40),c01((235-c)/30));
+  return s==='E'?E:s==='F'?F:s==='C'?C:s==='K'?Math.max(C,F):s==='L'?Math.max(E,C):1;
+}
+const stateNow=c=>c<75?'esticado':c>160?'fechado':'curvado';
+function sThumb(F,t){const h=F.th;
+  switch(t){
+    case'out':return far(h.dOut,0.45,0.8);
+    case'beside':return near(h.dSide,0.3,0.6)*(1-0.6*near(h.dBetween,0.15,0.3));
+    case'across':return near(h.dAcross,0.35,0.7);
+    case'touchI':return near(h.dTI,0.22,0.45);
+    case'touchM':return near(h.dTM,0.25,0.5);
+    case'between':return near(h.dBetween,0.22,0.45);
+    case'open':return far(h.dTI,0.28,0.5)*near(h.dTI,1.4,1.9);
+    case'notOut':return near(h.dOut,0.75,1.0);
+    case'aSide':return c01((h.side+0.25)/0.2)*c01((h.up+0.4)/0.25);
+    case'sFront':return c01((-0.12-h.side)/0.2)*c01((h.up+0.6)/0.25);
+    case'eThumb':return Math.max(near(h.dAcross,0.4,0.75),near(h.dTI,0.3,0.6),near(h.dTM,0.3,0.6),0.8*near(h.dSide,0.3,0.6));
+    case'tup':return c01((-F.dir.T[1]-0.3)/0.4)*far(h.dOut,0.3,0.6);
+    case'tdown':return c01((F.dir.T[1]-0.3)/0.4)*far(h.dOut,0.3,0.6);
+    default:return 1;}
+}
+function sDir(u,t){const up=-u[1];
+  if(t==='up')return c01((up-0.3)/0.4);
+  if(t==='down')return c01((-up-0.15)/0.4);
+  if(t==='fwd')return c01((0.65-Math.abs(u[1]))/0.35);
+  return 1;}
+const NAMES={I:'Indicador',M:'Médio',R:'Anelar',P:'Mínimo'};
+const STATE_TXT={e:'curvado sobre o polegar',E:'esticado',C:'curvado',F:'fechado',K:'dobrado'};
+const THUMB_TXT={out:'Polegar aberto, longe do indicador',beside:'Polegar colado na lateral do indicador',across:'Polegar dobrado na frente da palma',touchI:'Ponta do polegar tocando o indicador',touchM:'Polegar tocando o médio (círculo)',between:'Polegar entre indicador e médio',eThumb:'Polegar dobrado sob as pontas dos dedos',aSide:'Polegar em pé, colado na lateral do indicador',notOut:'Polegar dobrado junto à mão, sem abrir',sFront:'Polegar cruzado na frente dos dedos',open:'Polegar em arco, sem tocar os dedos',tup:'Polegar apontando para cima',tdown:'Polegar apontando para baixo'};
+const DIR_TXT={up:'para cima',down:'para baixo',fwd:'para a frente'};
+const DIRF_TXT={I:'Indicador apontando',M:'Dedos apontando',P:'Mínimo apontando',hand:'Mão apontando'};
+
+function evalSpec(spec,F){
+  const parts=[];
+  'IMRP'.split('').forEach((k,i)=>{const s=spec.f[i];if(s==='X')return;
+    parts.push({t:`${NAMES[k]} ${STATE_TXT[s]}`,s:sState(F.curl[k],s),w:1,now:stateNow(F.curl[k])});});
+  if(spec.th&&spec.th!=='any'&&!spec.thumbShape)parts.push({t:THUMB_TXT[spec.th],s:sThumb(F,spec.th),w:1.2});
+  if(spec.dir)parts.push({t:`${DIRF_TXT[spec.dir[0]]} ${DIR_TXT[spec.dir[1]]}`,s:sDir(F.dir[spec.dir[0]],spec.dir[1]),w:1});
+  if(spec.spread===true){const sp=spec.f[2]==='E'&&spec.f[1]==='E'&&spec.f[3]!=='E'?Math.min(F.spreadIM,F.spreadMR):F.spreadIM;
+    parts.push({t:'Dedos separados',s:c01((sp-6)/10),w:0.8});}
+  if(spec.spread===false)parts.push({t:'Dedos unidos',s:c01((22-F.spreadIM)/12),w:0.8});
+  if(spec.cross)parts.push({t:'Indicador e médio cruzados',s:c01((-F.crossC+0.02)/0.12),w:1.3});
+  if(spec.thumbShape==='A'){const h=F.th;
+    parts.push({t:'Polegar apontando para cima',s:c01((h.tUp-0.15)/0.4),w:1.1,now:h.tUp<0.3?(h.tSide<-0.3?'deitado sobre os dedos':'inclinado'):null});
+    parts.push({t:'Polegar reto, sem dobrar a ponta',s:c01((60-F.curl.T)/30),w:0.9,now:F.curl.T>50?'ponta dobrada':null});
+    parts.push({t:'Ponta do polegar na lateral do indicador',s:c01((h.side+0.3)/0.25),w:1.1,now:h.side<-0.2?'em cima dos dedos':null});}
+  if(spec.thumbShape==='S'){const h=F.th;
+    parts.push({t:'Polegar deitado, atravessando os dedos',s:c01((-h.tSide-0.15)/0.4)*c01((0.65-h.tUp)/0.3),w:1.1,now:h.tUp>0.5?'em pé':null});
+    parts.push({t:'Polegar dobrado por cima dos dedos',s:c01((F.curl.T-25)/30),w:0.9,now:F.curl.T<30?'reto':null});
+    parts.push({t:'Ponta do polegar sobre o médio',s:c01((-0.05-h.side)/0.25),w:1.1,now:h.side>-0.05?'na lateral do indicador':null});}
+  if(spec.knuckle==='fist')parts.push({t:'Dedos fechados desde a base (punho)',s:c01((F.mcp-45)/20),w:1.2,now:F.mcp<50?'base reta':null});
+  if(spec.knuckle==='bent')parts.push({t:'Base dos dedos reta, só as pontas dobradas',s:c01((62-F.mcp)/20),w:1.2,now:F.mcp>60?'punho fechado':null});
+  if(spec.depth){const z=F.dir.I[2];const s=spec.depth==='toward'?c01((-z-0.15)/0.35):c01((z-0.15)/0.35);
+    parts.push({t:spec.depth==='toward'?'Indicador apontando para a câmera':'Indicador apontando para você',s,w:0.8});}
+  let sw=0,sum=0,mn=1;parts.forEach(p=>{sw+=p.w;sum+=p.w*p.s;mn=Math.min(mn,p.s)});
+  const mean=sw?sum/sw:0;
+  return{score:0.6*mean+0.4*mn,parts};
+}
+function twoGeom(hands){const r=hands.raw,P=(hands[0].P+hands[1].P)/2;
+  const d=(i,j)=>Math.hypot((r[0][i].x-r[1][j].x)*aspectNow,r[0][i].y-r[1][j].y)/P;return{d,P};}
+const combine=parts=>{let sw=0,sum=0,mn=1;parts.forEach(p=>{sw+=p.w;sum+=p.w*p.s;mn=Math.min(mn,p.s)});return{score:0.6*sum/sw+0.4*mn,parts};};
+function evalTwo(kind,hands){
+  if(kind==='roof')return evalRoof(hands);
+  if(hands.length<2)return{score:0,parts:[{t:'Mostre as duas mãos',s:0,w:1}]};
+  const[a,b]=hands,g=twoGeom(hands),open=F=>('IMRP'.split('').reduce((s,k)=>s+sState(F.curl[k],'E'),0)/4);
+  if(kind==='flat')return combine([{t:'Mão 1 aberta',s:open(a),w:1},{t:'Mão 2 aberta',s:open(b),w:1},{t:'Mãos juntinhas',s:near(Math.min(g.d(12,12),g.d(5,5),g.d(17,17)),0.5,1.2),w:1.2}]);
+  if(kind==='LL'){const L={f:'EFFF',th:'out'};return combine([{t:'Mão 1 em L',s:evalSpec(L,a).score,w:1},{t:'Mão 2 em L',s:evalSpec(L,b).score,w:1},{t:'Mãos se tocando',s:near(Math.min(g.d(8,8),g.d(8,4),g.d(4,8),g.d(4,4)),0.45,1.1),w:1.2}]);}
+  if(kind==='stack'){const oa=open(a),ob=open(b),base=oa>=ob?0:1,top=1-base,T=hands[top];
+    const ptr=Math.min(1,(sState(T.curl.I,'E')+sState(T.curl.M,'K')+sState(T.curl.R,'K'))/3+0.05);
+    const dd=base===0?g.d(9,8):g.d(8,9);
+    return combine([{t:'Uma mão aberta, palma para cima',s:Math.max(oa,ob),w:1},{t:'Outra mão com o indicador apoiado',s:ptr,w:1},{t:'Mãos encostadas',s:near(dd,0.6,1.4),w:1.2}]);}
+  return{score:0,parts:[]};}
+function evalRoof(hands){
+  if(hands.length<2)return{score:0,parts:[{t:'Mostre as duas mãos',s:0,w:1}]};
+  const[a,b]=hands;const open=F=>('IMRP'.split('').reduce((s,k)=>s+sState(F.curl[k],'E'),0)/4);
+  const pa=hands.raw;const tipD=Math.hypot(pa[0][12].x*aspectNow-pa[1][12].x*aspectNow,pa[0][12].y-pa[1][12].y)/((a.P+b.P)/2);
+  const parts=[{t:'Mão 1 aberta, dedos unidos',s:open(a),w:1},{t:'Mão 2 aberta, dedos unidos',s:open(b),w:1},{t:'Pontas dos dedos se tocando',s:near(tipD,0.35,0.9),w:1.3}];
+  let sw=0,sum=0,mn=1;parts.forEach(p=>{sw+=p.w;sum+=p.w*p.s;mn=Math.min(mn,p.s)});
+  return{score:0.6*sum/sw+0.4*mn,parts};
+}
+
+/* ================== MOVIMENTO ================== */
+const HIST=[];let aspectNow=4/3;
+function win(ms){const t=performance.now()-ms;return HIST.filter(h=>h.t>=t)}
+function reversals(vals,h){let dir=0,ext=vals[0],n=0;
+  for(const v of vals){
+    if(dir===0){if(v-ext>h){dir=1;ext=v}else if(ext-v>h){dir=-1;ext=v}}
+    else if(dir===1){if(v>ext)ext=v;else if(ext-v>h){dir=-1;ext=v;n++}}
+    else{if(v<ext)ext=v;else if(v-ext>h){dir=1;ext=v;n++}}}
+  return n;}
+function motionScore(type){
+  const W=win(type==='tremor'?1000:1400);if(W.length<6)return 0;
+  const P=W.reduce((s,h)=>s+h.P,0)/W.length;
+  const xs=k=>W.map(h=>h[k]);
+  const range=a=>Math.max(...a)-Math.min(...a);
+  switch(type){
+    case'rotate':return c01((range(xs('nz'))-0.3)/0.3);
+    case'up':{const y=xs('wy');return c01(((y[0]-Math.min(...y))/P-0.22)/0.25)}
+    case'down':{const y=xs('wy');return c01(((Math.max(...y)-y[0])/P-0.22)/0.25)}
+    case'hook':{const c=xs('cI');let best=0,mn=c[0];for(const v of c){mn=Math.min(mn,v);best=Math.max(best,v-mn)}return c01((best-40)/40)*(Math.min(...c)<80?1:0)}
+    case'zigzag':{const x=xs('ix'),y=xs('iy');return c01(reversals(x,0.3*P)/2)*c01((range(y)/P-0.25)/0.3)}
+    case'tremor':{const x=xs('wx'),y=xs('wy');const r=Math.max(reversals(x,0.05*P),reversals(y,0.05*P));return range(x)/P<0.9?c01(r/4):0}
+    case'curve':{const x=xs('px'),y=xs('py');let path=0;for(let i=1;i<x.length;i++)path+=Math.hypot(x[i]-x[i-1],y[i]-y[i-1]);
+      return c01((path/P-0.4)/0.6)*(range(xs('nz'))>0.25||range(y)/P>0.3?1:0.4)}
+    case'wave':return c01(reversals(xs('wx'),0.22*P)/2);
+    case'nod':return c01(reversals(xs('wy'),0.15*P)/2);
+    case'shake':return c01(reversals(xs('ix'),0.2*P)/2);
+    case'flap':return c01((reversals(xs('cI'),22)-0.5)/1.5);
+    case'tap':{const sz=xs('sz'),m=sz.reduce((a,b)=>a+b,0)/sz.length;return c01(Math.max(reversals(xs('wx'),0.08*P),reversals(xs('wy'),0.08*P),reversals(sz,0.035*m))/2);}
+    case'circle':{const x=xs('wx'),y=xs('wy');let path=0;for(let i=1;i<x.length;i++)path+=Math.hypot(x[i]-x[i-1],y[i]-y[i-1]);
+      return c01((path/P-0.5)/0.45)*c01((range(x)/P-0.12)/0.14)*c01((range(y)/P-0.12)/0.14);}
+    case'push':{const z=xs('sz');let best=1,mn=z[0];for(const v of z){mn=Math.min(mn,v);best=Math.max(best,v/mn)}return c01((best-1.06)/0.12)}
+    case'pull':{const z=xs('sz');let best=1,mx=z[0];for(const v of z){mx=Math.max(mx,v);best=Math.min(best,v/mx)}return c01((0.95-best)/0.1)}
+  }return 0;}
+
+/* ================== TREINO (k vizinhos + DTW) ================== */
+function featVec(F){const p=F.p,P=F.P,w=p[0];const rel=i=>[(p[i].x-w.x)/P,(p[i].y-w.y)/P,(p[i].z-w.z)/P];
+  return[F.curl.I/180,F.curl.M/180,F.curl.R/180,F.curl.P/180,F.curl.T/180,...rel(4),...rel(8),...rel(12),...rel(20),...F.dir.hand];}
+function buildSeq(ms=1300,n=16){const W=win(ms);if(W.length<4)return null;
+  const t0=W[0].t,t1=W[W.length-1].t;const out=[];let j=0;const P0=W[0].P;
+  for(let i=0;i<n;i++){const t=t0+(t1-t0)*i/(n-1);while(j<W.length-1&&W[j+1].t<t)j++;const h=W[j];
+    out.push([...h.fv,(h.wx-W[0].wx)/P0,(h.wy-W[0].wy)/P0]);}
+  return out;}
+const rms=(a,b,k)=>{let s=0;const L=k||a.length;for(let i=0;i<L;i++)s+=(a[i]-b[i])**2;return Math.sqrt(s/L)};
+function staticVec(seq){const k=20,last=seq.slice(-4);return Array.from({length:k},(_,i)=>last.reduce((s,f)=>s+f[i],0)/last.length)}
+function dtw(A,B){const n=A.length,m=B.length,D=Array.from({length:n+1},()=>new Array(m+1).fill(Infinity));D[0][0]=0;
+  for(let i=1;i<=n;i++)for(let j=Math.max(1,i-4);j<=Math.min(m,i+4);j++){const c=rms(A[i-1],B[j-1]);D[i][j]=c+Math.min(D[i-1][j],D[i][j-1],D[i-1][j-1]);}
+  return D[n][m]/(n+m)*2;}
+function isDynamic(s){return !!(s.motion||s.seq)}
+function tauFor(id){const L=S.samples[id]||[];const dyn=isDynamic(ALL[id]);
+  if(L.length<2)return dyn?0.22:0.14;
+  const ds=L.map((a,i)=>Math.min(...L.filter((_,j)=>j!==i).map(b=>dyn?dtw(a,b):rms(staticVec(a),staticVec(b)))));
+  ds.sort((x,y)=>x-y);return Math.max(0.08,Math.min(0.32,ds[Math.floor(ds.length/2)]*2));}
+const TAU={};
+function knnSim(id,seq){const L=S.samples[id];if(!L||!L.length||!seq)return null;
+  const dyn=isDynamic(ALL[id]);const tau=TAU[id]||(TAU[id]=tauFor(id));
+  let best=Infinity;const sv=dyn?null:staticVec(seq);
+  for(const smp of L){const d=dyn?dtw(seq,smp):rms(sv,staticVec(smp));if(d<best)best=d}
+  return Math.exp(-((best/tau)**2));}
+
+/* ================== MOTOR DE RECONHECIMENTO ================== */
+const LOCK_MS=2000;
+const E={target:null,ema:0,hold:0,lastT:0,cool:0,lock:null,result:null,onSuccess:null,lastHands:[],shapeHist:[],seqMark:0};
+function setTarget(id,onSuccess){if(S.view!=='quiz'||quiz.state!=='play')E.hideModel=false;E.target=id;E.ema=0;E.hold=0;E.onSuccess=onSuccess;E.result=null;E.shapeHist=[];E.seqMark=0;E.seqStep=0;updateHud();}
+const stepSpec=st=>typeof st==='string'?ALL[st].spec:st.spec;
+const stepLabel=st=>typeof st==='string'?'Letra '+st:st.label;
+const seqText=sg=>sg.seq.map(st=>typeof st==='string'?st:st.label.toLowerCase()).join(' → ');
+function shapeScoreFor(sign,F,hands){
+  if(sign.two)return evalTwo(sign.two,hands);
+  if(sign.seq)return null;
+  return evalSpec(sign.spec,F);}
+function guessAmong(F,hands,modId){
+  let best=null,bs=0;const mod=MODULES.find(m=>m.id===modId)||MODULES[0];
+  for(const s of mod.signs){if(s.seq)continue;const r=shapeScoreFor(s,F,hands);if(!r)continue;
+    let sc=r.score;const k=knnSim(s.id,E.lastSeq);if(k!=null&&!isDynamic(s))sc=0.3*sc+0.7*k;
+    if(sc>bs){bs=sc;best=s}}
+  return bs>0.55?{s:best,sc:bs}:null;}
+function process(hands,now){
+  const dt=Math.min(100,now-(E.lastT||now));E.lastT=now;
+  const F=hands[0];
+  if(F){const d2=(i,j)=>Math.hypot(F.p[i].x-F.p[j].x,F.p[i].y-F.p[j].y);HIST.push({t:now,sz:(d2(0,9)+d2(5,17))/2,P:F.P,wx:F.p[0].x,wy:F.p[0].y,ix:F.p[8].x,iy:F.p[8].y,px:F.p[20].x,py:F.p[20].y,nz:F.nz,cI:F.curl.I,fv:featVec(F)});}
+  while(HIST.length&&HIST[0].t<now-2200)HIST.shift();
+  E.lastSeq=buildSeq();
+  const sign=E.target?ALL[E.target]:null;
+  let shape=0,motion=null,res=null,pass=false;
+  if(sign&&F){
+    if(sign.seq){
+      const steps=sign.seq,n=steps.length,sc=steps.map(st=>evalSpec(stepSpec(st),F).score);
+      if(E.seqStep>0&&now-E.seqT>1800)E.seqStep=0;
+      if(E.seqStep<n&&sc[E.seqStep]>0.68){E.seqStep++;E.seqT=now;}
+      else if(E.seqStep>0&&E.seqStep<n&&sc[0]>0.75&&sc[0]>sc[E.seqStep-1]&&E.seqStep>1){E.seqStep=1;E.seqT=now;}
+      shape=Math.max(...sc);E.raw=shape;motion=E.seqStep/n;
+      res={parts:steps.map((st,i)=>({t:(i?'Depois: ':'')+stepLabel(st),s:i<E.seqStep?1:i===E.seqStep?sc[i]:0,w:1}))};
+      pass=E.seqStep>=n;
+      const k=knnSim(sign.id,E.lastSeq);if(k!=null&&k>0.75)pass=true;
+    }else{
+      res=shapeScoreFor(sign,F,hands);shape=res.score;E.raw=shape;
+      const k=knnSim(sign.id,E.lastSeq);
+      if(sign.motion){
+        E.shapeHist.push({t:now,s:shape});while(E.shapeHist.length&&E.shapeHist[0].t<now-1500)E.shapeHist.shift();
+        const smax=Math.max(...E.shapeHist.map(h=>h.s));
+        motion=motionScore(sign.motion);
+        res.parts=[...res.parts,{t:'Movimento: '+MOTION_TXT[sign.motion],s:motion,w:1}];
+        pass=smax>0.66&&motion>0.85;
+        if(k!=null){if(k>0.75&&smax>0.45)pass=true;motion=Math.max(motion,k)}
+        shape=smax>shape?0.5*smax+0.5*shape:shape;
+      }else{
+        if(k!=null)shape=0.3*shape+0.7*k;
+      }
+    }
+    E.ema=E.ema*0.55+shape*0.45;
+    if(!sign.motion&&!sign.seq){
+      if(E.ema>0.68)E.hold+=dt;else E.hold=Math.max(0,E.hold-dt*1.5);
+      pass=E.hold>=650;
+    }
+  }else{E.ema*=0.8;E.hold=Math.max(0,E.hold-dt*2);}
+  E.result=res;
+  // trava depois de um acerto: pausa mínima E a mão precisa desfazer o sinal antes de valer de novo
+  if(E.lock){
+    const released=!F||!sign||(sign.motion||sign.seq?(E.raw||0)<0.45:E.ema<0.45);
+    E.lock.relT=released?E.lock.relT+dt:0;
+    if(E.lock.relT>=250)E.lock.released=true;
+    if(now>=E.lock.until&&E.lock.released)E.lock=null;
+    else{pass=false;E.hold=0;E.shapeHist=[];E.seqMark=0;E.seqStep=0;}
+  }
+  if(pass&&!E.lock){E.lock={t0:now,until:now+LOCK_MS,released:false,relT:0};E.hold=0;E.seqMark=0;E.seqStep=0;E.shapeHist=[];HIST.length=0;flash();
+    if(E.onSuccess)E.onSuccess(E.target);}
+  // meters
+  E.meter={shape:sign?E.ema:0,motion,hold:E.lock?Math.max(0,(E.lock.until-now)/LOCK_MS):sign&&!sign.motion&&!sign.seq?E.hold/650:(pass?1:0)};
+  E.guess=F?guessAmong(F,hands,sign?sign.mod:'alfabeto'):null;
+}
+
+/* ================== CÂMERA + MEDIAPIPE ================== */
+const video=document.getElementById('video'),canvas=document.getElementById('overlay'),ctx=canvas.getContext('2d');
+let hands=null,camOn=false,busy=false,lastResults=null,recording=null;
+const MP='https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/';
+function setStatus(s,txt){const el=document.getElementById('status');el.dataset.s=s;el.querySelector('span').textContent=txt;}
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.crossOrigin='anonymous';s.onload=res;s.onerror=()=>rej(new Error('script'));document.head.appendChild(s);});}
+async function startCamera(){
+  const msg=document.getElementById('camMsg'),btn=document.getElementById('camBtn');
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){msg.className='err';msg.textContent='Este navegador não liberou a câmera para esta página. Abra o arquivo no Chrome, Edge ou Firefox, ou use o endereço https do app.';return;}
+  btn.disabled=true;btn.textContent='Abrindo câmera…';
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});
+    video.srcObject=stream;await video.play();
+  }catch(e){btn.disabled=false;btn.textContent='Tentar de novo';msg.className='err';
+    msg.textContent=e&&e.name==='NotAllowedError'?'A câmera foi bloqueada. Libere o acesso no ícone de câmera da barra de endereço e tente de novo.':'Não consegui abrir a câmera ('+(e&&e.name||'erro')+'). Veja se outro app está usando a câmera.';return;}
+  setStatus('wait','Carregando o modelo das mãos…');btn.textContent='Carregando modelo…';
+  try{
+    if(typeof window.Hands==='undefined')await loadScript(MP+'hands.js');
+    hands=new window.Hands({locateFile:f=>MP+f});
+    hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:true});
+    hands.onResults(onResults);
+    await hands.initialize();
+  }catch(e){btn.disabled=false;btn.textContent='Tentar de novo';msg.className='err';
+    msg.textContent='Não consegui baixar o modelo de reconhecimento. Ele precisa de internet na primeira vez (vem do jsDelivr). Verifique a conexão e tente de novo.';setStatus('off','Modelo indisponível');return;}
+  camOn=true;document.getElementById('camOff').hidden=true;document.getElementById('duo').classList.add('live');setStatus('on','Procurando mãos');updateHud();loop();
+}
+async function loop(){
+  if(!camOn)return;
+  if(!busy&&video.readyState>=2){busy=true;try{await hands.send({image:video})}catch(e){}busy=false;}
+  requestAnimationFrame(loop);
+}
+function onResults(r){
+  const w=video.videoWidth||640,h=video.videoHeight||480;aspectNow=w/h;
+  if(canvas.width!==w){canvas.width=w;canvas.height=h;}
+  const list=[];const lm=r.multiHandLandmarks||[],hd=r.multiHandedness||[];
+  for(let i=0;i<lm.length;i++){const isLeft=(hd[i]&&hd[i].label)==='Left';list.push({raw:lm[i],isLeft});}
+  // mão dominante primeiro
+  const wantLeft=S.hand==='left';
+  list.sort((a,b)=>(a.isLeft===wantLeft?0:1)-(b.isLeft===wantLeft?0:1));
+  const Fs=list.map(o=>analyze(o.raw,o.isLeft,aspectNow));Fs.raw=list.map(o=>o.raw);
+  process(Fs,performance.now());
+  draw(list);
+  if(recording)recordTick(Fs);
+  setStatus(list.length?'on':'wait',list.length?(list.length>1?'Duas mãos':'Mão detectada'):'Nenhuma mão à vista');
+  paintLive();
+}
+const BONES=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+let colSignal='#E2583A',colAccent='#39C3A1';
+function refreshColors(){colSignal=cssVar('--signal')||colSignal;colAccent=cssVar('--accent')||colAccent;}
+function draw(list){
+  const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);
+  list.forEach((o,idx)=>{const pts=o.raw.map(q=>[q.x*w,q.y*h]);
+    ctx.lineWidth=Math.max(2,w/220);ctx.strokeStyle=idx===0?colSignal:'rgba(255,255,255,.55)';ctx.lineCap='round';
+    ctx.beginPath();BONES.forEach(([a,b])=>{ctx.moveTo(pts[a][0],pts[a][1]);ctx.lineTo(pts[b][0],pts[b][1])});ctx.stroke();
+    pts.forEach((p,i)=>{ctx.beginPath();ctx.fillStyle=[4,8,12,16,20].includes(i)?'#fff':(idx===0?colSignal:'rgba(255,255,255,.7)');ctx.arc(p[0],p[1],Math.max(3,w/150),0,7);ctx.fill();});
+  });
+}
+
+/* ================== HUD / FEEDBACK AO VIVO ================== */
+let lastPaint=0;
+function paintLive(){
+  const now=performance.now();if(now-lastPaint<90)return;lastPaint=now;
+  const m=E.meter||{shape:0,motion:null,hold:0};
+  const ring=document.getElementById('ring');ring.setAttribute('stroke-dashoffset',(144.5*(1-c01(m.hold))).toFixed(1));ring.setAttribute('stroke',E.lock?'#9aa7a2':'#43d18f');
+  document.getElementById('hudLbl').textContent=E.lock?'Solte':'Faça';
+  const sg=E.target&&ALL[E.target];
+  document.getElementById('hudPct').textContent=sg?Math.round(m.shape*100)+'%'+(m.motion!=null?' · mov '+Math.round(m.motion*100)+'%':''):'';
+  const tip=document.getElementById('camTip');let html='';
+  if(!camOn){tip.hidden=true;}
+  else{
+    if(E.lock)html=now<E.lock.until?'<b>Muito bem!</b> Aguarde um instante.':(E.lock.released?'Pronto para o próximo.':'<b>Desfaça o sinal</b> para reconhecer de novo.');
+    else if(!lastHasHand())html='Mostre a mão inteira, com o pulso aparecendo.';
+    else if(sg&&E.result){const bad=E.result.parts.filter(p=>p.s<=0.7).sort((a,b)=>a.s-b.s).slice(0,2);
+      html=bad.length?bad.map(p=>`<span class="x">×</span> ${esc(p.t)}${p.now?` <i>(agora: ${esc(p.now)})</i>`:''}`).join('<br>'):'<span class="ok">✓</span> Forma certa, segure assim.';}
+    else if(E.guess)html='Parece com: <b>'+esc(lbl(E.guess.s))+'</b>';
+    tip.hidden=!html;if(html&&tip.innerHTML!==html)tip.innerHTML=html;}
+  const fb=document.getElementById('fbList');
+  if(fb&&!E.target){fb.innerHTML='';}
+  else if(fb&&E.result){fb.innerHTML=E.result.parts.map(p=>{const c=p.s>0.7?'ok':p.s>0.4?'mid':'no';
+      return`<li class="${c}"><span class="ic">${c==='ok'?'✓':c==='mid'?'~':'×'}</span><span>${esc(p.t)}</span><span class="now">${c!=='ok'&&p.now?'agora: '+p.now:''}</span></li>`}).join('');}
+  else if(fb){fb.innerHTML=camOn?'<li class="wait">Nenhuma mão detectada. Afaste um pouco a mão da câmera.</li>':'<li class="wait">Ligue a câmera para receber a correção ao vivo.</li>';}
+}
+function lastHasHand(){return HIST.length&&performance.now()-HIST[HIST.length-1].t<300}
+function updateHud(){renderModel();const hud=document.getElementById('hud');
+  if(E.target&&camOn){hud.hidden=false;document.getElementById('hudTgt').textContent=lbl(ALL[E.target]);}else hud.hidden=true;}
+let flashTimer=0;
+function flash(txt){const f=document.getElementById('flash');document.getElementById('flashTxt').textContent=txt||['Isso!','Perfeito!','Muito bem!','Acertou!'][Math.floor(Math.random()*4)];
+  f.classList.add('show');clearTimeout(flashTimer);flashTimer=setTimeout(()=>f.classList.remove('show'),900);}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ================== PAINEL DA MÃO-MODELO (ao lado da câmera) ================== */
+let modelShown=null;
+function renderModel(forceId){
+  const id=forceId||E.target,art=document.getElementById('modelArt');if(!art)return;
+  const lblEl=document.getElementById('modelLbl'),cap=document.getElementById('modelCap'),tag=document.getElementById('modelTag');
+  if(!id){if(modelShown!==null){art.innerHTML='<div class="model-empty">Escolha um sinal na lista para ver aqui como a mão deve ficar.</div>';modelShown=null;}
+    lblEl.textContent='–';cap.textContent='Escolha um sinal';tag.textContent='';document.getElementById('modelDesc').textContent='';return;}
+  const sg=ALL[id];
+  if(E.hideModel&&!forceId){if(modelShown!=='hidden'){art.innerHTML='<div class="model-hidden">Faça de memória.<br>Precisa de ajuda? Use “Ver dica”.</div>';modelShown='hidden';}
+    lblEl.textContent=lbl(sg);cap.textContent='Desafio';tag.textContent='';document.getElementById('modelDesc').textContent='';return;}
+  const key=id+'|'+S.hand;
+  if(modelShown!==key){art.innerHTML=glyph(sg);HA.mount(art);modelShown=key;}
+  lblEl.textContent=lbl(sg);document.getElementById('modelDesc').textContent=sg.desc;
+  cap.textContent='Como no espelho · mão '+(S.hand==='left'?'esquerda':'direita');
+  tag.textContent=sg.motion?'Movimento: '+MOTION_TXT[sg.motion]:sg.seq?'Sequência: '+seqText(sg):sg.two?'Duas mãos':'Estática';
+}
+
+/* ================== DESENHO DA MÃO (modelo 3D simples, vista no espelho) ================== */
+const HA=(()=>{
+  const V=(x,y,z)=>({x,y,z});
+  const add=(a,b)=>V(a.x+b.x,a.y+b.y,a.z+b.z), sub=(a,b)=>V(a.x-b.x,a.y-b.y,a.z-b.z), mul=(a,k)=>V(a.x*k,a.y*k,a.z*k);
+  const dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z, L=a=>Math.sqrt(dot(a,a)), N=a=>{const l=L(a)||1;return mul(a,1/l)};
+  const lerp=(a,b,t)=>V(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t);
+  const R=d=>d*Math.PI/180;
+  const SEG={I:[0.42,0.25,0.2],M:[0.46,0.28,0.21],R:[0.43,0.26,0.2],P:[0.33,0.2,0.18]};
+  const BASE={I:V(-0.34,0.92,0),M:V(-0.11,0.97,0),R:V(0.12,0.94,0),P:V(0.33,0.84,0)};
+  const IDX={I:5,M:9,R:13,P:17};
+  const WID={I:0.17,M:0.18,R:0.17,P:0.15,T:0.19};
+  const ANG={E:[0,4,4],L:[0,4,4],X:[0,4,4],C:[28,38,28],K:[50,78,45],F:[88,102,58],e:[28,98,72]};
+  const TH1=V(-0.27,0.24,0.06), TLEN=[0.34,0.28,0.25];
+
+  function finger(k,a,theta,zoff){
+    const t=R(theta),f=V(Math.sin(t),Math.cos(t),0),n=V(0,0,1);
+    const b=add(BASE[k],V(0,0,zoff));const pts=[b];let phi=0,cur=b;
+    for(let i=0;i<3;i++){phi+=R(a[i]);const d=add(mul(f,Math.cos(phi)),mul(n,Math.sin(phi)));cur=add(cur,mul(d,SEG[k][i]));pts.push(cur);}
+    return pts;}
+  function fingerAngles(spec,k,s){
+    const f=spec.f;
+    if(f==='CEEE'&&k==='I')return[78,52,22];          // F e T: indicador dobrado para a frente
+    if(f==='CCFF'&&(k==='I'||k==='M'))return[12,96,62]; // número 5: dedos em gancho
+    if(s==='C'&&spec.th==='touchI')return[44,58,44];   // O e 0: pontas encontram o polegar
+    if(s==='C'&&spec.th==='open')return[30,48,38];     // C: arco aberto
+    if(s==='K'&&spec.th==='touchM')return[52,72,48];   // D: círculo com o polegar
+    if(s==='K'&&spec.knuckle==='fist')return ANG.F;   // punho: 8 e SIM
+    return ANG[s]||ANG.E;}
+  // polegar anatômico: o metacarpo (TH1→p2) só se inclina um pouco a partir da posição natural;
+  // as duas falanges é que apontam para o alvo, sempre com o comprimento real
+  const THUMB_REST=N(V(-0.48,0.74,0.47));
+  function thumbIK(target,straight){
+    const p2=add(TH1,mul(N(lerp(THUMB_REST,N(sub(target,TH1)),0.4)),TLEN[0]));
+    const toT=sub(target,p2),c=L(toT),u=N(toT),a=TLEN[1],b=TLEN[2];
+    if(straight){const p3=add(p2,mul(u,a));return[TH1,p2,p3,add(p3,mul(u,b))];}
+    if(c>=a+b-1e-4){return[TH1,p2,add(p2,mul(u,a)),add(p2,mul(u,a+b))];}
+    let w=V(-0.5,0.1,0.85);w=N(sub(w,mul(u,dot(w,u))));
+    const al=Math.acos(Math.max(-1,Math.min(1,(a*a+c*c-b*b)/(2*a*c))));
+    const p3=add(p2,add(mul(u,a*Math.cos(al)),mul(w,a*Math.sin(al))));
+    return[TH1,p2,p3,target];}
+  function build(spec,over){
+    over=over||{};const f=spec.f||'EEEE',keys=['I','M','R','P'];
+    const sp=spec.spread===true?1:spec.spread===false?-0.25:0.35;
+    const th=spec.spread===true?{I:-22,M:-3,R:15,P:30}:{I:-9*sp,M:-3*sp,R:3*sp,P:9*sp};
+    if(spec.cross){th.I=16;th.M=-12;}
+    const p=new Array(21);p[0]=V(0,0,0);
+    keys.forEach((k,i)=>{const a=(over.ang&&over.ang[k])||fingerAngles(spec,k,f[i]);
+      finger(k,a,th[k],spec.cross&&k==='I'?0.07:0).forEach((q,j)=>p[IDX[k]+j]=q);});
+    const ext=keys.filter((k,i)=>'ELX'.includes(f[i])).length;
+    let t=spec.th||(ext>=3?'relax':'across'),T,contact=null;if(t==='aSide')t='beside';if(t==='sFront'||t==='notOut')t='across';
+    const mE=f[1]==='E'||f[1]==='L';
+    switch(t){
+      case'out':T=add(TH1,V(-0.78,0.5,0.06));break;
+      case'relax':T=add(TH1,V(-0.4,0.66,0.16));break;
+      case'beside':T=add(p[6],V(-0.1,-0.02,0.07));contact=T;break;
+      case'across':T=mE?add(lerp(p[9],p[13],0.5),V(-0.02,-0.2,0.08)):add(lerp(p[10],p[14],0.5),V(0.06,-0.26,0.06));break;
+      case'touchI':T=add(p[8],V(-0.01,-0.03,0.02));contact=T;break;
+      case'touchM':T=add(p[12],V(-0.02,-0.03,0.02));contact=T;break;
+      case'between':T=add(mul(add(add(p[5],p[6]),add(p[9],p[10])),0.25),V(0,0,0.09));contact=T;break;
+      case'open':T=add(p[8],V(-0.04,-0.5,0.02));break;
+      case'tup':case'tdown':T=add(TH1,V(-0.74,0.12,0.06));break;
+      case'eThumb':T=add(lerp(p[8],p[12],0.5),V(0,-0.08,-0.03));contact=T;break;
+      default:T=add(TH1,V(-0.4,0.66,0.16));}
+    thumbIK(T,['out','beside','tup','tdown','relax'].includes(t)).forEach((q,j)=>p[1+j]=q);
+    return{p,contact};}
+  // vista: yaw (gira a mão de lado), roll (gira no plano), tx/ty (desloca), flip (canhoto)
+  function proj(q,v){
+    const cp=Math.cos(R(v.pitch||0)),sp=Math.sin(R(v.pitch||0)),qy=q.y-0.6,py=qy*cp-q.z*sp+0.6,pz=qy*sp+q.z*cp;
+    const cy=Math.cos(R(v.yaw||0)),sy=Math.sin(R(v.yaw||0));
+    let x=q.x*cy+pz*sy,z=-q.x*sy+pz*cy,y=py;
+    const cr=Math.cos(R(v.roll||0)),sr=Math.sin(R(v.roll||0)),ox=x,oy=y-0.6;
+    const k=1+(v.tz||0)*0.35;x=(ox*cr-oy*sr)*k;y=(ox*sr+oy*cr)*k+0.6;
+    x+=v.tx||0;y+=v.ty||0;if(v.flip)x=-x;
+    return{X:100+x*66,Y:100-(y-0.6)*66,Z:z};}
+  function smooth(pts){ // caminho fechado suave (Catmull-Rom)
+    const n=pts.length;let d=`M${pts[0].X.toFixed(1)} ${pts[0].Y.toFixed(1)}`;
+    for(let i=0;i<n;i++){const p0=pts[(i-1+n)%n],p1=pts[i],p2=pts[(i+1)%n],p3=pts[(i+2)%n];
+      const c1x=p1.X+(p2.X-p0.X)/6,c1y=p1.Y+(p2.Y-p0.Y)/6,c2x=p2.X-(p3.X-p1.X)/6,c2y=p2.Y-(p3.Y-p1.Y)/6;
+      d+=` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.X.toFixed(1)} ${p2.Y.toFixed(1)}`;}
+    return d+'Z';}
+  function handSVG(pose,v){
+    const p=pose.p,P=p.map(q=>proj(q,v)),items=[];
+    // antebraço
+    const fa=[proj(V(-0.24,0.02,0),v),proj(V(0.25,0.02,0),v),proj(V(0.22,-0.55,0),v),proj(V(-0.21,-0.55,0),v)];
+    items.push({z:-9,svg:`<path class="ha-arm" d="M${fa[0].X} ${fa[0].Y}L${fa[1].X} ${fa[1].Y}L${fa[2].X} ${fa[2].Y}L${fa[3].X} ${fa[3].Y}Z"/>`});
+    // palma
+    const pm=[V(-0.24,0.02,0),add(TH1,V(-0.05,-0.06,0)),add(p[5],V(-0.06,-0.02,0)),p[9],p[13],add(p[17],V(0.07,-0.03,0)),V(0.27,0.3,0),V(0.25,0.02,0)].map(q=>proj(q,v));
+    const pz=pm.reduce((s,q)=>s+q.Z,0)/pm.length;
+    const facing=Math.cos(R(v.yaw||0));
+    let crease='';
+    if(facing>0.55){const c1=[V(-0.3,0.66,0),V(0,0.6,0),V(0.3,0.7,0)].map(q=>proj(q,v)),c2=[V(-0.12,0.18,0),V(-0.2,0.42,0),V(-0.24,0.7,0)].map(q=>proj(q,v));
+      crease=`<path class="ha-crease" d="M${c1[0].X} ${c1[0].Y}Q${c1[1].X} ${c1[1].Y} ${c1[2].X} ${c1[2].Y}M${c2[0].X} ${c2[0].Y}Q${c2[1].X} ${c2[1].Y} ${c2[2].X} ${c2[2].Y}"/>`;}
+    items.push({z:pz,svg:`<path class="ha-palm" d="${smooth(pm)}"/>${crease}`});
+    // dedos e polegar, segmento por segmento, ordenados pela profundidade
+    const chains={T:[1,2,3,4],I:[5,6,7,8],M:[9,10,11,12],R:[13,14,15,16],P:[17,18,19,20]};
+    for(const k in chains){const c=chains[k];const w=WID[k]*66;
+      for(let i=(k==='T'?0:0);i<3;i++){const a=P[c[i]],b=P[c[i+1]];const cls=k==='T'?'ha-thumb':'ha-skin';
+        const ww=w*(1-i*0.07);
+        items.push({z:(a.Z+b.Z)/2+(k==='T'?0.01:0),svg:`<line class="ha-out" x1="${a.X.toFixed(1)}" y1="${a.Y.toFixed(1)}" x2="${b.X.toFixed(1)}" y2="${b.Y.toFixed(1)}" stroke-width="${(ww+3.2).toFixed(1)}"/><line class="${cls}" x1="${a.X.toFixed(1)}" y1="${a.Y.toFixed(1)}" x2="${b.X.toFixed(1)}" y2="${b.Y.toFixed(1)}" stroke-width="${ww.toFixed(1)}"/>`});}}
+    items.sort((a,b)=>a.z-b.z);
+    let out=items.map(i=>i.svg).join('');
+    if(pose.contact){const c=proj(pose.contact,v);out+=`<circle class="ha-touch" cx="${c.X.toFixed(1)}" cy="${c.Y.toFixed(1)}" r="9"/>`;}
+    return out;}
+  function arrowPath(pts){if(pts.length<2)return'';
+    const d='M'+pts.map(q=>q.X.toFixed(1)+' '+q.Y.toFixed(1)).join('L');
+    const a=pts[pts.length-2],b=pts[pts.length-1],ang=Math.atan2(b.Y-a.Y,b.X-a.X),s=7;
+    const h=`M${(b.X-s*Math.cos(ang-0.5)).toFixed(1)} ${(b.Y-s*Math.sin(ang-0.5)).toFixed(1)}L${b.X.toFixed(1)} ${b.Y.toFixed(1)}L${(b.X-s*Math.cos(ang+0.5)).toFixed(1)} ${(b.Y-s*Math.sin(ang+0.5)).toFixed(1)}`;
+    return`<path class="ha-trail" d="${d}"/><path class="ha-head" d="${h}"/>`;}
+  const ease=u=>0.5-0.5*Math.cos(Math.PI*2*u); // 0→1→0
+  const sstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t)};
+  function baseView(spec){
+    let yaw=18,roll=0;const f=spec.f||'';
+    if(spec.th==='open')yaw=55;else if(f==='CCCC'&&spec.th==='touchI')yaw=45;
+    else if(f==='eeee')yaw=40;else if(f==='CEEE'||f==='CCFF')yaw=36;else if(spec.th==='touchM')yaw=26;
+    const d=spec.dir&&spec.dir[1];
+    if(d==='down')roll=180;else if(d==='fwd')roll=-90;
+    if(spec.th==='tup'){roll=-90;yaw=24}if(spec.th==='tdown'){roll=90;yaw=24}
+    return{yaw,roll};}
+  // devolve {dur, frame(u)->{hands:[{pose,view}], trail}}
+  function anim(sign){
+    if(sign.two==='roof'){const pose=build({f:'EEEE',spread:false,th:'across'});
+      return{dur:0,frame:()=>({hands:[{pose,view:{yaw:12,roll:-38,tx:-0.86,ty:-0.32}},{pose,view:{yaw:12,roll:-38,tx:-0.86,ty:-0.32,flip:true}}]})};}
+    if(sign.two==='flat'){const pose=build({f:'EEEE',spread:false,th:'across'});
+      return{dur:1800,tipIdx:null,frame:u=>{const tz=0.2-0.7*sstep(0.1,0.65,u);const v={pitch:62,yaw:10,roll:-24,tx:-0.42,ty:-0.1,tz};return{hands:[{pose,view:v},{pose,view:{...v,flip:true}}]}}};}
+    if(sign.two==='LL'){const pose=build(ALL.L.spec);
+      return{dur:0,frame:()=>({hands:[{pose,view:{yaw:22,roll:-90,tx:-0.95,ty:0.1,tz:-0.75}},{pose,view:{yaw:22,roll:-90,tx:-0.95,ty:0.1,tz:-0.75,flip:true}}]})};}
+    if(sign.two==='stack'){const base=build({f:'EEEE',spread:false,th:'across'}),top=build({f:'EFFF',th:'across'});
+      return{dur:1800,tipIdx:null,frame:u=>{const tz=-0.2+0.8*sstep(0.1,0.65,u);
+        return{hands:[{pose:base,view:{pitch:-72,yaw:18,tx:0,ty:-0.55,tz:tz-0.35}},{pose:top,view:{roll:180,yaw:18,tx:0.08,ty:0.75,tz:tz-0.35,flip:true}}]}}};}
+    if(sign.seq){const specs=sign.seq.map(stepSpec),poses=specs.map(sp=>build(sp)),views=specs.map(baseView),n=specs.length;
+      return{dur:1250*n,frame:u=>{const t=Math.min(u/0.88,1)*(n-1),i=Math.min(n-2,Math.floor(t)),f=sstep(0.3,0.7,t-i),pa=poses[i],pb=poses[i+1];
+        return{hands:[{pose:{p:pa.p.map((q,j)=>lerp(q,pb.p[j],f)),contact:f<0.3?pa.contact:f>0.7?pb.contact:null},view:{yaw:views[i].yaw+(views[i+1].yaw-views[i].yaw)*f,roll:views[i].roll+(views[i+1].roll-views[i].roll)*f}}]}}};}
+    const spec=sign.spec,bv={...baseView(spec),...(sign.art&&sign.art.view||{})},pose=build(spec,sign.art);
+    const fl=S.hand==='left';
+    const mk=(fn,dur,tipIdx)=>({dur,tipIdx,frame:fn});
+    const same=v=>({hands:[{pose,view:v}]});
+    switch(sign.motion){
+      case'rotate':return mk(u=>same({...bv,yaw:bv.yaw+70*ease(u)}),2000,8);
+      case'up':return mk(u=>same({...bv,ty:-0.32+0.5*sstep(0.1,0.7,u)}),1800,12);
+      case'down':return mk(u=>same({...bv,ty:0.18-0.5*sstep(0.1,0.7,u),yaw:bv.yaw+10*sstep(0.1,0.7,u)}),1800,12);
+      case'curve':return mk(u=>{const k=sstep(0.1,0.75,u);return same({...bv,roll:-55*k,tx:-0.15*k,ty:-0.2*Math.sin(Math.PI*k)})},1900,20);
+      case'hook':return mk(u=>{const k=sstep(0.15,0.65,u);const ps=build(spec,{ang:{I:[8*k,4+86*k,4+56*k]}});return{hands:[{pose:ps,view:{...bv,yaw:30,ty:-0.12*k}}]}},1800,8);
+      case'zigzag':{const Z=[[-0.32,0.28],[0.32,0.28],[-0.32,-0.28],[0.32,-0.28]];
+        return mk(u=>{const k=Math.min(0.999,sstep(0.05,0.85,u))*3,i=Math.floor(k),f=k-i;const a=Z[i],b=Z[i+1];return same({...bv,tx:a[0]+(b[0]-a[0])*f,ty:a[1]+(b[1]-a[1])*f})},2400,8);}
+      case'tremor':return mk(u=>same({...bv,tx:0.05*Math.sin(Math.PI*2*7*u)}),1400,12);
+      case'wave':return mk(u=>{const s=Math.sin(Math.PI*2*u);return same({...bv,tx:0.32*s,roll:12*s})},1500,12);
+      case'nod':return mk(u=>same({...bv,ty:0.18*Math.sin(Math.PI*2*2*u)}),1600,12);
+      case'shake':return mk(u=>{const s=Math.sin(Math.PI*2*2*u);return same({...bv,tx:0.22*s,roll:-12*s})},1600,8);
+      case'push':return mk(u=>same({...bv,tz:0.9*sstep(0.1,0.65,u)-0.3}),1800,null);
+      case'flap':return mk(u=>{const k=0.5-0.5*Math.cos(Math.PI*2*2*u);return{hands:[{pose:build(spec,{ang:{I:[10+35*k,4+40*k,4+20*k]}}),view:bv}]}},1600,null);
+      case'tap':return mk(u=>{const k=Math.max(0,Math.sin(Math.PI*2*2*u));return same({...bv,tx:(bv.tx||0)-0.18*k})},1400,null);
+      case'circle':return mk(u=>same({...bv,tx:0.28*Math.cos(Math.PI*2*u),ty:0.22*Math.sin(Math.PI*2*u)}),1600,12);
+      case'pull':return mk(u=>same({...bv,tz:-0.8*sstep(0.1,0.65,u)+0.2}),1800,null);
+    }
+    return{dur:0,frame:()=>same(bv)};}
+  function svg(sign,u,withTrail){
+    const A=anim(sign),fr=A.frame(u||0),flip=S.hand==='left';
+    let body=fr.hands.map(h=>handSVG(h.pose,{...h.view,flip:flip!==!!h.view.flip})).join('');
+    if(withTrail&&A.dur&&A.tipIdx!=null){const pts=[];for(let i=0;i<=36;i++){const f=A.frame(i/36*(sign.motion==='rotate'?0.5:sign.motion==='wave'||sign.motion==='shake'||sign.motion==='nod'||sign.motion==='tremor'?0.5:0.92));const h=f.hands[0];pts.push(proj(h.pose.p[A.tipIdx],{...h.view,flip}));}
+      body=arrowPath(pts)+body;}
+    return`<svg class="ha" viewBox="0 0 200 200" role="img" aria-label="Desenho da mão para ${esc(lbl(sign))}">${body}</svg>`;}
+  const running=new Set();
+  function mount(root){
+    (root||document).querySelectorAll('.handart').forEach(el=>{
+      const sign=ALL[el.dataset.sign];if(!sign)return;
+      const A=anim(sign),reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const mini=el.classList.contains('mini');
+      if(typeof HA3!=='undefined')HA3.attach(el,sign,mini); // troca pelo 3D assim que carregar
+      if(!A.dur||reduce||mini){el.innerHTML=svg(sign,A.dur?0.6:0,!!A.dur&&!mini);return;}
+      const t0=performance.now();let last=0;
+      const tick=now=>{if(!el.isConnected||el.dataset.mode==='3d')return;if(now-last>33){last=now;el.innerHTML=svg(sign,((now-t0)/A.dur)%1,true);}requestAnimationFrame(tick);};
+      requestAnimationFrame(tick);});}
+  return{svg,mount,build,proj,anim};
+})();
+/* ================== MÃO 3D REALISTA (three.js + mão genérica do WebXR, MIT) ================== */
+const HA3=(()=>{
+  const HAND_BASE='https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0.19/dist/profiles/generic-hand/';
+  const SIZE=420;
+  const CHAINS=[
+    [['thumb-metacarpal',2],['thumb-phalanx-proximal',3],['thumb-phalanx-distal',4],['thumb-tip',null]],
+    [['index-finger-metacarpal',5],['index-finger-phalanx-proximal',6],['index-finger-phalanx-intermediate',7],['index-finger-phalanx-distal',8],['index-finger-tip',null]],
+    [['middle-finger-metacarpal',9],['middle-finger-phalanx-proximal',10],['middle-finger-phalanx-intermediate',11],['middle-finger-phalanx-distal',12],['middle-finger-tip',null]],
+    [['ring-finger-metacarpal',13],['ring-finger-phalanx-proximal',14],['ring-finger-phalanx-intermediate',15],['ring-finger-phalanx-distal',16],['ring-finger-tip',null]],
+    [['pinky-finger-metacarpal',17],['pinky-finger-phalanx-proximal',18],['pinky-finger-phalanx-intermediate',19],['pinky-finger-phalanx-distal',20],['pinky-finger-tip',null]]];
+  let T=null,st=null,loading=null,failed=false;
+  const entries=new Set();
+
+  function frame(w,m,i,p){ // u: para os dedos, s: do mínimo ao indicador, n: normal
+    const u=m.clone().sub(w).normalize();
+    const s=i.clone().sub(p);s.sub(u.clone().multiplyScalar(s.dot(u))).normalize();
+    const n=new T.Vector3().crossVectors(u,s);
+    return{u,s,n};}
+  function prepHand(gltf){
+    const root=gltf.scene,bones=new Map();
+    root.traverse(o=>{if(o.name)bones.set(o.name,o);});
+    let mesh=null;root.traverse(o=>{if(o.isSkinnedMesh)mesh=o;});
+    if(!mesh||!bones.get('wrist'))throw new Error('modelo da mão incompleto');
+    mesh.frustumCulled=false;
+    // tom de pele, com o polegar levemente destacado pelos pesos do esqueleto
+    const g=mesh.geometry,si=g.attributes.skinIndex,sw=g.attributes.skinWeight,sk=mesh.skeleton;
+    const thumbIdx=new Set(sk.bones.map((b,k)=>b.name.startsWith('thumb')?k:-1).filter(k=>k>=0));
+    const skin=new T.Color(0xE7B08C),thumb=new T.Color(0xE49A72),cols=new Float32Array(si.count*3),c=new T.Color();
+    for(let v=0;v<si.count;v++){let w=0;for(let j=0;j<4;j++){if(thumbIdx.has(si.getComponent(v,j)))w+=sw.getComponent(v,j);}
+      c.copy(skin).lerp(thumb,Math.min(1,w*0.9));cols[v*3]=c.r;cols[v*3+1]=c.g;cols[v*3+2]=c.b;}
+    g.setAttribute('color',new T.BufferAttribute(cols,3));
+    mesh.material=new T.MeshPhysicalMaterial({vertexColors:true,roughness:0.62,metalness:0,sheen:0.5,sheenRoughness:0.6,sheenColor:new T.Color(0xFFD2B8),clearcoat:0.06,side:T.DoubleSide});
+    const rest=new Map(),restPos=new Map();bones.forEach((b,k)=>{rest.set(k,b.quaternion.clone());restPos.set(k,b.position.clone());});
+    root.updateMatrixWorld(true);
+    const wp=n=>bones.get(n).getWorldPosition(new T.Vector3());
+    const rf=frame(wp('wrist'),wp('middle-finger-phalanx-proximal'),wp('index-finger-phalanx-proximal'),wp('pinky-finger-phalanx-proximal'));
+    const len=wp('middle-finger-phalanx-proximal').distanceTo(wp('wrist'));
+    return{root,bones,mesh,rest,restPos,rf,len};}
+  function basis(f){return new T.Matrix4().makeBasis(f.s,f.u,f.n);}
+  // esqueleto plano (cada articulação é filha direta da Armature): posiciona e orienta uma a uma
+  const JOINTS=[['wrist',0,null]];
+  CHAINS.forEach(ch=>ch.forEach(([name],i)=>{const li={'thumb-metacarpal':1,'thumb-phalanx-proximal':2,'thumb-phalanx-distal':3,'thumb-tip':4}[name]??(i===0?null:[5,9,13,17][CHAINS.indexOf(ch)-1]+i-1);
+    JOINTS.push([name,li,i<ch.length-1?ch[i+1][0]:null]);}));
+  function poseHand(H,P){
+    const tf=frame(P[0],P[9],P[5],P[17]);
+    const qR=new T.Quaternion().setFromRotationMatrix(basis(tf).multiply(basis(H.rf).transpose()));
+    const w0=H.restPos.get('wrist'),pos=new Map();
+    for(const[name,li]of JOINTS){if(!H.bones.get(name))continue;
+      pos.set(name,li!=null?P[li].clone():P[0].clone().add(H.restPos.get(name).clone().sub(w0).applyQuaternion(qR)));}
+    let prevQ=null;
+    for(const[name,,next]of JOINTS){const b=H.bones.get(name);if(!b)continue;
+      let q=qR.clone().multiply(H.rest.get(name));
+      if(next&&pos.has(next)){const rd=H.restPos.get(next).clone().sub(H.restPos.get(name)).applyQuaternion(qR).normalize();
+        const td=pos.get(next).clone().sub(pos.get(name)).normalize();
+        q=new T.Quaternion().setFromUnitVectors(rd,td).multiply(q);prevQ=q;}
+      else if(name!=='wrist'&&prevQ)q=prevQ.clone();
+      b.position.copy(pos.get(name));b.quaternion.copy(q);}
+    H.root.updateMatrixWorld(true);}
+  // quiralidade: com u (para os dedos) e s (do mínimo ao indicador), u×s aponta para o lado da palma
+  // numa mão esquerda e para o dorso numa direita. A normal da palma do modelo do app é +z antes da vista.
+  function pickHand(P,v){const f=frame(P[0],P[9],P[5],P[17]);
+    const pn=W({x:0,y:0,z:1},v).sub(W({x:0,y:0,z:0},v));
+    return st.hands[f.n.dot(pn)>0?1:0];} // hands: [direita, esquerda]
+  async function load(){
+    if(st)return st;if(failed)throw new Error('3d indisponível');if(loading)return loading;
+    loading=(async()=>{
+      T=await import('three');const{GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+      const loader=new GLTFLoader();
+      const gs=await Promise.all(['right.glb','left.glb'].map(f=>loader.loadAsync(HAND_BASE+f)));
+      const renderer=new T.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+      renderer.setPixelRatio(1);renderer.setSize(SIZE,SIZE,false);
+      renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+      const scene=new T.Scene();
+      scene.add(new T.HemisphereLight(0xFFF6EE,0x6E5446,1.25));
+      const rim=new T.DirectionalLight(0xCFE7FF,1.0);rim.position.set(0.3,0.8,-1.5);scene.add(rim);
+      const hands=gs.map(prepHand);hands.forEach(H=>{H.root.visible=false;scene.add(H.root);});
+      const s=hands[0].len/0.97; // unidades do modelo do app → metros do modelo 3D
+      const camera=new T.PerspectiveCamera(28.4,1,0.001,10);camera.position.set(0,0.62*s,5.3*s);camera.lookAt(0,0.62*s,0);scene.add(camera);
+      // luz principal e de preenchimento presas à câmera: a mão fica bem iluminada de qualquer ângulo
+      const key=new T.DirectionalLight(0xFFFFFF,2.1);key.position.set(-0.6*s,1.1*s,0);camera.add(key);key.target.position.set(0,0,-5*s);camera.add(key.target);
+      const fill=new T.DirectionalLight(0xFFE2CC,0.7);fill.position.set(1.2*s,0.2*s,0);camera.add(fill);fill.target.position.set(0,0,-5*s);camera.add(fill.target);
+      const ring=new T.Mesh(new T.RingGeometry(0.1*s,0.14*s,40),new T.MeshBasicMaterial({color:0xE2583A,transparent:true,opacity:0.95,depthTest:false}));
+      ring.renderOrder=10;ring.visible=false;scene.add(ring);
+      const trailMat=new T.LineDashedMaterial({color:0xE2583A,dashSize:0.09*s,gapSize:0.07*s,depthTest:false,transparent:true});
+      const trail=new T.Line(new T.BufferGeometry(),trailMat);trail.renderOrder=9;trail.visible=false;scene.add(trail);
+      st={renderer,scene,camera,hands,s,ring,trail};return st;})();
+    try{return await loading}catch(e){failed=true;loading=null;throw e;}}
+  function W(q,v){ // mesmo espaço do desenho 2D, em 3D
+    const R=Math.PI/180,cp=Math.cos((v.pitch||0)*R),sp=Math.sin((v.pitch||0)*R),qy=q.y-0.6,py=qy*cp-q.z*sp+0.6,pz=qy*sp+q.z*cp;
+    const cy=Math.cos((v.yaw||0)*R),sy=Math.sin((v.yaw||0)*R);
+    let x=q.x*cy+pz*sy,z=-q.x*sy+pz*cy,y=py;
+    const cr=Math.cos((v.roll||0)*R),sr=Math.sin((v.roll||0)*R),ox=x,oy=y-0.6;
+    x=ox*cr-oy*sr;y=ox*sr+oy*cr+0.6;x+=v.tx||0;y+=v.ty||0;z+=v.tz||0;if(v.flip)x=-x;
+    return new T.Vector3(x*st.s,y*st.s,z*st.s);}
+  function drawFrame(sign,u,withTrail,orbit){
+    const A=HA.anim(sign),fr=A.frame(u);
+    const c=new T.Vector3(0,0.62*st.s,0),R=Math.PI/180,yaw=(orbit?orbit.yaw:0)*R,pit=(orbit?orbit.pitch:0)*R,d=5.3*st.s;
+    st.camera.position.set(c.x+Math.sin(yaw)*Math.cos(pit)*d,c.y+Math.sin(pit)*d,c.z+Math.cos(yaw)*Math.cos(pit)*d);st.camera.lookAt(c);st.camera.updateMatrixWorld(true);
+    st.hands.forEach(H=>H.root.visible=false);
+    const used=new Set();
+    for(const h of fr.hands){const P=h.pose.p.map(q=>W(q,h.view));
+      let H=pickHand(P,h.view);if(used.has(H))H=st.hands.find(x=>!used.has(x))||H;used.add(H);
+      H.root.visible=true;poseHand(H,P);}
+    const h0=fr.hands[0];
+    if(h0.pose.contact&&fr.hands.length===1){const rp=W(h0.pose.contact,h0.view);rp.add(st.camera.position.clone().sub(rp).normalize().multiplyScalar(0.06*st.s));st.ring.position.copy(rp);st.ring.lookAt(st.camera.position);st.ring.visible=true;}else st.ring.visible=false;
+    if(withTrail&&A.dur&&A.tipIdx!=null){const span=sign.motion==='rotate'||['wave','shake','nod','tremor'].includes(sign.motion)?0.5:0.92;const pts=[];
+      for(let i=0;i<=40;i++){const f=A.frame(i/40*span),hh=f.hands[0];pts.push(W(hh.pose.p[A.tipIdx],hh.view));}
+      st.trail.geometry.dispose();st.trail.geometry=new T.BufferGeometry().setFromPoints(pts);st.trail.computeLineDistances();st.trail.visible=true;}
+    else st.trail.visible=false;
+    st.renderer.render(st.scene,st.camera);
+    return st.renderer.domElement;}
+  function paint(e,u){
+    const src=drawFrame(e.sign,u,!e.mini,e.orbit);const ctx=e.ctx,w=e.canvas.width,h=e.canvas.height;
+    ctx.clearRect(0,0,w,h);ctx.save();if(S.hand==='left'){ctx.translate(w,0);ctx.scale(-1,1);}ctx.drawImage(src,0,0,w,h);ctx.restore();}
+  let raf=0,last=0;
+  const reduceMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function kick(){if(!raf)raf=requestAnimationFrame(loop);}
+  function loop(now){raf=0;let live=false;
+    if(now-last>33){last=now;
+      for(const e of entries){if(!e.el.isConnected){entries.delete(e);continue;}
+        const anim=e.dur&&!e.still;
+        if(e.orbit){const o=e.orbit;
+          if(!o.drag&&now>o.userUntil&&!reduceMotion()){const tgt=30*Math.sin((now-e.t0)/1000*0.8);o.yaw+=(tgt-o.yaw)*0.06;o.pitch+=(6-o.pitch)*0.05;}
+          paint(e,e.dur?((now-e.t0)/e.dur)%1:0);live=true;}
+        else if(anim){paint(e,((now-e.t0)/e.dur)%1);live=true;}}}
+    else live=[...entries].some(e=>e.orbit||(e.dur&&!e.still));
+    if(live)raf=requestAnimationFrame(loop);}
+  function enableOrbit(e){
+    const o=e.orbit={yaw:0,pitch:6,drag:false,userUntil:0,x:0,y:0},cv=e.canvas;
+    cv.style.touchAction='pan-y';cv.style.cursor='grab';
+    const hint=document.createElement('span');hint.className='orbit-hint';hint.textContent='↔ Arraste para girar';e.el.appendChild(hint);
+    cv.addEventListener('pointerdown',ev=>{o.drag=true;o.x=ev.clientX;o.y=ev.clientY;try{cv.setPointerCapture(ev.pointerId)}catch(_){}cv.style.cursor='grabbing';hint.classList.add('gone');kick();});
+    cv.addEventListener('pointermove',ev=>{if(!o.drag)return;const sx=S.hand==='left'?-1:1;
+      o.yaw-=sx*(ev.clientX-o.x)*0.6;o.pitch=Math.max(-70,Math.min(70,o.pitch+(ev.clientY-o.y)*0.4));
+      o.x=ev.clientX;o.y=ev.clientY;o.userUntil=performance.now()+4000;kick();});
+    const up=()=>{if(!o.drag)return;o.drag=false;o.userUntil=performance.now()+4000;cv.style.cursor='grab';};
+    cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+    cv.addEventListener('dblclick',()=>{o.yaw=0;o.pitch=0;o.userUntil=performance.now()+5000;kick();});}
+  async function attach(el,sign,mini){
+    try{await load();}catch(e){return false;}
+    if(!el.isConnected)return false;
+    const A=HA.anim(sign),reduce=reduceMotion();
+    const cv=document.createElement('canvas');const px=mini?160:SIZE;cv.width=px;cv.height=px;cv.className='ha3';
+    cv.setAttribute('role','img');cv.setAttribute('aria-label','Mão 3D fazendo '+lbl(sign)+'. Arraste para girar.');
+    el.dataset.mode='3d';el.innerHTML='';el.appendChild(cv);
+    const e={el,sign,mini,canvas:cv,ctx:cv.getContext('2d'),dur:A.dur,t0:performance.now(),still:mini||reduce};
+    if(!mini&&el.closest('.model-art'))enableOrbit(e);
+    paint(e,A.dur?0.6:0);
+    if(e.orbit||(e.dur&&!e.still)){entries.add(e);kick();}
+    return true;}
+  return{attach,load,get ready(){return!!st},get failed(){return failed}};
+})();
+
+function glyph(sign){return`<div class="handart" data-sign="${esc(sign.id)}"></div>`;}
+
+/* ================== INTERFACE ================== */
+const VIEWS=[{id:'inicio',t:'Início'},...MODULES.map(m=>({id:m.id,t:m.short,n:m.n})),{id:'quiz',t:'Desafio'},{id:'treino',t:'Treino'}];
+function renderTabs(){document.getElementById('tabs').innerHTML=VIEWS.map(v=>`<button data-v="${v.id}" aria-current="${S.view===v.id}">${v.n?`<span class="num">${v.n}</span>`:''}${v.t}</button>`).join('');}
+document.getElementById('tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;go(b.dataset.v)});
+function go(v){S.view=v;store.set('view',v);if(quiz.timer){clearInterval(quiz.timer);quiz.timer=null}cancelRec();renderTabs();render();}
+function renderOverall(){const total=Object.keys(ALL).length,d=Object.keys(S.done).filter(k=>ALL[k]).length;
+  document.getElementById('ovTxt').textContent=`${d} de ${total} sinais`;document.getElementById('ovBar').style.width=(d/total*100)+'%';}
+function render(){
+  const c=document.getElementById('content');renderOverall();
+  if(S.view==='inicio'){setTarget(null);c.innerHTML=viewInicio();bindInicio();return;}
+  if(S.view==='quiz'){c.innerHTML=viewQuiz();bindQuiz();return;}
+  if(S.view==='treino'){setTarget(null);c.innerHTML=viewTreino();bindTreino();return;}
+  const m=MODULES.find(x=>x.id===S.view);c.innerHTML=viewModule(m);bindModule(m);HA.mount(c);
+}
+function viewInicio(){return`
+<div class="card"><div class="eyebrow">Bem-vindo</div><h2 style="font-size:clamp(1.6rem,3.4vw,2.3rem);margin-top:6px">Aprenda Libras com a sua própria mão como guia</h2>
+<p class="lead">Escolha um sinal, faça na frente da câmera e o app confere dedo por dedo o que está certo e o que falta ajustar. São três módulos: alfabeto manual, números e sinais do cotidiano, além de um desafio cronometrado.</p>
+<div class="row" style="margin-top:14px"><button class="btn" data-go="alfabeto">Começar pelo alfabeto</button><button class="btn ghost" data-go="quiz">Ir para o desafio</button></div></div>
+<div class="card" id="installCard"><div class="eyebrow">Aplicativo</div><h3 style="font-size:1.3rem;margin-top:6px">Instale na tela inicial</h3>
+<p class="lead" id="installTxt">${installHint()}</p>
+<div class="row" style="margin-top:12px"><button class="btn" id="installB" ${deferredPrompt?'':'hidden'}>Instalar app</button></div></div>
+<div class="card"><div class="eyebrow">Fundamentos</div><h3 style="font-size:1.3rem;margin-top:6px">Os cinco parâmetros de um sinal</h3>
+<p class="lead">Mudar qualquer um deles pode mudar o significado. A câmera avalia os três primeiros; expressão facial fica por sua conta.</p>
+<div class="params">
+<div><em>CM</em><b>Configuração de mão</b><span>A forma que os dedos assumem. O alfabeto treina boa parte delas.</span></div>
+<div><em>PA</em><b>Ponto de articulação</b><span>Onde o sinal acontece: no espaço, no rosto, no peito.</span></div>
+<div><em>M</em><b>Movimento</b><span>Girar, subir, acenar, tremer.</span></div>
+<div><em>Or</em><b>Orientação</b><span>Para onde a palma e os dedos apontam.</span></div>
+<div><em>ENM</em><b>Expressões não manuais</b><span>Rosto e corpo. Uma pergunta muda a expressão.</span></div></div></div>
+<div class="card"><div class="eyebrow">Ajustes</div><h3 style="font-size:1.3rem;margin-top:6px">Sua mão dominante</h3>
+<p class="lead">Destros sinalizam com a direita, canhotos com a esquerda. O app lê primeiro a mão escolhida.</p>
+<div class="set"><div class="seg" id="handSeg"><button data-h="right" aria-pressed="${S.hand==='right'}">Direita</button><button data-h="left" aria-pressed="${S.hand==='left'}">Esquerda</button></div></div>
+<h3 style="font-size:1.1rem;margin-top:18px">Para o reconhecimento funcionar bem</h3>
+<ol class="steps"><li>Fique de frente para a luz, com fundo liso atrás da mão.</li><li>Mostre a mão inteira com o pulso, a uns 50 cm da câmera.</li><li>Segure a forma estática por meio segundo: o anel verde enche e o sinal é marcado.</li><li>Nos sinais com movimento, faça o gesto com amplitude, nem rápido nem lento.</li><li>Se uma letra teimar, vá ao Treino e grave 3 ou 4 exemplos seus. O app passa a reconhecer o seu jeito.</li></ol>
+<p class="note" style="margin-top:12px">Para conferir os sinais em vídeo, use o <a href="https://www.ines.gov.br/dicionario-de-libras/" target="_blank" rel="noopener">Dicionário de Libras do INES</a>. O progresso fica salvo neste navegador.</p></div>`;}
+function bindInicio(){const ib=document.getElementById('installB');if(ib)ib.onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();try{await deferredPrompt.userChoice}catch(e){}deferredPrompt=null;render();};
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+  document.getElementById('handSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.hand=b.dataset.h;store.set('hand',S.hand);render();};}
+
+function viewModule(m){
+  const done=m.signs.filter(s=>S.done[s.id]).length;
+  const isA=m.id==='alfabeto',sub=isA?S.sub.alfabeto:'letras';
+  let head=`<div class="card"><div class="modhead"><div><div class="eyebrow">Módulo ${m.n}</div><h2>${m.name}</h2></div><div class="prog">${done}/${m.signs.length} dominados</div></div>
+  <p class="lead">${m.intro}</p>${isA?`<div class="subtabs" style="margin-top:12px" id="subt"><button data-s="letras" aria-pressed="${sub==='letras'}">Letra por letra</button><button data-s="soletrar" aria-pressed="${sub==='soletrar'}">Soletrar palavras</button></div>`:''}</div>`;
+  if(isA&&sub==='soletrar')return head+viewSpell();
+  const cur=ALL[S.sel[m.id]]||m.signs[0];
+  const tile=s=>`<button class="tile ${m.id==='cotidiano'?'wide':''}" data-id="${s.id}" aria-current="${s.id===cur.id}" aria-label="${esc(lbl(s))}${S.done[s.id]?' (dominado)':''}">${esc(lbl(s))}${S.done[s.id]?'<span class="dot"></span>':''}${isDynamic(s)||s.two?'<span class="mv">mov</span>':''}</button>`;
+  const groups=[...new Set(m.signs.map(s=>s.g||''))];
+  const tiles=`<div class="card">${groups.map(g=>`${g?`<div class="tgroup">${esc(g)}</div>`:''}<div class="tiles ${m.id==='cotidiano'?'words':''}">${m.signs.filter(s=>(s.g||'')===g).map(tile).join('')}</div>`).join('')}</div>`;
+  return head+tiles+signCard(cur,m);
+}
+function signCard(s,m){
+  const idx=m.signs.indexOf(s),nS=(S.samples[s.id]||[]).length;
+  const tags=[s.motion?`<span class="tag mv">Movimento: ${MOTION_TXT[s.motion]}</span>`:'',s.seq?`<span class="tag mv">Sequência: ${esc(seqText(s))}</span>`:'',s.two?`<span class="tag mv">Duas mãos</span>`:'',(!s.motion&&!s.seq&&!s.two)?'<span class="tag">Estática</span>':'',nS?`<span class="tag">${nS} exemplo${nS>1?'s':''} seu${nS>1?'s':''}</span>`:''].join('');
+  return`<div class="card"><div class="sign solo">
+  <div style="min-width:0"><div class="row"><div class="${lbl(s).length>2?'bigw':'big'}">${esc(lbl(s))}</div>${S.done[s.id]?'<span class="tag" style="background:var(--ok);color:#fff">Dominado</span>':''}</div>
+  <div style="margin-top:8px">${tags}</div><p class="desc">${esc(s.desc)}</p>${s.tip?`<p class="tip">${esc(s.tip)}</p>`:''}</div></div>
+  <div class="fbhead">Correção ao vivo</div><ul class="fb" id="fbList"><li class="wait">${camOn?'Mostre a mão para a câmera.':'Ligue a câmera para receber a correção ao vivo.'}</li></ul>
+  <div class="row" style="margin-top:14px"><button class="btn ghost small" id="prevB" ${idx<=0?'disabled':''}>← Anterior</button><button class="btn ghost small" id="nextB" ${idx>=m.signs.length-1?'disabled':''}>Próximo →</button><span class="spacer"></span><button class="btn ghost small" id="recB">Gravar exemplo meu</button>${camOn?'':'<button class="btn small" id="camB2">Ligar câmera</button>'}</div></div>`;
+}
+function bindModule(m){
+  const st=document.getElementById('subt');if(st)st.onclick=e=>{const b=e.target.closest('button');if(!b)return;S.sub.alfabeto=b.dataset.s;render();};
+  if(m.id==='alfabeto'&&S.sub.alfabeto==='soletrar'){bindSpell();return;}
+  const cur=ALL[S.sel[m.id]]||m.signs[0];
+  document.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{S.sel[m.id]=t.dataset.id;store.set('sel',S.sel);render();if(innerWidth<=900)document.querySelector('.stage').scrollIntoView({behavior:'smooth',block:'start'});});
+  const step=d=>{const i=m.signs.indexOf(cur)+d;if(m.signs[i]){S.sel[m.id]=m.signs[i].id;store.set('sel',S.sel);render();}};
+  document.getElementById('prevB').onclick=()=>step(-1);document.getElementById('nextB').onclick=()=>step(1);
+  document.getElementById('recB').onclick=()=>startRec(cur.id);
+  const cb=document.getElementById('camB2');if(cb)cb.onclick=startCamera;
+  setTarget(cur.id,id=>{const first=!S.done[id];S.done[id]=Date.now();store.set('done',S.done);
+    if(first)setTimeout(()=>{const i=m.signs.findIndex(x=>x.id===id);const nx=m.signs.slice(i+1).find(x=>!S.done[x.id]);if(nx&&S.view===m.id&&S.sel[m.id]===id){S.sel[m.id]=nx.id;store.set('sel',S.sel)}render();},1000);
+    else renderOverall();});
+}
+/* soletrar */
+function viewSpell(){const w=WORDS[S.word%WORDS.length];
+  return`<div class="card"><div class="eyebrow">Soletração</div><h3 style="font-size:1.3rem;margin-top:6px">Soletre a palavra, letra por letra</h3>
+  <p class="lead">Cada letra reconhecida acende em verde e a próxima é liberada. O desenho grande mostra a letra da vez.</p>
+  <div class="spell" id="spell">${[...w].map((c,i)=>{const sg=ALL[c];return`<div class="sl ${i===0?'cur':''}"><div class="mini handart" data-sign="${esc(c)}"></div><b>${c}</b></div>`}).join('')}</div>
+  <div class="sign solo" id="spellCur" style="margin-top:16px"></div>
+  <ul class="fb" id="fbList"></ul>
+  <div class="row" style="margin-top:14px"><button class="btn ghost small" id="wPrev">← Palavra anterior</button><button class="btn ghost small" id="wSkip">Pular letra</button><button class="btn ghost small" id="wNext">Outra palavra →</button></div></div>`;}
+function bindSpell(){const w=WORDS[S.word%WORDS.length];let pos=0;
+  const boxes=[...document.querySelectorAll('#spell .sl')],cur=document.getElementById('spellCur');
+  const show=()=>{const sg=ALL[w[pos]];
+    cur.innerHTML=`<div style="min-width:0"><div class="big">${esc(lbl(sg))}</div><div style="margin-top:8px">${sg.motion?`<span class="tag mv">Movimento: ${MOTION_TXT[sg.motion]}</span>`:'<span class="tag">Estática</span>'}</div><p class="desc">${esc(sg.desc)}</p></div>`;
+    };
+  const advance=ok=>{boxes[pos].className='sl '+(ok?'done':'skip');pos++;
+    if(pos>=w.length){setTarget(null);cur.innerHTML='';setTimeout(()=>flash('Palavra completa!'),300);setTimeout(()=>{if(S.view==='alfabeto'){S.word++;render()}},1800);return;}
+    boxes[pos].className='sl cur';next();};
+  const next=()=>{show();setTarget(w[pos],()=>advance(true));};
+  next();
+  document.getElementById('wSkip').onclick=()=>{if(pos<w.length)advance(false)};
+  document.getElementById('wNext').onclick=()=>{S.word++;render()};
+  document.getElementById('wPrev').onclick=()=>{S.word=(S.word+WORDS.length-1)%WORDS.length;render()};}
+
+/* ================== DESAFIO ================== */
+const quiz={mod:'alfabeto',state:'idle',round:0,total:8,score:0,hits:0,timer:null,t0:0,list:[],limit:15000};
+function viewQuiz(){
+  const best=S.best[quiz.mod]||0;
+  if(quiz.state==='idle'||quiz.state==='end'){
+    return`<div class="card"><div class="eyebrow">Desafio</div><h2 style="font-size:clamp(1.5rem,3vw,2.1rem);margin-top:6px">8 sinais, 15 segundos cada</h2>
+    <p class="lead">Quanto mais rápido você acerta, mais pontos. Pular não tira pontos.</p>
+    <div class="set"><div class="seg" id="qMod">${MODULES.map(m=>`<button data-m="${m.id}" aria-pressed="${quiz.mod===m.id}">${m.short}</button>`).join('')}<button data-m="todos" aria-pressed="${quiz.mod==='todos'}">Tudo</button></div></div>
+    ${quiz.state==='end'?`<div class="quizbig" style="margin-top:18px"><div><div class="mlabel">Sua pontuação</div><div class="score">${quiz.score}</div></div><div><div class="mlabel">Acertos</div><div class="score">${quiz.hits}/${quiz.total}</div></div></div>`:''}
+    <p class="note" style="margin-top:12px">Recorde neste módulo: <b>${best}</b> pontos</p>
+    <div class="row" style="margin-top:12px"><button class="btn" id="qStart" ${camOn?'':'disabled'}>${quiz.state==='end'?'Jogar de novo':'Começar desafio'}</button>${camOn?'':'<button class="btn ghost" id="camB3">Ligar câmera primeiro</button>'}</div></div>`;}
+  const s=ALL[quiz.list[quiz.round]];
+  return`<div class="card"><div class="modhead"><div><div class="eyebrow">Rodada ${quiz.round+1} de ${quiz.total}</div></div><div class="prog">${quiz.score} pts</div></div>
+  <div class="quizbig" style="margin-top:8px"><div class="${lbl(s).length>2?'bigw':'big'}" style="font-size:clamp(3rem,9vw,5.5rem)">${esc(lbl(s))}</div><div class="note" style="max-width:36ch">${s.motion?'Com movimento: '+MOTION_TXT[s.motion]+'.':s.seq?'Sequência: '+seqText(s)+'.':s.two?'Use as duas mãos.':'Segure a forma até o anel encher.'}</div></div>
+  <div class="timer"><i id="qBar"></i></div><ul class="fb" id="fbList"></ul>
+  <div class="row" style="margin-top:12px"><button class="btn ghost small" id="qHint">Ver dica</button><button class="btn ghost small" id="qSkip">Pular</button><button class="btn ghost small" id="qStop">Encerrar</button></div><div id="qHintBox"></div></div>`;}
+function bindQuiz(){
+  if(quiz.state!=='play'){setTarget(null);
+    const qm=document.getElementById('qMod');if(qm)qm.onclick=e=>{const b=e.target.closest('button');if(!b)return;quiz.mod=b.dataset.m;quiz.state='idle';render();};
+    const qs=document.getElementById('qStart');if(qs)qs.onclick=startQuiz;
+    const c3=document.getElementById('camB3');if(c3)c3.onclick=async()=>{await startCamera();render()};return;}
+  const s=ALL[quiz.list[quiz.round]];let hinted=false;
+  document.getElementById('qSkip').onclick=()=>nextRound(false);
+  document.getElementById('qStop').onclick=()=>endQuiz();
+  document.getElementById('qHint').onclick=()=>{hinted=true;E.hideModel=false;renderModel();document.getElementById('qHintBox').innerHTML=`<p class="desc">${esc(s.desc)}</p>`;};
+  quiz.t0=performance.now();E.hideModel=true;
+  setTarget(s.id,()=>{const el=performance.now()-quiz.t0;quiz.hits++;quiz.score+=Math.round((hinted?50:100)+100*(1-el/quiz.limit));S.done[s.id]=S.done[s.id]||Date.now();store.set('done',S.done);setTimeout(()=>nextRound(true),700);});
+  clearInterval(quiz.timer);quiz.timer=setInterval(()=>{const el=performance.now()-quiz.t0;const b=document.getElementById('qBar');if(b)b.style.width=(100*(1-el/quiz.limit))+'%';if(el>=quiz.limit)nextRound(false);},100);
+}
+function startQuiz(){const pool=(quiz.mod==='todos'?MODULES.flatMap(m=>m.signs):MODULES.find(m=>m.id===quiz.mod).signs).map(s=>s.id);
+  quiz.list=[];const bag=[...pool];while(quiz.list.length<quiz.total){if(!bag.length)bag.push(...pool);quiz.list.push(bag.splice(Math.floor(Math.random()*bag.length),1)[0]);}
+  quiz.round=0;quiz.score=0;quiz.hits=0;quiz.state='play';render();}
+function nextRound(){clearInterval(quiz.timer);quiz.timer=null;quiz.round++;if(quiz.round>=quiz.total)return endQuiz();render();}
+function endQuiz(){clearInterval(quiz.timer);quiz.timer=null;quiz.state='end';setTarget(null);if(quiz.score>(S.best[quiz.mod]||0)){S.best[quiz.mod]=quiz.score;store.set('best',S.best)}render();}
+
+/* ================== TREINO ================== */
+function viewTreino(){
+  const rows=MODULES.map(m=>m.signs.map(s=>{const n=(S.samples[s.id]||[]).length;return`<tr><td><b>${esc(lbl(s))}</b></td><td>${m.short}</td><td class="n">${n}</td><td><div class="row"><button class="btn ghost small" data-rec="${s.id}">Gravar</button>${n?`<button class="btn ghost small" data-del="${s.id}">Apagar</button>`:''}</div></td></tr>`}).join('')).join('');
+  const total=Object.values(S.samples).reduce((a,l)=>a+l.length,0);
+  return`<div class="card"><div class="eyebrow">Laboratório</div><h2 style="font-size:clamp(1.5rem,3vw,2.1rem);margin-top:6px">Ensine o app a ler o seu jeito</h2>
+  <p class="lead">Cada exemplo grava 1,3 segundo da sua mão. Com 3 a 5 exemplos por sinal, o reconhecimento passa a comparar com você, além das regras. Útil para variações regionais e para sinais que a câmera confunde.</p>
+  <ol class="steps"><li>Clique em Gravar: há uma contagem de 3 segundos.</li><li>Faça o sinal completo durante a gravação, inclusive o movimento.</li><li>Repita variando um pouco a posição e a distância.</li></ol>
+  <div class="row" style="margin-top:12px"><span class="note">${total} exemplos gravados</span><span class="spacer"></span><button class="btn ghost small" id="expB" ${total?'':'disabled'}>Exportar</button><label class="btn ghost small" for="impF">Importar</label><input type="file" id="impF" accept=".json,application/json" hidden></div><p class="note" id="trMsg"></p></div>
+  <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr><th>Sinal</th><th>Módulo</th><th>Exemplos</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;}
+function bindTreino(){
+  document.querySelectorAll('[data-rec]').forEach(b=>b.onclick=()=>startRec(b.dataset.rec));
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{delete S.samples[b.dataset.del];delete TAU[b.dataset.del];store.set('samples',S.samples);render();});
+  document.getElementById('expB').onclick=()=>{const blob=new Blob([JSON.stringify({app:'libras-em-movimento',v:1,samples:S.samples})],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='libras-exemplos.json';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);};
+  document.getElementById('impF').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.samples)throw 0;
+      for(const k in d.samples){if(!ALL[k])continue;S.samples[k]=(S.samples[k]||[]).concat(d.samples[k]);delete TAU[k];}store.set('samples',S.samples);render();
+      document.getElementById('trMsg').textContent='Exemplos importados.';}catch(err){document.getElementById('trMsg').textContent='Arquivo inválido: use um JSON exportado por este app.';}};r.readAsText(f);};
+}
+let recTimers=[];
+function cancelRec(){recTimers.forEach(clearTimeout);recTimers=[];recording=null;const c=document.getElementById('count');if(c)c.hidden=true;}
+function startRec(id){
+  if(!camOn){startCamera();return;}
+  renderModel(id);
+  cancelRec();const c=document.getElementById('count');c.hidden=false;
+  [3,2,1].forEach((n,i)=>recTimers.push(setTimeout(()=>{c.textContent=n},i*1000)));
+  recTimers.push(setTimeout(()=>{c.textContent='●';HIST.length=0;recording={id,t0:performance.now()};},3000));
+}
+function recordTick(){
+  if(performance.now()-recording.t0<1300)return;
+  const id=recording.id;recording=null;document.getElementById('count').hidden=true;
+  const seq=buildSeq(1300,16);
+  if(!seq){flash('Sem mão na gravação');return;}
+  (S.samples[id]=S.samples[id]||[]).push(seq.map(f=>f.map(v=>Math.round(v*1000)/1000)));delete TAU[id];store.set('samples',S.samples);
+  flash('Exemplo salvo');render();
+}
+
+/* ================== APP INSTALÁVEL ================== */
+let deferredPrompt=null;
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function installHint(){
+  if(standalone())return'O app já está instalado e abrindo em tela cheia. Depois do primeiro uso com internet, ele abre mesmo offline.';
+  if(location.protocol==='file:')return'Você abriu o arquivo direto do computador. Para instalar no celular, o app precisa estar num endereço https.';
+  if(/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))return'No iPhone ou iPad, abra no Safari, toque em Compartilhar e escolha "Adicionar à Tela de Início".';
+  return deferredPrompt?'Instale para abrir em tela cheia, como um aplicativo, e usar mesmo sem internet depois do primeiro acesso.':'No Android ou no computador, use o menu do navegador e escolha "Instalar app" ou "Adicionar à tela inicial".';}
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;if(S.view==='inicio')render();});
+addEventListener('appinstalled',()=>{deferredPrompt=null;if(S.view==='inicio')render();});
+if('serviceWorker' in navigator&&location.protocol==='https:'){addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+
+/* ================== INÍCIO ================== */
+document.getElementById('camBtn').onclick=async()=>{await startCamera();if(camOn)render();};
+refreshColors();
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refreshColors)}catch(e){}
+if(!VIEWS.some(v=>v.id===S.view))S.view='inicio';
+renderTabs();render();
+</script>
+</body>
+</html>

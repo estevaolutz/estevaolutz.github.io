@@ -171,11 +171,19 @@ function buildPlanta() {
       if (i < nx - 1 && j < nz - 1) idx.push(k, k + nx, k + 1, k + 1, k + nx, k + nx + 1);
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
-    const tex = new THREE.TextureLoader().load(pl.file, () => { dirty = true; }); tex.anisotropy = maxAniso;
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 1, transparent: /\.(webp|png)$/.test(pl.file), polygonOffset: true, polygonOffsetFactor: -2 - n, polygonOffsetUnits: -4 - 2 * n }));
-    m.renderOrder = 2 + n; grp.add(m);
+    const file = pl.file8k && !small && renderer.capabilities.maxTextureSize >= 8192 ? pl.file8k : pl.file;
+    const tex = new THREE.TextureLoader().load(file, () => { dirty = true; }); tex.anisotropy = maxAniso;
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 1, transparent: /\.(webp|png)$/.test(file), polygonOffset: true, polygonOffsetFactor: -2 - n, polygonOffsetUnits: -4 - 2 * n }));
+    m.renderOrder = 2 + n; m.userData.tex = tex; grp.add(m);
   });
   scene.add(grp); return grp;
+}
+// na vista de planta, papel sem sombras: a cor vem toda da textura (emissiva)
+function flatPlan(on) {
+  if (!plantaMesh) return;
+  plantaMesh.children.forEach(m => {
+    const mt = m.material; mt.color.set(on ? 0x000000 : 0xffffff); mt.emissive.set(on ? 0xffffff : 0x000000); mt.emissiveMap = on ? m.userData.tex : null; mt.needsUpdate = true;
+  });
 }
 function setPlanta(on) {
   plantaOn = on; if (on && !plantaMesh) plantaMesh = buildPlanta();
@@ -183,6 +191,7 @@ function setPlanta(on) {
   const b = $('plantaBtn'); if (b) b.setAttribute('aria-pressed', String(on));
 }
 
+let waterMesh = null;
 // água: superfície construída a partir dos pixels de água do relevo real
 const waterMat = SG.iceify(new THREE.MeshStandardMaterial({ color: 0x3a6474, roughness: 0.55, metalness: 0, transparent: true, opacity: 0.92 }));
 {
@@ -203,7 +212,7 @@ const waterMat = SG.iceify(new THREE.MeshStandardMaterial({ color: 0x3a6474, rou
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(pos.length).map((_, i) => i % 3 === 1 ? 1 : 0), 3));
   g.setIndex(idx);
-  const m = new THREE.Mesh(g, waterMat); m.renderOrder = 1; scene.add(m);
+  const m = new THREE.Mesh(g, waterMat); m.renderOrder = 1; scene.add(m); waterMesh = m;
 }
 
 // ---------- vegetação ----------
@@ -296,12 +305,13 @@ const cityBase = [], chimneys = [];
 }
 const cityMesh = new THREE.InstancedMesh(bldGeo, bldMat, cityBase.length);
 const chimMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.8, 1, 1, 8).translate(0, 0.5, 0), SG.snowify(new THREE.MeshStandardMaterial({ color: 0x6d625a, roughness: 0.9 }), { ns: 40 }), Math.max(1, chimneys.length));
-scene.add(cityMesh, chimMesh);
+cityMesh.visible = chimMesh.visible = false; // prédios 3D retirados: a cidade vem das plantas de 1942
 const mtx = new THREE.Matrix4(), q4 = new THREE.Quaternion(), v3 = new THREE.Vector3(), s3 = new THREE.Vector3(), yAxis = new THREE.Vector3(0, 1, 0);
 chimneys.forEach((c, i) => { v3.set(c.x, heightAt(c.x, c.z), c.z); s3.set(c.r, c.h, c.r); mtx.compose(v3, q4.identity(), s3); chimMesh.setMatrixAt(i, mtx); });
 const BCOL = { s: new THREE.Color('#a69d8e'), w: new THREE.Color('#8d7a62'), f: new THREE.Color('#857d74'), e: new THREE.Color('#b3ab9c') }, BURNT = new THREE.Color('#47413b'), tmpC = new THREE.Color();
 let lastDmg = -1;
 function setDamage(dmg) {
+  if (!cityMesh.visible) return;
   if (Math.abs(dmg - lastDmg) < 0.02) return; lastDmg = dmg;
   cityBase.forEach((b, i) => {
     const min = b.kind === 'f' || b.kind === 'e' ? 0.45 : 0.1;
@@ -314,7 +324,7 @@ function setDamage(dmg) {
 }
 
 // ---------- rótulos HTML ----------
-const LBL = $('labels'), labels = [];
+const LBL = $('labels'), labels = [], pins = [];
 function addLabel(text, pos, cls, data) {
   const el = document.createElement('div'); el.className = 'lbl ' + cls; el.textContent = text; LBL.appendChild(el);
   const o = { el, pos, cls, data, vis: true }; labels.push(o); return o;
@@ -330,7 +340,7 @@ SG.LAKES.forEach(([lo, la, , , , , n]) => { if (n) addLabel(n, G(lo, la, 0.4), '
 SG.LANDMARKS.forEach(([n, lo, la]) => addLabel(n, G(lo, la, 1.5), 'mark'));
 C.MARKS.forEach(([n, lat, km]) => {
   const p = CG(lat, km, 0.05);
-  const pin = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.28, 6), new THREE.MeshBasicMaterial({ color: 0xc9a35a }));
+  const pin = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.28, 6), new THREE.MeshBasicMaterial({ color: 0xc9a35a })); pins.push(pin);
   pin.position.copy(p).add(new THREE.Vector3(0, 0.45, 0)); pin.rotation.x = Math.PI; scene.add(pin);
   addLabel(n, p.clone().add(new THREE.Vector3(0, 0.65, 0)), 'mark');
 });
@@ -559,7 +569,7 @@ const SKY = { top: new THREE.Color('#5c7384'), hor: new THREE.Color('#bcc5c5'), 
   topF: new THREE.Color('#a5abac'), horF: new THREE.Color('#d2d5d3'), smoke: new THREE.Color('#6f645a'), cold: new THREE.Color('#c9d6e0'), gnd: new THREE.Color('#8b8a80') };
 const cT = new THREE.Color(), cH = new THREE.Color();
 function applyWx(camD) {
-  const w = S.filt.wx ? S.wx : CLEAR;
+  const w = S.filt.wx && !S.cityPlan ? S.wx : CLEAR;
   const ov = Math.max(w.cloud * 0.85, w.snow, w.rain * 0.9), fg = Math.max(w.fog, w.haze * 0.55);
   cT.copy(SKY.top).lerp(SKY.topO, ov).lerp(SKY.topF, fg).lerp(SKY.smoke, w.smoke * 0.3);
   cH.copy(SKY.hor).lerp(SKY.horO, ov).lerp(SKY.horF, fg).lerp(SKY.cold, w.haze * 0.35).lerp(SKY.smoke, w.smoke * 0.18);
@@ -573,7 +583,7 @@ function applyWx(camD) {
 }
 
 // ---------- estado ----------
-const S = { t: 0, playing: false, speed: 5, sel: null, filt: { ax: true, su: true, hq: true, ar: true, lb: true, wx: true, fp: true }, zen: false, tab: 'op', curEvent: -1, cityView: false, wx: CLEAR, wxEntry: undefined };
+const S = { t: 0, playing: false, speed: 5, sel: null, filt: { ax: true, su: true, hq: true, ar: true, lb: true, wx: true, fp: true }, zen: false, cityPlan: false, zenBefore: false, tab: 'op', curEvent: -1, cityView: false, wx: CLEAR, wxEntry: undefined };
 const BASE_DPS = 4; // 1× = 4 dias por segundo
 
 const PHASES = [
@@ -610,7 +620,9 @@ function update() {
   zones.forEach((z, i) => z.grp.visible = i === zi && !cityFront);
   let fi = -1; fronts.forEach((f, i) => { if (t >= f.t) fi = i; });
   fronts.forEach((f, i) => f.grp.visible = S.cityView && i === fi);
-  $('modeChip').hidden = !S.cityView;
+  $('modeChip').hidden = !S.cityView || S.cityPlan;
+  $('planChip').hidden = !S.cityPlan;
+  if (S.cityPlan) $('wxChip').hidden = true; else renderWxChip();
   townDots.forEach(d => d.visible = MODE === 'chart' && !S.cityView);
   // unidades
   units.forEach(un => { if (un.fp && !(t >= un.start && t <= un.end + 0.999)) un.fp.grp.visible = false; });
@@ -646,6 +658,14 @@ function update() {
     a.head.visible = p >= 0.98;
     const fade = a.e.dur - dt < 1 ? clamp(a.e.dur - dt, 0, 1) : 1; a.mesh.material.opacity = 0.92 * fade;
   });
+  if (S.cityPlan) {
+    arrows.forEach(a => a.grp.visible = false); zones.forEach(z => z.grp.visible = false); fronts.forEach(f => f.grp.visible = false);
+    units.forEach(un => { if (un.fp) un.fp.grp.visible = false; });
+  }
+  [leafTrees, pineTrees, hutMesh].forEach(o => o.visible = MODE === 'real' && !S.cityPlan);
+  if (waterMesh) waterMesh.visible = !S.cityPlan;
+  pins.forEach(p => p.visible = !S.cityPlan);
+  townDots.forEach(d => d.visible = MODE === 'chart' && !S.cityView && !S.cityPlan);
   // evento atual
   let ei = -1; events.forEach((e, i) => { if (t >= e.t) ei = i; });
   if (ei !== S.curEvent) { S.curEvent = ei; renderOp(); renderWx(); markTicks(); }
@@ -657,10 +677,12 @@ function update() {
 
 function setMode(m) {
   MODE = m; store('stalingrado-mode', m);
-  terrainMat.map = getTex(m); terrainMat.needsUpdate = true;
-  terrainMat.userData.snow.uReal.value = m === 'real' ? 1 : 0; terrainMat.userData.snow.uAmt.value = m === 'real' ? 1 : 0.4;
-  [leafTrees, pineTrees, hutMesh].forEach(o => o.visible = m === 'real');
-  setPlanta(m === 'chart');
+  terrainMat.map = S.cityPlan ? null : getTex(m); terrainMat.needsUpdate = true;
+  terrainMat.userData.snow.uReal.value = m === 'real' && !S.cityPlan ? 1 : 0; terrainMat.userData.snow.uAmt.value = S.cityPlan ? 0 : m === 'real' ? 1 : 0.4;
+  if (S.cityPlan) { terrainMat.color.set(0x000000); terrainMat.emissive.set(0xe9e1c9); }
+  if (!S.cityPlan) { terrainMat.color.set(0xffffff); terrainMat.emissive.set(0x000000); }
+  setPlanta(m === 'chart' || S.cityPlan);
+  flatPlan(S.cityPlan);
   document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
   update();
 }
@@ -826,15 +848,16 @@ renderSpeed();
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => setTab(b.dataset.tab));
 document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { const k = b.dataset.f; S.filt[k] = !S.filt[k]; b.setAttribute('aria-pressed', S.filt[k]); update(); });
 $('sheetToggle').onclick = () => $('panel').classList.toggle('open');
-$('reset').onclick = () => focusOn([43.4, 48.95, 360]);
+$('reset').onclick = () => { if (S.cityPlan) { const back = !S.zenBefore; setCityPlan(false); if (back) setZenith(false, true); } focusOn([43.4, 48.95, 360]); };
 // ---------- vista zenital: câmera a prumo, norte para cima, só desloca e aproxima ----------
 const ZEN_DIR = new THREE.Vector3(0, 1, 0.0008).normalize(), TILT_DIR = new THREE.Vector3(-0.12, 0.62, 0.78).normalize(), tmpDir = new THREE.Vector3();
-function setZenith(on) {
+function setZenith(on, quiet) {
+  if (!on && S.cityPlan) setCityPlan(false);
   S.zen = on;
   const dir = camera.position.clone().sub(controls.target).normalize(), d = camera.position.distanceTo(controls.target);
   controls.enableRotate = !on; controls.screenSpacePanning = on;
   controls.minPolarAngle = 0; controls.maxPolarAngle = on ? 0.0009 : 1.4;
-  anim = { t0: performance.now(), dur: 900, fromT: controls.target.clone(), toT: controls.target.clone(), fromD: d, toD: on ? Math.max(d * 1.15, 8) : d, dir, toDir: on ? ZEN_DIR.clone() : TILT_DIR.clone() };
+  if (!quiet) anim = { t0: performance.now(), dur: 900, fromT: controls.target.clone(), toT: controls.target.clone(), fromD: d, toD: on ? Math.max(d * 1.15, 8) : d, dir, toDir: on ? ZEN_DIR.clone() : TILT_DIR.clone() };
   $('zenBtn').setAttribute('aria-pressed', String(on)); $('zenBtn').textContent = on ? 'Vista 3D' : 'Vista zenital';
   $('north').hidden = !on;
   try { localStorage.setItem('stalingrado-zen', on ? '1' : '0'); } catch (e) {}
@@ -842,7 +865,16 @@ function setZenith(on) {
 }
 $('zenBtn').onclick = () => setZenith(!S.zen);
 window.addEventListener('keydown', e => { if ((e.key === 'z' || e.key === 'Z') && !e.target.closest('input,textarea')) setZenith(!S.zen); });
-$('cityBtn').onclick = () => focusOn([44.535, 48.735, 16]);
+// ---------- vista de planta da cidade: zenital, só as plantas alemãs de 1942 e as forças ----------
+function setCityPlan(on) {
+  if (S.cityPlan === on) return;
+  S.cityPlan = on;
+  if (on) { S.zenBefore = S.zen; if (!S.zen) setZenith(true, true); }
+  setMode(MODE);
+  $('cityBtn').setAttribute('aria-pressed', String(on));
+  update();
+}
+$('cityBtn').onclick = () => { setCityPlan(true); focusOn([44.54, 48.74, 15]); };
 
 
 // seleção por toque
@@ -886,7 +918,7 @@ function frame(now) {
   SG.SNOWU.uUpV.value.copy(UPW.set(0, 1, 0).transformDirection(camera.matrixWorldInverse));
   sky.position.copy(camera.position); sky.scale.setScalar(4000);
   applyWx(camD);
-  weather.update(S.filt.wx ? S.wx : CLEAR, dt, camD, controls.target, S.filt.wx);
+  weather.update(S.filt.wx && !S.cityPlan ? S.wx : CLEAR, dt, camD, controls.target, S.filt.wx && !S.cityPlan);
   // escala e posição dos modelos conforme distância
   units.forEach(un => {
     if (!un.on) return;
@@ -917,7 +949,8 @@ function frame(now) {
   const w = wrap.clientWidth, h = wrap.clientHeight;
   labels.forEach(l => {
     let show = l.cls === 'unit ax' || l.cls === 'unit su' || l.cls.startsWith('hq') ? l.vis : S.filt.lb;
-    if (l.cls === 'mark' || l.cls === 'ravine') show = S.cityView && S.filt.lb;
+    if (l.cls === 'mark' || l.cls === 'ravine') show = S.cityView && S.filt.lb && !S.cityPlan;
+    if (S.cityPlan && (l.cls.startsWith('town') || l.cls === 'river' || l.cls === 'lake')) show = false;
     if (l.cls === 'town t1') show = S.filt.lb && camD < 260;
     if (l.cls === 'river' || l.cls === 'lake') show = S.filt.lb && camD < 420;
     if (show) {

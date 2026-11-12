@@ -59,6 +59,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .chip .sw{width:10px;height:3px;border-radius:2px}
 .chip[aria-pressed="false"]{color:var(--muted);opacity:.75}
 .chip[aria-pressed="false"] .sw{opacity:.35}
+.adj{flex-basis:100%;max-width:320px;display:flex;flex-direction:column;gap:4px;background:color-mix(in srgb,var(--panel) 90%,transparent);border:1px solid var(--line);border-radius:12px;padding:10px 12px;backdrop-filter:blur(6px)}
+.adj label{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+.adj label b{font-family:var(--f-mono);color:var(--fg);font-weight:500}
+.adj input{width:100%;accent-color:var(--sun)}
+.adj .chip{align-self:flex-start;margin-top:4px}
 .status{position:absolute;left:8px;right:8px;bottom:8px;font-size:12px;color:var(--muted);background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);border-radius:10px;padding:6px 10px;backdrop-filter:blur(6px)}
 .status:empty{display:none}
 .readout{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
@@ -140,9 +145,10 @@ h3{font-family:var(--f-disp);font-size:15px;margin:14px 0 6px;font-weight:600}
         <button class="chip" id="tJun" aria-pressed="true"><span class="sw" style="background:var(--jun)"></span>Solstício jun</button>
         <button class="chip" id="tDec" aria-pressed="true"><span class="sw" style="background:var(--dec)"></span>Solstício dez</button>
         <button class="chip" id="tEq" aria-pressed="false"><span class="sw" style="background:var(--eq)"></span>Equinócio</button>
+        <button class="chip" id="tTop" aria-pressed="false">Vista de cima</button>
         <button class="chip" id="tFollow" aria-pressed="false">Girar com o celular</button>
       </div>
-      <div class="status" id="cStatus"></div>
+      <div class="status" id="cStatus">Arraste para girar a bússola; use dois dedos ou a roda do mouse para aproximar.</div>
     </section>
 
     <section class="view" id="v-ar" hidden>
@@ -151,8 +157,17 @@ h3{font-family:var(--f-disp);font-size:15px;margin:14px 0 6px;font-weight:600}
       <div class="overlay-bar">
         <button class="chip" id="camBtn" aria-pressed="false">Ligar câmera</button>
         <button class="chip" id="senBtn" aria-pressed="false">Usar sensores</button>
+        <button class="chip" id="roseBtn" aria-pressed="true">Bússola 3D</button>
+        <button class="chip" id="adjBtn" aria-pressed="false">Ajustar</button>
+        <div class="adj" id="adjPanel" hidden>
+          <label for="fovR">Campo de visão da câmera <b id="fovV">66°</b></label>
+          <input type="range" id="fovR" min="40" max="100" step="1" value="66">
+          <label for="offR">Correção da bússola <b id="offV">0°</b></label>
+          <input type="range" id="offR" min="-45" max="45" step="1" value="0">
+          <button class="chip" id="calReset">Restaurar</button>
+        </div>
       </div>
-      <div class="status" id="aStatus">Arraste para olhar em volta. Com câmera e sensores ligados, aponte o celular para o céu.</div>
+      <div class="status" id="aStatus">Arraste para olhar em volta e incline para baixo para ver a bússola no chão. Ligue a câmera para sobrepor tudo à imagem real.</div>
     </section>
 
     <section class="view" id="v-day" hidden>
@@ -310,35 +325,62 @@ function bandColor(alt){return alt>=6?C.bday:alt>=-4?C.bgold:alt>=-6?C.bblue:alt
 function fit(cv){const r=cv.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const w=Math.max(1,Math.round(r.width*dpr)),h=Math.max(1,Math.round(r.height*dpr));
   if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return {ctx,W:r.width,H:r.height};}
 
+// ============ Geometria 3D ============
+// mundo: x = leste, y = norte, z = para cima; a cúpula do céu tem raio 1
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const addv=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const dirV=(az,alt)=>{const A=az*RAD,E=alt*RAD;return [Math.cos(E)*Math.sin(A),Math.cos(E)*Math.cos(A),Math.sin(E)];};
+const rotZ=(v,d)=>{const t=d*RAD,c=Math.cos(t),s=Math.sin(t);return [v[0]*c+v[1]*s,-v[0]*s+v[1]*c,v[2]];};
+const hdg=v=>(Math.atan2(v[0],v[1])/RAD+360)%360;
+function camFromBasis(pos,right,up,f,W,H){return {pos,right,up,fwd:cross(up,right),f,W,H};}
+function camLookAt(pos,target,up0,f,W,H){const fw=norm(sub(target,pos));let r=cross(fw,up0);if(Math.hypot(r[0],r[1],r[2])<1e-5)r=[1,0,0];r=norm(r);return {pos,fwd:fw,right:r,up:cross(r,fw),f,W,H};}
+function proj(cam,p){const q=sub(p,cam.pos),z=dot(q,cam.fwd);if(z<0.04)return null;return {x:cam.W/2+cam.f*dot(q,cam.right)/z,y:cam.H/2-cam.f*dot(q,cam.up)/z,s:cam.f/z};}
+function line3(ctx,cam,pts){ctx.beginPath();let last=null;
+  for(const p of pts){const q=p&&proj(cam,p);if(!q){last=null;continue;}
+    if(last&&Math.abs(q.x-last.x)<cam.W*1.5&&Math.abs(q.y-last.y)<cam.H*1.5)ctx.lineTo(q.x,q.y);else ctx.moveTo(q.x,q.y);last=q;}
+  ctx.stroke();}
+function poly3(ctx,cam,pts,fill,stroke){ // recorta no plano próximo para o chão não "virar" atrás da câmera
+  const N=0.04,cs=pts.map(p=>{const q=sub(p,cam.pos);return [dot(q,cam.right),dot(q,cam.up),dot(q,cam.fwd)];}),out=[];
+  for(let i=0;i<cs.length;i++){const a=cs[i],b=cs[(i+1)%cs.length],ai=a[2]>=N,bi=b[2]>=N;if(ai)out.push(a);
+    if(ai!==bi){const k=(N-a[2])/(b[2]-a[2]);out.push([a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k,N]);}}
+  if(out.length<3)return;ctx.beginPath();
+  out.forEach((c,i)=>{const x=cam.W/2+cam.f*c[0]/c[2],y=cam.H/2-cam.f*c[1]/c[2];i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.closePath();if(fill){ctx.fillStyle=fill;ctx.fill();}if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}}
+
 // ============ Sensores ============
-const SEN={on:false,flatHeading:null,camHeading:null,pitch:null};
-function circLerp(a,b,k){if(a==null)return b;let d=((b-a+540)%360)-180;return (a+d*k+360)%360;}
+const SEN={on:false,right:null,up:null,heading:null,offset:0};
+let sensorsAttached=false,lastSensorEvent=0;
+const sensorLive=()=>SEN.right&&Date.now()-lastSensorEvent<1500;
 function onOri(e){
   if(e.alpha==null)return;
   const iosH=e.webkitCompassHeading;
   if(!e.absolute&&iosH==null&&e.type!=='deviceorientationabsolute')return;
-  const a=e.alpha*RAD,b=(e.beta||0)*RAD,g=(e.gamma||0)*RAD;
-  const X=-Math.sin(g)*Math.cos(a)-Math.cos(g)*Math.sin(b)*Math.sin(a);
-  const Y=-Math.sin(g)*Math.sin(a)+Math.cos(g)*Math.sin(b)*Math.cos(a);
-  const Z=-Math.cos(g)*Math.cos(b);
-  let cam=(Math.atan2(X,Y)/RAD+360)%360, flat=(360-e.alpha)%360;
-  if(iosH!=null){flat=iosH;cam=iosH;}
-  SEN.flatHeading=circLerp(SEN.flatHeading,flat,.25);
-  SEN.camHeading=circLerp(SEN.camHeading,cam,.25);
-  const p=Math.asin(Math.max(-1,Math.min(1,Z)))/RAD;
-  SEN.pitch=SEN.pitch==null?p:SEN.pitch+(p-SEN.pitch)*.25;
+  lastSensorEvent=Date.now();
+  const al=iosH!=null?(360-iosH):e.alpha;
+  const a=al*RAD,b=(e.beta||0)*RAD,g=(e.gamma||0)*RAD;
+  const ca=Math.cos(a),sa=Math.sin(a),cb=Math.cos(b),sb=Math.sin(b),cg=Math.cos(g),sg=Math.sin(g);
+  // eixos x (direita da tela) e y (topo da tela) do aparelho no mundo: R = Rz(alfa)·Rx(beta)·Ry(gama)
+  const c0=[ca*cg-sa*sb*sg, sa*cg+ca*sb*sg, -cb*sg], c1=[-sa*cb, ca*cb, sb];
+  const th=(((screen.orientation&&screen.orientation.angle)||window.orientation||0))*RAD;
+  let r=addv(mul(c0,Math.cos(th)),mul(c1,-Math.sin(th))), u=addv(mul(c0,Math.sin(th)),mul(c1,Math.cos(th)));
+  if(SEN.right){const k=.3;r=addv(SEN.right,mul(sub(r,SEN.right),k));u=addv(SEN.up,mul(sub(u,SEN.up),k));}
+  r=norm(r);u=norm(sub(u,mul(r,dot(u,r))));
+  SEN.right=r;SEN.up=u;
+  const fw=cross(u,r);SEN.heading=hdg(Math.abs(fw[2])<0.8?fw:u); // em pé: para onde a câmera aponta; deitado: para onde aponta o topo
   if(S.view==='compass'&&follow)requestDraw();
-  if(S.view==='ar'&&SEN.on){AR.h=SEN.camHeading;AR.p=SEN.pitch;requestDraw();}
+  if(S.view==='ar'&&SEN.on)requestDraw();
 }
-let sensorsAttached=false,lastSensorEvent=0;
 async function enableSensors(statusEl){
   try{
     if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
       const r=await DeviceOrientationEvent.requestPermission();if(r!=='granted')throw new Error('negado');}
     if(!sensorsAttached){
-      const h=e=>{lastSensorEvent=Date.now();onOri(e);};
-      if('ondeviceorientationabsolute' in window)addEventListener('deviceorientationabsolute',h);
-      else addEventListener('deviceorientation',h);
+      if('ondeviceorientationabsolute' in window)addEventListener('deviceorientationabsolute',onOri);
+      else addEventListener('deviceorientation',onOri);
       sensorsAttached=true;}
     SEN.on=true;
     setTimeout(()=>{if(Date.now()-lastSensorEvent>1500&&statusEl)statusEl.textContent='Nenhum sinal de bússola chegou. No visualizador do Claude os sensores ficam bloqueados; abra a versão publicada no celular para usar a bússola.';},1800);
@@ -346,138 +388,171 @@ async function enableSensors(statusEl){
   }catch(err){if(statusEl)statusEl.textContent='Não foi possível ler os sensores de orientação neste navegador.';return false;}
 }
 
-// ============ Vista: Bússola ============
-let follow=false;
-function drawCompass(){
-  const {ctx,W,H}=fit($('cv'));const D=computeDay(),sp=solPaths(),t=curT(),sun=sunPos(t,S.lat,S.lng);
-  ctx.clearRect(0,0,W,H);
-  const cx=W/2,cy=H/2+14,R=Math.min(W,H-40)*0.40;
-  const head=(follow&&SEN.flatHeading!=null)?SEN.flatHeading:0;
-  const rOf=alt=>R*(90-alt)/90;
-  const P=(az,alt)=>{const r=rOf(alt),a=(az-head)*RAD;return [cx+r*Math.sin(a),cy-r*Math.cos(a)];};
-  // céu
-  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,R*1.2);
-  g.addColorStop(0,C.panel2);g.addColorStop(1,C.panel);
-  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,R*1.2,0,7);ctx.fill();
-  // anéis de elevação
-  ctx.strokeStyle=C.line;ctx.lineWidth=1;
-  for(const a of [60,30]){ctx.beginPath();ctx.arc(cx,cy,rOf(a),0,7);ctx.stroke();}
-  ctx.setLineDash([2,4]);ctx.beginPath();ctx.arc(cx,cy,rOf(-18),0,7);ctx.stroke();ctx.setLineDash([]);
-  ctx.strokeStyle=C.muted;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.stroke();
-  ctx.fillStyle=C.muted;ctx.font='10px "IBM Plex Mono",monospace';ctx.textAlign='left';
-  for(const a of [60,30]){const [x,y]=P(head+180-12,a);ctx.fillText(a+'°',x+3,y);}
-  // marcas de azimute
-  for(let a=0;a<360;a+=5){const big=a%30===0,ang=(a-head)*RAD,r1=R*1.2,r0=r1-(big?10:a%10===0?6:3);
-    ctx.strokeStyle=big?C.fg:C.line;ctx.lineWidth=big?1.5:1;ctx.beginPath();
-    ctx.moveTo(cx+r0*Math.sin(ang),cy-r0*Math.cos(ang));ctx.lineTo(cx+r1*Math.sin(ang),cy-r1*Math.cos(ang));ctx.stroke();}
-  ctx.textAlign='center';ctx.textBaseline='middle';
-  [['N',0],['NE',45],['L',90],['SE',135],['S',180],['SO',225],['O',270],['NO',315]].forEach(([l,a])=>{
-    const ang=(a-head)*RAD,r=R*1.2-22;ctx.fillStyle=l==='N'?C.sun:(l.length>1?C.muted:C.fg);
-    ctx.font=(l.length>1?'500 11px':'700 15px')+' "Bricolage Grotesque",sans-serif';ctx.fillText(l,cx+r*Math.sin(ang),cy-r*Math.cos(ang));});
-  // trajetórias de referência
-  const path=(pts,color,w,dash,minAlt=0)=>{ctx.strokeStyle=color;ctx.lineWidth=w;ctx.setLineDash(dash);ctx.beginPath();let pen=false;
-    for(const p of pts){if(p.alt<minAlt){pen=false;continue;}const [x,y]=P(p.az,p.alt);pen?ctx.lineTo(x,y):ctx.moveTo(x,y);pen=true;}ctx.stroke();ctx.setLineDash([]);};
-  if(S.showEq)path(sp.eq.filter((_,i)=>i%2===0),C.eq,1.5,[5,4]);
-  if(S.showJun)path(sp.jun.filter((_,i)=>i%2===0),C.jun,2,[]);
-  if(S.showDec)path(sp.dec.filter((_,i)=>i%2===0),C.dec,2,[]);
-  // crepúsculo de hoje (abaixo do horizonte)
-  path(D.pts,C.blue,1.5,[3,4],-18);
-  ctx.globalAlpha=1;
-  // raios de nascer/pôr
-  for(const e of [D.rise,D.set]){if(!e)continue;const [x,y]=P(e.az,0);const a=(e.az-head)*RAD,r=R*1.2;
-    ctx.strokeStyle=C.gold;ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+r*Math.sin(a),cy-r*Math.cos(a));ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle=C.gold;ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fill();
-    ctx.font='600 11px "IBM Plex Mono",monospace';const lx=cx+(r+16)*Math.sin(a),ly=cy-(r+16)*Math.cos(a);ctx.fillText(hm(e.t),lx,ly);}
-  // trajetória de hoje
-  path(D.pts,C.sun,4,[]);
+// ============ Cena 3D: bússola + cúpula + trajetórias ============
+const GNOMON=0.2;
+function drawScene(ctx,cam,mode){
+  const AR_=mode==='ar',G=AR_?-0.55:0;
+  const D=computeDay(),sp=solPaths(),t=curT(),sun=sunPos(t,S.lat,S.lng);
+  const ink=AR_?'#ffffff':C.fg, mutedC=AR_?'rgba(255,255,255,.8)':C.muted;
+  const gp=(az,r)=>{const v=dirV(az,0);return [v[0]*r,v[1]*r,G];};
+  const sky=(az,alt)=>dirV(az,AR_?apparent(alt):alt);
+  const camOut=AR_?null:norm(cam.pos);
+  const fs=(p,base,min,max)=>Math.max(min,Math.min(max,p.s*base));
+  const text=(p3,str,base,min,max,weight,color)=>{const q=proj(cam,p3);if(!q)return;ctx.font=`${weight} ${fs(q,base,min,max)}px ${weight>=600?'"Bricolage Grotesque",sans-serif':'"IBM Plex Mono",monospace'}`;
+    ctx.fillStyle=color;ctx.fillText(str,q.x,q.y);};
+  ctx.lineCap='round';ctx.lineJoin='round';ctx.textAlign='center';ctx.textBaseline='middle';
+  if(AR_){ctx.shadowColor='rgba(0,0,0,.55)';ctx.shadowBlur=3;}
+
+  // crepúsculo abaixo do chão (só na vista de fora)
+  if(!AR_){ctx.strokeStyle=C.blue;ctx.globalAlpha=.4;ctx.setLineDash([3,5]);ctx.lineWidth=1.5;
+    line3(ctx,cam,D.pts.map(p=>p.alt<0&&p.alt>-18?dirV(p.az,p.alt):null));ctx.setLineDash([]);ctx.globalAlpha=1;}
+
+  if(AR_?AR.rose:true){
+    // disco do chão
+    const ring=r=>{const a=[];for(let i=0;i<120;i++)a.push(gp(i*3,r));return a;};
+    poly3(ctx,cam,ring(1.14),AR_?'rgba(8,12,28,.45)':C.ground,null);
+    ctx.lineWidth=1.5;poly3(ctx,cam,ring(1.14),null,AR_?'rgba(255,255,255,.7)':C.muted);
+    ctx.lineWidth=1;poly3(ctx,cam,ring(0.78),null,AR_?'rgba(255,255,255,.3)':C.line);
+    // graduação
+    for(let a=0;a<360;a+=5){const big=a%30===0;ctx.strokeStyle=big?ink:mutedC;ctx.lineWidth=big?2:1;
+      line3(ctx,cam,[gp(a,1.14),gp(a,big?1.0:a%10===0?1.06:1.09)]);}
+    for(let a=30;a<360;a+=30){if(a%90===0)continue;text(gp(a,0.92),String(a),0.05,8,15,500,mutedC);}
+    // rosa dos ventos
+    const sunC=AR_?'#ffb43a':C.sun,sunD=AR_?'#c97a10':C.gold;
+    const lt=AR_?'rgba(255,255,255,.9)':C.fg, dk=AR_?'rgba(140,150,180,.85)':C.muted;
+    for(const k of [1,3,5,7,0,2,4,6]){const az=k*45,tip=k%2?0.42:0.7,c=[0,0,G];
+      poly3(ctx,cam,[c,gp(az,tip),gp(az-22.5,0.12)],k===0?sunC:lt,null);
+      poly3(ctx,cam,[c,gp(az,tip),gp(az+22.5,0.12)],k===0?sunD:dk,null);}
+    [['N',0],['L',90],['S',180],['O',270]].forEach(([l,a])=>text(gp(a,1.27),l,0.11,11,34,700,l==='N'?sunC:ink));
+    // nascer e pôr no chão
+    for(const e of [D.rise,D.set]){if(!e)continue;ctx.strokeStyle=AR_?'#ff9a4a':C.gold;ctx.lineWidth=2;ctx.setLineDash([6,5]);
+      line3(ctx,cam,[[0,0,G],gp(e.az,1.14)]);ctx.setLineDash([]);text(gp(e.az,1.42),hm(e.t),0.06,9,16,500,AR_?'#ffd0a0':C.gold);}
+    // sombra (e o gnômon na vista de fora)
+    if(sun.alt>0.5){const L=Math.min(GNOMON/Math.tan(sun.alt*RAD),1.1);ctx.strokeStyle=AR_?'rgba(0,0,0,.7)':C.shadow;ctx.globalAlpha=AR_?1:.55;
+      ctx.lineWidth=AR_?6:5;line3(ctx,cam,[[0,0,G],gp(sun.az+180,L)]);ctx.globalAlpha=1;}
+    if(!AR_){ctx.strokeStyle=C.fg;ctx.lineWidth=3;line3(ctx,cam,[[0,0,0],[0,0,GNOMON]]);const q=proj(cam,[0,0,GNOMON]);if(q){ctx.fillStyle=C.fg;ctx.beginPath();ctx.arc(q.x,q.y,3.5,0,7);ctx.fill();}}
+  }
+
+  // grade da cúpula
+  const seg=(pts,alphaF,alphaB,color,w)=>{ctx.strokeStyle=color;ctx.lineWidth=w;
+    for(let i=1;i<pts.length;i++){const m=mul(addv(pts[i-1],pts[i]),.5);ctx.globalAlpha=camOut?(dot(m,camOut)>-0.15?alphaF:alphaB):alphaF;line3(ctx,cam,[pts[i-1],pts[i]]);}ctx.globalAlpha=1;};
+  const gridC=AR_?'#ffffff':C.muted;
+  for(const al of [30,60]){const r=[];for(let i=0;i<=72;i++)r.push(dirV(i*5,al));seg(r,AR_?.25:.45,.12,gridC,1);}
+  if(AR_){const r=[];for(let i=0;i<=120;i++)r.push(dirV(i*3,0));seg(r,.85,.85,'#ffffff',1.5);}
+  for(let az=0;az<360;az+=45){const m=[];for(let al=0;al<=90;al+=5)m.push(dirV(az,al));seg(m,AR_?.2:.35,.1,gridC,1);}
+  if(AR_){ // rótulos do horizonte e das elevações na direção em que se olha
+    for(let a=0;a<360;a+=15){const card=a%45===0;text(dirV(a,1.6),card?dir16(a):a+'°',card?0.05:0.035,card?12:9,card?18:12,card?700:500,card?'#fff':'rgba(255,255,255,.75)');}
+    const h=hdg(cam.fwd);for(const al of [30,60])text(dirV(h+4,al),al+'°',0.03,9,12,500,'rgba(255,255,255,.7)');
+  }
+
+  // trajetórias
+  const path=(pts,color,w,dash)=>{ctx.strokeStyle=color;ctx.lineWidth=w;ctx.setLineDash(dash);line3(ctx,cam,pts.map(p=>p.alt>=-0.5?sky(p.az,p.alt):null));ctx.setLineDash([]);};
+  if(S.showEq)path(sp.eq,C.eq,AR_?2:1.5,[6,5]);
+  if(S.showJun)path(sp.jun,C.jun,AR_?2.5:2,[]);
+  if(S.showDec)path(sp.dec,C.dec,AR_?2.5:2,[]);
+  path(D.pts,AR_?'#ffb43a':C.sun,AR_?4:3.5,[]);
   // marcas de hora
-  ctx.font='500 10px "IBM Plex Mono",monospace';
-  for(let h=0;h<24;h++){const tt=D.mid+h*3600000;if(tt>D.end)break;const p=sunPos(tt,S.lat,S.lng);if(p.alt<0)continue;
-    const [x,y]=P(p.az,p.alt);ctx.fillStyle=C.bg;ctx.beginPath();ctx.arc(x,y,5,0,7);ctx.fill();ctx.strokeStyle=C.sun;ctx.lineWidth=2;ctx.stroke();
-    const rr=rOf(p.alt),a=(p.az-head)*RAD,ox=Math.sin(a),oy=-Math.cos(a);const k=rr<14?-1:1;
-    ctx.fillStyle=C.fg;ctx.fillText(String(tzParts(S.tz,tt).hour),x-ox*14*k,y-oy*14*k);}
-  // sombra
-  if(sun.alt>0){const ratio=Math.min(1/Math.tan(sun.alt*RAD),3),a=(sun.az+180-head)*RAD,L=R*ratio/3;
-    ctx.strokeStyle=C.shadow;ctx.globalAlpha=.55;ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+L*Math.sin(a),cy-L*Math.cos(a));ctx.stroke();ctx.globalAlpha=1;ctx.lineCap='butt';}
-  ctx.fillStyle=C.fg;ctx.beginPath();ctx.arc(cx,cy,3,0,7);ctx.fill();
+  for(let h=0;h<24;h++){const tt=D.mid+h*3600000;if(tt>D.end)break;const p=sunPos(tt,S.lat,S.lng);if(p.alt<-0.5)continue;
+    const v=sky(p.az,p.alt),q=proj(cam,v);if(!q)continue;const r=AR_?5:Math.max(3,Math.min(6,q.s*0.03));
+    ctx.fillStyle=AR_?'#ffffff':C.bg;ctx.beginPath();ctx.arc(q.x,q.y,r,0,7);ctx.fill();ctx.strokeStyle=AR_?'#ffb43a':C.sun;ctx.lineWidth=2;ctx.stroke();
+    const lq=proj(cam,AR_?dirV(p.az,(AR_?apparent(p.alt):p.alt)+2.6):mul(v,1.1));if(lq){ctx.font=`500 ${AR_?11:Math.max(9,Math.min(13,lq.s*0.045))}px "IBM Plex Mono",monospace`;ctx.fillStyle=ink;ctx.fillText(tzParts(S.tz,tt).hour+'h',lq.x,lq.y);}}
+
   // sol
-  const [sx,sy]=P(sun.az,Math.max(sun.alt,-18));
-  if(sun.alt>-0.833){const gl=ctx.createRadialGradient(sx,sy,0,sx,sy,26);gl.addColorStop(0,C.sun);gl.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=gl;ctx.beginPath();ctx.arc(sx,sy,26,0,7);ctx.fill();ctx.fillStyle=C.sun;ctx.beginPath();ctx.arc(sx,sy,9,0,7);ctx.fill();}
-  else{ctx.strokeStyle=C.sun;ctx.lineWidth=2;ctx.beginPath();ctx.arc(sx,sy,8,0,7);ctx.stroke();}
-  // indicador de direção do aparelho
-  if(follow&&SEN.flatHeading!=null){ctx.fillStyle=C.fg;ctx.beginPath();ctx.moveTo(cx,cy-R*1.2-12);ctx.lineTo(cx-7,cy-R*1.2-24);ctx.lineTo(cx+7,cy-R*1.2-24);ctx.fill();}
+  const sv=sun.alt>-0.83?sky(sun.az,sun.alt):dirV(sun.az,Math.max(sun.alt,-25)),sq=proj(cam,sv);
+  if(!AR_&&sun.alt>0.5){ctx.strokeStyle=C.sun;ctx.globalAlpha=.6;ctx.lineWidth=1;ctx.setLineDash([2,4]);line3(ctx,cam,[sv,[0,0,GNOMON]]);ctx.setLineDash([]);ctx.globalAlpha=1;}
+  ctx.shadowBlur=0;
+  if(sq){const r=AR_?Math.max(8,cam.f*0.53*RAD/2):Math.max(6,Math.min(14,sq.s*0.05));
+    if(sun.alt>-0.83){const gl=ctx.createRadialGradient(sq.x,sq.y,0,sq.x,sq.y,r*4);gl.addColorStop(0,'rgba(255,190,80,.85)');gl.addColorStop(1,'rgba(255,190,80,0)');
+      ctx.fillStyle=gl;ctx.beginPath();ctx.arc(sq.x,sq.y,r*4,0,7);ctx.fill();ctx.fillStyle=AR_?'#fff6dc':C.sun;ctx.beginPath();ctx.arc(sq.x,sq.y,r,0,7);ctx.fill();
+      if(AR_){ctx.strokeStyle='#ffb43a';ctx.lineWidth=2;ctx.beginPath();ctx.arc(sq.x,sq.y,r+6,0,7);ctx.stroke();}}
+    else{ctx.strokeStyle=AR_?'#ffb43a':C.sun;ctx.lineWidth=2;ctx.beginPath();ctx.arc(sq.x,sq.y,r,0,7);ctx.stroke();}}
+  return {sv,sq};
 }
 
-// ============ Vista: Câmera AR ============
-const AR={h:0,p:15,fov:90,cam:false,init:false};
-function drawAR(){
-  const {ctx,W,H}=fit($('av'));const D=computeDay(),sp=solPaths(),t=curT(),sun=sunPos(t,S.lat,S.lng);
-  if(!AR.init){AR.h=sun.alt>-5?sun.az:(D.noon.az);AR.init=true;}
-  const fov=AR.cam?62:Math.min(110,Math.max(60,W/6));const ppd=W/fov;
-  const pr=(az,alt)=>{const d=((az-AR.h+540)%360)-180;return {x:W/2+d*ppd,y:H/2-(alt-AR.p)*ppd,d};};
-  ctx.clearRect(0,0,W,H);
-  const hy=pr(AR.h,0).y;
-  if(!AR.cam){
-    const a=apparent(sun.alt);const sky=ctx.createLinearGradient(0,0,0,Math.max(hy,1));
-    sky.addColorStop(0,bandColor(a+12));sky.addColorStop(1,bandColor(a));
-    ctx.fillStyle=sky;ctx.fillRect(0,0,W,Math.max(0,hy));
-    ctx.fillStyle=C.ground;ctx.fillRect(0,hy,W,H-hy);
-  }else{ctx.fillStyle='rgba(0,0,0,.12)';ctx.fillRect(0,0,W,H);}
-  // grade
-  ctx.lineWidth=1;ctx.font='10px "IBM Plex Mono",monospace';ctx.textBaseline='middle';
-  for(let a=-30;a<=90;a+=10){if(a===0)continue;const y=pr(AR.h,a).y;if(y<0||y>H)continue;ctx.strokeStyle='rgba(255,255,255,.13)';ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.6)';ctx.textAlign='left';ctx.fillText(a+'°',6,y-7);}
-  ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,hy);ctx.lineTo(W,hy);ctx.stroke();
-  ctx.textAlign='center';
-  for(let a=0;a<360;a+=15){const p=pr(a,0);if(p.x<-20||p.x>W+20)continue;const card=a%45===0;
-    ctx.strokeStyle='rgba(255,255,255,.7)';ctx.beginPath();ctx.moveTo(p.x,hy-(card?8:4));ctx.lineTo(p.x,hy+(card?8:4));ctx.stroke();
-    ctx.fillStyle=card?'#fff':'rgba(255,255,255,.65)';ctx.font=(card?'700 13px "Bricolage Grotesque",sans-serif':'10px "IBM Plex Mono",monospace');
-    ctx.fillText(card?dir16(a):a+'°',p.x,hy+20);}
-  const path=(pts,color,w,dash,minAlt)=>{ctx.strokeStyle=color;ctx.lineWidth=w;ctx.setLineDash(dash);ctx.beginPath();let last=null;
-    for(const q of pts){if(q.alt<minAlt){last=null;continue;}const p=pr(q.az,apparent(q.alt));if(last&&Math.abs(p.d-last.d)<120)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);last=p;}
-    ctx.stroke();ctx.setLineDash([]);};
-  ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=4;
-  if(S.showEq)path(sp.eq,C.eq,2,[6,5],-2);
-  if(S.showJun)path(sp.jun,C.jun,2.5,[],-2);
-  if(S.showDec)path(sp.dec,C.dec,2.5,[],-2);
-  path(D.pts,C.sun,4,[],-2);
-  ctx.font='600 11px "IBM Plex Mono",monospace';
-  for(let h=0;h<24;h++){const tt=D.mid+h*3600000;if(tt>D.end)break;const q=sunPos(tt,S.lat,S.lng);if(q.alt<-1)continue;const p=pr(q.az,apparent(q.alt));if(p.x<-20||p.x>W+20)continue;
-    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p.x,p.y,5,0,7);ctx.fill();ctx.strokeStyle=C.sun;ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='#fff';ctx.fillText(String(tzParts(S.tz,tt).hour)+'h',p.x,p.y-14);}
-  ctx.shadowBlur=0;
-  // sol
-  const sa=apparent(sun.alt),sp2=pr(sun.az,sa);
-  const onScreen=sp2.x>-10&&sp2.x<W+10&&sp2.y>-10&&sp2.y<H+10;
-  if(onScreen){const r=Math.max(8,0.53*ppd/2);const gl=ctx.createRadialGradient(sp2.x,sp2.y,0,sp2.x,sp2.y,r*5);gl.addColorStop(0,'rgba(255,200,90,.9)');gl.addColorStop(1,'rgba(255,200,90,0)');
-    ctx.fillStyle=gl;ctx.beginPath();ctx.arc(sp2.x,sp2.y,r*5,0,7);ctx.fill();ctx.fillStyle='#fff6dc';ctx.beginPath();ctx.arc(sp2.x,sp2.y,r,0,7);ctx.fill();
-    ctx.strokeStyle=C.sun;ctx.lineWidth=2;ctx.beginPath();ctx.arc(sp2.x,sp2.y,r+6,0,7);ctx.stroke();}
-  else{const dx=sp2.d*ppd,dy=-(sa-AR.p)*ppd,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
-    const m=48,k=Math.min((W/2-m)/Math.abs(ux||1e-6),(H/2-m)/Math.abs(uy||1e-6));const x=W/2+ux*k,y=H/2+uy*k,ang=Math.atan2(uy,ux);
-    ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.fillStyle=C.sun;ctx.beginPath();ctx.moveTo(18,0);ctx.lineTo(-8,-11);ctx.lineTo(-8,11);ctx.closePath();ctx.fill();ctx.restore();
-    ctx.fillStyle='#fff';ctx.font='600 11px "IBM Plex Sans",sans-serif';ctx.fillText('Sol',x-ux*24,y-uy*24);}
-  // mira
-  ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2-10,H/2);ctx.lineTo(W/2+10,H/2);ctx.moveTo(W/2,H/2-10);ctx.lineTo(W/2,H/2+10);ctx.stroke();
-  ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='11px "IBM Plex Mono",monospace';ctx.textAlign='center';
-  ctx.fillText(deg(AR.h,0)+' '+dir16(AR.h)+' · '+deg(AR.p,0),W/2,H-44);
+// ============ Vista: Bússola 3D (de fora) ============
+let follow=false;
+const ORB={az:S.lat<0?195:15,el:28,dist:3.3,top:false};
+function drawCompass(){
+  const {ctx,W,H}=fit($('cv'));ctx.clearRect(0,0,W,H);
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,C.panel2);g.addColorStop(1,C.panel);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  const az=(follow&&SEN.heading!=null)?(SEN.heading+180)%360:ORB.az, el=ORB.top?89.5:ORB.el;
+  const tgt=[0,0,ORB.top?0:0.2],pos=addv(tgt,mul(dirV(az,el),ORB.dist));
+  const cam=camLookAt(pos,tgt,el>85?dirV(az+180,0):[0,0,1],Math.min(W,H*1.15)*0.95,W,H);
+  drawScene(ctx,cam,'orbit');
 }
-// arrastar para olhar em volta
+(function(){const cv=$('cv'),pts=new Map();let start=null;
+  cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    start={az:ORB.az,el:ORB.el,dist:ORB.dist,pts:new Map([...pts].map(([k,v])=>[k,{...v}]))};});
+  cv.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId)||!start)return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size>=2&&start.pts.size>=2){const [a,b]=[...pts.values()],[a0,b0]=[...start.pts.values()];
+      const d=Math.hypot(a.x-b.x,a.y-b.y),d0=Math.hypot(a0.x-b0.x,a0.y-b0.y)||1;ORB.dist=Math.max(1.7,Math.min(7,start.dist*d0/d));}
+    else{const p0=start.pts.get(e.pointerId);if(!p0)return;
+      if(!(follow&&SEN.heading!=null))ORB.az=(start.az-(e.clientX-p0.x)*0.4+720)%360;
+      ORB.el=Math.max(3,Math.min(89,start.el+(e.clientY-p0.y)*0.3));ORB.top=false;$('tTop').setAttribute('aria-pressed','false');}
+    requestDraw();});
+  const end=e=>{pts.delete(e.pointerId);start=pts.size?{az:ORB.az,el:ORB.el,dist:ORB.dist,pts:new Map([...pts].map(([k,v])=>[k,{...v}]))}:null;};
+  cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+  cv.addEventListener('wheel',e=>{e.preventDefault();ORB.dist=Math.max(1.7,Math.min(7,ORB.dist*Math.exp(e.deltaY*0.001)));requestDraw();},{passive:false});
+})();
+
+// ============ Vista: Câmera AR ============
+const AR={h:0,p:15,cam:false,init:false,rose:true,vfov:66};
+try{const c=JSON.parse(localStorage.getItem('rastro-cal')||'null');if(c){AR.vfov=c.vfov||66;SEN.offset=c.off||0;}}catch(e){}
+function arCamera(W,H){
+  let r,u;
+  if(SEN.on&&sensorLive()){r=rotZ(SEN.right,SEN.offset);u=rotZ(SEN.up,SEN.offset);}
+  else{const fw=dirV(AR.h,AR.p);r=norm(cross(fw,[0,0,1]));u=cross(r,fw);}
+  const vf=(AR.cam||sensorLive()?AR.vfov:Math.max(85,AR.vfov))*RAD;
+  return camFromBasis([0,0,0],r,u,(Math.max(W,H)/2)/Math.tan(vf/2),W,H);
+}
+function drawAR(){
+  const {ctx,W,H}=fit($('av'));const D=computeDay(),sun=sunPos(curT(),S.lat,S.lng);
+  if(!AR.init){AR.h=sun.alt>-5?sun.az:D.noon.az;AR.init=true;}
+  const cam=arCamera(W,H);ctx.clearRect(0,0,W,H);
+  if(!AR.cam){ // céu e chão desenhados quando não há câmera
+    const a=apparent(sun.alt),hz=proj(cam,dirV(hdg(cam.fwd),0));
+    const hy=hz?Math.max(-H,Math.min(2*H,hz.y)):(cam.fwd[2]>0?2*H:-H);
+    const sk=ctx.createLinearGradient(0,Math.min(0,hy-H),0,Math.max(1,hy));sk.addColorStop(0,bandColor(a+12));sk.addColorStop(1,bandColor(a));
+    ctx.fillStyle=sk;ctx.fillRect(0,0,W,H);
+    poly3(ctx,cam,(()=>{const g=[];for(let i=0;i<72;i++){const v=dirV(i*5,0);g.push([v[0]*50,v[1]*50,-0.55]);}return g;})(),C.ground,null);
+  }else{ctx.fillStyle='rgba(0,0,0,.1)';ctx.fillRect(0,0,W,H);}
+  const {sv,sq}=drawScene(ctx,cam,'ar');
+  // seta para o sol quando ele está fora da tela
+  if(!sq||sq.x<0||sq.x>W||sq.y<0||sq.y>H){const dx=dot(sv,cam.right),dy=-dot(sv,cam.up),len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+    const m=48,k=Math.min((W/2-m)/Math.abs(ux||1e-6),(H/2-m)/Math.abs(uy||1e-6)),x=W/2+ux*k,y=H/2+uy*k;
+    ctx.save();ctx.translate(x,y);ctx.rotate(Math.atan2(uy,ux));ctx.fillStyle='#ffb43a';ctx.beginPath();ctx.moveTo(18,0);ctx.lineTo(-8,-11);ctx.lineTo(-8,11);ctx.closePath();ctx.fill();ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='600 11px "IBM Plex Sans",sans-serif';ctx.textAlign='center';ctx.fillText('Sol',x-ux*26,y-uy*26);}
+  // mira e leitura
+  ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2-10,H/2);ctx.lineTo(W/2+10,H/2);ctx.moveTo(W/2,H/2-10);ctx.lineTo(W/2,H/2+10);ctx.stroke();
+  const h=hdg(cam.fwd),p=Math.asin(Math.max(-1,Math.min(1,cam.fwd[2])))/RAD;
+  ctx.fillStyle='rgba(255,255,255,.9)';ctx.font='11px "IBM Plex Mono",monospace';ctx.textAlign='center';
+  ctx.shadowColor='rgba(0,0,0,.6)';ctx.shadowBlur=3;ctx.fillText(deg(h,0)+' '+dir16(h)+' · '+deg(p,0),W/2,H-44);ctx.shadowBlur=0;
+}
 (function(){const cv=$('av');let drag=null;
-  cv.addEventListener('pointerdown',e=>{if(SEN.on&&lastSensorEvent&&Date.now()-lastSensorEvent<1000)return;drag={x:e.clientX,y:e.clientY,h:AR.h,p:AR.p};cv.setPointerCapture(e.pointerId);});
-  cv.addEventListener('pointermove',e=>{if(!drag)return;const ppd=cv.clientWidth/(AR.cam?62:Math.min(110,Math.max(60,cv.clientWidth/6)));
-    AR.h=(drag.h-(e.clientX-drag.x)/ppd+720)%360;AR.p=Math.max(-40,Math.min(90,drag.p+(e.clientY-drag.y)/ppd));requestDraw();});
+  cv.addEventListener('pointerdown',e=>{if(SEN.on&&sensorLive())return;drag={x:e.clientX,y:e.clientY,h:AR.h,p:AR.p};cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const W=cv.clientWidth,H=cv.clientHeight,f=(Math.max(W,H)/2)/Math.tan(Math.max(85,AR.vfov)*RAD/2),ppd=f*RAD;
+    AR.h=(drag.h-(e.clientX-drag.x)/ppd+720)%360;AR.p=Math.max(-85,Math.min(85,drag.p+(e.clientY-drag.y)/ppd));requestDraw();});
   cv.addEventListener('pointerup',()=>drag=null);cv.addEventListener('pointercancel',()=>drag=null);
 })();
 $('camBtn').onclick=async()=>{
   const v=$('video'),btn=$('camBtn');
   if(AR.cam){v.srcObject&&v.srcObject.getTracks().forEach(t=>t.stop());v.srcObject=null;AR.cam=false;btn.setAttribute('aria-pressed','false');btn.textContent='Ligar câmera';requestDraw();return;}
   try{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});v.srcObject=st;await v.play();AR.cam=true;
-    btn.setAttribute('aria-pressed','true');btn.textContent='Desligar câmera';$('aStatus').textContent='Câmera ligada. Ligue também os sensores para a trajetória acompanhar o celular.';requestDraw();}
+    btn.setAttribute('aria-pressed','true');btn.textContent='Desligar câmera';
+    if(!SEN.on){if(await enableSensors($('aStatus')))$('senBtn').setAttribute('aria-pressed','true');}
+    $('aStatus').textContent='Aponte o celular para o céu. Incline para baixo para ver a bússola no chão.';requestDraw();}
   catch(e){$('aStatus').textContent='A câmera não abriu aqui. No visualizador do Claude ela fica bloqueada; na versão publicada (https) o navegador pede permissão.';}
 };
-$('senBtn').onclick=async()=>{const b=$('senBtn');if(SEN.on&&b.getAttribute('aria-pressed')==='true'){b.setAttribute('aria-pressed','false');SEN.on=false;return;}
+$('senBtn').onclick=async()=>{const b=$('senBtn');if(SEN.on){b.setAttribute('aria-pressed','false');SEN.on=false;requestDraw();return;}
   if(await enableSensors($('aStatus'))){b.setAttribute('aria-pressed','true');}};
+$('roseBtn').onclick=()=>{AR.rose=!AR.rose;$('roseBtn').setAttribute('aria-pressed',String(AR.rose));requestDraw();};
+$('adjBtn').onclick=()=>{const p=$('adjPanel');p.hidden=!p.hidden;$('adjBtn').setAttribute('aria-pressed',String(!p.hidden));};
+function saveCal(){try{localStorage.setItem('rastro-cal',JSON.stringify({vfov:AR.vfov,off:SEN.offset}))}catch(e){}}
+function calUI(){$('fovR').value=AR.vfov;$('fovV').textContent=AR.vfov+'°';$('offR').value=SEN.offset;$('offV').textContent=(SEN.offset>0?'+':'')+SEN.offset+'°';}
+$('fovR').addEventListener('input',e=>{AR.vfov=+e.target.value;calUI();saveCal();requestDraw();});
+$('offR').addEventListener('input',e=>{SEN.offset=+e.target.value;calUI();saveCal();requestDraw();});
+$('calReset').onclick=()=>{AR.vfov=66;SEN.offset=0;calUI();saveCal();requestDraw();};
+calUI();
 
 // ============ Vista: Dia ============
 function drawDay(){
@@ -594,8 +669,9 @@ $('dDate').addEventListener('change',e=>{const v=e.target.value.split('-').map(N
 $('nowBtn').onclick=()=>{setLive(true);syncNow();update();};
 const tog=(id,k)=>{$(id).onclick=()=>{S[k]=!S[k];$(id).setAttribute('aria-pressed',String(S[k]));requestDraw();};};
 tog('tJun','showJun');tog('tDec','showDec');tog('tEq','showEq');
-$('tFollow').onclick=async()=>{const b=$('tFollow');if(follow){follow=false;b.setAttribute('aria-pressed','false');$('cStatus').textContent='';requestDraw();return;}
-  if(await enableSensors($('cStatus'))){follow=true;b.setAttribute('aria-pressed','true');$('cStatus').textContent='Deite o celular na horizontal. Calibre a bússola fazendo um “8” no ar se a direção parecer errada.';}};
+$('tTop').onclick=()=>{ORB.top=!ORB.top;$('tTop').setAttribute('aria-pressed',String(ORB.top));requestDraw();};
+$('tFollow').onclick=async()=>{const b=$('tFollow');if(follow){follow=false;b.setAttribute('aria-pressed','false');$('cStatus').textContent='Arraste para girar a bússola; use dois dedos ou a roda do mouse para aproximar.';requestDraw();return;}
+  if(await enableSensors($('cStatus'))){follow=true;b.setAttribute('aria-pressed','true');$('cStatus').textContent='A bússola gira para olhar na mesma direção que o celular. Se a direção parecer errada, faça um “8” no ar para calibrar.';}};
 
 // Local
 const sheet=$('sheet');
@@ -607,7 +683,7 @@ $('closeSheet').onclick=()=>sheet.hidden=true;
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.hidden=true;});
 $('q').addEventListener('input',e=>renderCities(e.target.value));
 $('cityList').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const c=CITIES[+b.dataset.i];setLoc(c[0],c[1],c[2],c[3]);});
-function setLoc(name,lat,lng,tz){Object.assign(S,{name,lat,lng,tz});saveLoc();DAYC=null;SOL=null;YEARIMG=null;AR.init=false;if(S.live)syncNow();sheet.hidden=true;update();}
+function setLoc(name,lat,lng,tz){Object.assign(S,{name,lat,lng,tz});ORB.az=lat<0?195:15;saveLoc();DAYC=null;SOL=null;YEARIMG=null;AR.init=false;if(S.live)syncNow();sheet.hidden=true;update();}
 $('gpsBtn').onclick=()=>{const m=$('gpsMsg');if(!navigator.geolocation){m.textContent='Este navegador não oferece localização.';return;}
   m.textContent='Buscando posição…';
   navigator.geolocation.getCurrentPosition(p=>setLoc('Minha localização',+p.coords.latitude.toFixed(4),+p.coords.longitude.toFixed(4),DEVICE_TZ),

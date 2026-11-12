@@ -569,7 +569,7 @@ function applyWx(camD) {
 }
 
 // ---------- estado ----------
-const S = { t: 0, playing: false, speed: 5, sel: null, filt: { ax: true, su: true, hq: true, ar: true, lb: true, wx: true, fp: true }, tab: 'op', curEvent: -1, cityView: false, wx: CLEAR, wxEntry: undefined };
+const S = { t: 0, playing: false, speed: 5, sel: null, filt: { ax: true, su: true, hq: true, ar: true, lb: true, wx: true, fp: true }, zen: false, tab: 'op', curEvent: -1, cityView: false, wx: CLEAR, wxEntry: undefined };
 const BASE_DPS = 4; // 1× = 4 dias por segundo
 
 const PHASES = [
@@ -782,7 +782,7 @@ let anim = null;
 function focusOn(f) {
   if (!f) return;
   const tgt = G(f[0], f[1], 0); const dir = camera.position.clone().sub(controls.target).normalize();
-  anim = { t0: performance.now(), dur: 1100, fromT: controls.target.clone(), toT: tgt, fromD: camera.position.distanceTo(controls.target), toD: f[2] || 120, dir };
+  anim = { t0: performance.now(), dur: 1100, fromT: controls.target.clone(), toT: tgt, fromD: camera.position.distanceTo(controls.target), toD: f[2] || 120, dir, toDir: S.zen ? ZEN_DIR.clone() : null };
 }
 function setT(t) { S.t = clamp(t, 0, NDAYS); update(); }
 function gotoEvent(i) { if (i < 0 || i >= events.length) return; setT(events[i].t + 0.001); focusOn(events[i].focus); setTab('op'); }
@@ -823,6 +823,21 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => setTab(b.datase
 document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { const k = b.dataset.f; S.filt[k] = !S.filt[k]; b.setAttribute('aria-pressed', S.filt[k]); update(); });
 $('sheetToggle').onclick = () => $('panel').classList.toggle('open');
 $('reset').onclick = () => focusOn([43.4, 48.95, 360]);
+// ---------- vista zenital: câmera a prumo, norte para cima, só desloca e aproxima ----------
+const ZEN_DIR = new THREE.Vector3(0, 1, 0.0008).normalize(), TILT_DIR = new THREE.Vector3(-0.12, 0.62, 0.78).normalize(), tmpDir = new THREE.Vector3();
+function setZenith(on) {
+  S.zen = on;
+  const dir = camera.position.clone().sub(controls.target).normalize(), d = camera.position.distanceTo(controls.target);
+  controls.enableRotate = !on; controls.screenSpacePanning = on;
+  controls.minPolarAngle = 0; controls.maxPolarAngle = on ? 0.0009 : 1.4;
+  anim = { t0: performance.now(), dur: 900, fromT: controls.target.clone(), toT: controls.target.clone(), fromD: d, toD: on ? Math.max(d * 1.15, 8) : d, dir, toDir: on ? ZEN_DIR.clone() : TILT_DIR.clone() };
+  $('zenBtn').setAttribute('aria-pressed', String(on)); $('zenBtn').textContent = on ? 'Vista 3D' : 'Vista zenital';
+  $('north').hidden = !on;
+  try { localStorage.setItem('stalingrado-zen', on ? '1' : '0'); } catch (e) {}
+  dirty = true;
+}
+$('zenBtn').onclick = () => setZenith(!S.zen);
+window.addEventListener('keydown', e => { if ((e.key === 'z' || e.key === 'Z') && !e.target.closest('input,textarea')) setZenith(!S.zen); });
 $('cityBtn').onclick = () => focusOn([44.535, 48.735, 16]);
 
 
@@ -853,7 +868,8 @@ function frame(now) {
   if (anim) {
     const k = clamp((now - anim.t0) / anim.dur, 0, 1), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
     controls.target.lerpVectors(anim.fromT, anim.toT, e);
-    camera.position.copy(controls.target).addScaledVector(anim.dir, anim.fromD + (anim.toD - anim.fromD) * e);
+    const dv = anim.toDir ? tmpDir.copy(anim.dir).lerp(anim.toDir, e).normalize() : anim.dir;
+    camera.position.copy(controls.target).addScaledVector(dv, anim.fromD + (anim.toD - anim.fromD) * e);
     if (k >= 1) anim = null; dirty = true;
   }
   controls.update();
@@ -921,6 +937,7 @@ setMode(MODE);
 setT(t0);
 $('loading').hidden = true;
 requestAnimationFrame(frame);
+try { if (localStorage.getItem('stalingrado-zen') === '1') setTimeout(() => setZenith(true), 1600); } catch (e) {}
 setTimeout(() => focusOn(t0 ? [43.4, 48.95, 360] : events[0].focus), 400);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (MODE === 'chart') { texChart = null; setMode('chart'); } });
 } // main

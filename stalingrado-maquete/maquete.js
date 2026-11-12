@@ -218,11 +218,11 @@ function buildTerrain(mapTex) {
 {
   vec3 c = diffuseColor.rgb; float lum = dot(c, vec3(.3, .55, .15));
   float blue = smoothstep(.02, .08, c.b - c.r);
-  float paper = smoothstep(.18, .42, lum);
+  float paper = smoothstep(.07, .16, lum);
   float n = fract(sin(dot(floor(vUv * 900.0), vec2(12.9898, 78.233))) * 43758.5453);
   float s = uSnow * paper * (1.0 - blue) * (.82 + .18 * n);
-  c = mix(c, vec3(.92, .94, .97) * clamp(lum / .8, .5, 1.08), s * .62);
-  c = mix(c, vec3(.80, .86, .91), uIce * blue * .85);
+  c = mix(c, vec3(.84, .87, .91) * clamp(lum / .2, .5, 1.05), s * .62);
+  c = mix(c, vec3(.62, .70, .78), uIce * blue * .85);
   diffuseColor.rgb = c;
 }`);
   };
@@ -318,7 +318,7 @@ function buildPlan() {
   for (const pl of [].concat(SG.PLANTA || [])) {
     const file = pl.file8k && BIG ? pl.file8k : pl.file;
     const tex = new THREE.TextureLoader().load(file); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    const m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, transparent: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    const m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ map: tex, color: 0xa29c88, roughness: 0.95, transparent: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
     m.userData.pl = pl; m.receiveShadow = true; m.renderOrder = 1; G.plan.add(m); planMeshes.push(m);
   }
   rebuildPlan();
@@ -597,7 +597,7 @@ function updateSeason(t, camD) {
   scene.fog.color.setHex(0x0b1116).lerp(new THREE.Color(0xb9c2c6), k * 0.85);
   scene.background.copy(scene.fog.color);
   scene.fog.near = lerp(camD * 1.6 + 300, camD * 0.25, k); scene.fog.far = lerp(camD * 4 + 1300, camD * 1.6 + 30, k);
-  renderer.toneMappingExposure = 1.05 - 0.08 * s;
+  renderer.toneMappingExposure = 0.86 - 0.08 * s;
   const e = wxNow.entry, r = wxNow.river, txt = (e ? e.label + (e.temp ? " · " + e.temp : "") : "") + (r ? (e ? " · " : "") + r.label : "");
   const wxEl = $("#wx"); if (wxEl.textContent !== txt) wxEl.textContent = txt;
 }

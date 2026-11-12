@@ -6,10 +6,10 @@ Publicados em https://estevaolutz.github.io
 
 Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<pasta>/`.
 
-- Mapas e atlas em 3D: `odisseia`, , `alexandre`, , `mitologia-grega`, , `cabeza-de-vaca`, , `generais-romanos`, , `antartida`, , `stalingrado`, , `asimov-universe`
-- Obras audiovisuais: `dedalus`, , `dente-de-leao`, , `espectroscopio`, , `espectroscopio-ipad`, , `gotas`, , `desenhos-de-luz`
-- Política e dados: `quanto-custa-o-poder`, , `rolando-no-plenario`
+- Mapas e atlas em 3D: `odisseia`, `alexandre`, `mitologia-grega`, `cabeza-de-vaca`, `generais-romanos`, `antartida`, `amyr-klink`, `stalingrado`, `asimov-universe`
+- Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `espectroscopio-ipad`, `gotas`, `desenhos-de-luz`
+- Política e dados: `quanto-custa-o-poder`, `rolando-no-plenario`
 - Estudos: `katas-shotokan`
 - Ferramentas de som: `medidor-spl`
 
-As versões anteriores (mapas 2D, , versões para iPad e cópias dos artefatos do Claude) estão na branch `backup-2026-11`.
+As versões anteriores (mapas 2D, versões para iPad e cópias dos artefatos do Claude) estão na branch `backup-2026-11`.

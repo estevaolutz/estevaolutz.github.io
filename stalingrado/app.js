@@ -158,20 +158,24 @@ function getTex(mode) {
 // planta alemã de 1942 (Stalingrad-Süd, 1:25.000) estendida sobre o relevo da cidade
 let plantaMesh = null, plantaOn = MODE === 'chart';
 function buildPlanta() {
-  const pl = SG.PLANTA; if (!pl) return null;
-  const a = P(pl.lon[0], pl.lat[1]), b = P(pl.lon[1], pl.lat[0]);
-  const i0 = Math.max(0, Math.floor(GX.idx(a.x))), i1 = Math.min(SX, Math.ceil(GX.idx(b.x))), j0 = Math.max(0, Math.floor(GZ.idx(a.z))), j1 = Math.min(SY, Math.ceil(GZ.idx(b.z)));
-  const nx = i1 - i0 + 1, nz = j1 - j0 + 1, pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2), idx = [];
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const k = j * nx + i, x = clamp(GX.pos[i0 + i], a.x, b.x), z = clamp(GZ.pos[j0 + j], a.z, b.z);
-    pos[k * 3] = x; pos[k * 3 + 1] = heightAt(x, z) + 0.004; pos[k * 3 + 2] = z;
-    uv[k * 2] = (x - a.x) / (b.x - a.x); uv[k * 2 + 1] = 1 - (z - a.z) / (b.z - a.z);
-    if (i < nx - 1 && j < nz - 1) idx.push(k, k + nx, k + 1, k + 1, k + nx, k + nx + 1);
-  }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
-  const tex = new THREE.TextureLoader().load(pl.file, () => { dirty = true; }); tex.anisotropy = maxAniso;
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
-  m.renderOrder = 2; scene.add(m); return m;
+  const list = [].concat(SG.PLANTA || []); if (!list.length) return null;
+  const grp = new THREE.Group();
+  list.forEach((pl, n) => {
+    const a = P(pl.lon[0], pl.lat[1]), b = P(pl.lon[1], pl.lat[0]);
+    const i0 = Math.max(0, Math.floor(GX.idx(a.x))), i1 = Math.min(SX, Math.ceil(GX.idx(b.x))), j0 = Math.max(0, Math.floor(GZ.idx(a.z))), j1 = Math.min(SY, Math.ceil(GZ.idx(b.z)));
+    const nx = i1 - i0 + 1, nz = j1 - j0 + 1, pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2), idx = [];
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i, x = clamp(GX.pos[i0 + i], a.x, b.x), z = clamp(GZ.pos[j0 + j], a.z, b.z);
+      pos[k * 3] = x; pos[k * 3 + 1] = heightAt(x, z) + 0.004 + n * 0.003; pos[k * 3 + 2] = z;
+      uv[k * 2] = (x - a.x) / (b.x - a.x); uv[k * 2 + 1] = 1 - (z - a.z) / (b.z - a.z);
+      if (i < nx - 1 && j < nz - 1) idx.push(k, k + nx, k + 1, k + 1, k + nx, k + nx + 1);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const tex = new THREE.TextureLoader().load(pl.file, () => { dirty = true; }); tex.anisotropy = maxAniso;
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 1, transparent: /\.(webp|png)$/.test(pl.file), polygonOffset: true, polygonOffsetFactor: -2 - n, polygonOffsetUnits: -4 - 2 * n }));
+    m.renderOrder = 2 + n; grp.add(m);
+  });
+  scene.add(grp); return grp;
 }
 function setPlanta(on) {
   plantaOn = on; if (on && !plantaMesh) plantaMesh = buildPlanta();

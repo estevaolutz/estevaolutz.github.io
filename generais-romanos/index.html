@@ -253,7 +253,7 @@ button:focus-visible, .myth:focus-visible, .stop:focus-visible { outline: 2px so
 .layers .vegbtn { padding: .4rem .7rem; font-size: 12px; font-weight: 600; background: transparent; }
 .layers .vegbtn[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
 .hint3 { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; font: 400 10.5px var(--f-mono); color: var(--muted); background: var(--halo); padding: 4px 8px; border-radius: 6px; pointer-events: none; white-space: nowrap; }
-@media (max-width: 760px) { .hint3 { display: none; } }
+@media (max-width: 760px) { .hint3 { display: none; } .layers .row3 { display: none; } .layers { padding: 4px; gap: 4px; } .layers .seg button { padding: 6px 8px; } }
 
 </style>
 
@@ -656,11 +656,17 @@ function stub(host, msg) {
 }
 
 function create(o) {
-  const host = o.host, B = o.bounds;
-  const lonC = (B[0] + B[2]) / 2, latC = (B[1] + B[3]) / 2, KX = 111.32 * Math.cos(latC * DEG), KZ = 110.57;
-  const WX = (B[2] - B[0]) * KX, WZ = (B[3] - B[1]) * KZ;
-  const toW = (lon, lat) => [(lon - lonC) * KX, (latC - lat) * KZ];
-  const SCALE = Math.max(1, Math.sqrt(WX * WZ / 3.0e6));   // mapas maiores ganham árvores e zoom mínimo proporcionais
+  const host = o.host, B = o.bounds || [0, 0, 1, 1];
+  /* projeção do terreno: equirretangular local pela caixa lon/lat (padrão) ou uma projeção própria em km (ex.: polar) */
+  let toW, fromW, WX, WZ;
+  if (o.proj) { toW = o.proj.toW; fromW = o.proj.fromW; WX = o.proj.size[0]; WZ = o.proj.size[1]; }
+  else {
+    const lonC = (B[0] + B[2]) / 2, latC = (B[1] + B[3]) / 2, KX = 111.32 * Math.cos(latC * DEG), KZ = 110.57;
+    WX = (B[2] - B[0]) * KX; WZ = (B[3] - B[1]) * KZ;
+    toW = (lon, lat) => [(lon - lonC) * KX, (latC - lat) * KZ];
+    fromW = (x, z) => [lonC + x / KX, latC - z / KZ];
+  }
+  const SCALE = Math.max(1, Math.sqrt(WX * WZ / 3.0e6)), TREE = o.treeScale || Math.min(2.6, SCALE);   // mapas maiores ganham árvores e zoom mínimo proporcionais
   if (typeof THREE === "undefined") return stub(host, "Não foi possível carregar o motor 3D. Recarregue a página.");
 
   /* ---- renderizador ---- */
@@ -683,26 +689,40 @@ function create(o) {
   const maxTex = renderer.capabilities.maxTextureSize || 4096;
   const small = Math.min(screen.width, screen.height) < 700;
   const TW = Math.min(maxTex, o.texWidth || (small ? 2048 : 4096));
-  const dprA = Math.min(window.devicePixelRatio || 1, 2), cssW = TW / dprA, cssH = cssW * WZ / WX;
+  const SELF = !!o.selfTexture;
+  const dprA = SELF ? 1 : Math.min(window.devicePixelRatio || 1, 2), cssW = TW / dprA, cssH = cssW * WZ / WX;
+  let atlas = null, actx, texCanvas, texProj, selfBase = null;
+  if (SELF) {
+    texCanvas = document.createElement("canvas"); texCanvas.width = TW; texCanvas.height = Math.round(cssH);
+    actx = texCanvas.getContext("2d");
+    texProj = ll => { const [x, z] = toW(ll[0], ll[1]); return [(x + WX / 2) / WX * cssW, (z + WZ / 2) / WZ * cssH]; };
+  } else {
   const off = document.createElement("div");
   off.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;z-index:-1";
   const ah = document.createElement("div");
   ah.style.cssText = `position:absolute;left:0;top:0;width:${cssW}px;height:${cssH}px`;
   off.appendChild(ah); document.body.appendChild(off);
-  const texProj = ([lon, lat]) => [(lon - B[0]) / (B[2] - B[0]) * cssW, (B[3] - lat) / (B[3] - B[1]) * cssH];
-  let texDirty = true;
-  const atlas = window.AtlasMap.create({ host: ah, project: texProj, dem: o.dem, terr: o.terr, land: o.land, lakes: o.lakes, bounds: o.worldBounds });
-  const actx = atlas.canvas.getContext("2d"), fr = actx.fillRect;
+  texProj = ([lon, lat]) => [(lon - B[0]) / (B[2] - B[0]) * cssW, (B[3] - lat) / (B[3] - B[1]) * cssH];
+  atlas = window.AtlasMap.create({ host: ah, project: texProj, dem: o.dem, terr: o.terr, land: o.land, lakes: o.lakes, bounds: o.worldBounds });
+  actx = atlas.canvas.getContext("2d"); texCanvas = atlas.canvas;
+  const fr = actx.fillRect;
   actx.fillRect = function () { texDirty = true; req(); return fr.apply(this, arguments); };
-  const tex = new THREE.CanvasTexture(atlas.canvas);
+  }
+  let texDirty = !SELF;
+  const tex = new THREE.CanvasTexture(texCanvas);
   tex.encoding = THREE.sRGBEncoding;
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   tex.minFilter = THREE.LinearMipmapLinearFilter;
 
   function paintExtras() {
-    const c = actx, k = atlas.canvas.width / cssW;
+    const c = actx, k = texCanvas.width / cssW;
+    if (SELF) {
+      if (!selfBase) return;
+      c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.drawImage(selfBase[0], 0, 0, texCanvas.width, texCanvas.height);
+      if (blendNow > .005) { c.globalAlpha = blendNow; c.drawImage(selfBase[1], 0, 0, texCanvas.width, texCanvas.height); c.globalAlpha = 1; }
+    }
     c.save(); c.setTransform(k, 0, 0, k, 0, 0); c.globalAlpha = 1;
-    if (o.graticule) {
+    if (o.graticule && !SELF) {
       c.strokeStyle = cssVar("--am-grat", "rgba(40,70,90,.1)"); c.lineWidth = .8; c.beginPath();
       for (let lon = Math.ceil(B[0] / o.graticule) * o.graticule; lon < B[2]; lon += o.graticule) { const x = texProj([lon, 0])[0]; c.moveTo(x, 0); c.lineTo(x, cssH); }
       for (let lat = Math.ceil(B[1] / o.graticule) * o.graticule; lat < B[3]; lat += o.graticule) { const y = texProj([0, lat])[1]; c.moveTo(0, y); c.lineTo(cssW, y); }
@@ -724,7 +744,39 @@ function create(o) {
   const DEM = o.dem ? decodeDEM(o.dem) : null;
   let nx = 0, ny = 0, Hm = null, exag = o.exag || 10, terrain = null, skirt = null, skirtIdx = null;
   const BASE = o.base || Math.max(WX, WZ) * .022;
+  function landMask(w, h) {
+    if (!landRings.length) return null;
+    const mc = document.createElement("canvas"); mc.width = w; mc.height = h;
+    const mx = mc.getContext("2d"); mx.fillStyle = "#000"; mx.beginPath();
+    landRings.forEach(r => r.forEach(([lon, lat], i) => { const [x, z] = toW(lon, lat), gx = (x + WX / 2) / WX * (w - 1) + .5, gy = (z + WZ / 2) / WZ * (h - 1) + .5; i ? mx.lineTo(gx, gy) : mx.moveTo(gx, gy); }));
+    mx.fill("evenodd"); return mx.getImageData(0, 0, w, h).data;
+  }
+  function buildGridFn() {   /* relevo modelado pela página (sem dados de elevação), com distância à costa */
+    nx = o.gridN || (small ? 420 : 720); ny = Math.max(40, Math.round(nx * WZ / WX));
+    const w = nx + 1, h = ny + 1, n = w * h, H = new Float32Array(n), mask = landMask(w, h), D = new Float32Array(n);
+    for (let i = 0; i < n; i++) D[i] = mask && mask[i * 4 + 3] > 127 ? 1e9 : 0;
+    const cell = WX / nx, b = 1.4142;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; let v = D[i]; if (!v) continue;
+      if (x > 0) v = Math.min(v, D[i - 1] + 1); if (y > 0) { v = Math.min(v, D[i - w] + 1); if (x > 0) v = Math.min(v, D[i - w - 1] + b); if (x < w - 1) v = Math.min(v, D[i - w + 1] + b); } D[i] = v; }
+    for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; let v = D[i]; if (!v) continue;
+      if (x < w - 1) v = Math.min(v, D[i + 1] + 1); if (y < h - 1) { v = Math.min(v, D[i + w] + 1); if (x < w - 1) v = Math.min(v, D[i + w + 1] + b); if (x > 0) v = Math.min(v, D[i + w - 1] + b); } D[i] = v; }
+    /* borda suavizada: a máscara é desfocada para a costa não sair em degraus */
+    let A = new Float32Array(n); for (let i = 0; i < n; i++) A[i] = mask ? mask[i * 4 + 3] / 255 : 0;
+    for (let pass = 0; pass < 2; pass++) { const B2 = new Float32Array(n);
+      for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) { let sum = 0, cnt = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const rr = r + dy, cc = c + dx; if (rr < 0 || cc < 0 || rr >= h || cc >= w) continue; sum += A[rr * w + cc]; cnt++; }
+        B2[r * w + c] = sum / cnt; }
+      A = B2; }
+    for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+      const i = r * w + c, x = -WX / 2 + c / nx * WX, z = -WZ / 2 + r / ny * WZ, a = A[i];
+      if (a < .03) { H[i] = 0; continue; }
+      const [lon, lat] = fromW(x, z);
+      H[i] = Math.max(0, o.heightFn(lon, lat, x, z, a, (D[i] + .5) * cell)) * sstep(.03, .85, a);
+    }
+    return H;
+  }
   function buildGrid(G, Gfine) {
+    if (G === "fn") { Hm = finishGrid(buildGridFn()); return; }
     const sc = sampler(G), sf = Gfine && Gfine !== G ? sampler(Gfine) : null;
     const fx0 = sf ? Gfine.x0 : 0, fx1 = sf ? Gfine.x0 + Gfine.cols * Gfine.step : 0, fy1 = sf ? Gfine.y1 : 0, fy0 = sf ? Gfine.y1 - Gfine.rows * Gfine.step : 0;
     const s = !sf ? sc : (lon, lat) => {   // relevo fino onde houver, grosso no resto, com emenda suave
@@ -753,6 +805,10 @@ function create(o) {
         H[i] = Math.max(0, s(B[0] + c / nx * (B[2] - B[0]), lat)) * Math.min(1, a * 1.6);
       }
     }
+    Hm = finishGrid(H);
+  }
+  function finishGrid(H) {
+    const w = nx + 1, h = ny + 1;
     const T = new Float32Array(H);   // suavização leve 3x3 contra degraus da quantização
     for (let r = 1; r < h - 1; r++) for (let c = 1; c < w - 1; c++) {
       const i = r * w + c;
@@ -767,11 +823,40 @@ function create(o) {
         if (e <= 0) continue;
         const x = c * kx, z = r * kz;
         const rd = ridged(x / 46, z / 46, 4), fb = fbm(x / 18, z / 18, 3);
-        const amp = (30 + e * .3) * sstep(0, 60, e);
+        const amp = (30 + e * .3) * sstep(0, 60, e) * (o.detailScale == null ? 1 : o.detailScale);
         T[i] = Math.max(1, e + (rd - .42) * amp * 1.6 + (fb - .5) * amp * .7);
       }
     }
-    Hm = T;
+    return T;
+  }
+  /* textura própria: relevo colorido e sombreado a partir da grade (duas paletas, para mesclar camadas) */
+  function buildSelfBase() {
+    const w = nx + 1, h = ny + 1, cellKm = WX / nx;
+    const S = new Float32Array(w * h), az = 315 * DEG, al = 45 * DEG, LX = Math.sin(az) * Math.cos(al), LY = Math.cos(az) * Math.cos(al), LZ = Math.sin(al), flat = LZ;
+    for (let r = 1; r < h - 1; r++) for (let c = 1; c < w - 1; c++) { const i = r * w + c;
+      const gx = (Hm[i + 1] - Hm[i - 1]) / (2000 * cellKm) * 6, gy = (Hm[i - w] - Hm[i + w]) / (2000 * cellKm) * 6;
+      S[i] = (-gx * LX - gy * LY + LZ) / Math.hypot(gx, gy, 1); }
+    const TWs = Math.min(texCanvas.width, small ? 2048 : 3072), THs = Math.round(TWs * WZ / WX);
+    const mT = landMask(TWs, THs);   // litoral vetorial na resolução da textura (a grade de alturas é mais grossa)
+    selfBase = [0, 1].map(mode => {
+      const cv2 = document.createElement("canvas"); cv2.width = TWs; cv2.height = THs;
+      const cx = cv2.getContext("2d"), im = cx.createImageData(TWs, THs), d = im.data;
+      for (let py = 0; py < THs; py++) {
+        const gy = py / (THs - 1) * ny, y0 = Math.min(ny - 1, Math.floor(gy)), fy = gy - y0;
+        for (let px = 0; px < TWs; px++) {
+          const gx = px / (TWs - 1) * nx, x0 = Math.min(nx - 1, Math.floor(gx)), fx = gx - x0, i = y0 * w + x0;
+          const bl = (A) => (A[i] * (1 - fx) + A[i + 1] * fx) * (1 - fy) + (A[i + w] * (1 - fx) + A[i + w + 1] * fx) * fy;
+          const e = bl(Hm), s = bl(S) || flat, x = -WX / 2 + gx / nx * WX, z = -WZ / 2 + gy / ny * WZ;
+          const j = (py * TWs + px) * 4, la = mT ? mT[j + 3] / 255 : (e > 0 ? 1 : 0);
+          const sea = o.selfTexture(0, x, z, mode, fromW);
+          let col = sea;
+          if (la > 0) { const lc = o.selfTexture(e > 1 ? e : 80, x, z, mode, fromW), k = Math.min(1.18, Math.max(.6, 1 + 1.25 * (s - flat))); col = [sea[0] + (lc[0] * k - sea[0]) * la, sea[1] + (lc[1] * k - sea[1]) * la, sea[2] + (lc[2] * k - sea[2]) * la]; }
+          d[j] = col[0]; d[j + 1] = col[1]; d[j + 2] = col[2]; d[j + 3] = 255;
+        }
+      }
+      cx.putImageData(im, 0, 0); return cv2;
+    });
+    texDirty = true; req();
   }
   function buildMeshes() {
     const geo = new THREE.PlaneGeometry(WX, WZ, nx, ny); geo.rotateX(-Math.PI / 2);
@@ -823,9 +908,9 @@ function create(o) {
   };
   let landRings = polyRings(o.land), landResolve = null;
   const landReady = o.waitLand ? new Promise(r => { landResolve = r; setTimeout(r, 15000); }) : Promise.resolve();
-  Promise.all([covers(DEM, B) ? Promise.resolve(DEM) : loadTerr(o.terr).then(T => T || DEM), landReady]).then(([G]) => {
+  Promise.all([o.heightFn ? Promise.resolve("fn") : covers(DEM, B) ? Promise.resolve(DEM) : loadTerr(o.terr).then(T => T || DEM), landReady]).then(([G]) => {
     if (!G || terrain) return;
-    buildGrid(G, DEM); buildMeshes(); req();
+    buildGrid(G, DEM); buildMeshes(); if (SELF) buildSelfBase(); req();
     if (o.vegetation !== false) loadTerr(o.terr).then(T => { plantTrees(T && T.a ? sampler({ ...T, e: T.a }) : null); applyTrees(); req(); });
   });
 
@@ -840,13 +925,13 @@ function create(o) {
       if (e < 12 || e > 2150) continue;
       const sl = Math.hypot(heightM(x + 2, z) - heightM(x - 2, z), heightM(x, z + 2) - heightM(x, z - 2)) / 4;
       if (sl > 160 * Math.max(1, SCALE * .6)) continue;
-      const lon = lonC + x / KX, lat = latC - z / KZ, ar = arid ? arid(lon, lat) : .3;
+      const [lon, lat] = fromW(x, z), ar = arid ? arid(lon, lat) : .3;
       const patch = fbm(x / 34 + 40, z / 34 - 20, 3);
       const dens = (.18 + .82 * sstep(.4, .66, patch)) * Math.pow(1 - Math.min(1, ar), 1.6) * (1 - sstep(1800, 2150, e)) * (1 - sstep(70, 160, sl) * .7);
       if (rand() > dens) continue;
       const wc = sstep(450, 1000, e), wb = (1 - sstep(900, 1450, e)) * (1 - ar * .7), ws = (1 - sstep(500, 950, e)) * (.35 + ar);
       let q = rand() * (wc + wb + ws), k = q < wc ? 0 : q < wc + wb ? 1 : 2;
-      kinds[k].push(x, z, (.5 + rand() * .45) * SCALE, rand() * 6.283, rand());
+      kinds[k].push(x, z, (.5 + rand() * .45) * TREE, rand() * 6.283, rand());
       got++;
     }
     const geos = [
@@ -1053,8 +1138,14 @@ function create(o) {
     centerOn([lon, lat], dur = 700) { const [x, z] = toW(lon, lat); flyTo({ x, z }, dur); },
     zoomBy(f, dur = 380) { flyTo({ d: Math.min(fullD * 1.3, Math.max(MIND, S.d / f)) }, dur); },
     fitAll(dur = 1000) { const t = (WX / WZ > 1.8 ? 36 : 52) * DEG; flyTo({ x: 0, z: 0, d: Math.min(fullD * 1.3, fitDist(WX, WZ, t) * 1.12), h: 0, t }, dur); },
-    setBlend(t) { blendNow = t; if (o.atlasBlend === false) atlas.draw(true); else atlas.setBlend(t); req(); },
-    refreshTexture() { if (refreshPending) return; refreshPending = true; requestAnimationFrame(() => { refreshPending = false; atlas.draw(true); }); },
+    setBlend(t) { blendNow = t; if (SELF) texDirty = true; else if (o.atlasBlend === false) atlas.draw(true); else atlas.setBlend(t); req(); },
+    refreshTexture() { if (refreshPending) return; refreshPending = true; requestAnimationFrame(() => { refreshPending = false; if (SELF) { texDirty = true; req(); } else atlas.draw(true); }); },
+    setLandRings(rings) { landRings = rings; if (landResolve) landResolve(); },
+    projectW([x, z], extra = 0) {
+      v3.set(x, heightW(x, z) + extra, z).project(cam);
+      const front = v3.z > -1 && v3.z < 1, ok = front && Math.abs(v3.x) < 1.5 && Math.abs(v3.y) < 1.5;
+      return [(v3.x + 1) / 2 * W, (1 - v3.y) / 2 * Hh, ok, front];
+    },
     setLand(geo) { if (geo) landRings = polyRings(geo); if (landResolve) landResolve(); },
     setExag(k) { exag = k; applyExag(); req(); },
     setVegetation(on) { vegOn = !!on; if (trees) trees.forEach(t => { t.mesh.visible = vegOn; }); req(); },
@@ -2082,7 +2173,7 @@ async function loadLand() {
       if (topo && topo.objects) {
         const obj = topo.objects[Object.keys(topo.objects)[0]];
         land = topojson.merge(topo, obj.geometries);
-        if (T3) T3.setLand(land);
+        if (T3) { T3.setLand(land); T3.refreshTexture(); }   /* as fronteiras históricas dependem do contorno da terra */
         coast = topojson.mesh(topo, obj, (a, b) => a === b);
         countries = topojson.feature(topo, obj).features;
         borders = topojson.mesh(topo, obj, (a, b) => a !== b);
@@ -2113,6 +2204,7 @@ function boot() {
       draw();
     }
   });
+  if (wrap.clientWidth / Math.max(1, wrap.clientHeight) < .9) T3.setView({ t: 34 * Math.PI / 180 }, 0);   /* tela em pé: menos inclinação para o bloco não ficar fino */
   document.getElementById("z-north").onclick = () => T3.setView({ h: 0 });
   document.getElementById("z-tilt").onclick = () => T3.setView({ t: T3.view().t < .15 ? 50 * Math.PI / 180 : 0 }, 700);
   const exagIn = document.getElementById("exag"), exagTxt = document.getElementById("exagtxt"), vegBtn = document.getElementById("veg");

@@ -1081,6 +1081,10 @@ function buildUI() {
   $("#autocam").onclick = () => setAutoCam(!autoCam);
   if (innerWidth < 700) $("#log").classList.add("hiddenm");
   $("#play").onclick = () => togglePlay();
+  // anterior / próximo: pula de evento em evento do diário, com o som de cada um
+  const jump = (dir) => { const i = currentEventIdx(); const k = dir < 0 ? (i >= 0 && simT - EVENTS[i].t > 0.05 ? i : i - 1) : i + 1; if (k < 0 || k >= EVENTS.length) return; setTime(EVENTS[k].t + 0.01); lastAutoIdx = k; flyToEvent(k); snd?.init(); snd?.cue(k); };
+  $("#prevev").onclick = () => jump(-1); $("#nextev").onclick = () => jump(1);
+  addEventListener("keydown", (e) => { if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return; if (e.key === ",") jump(-1); if (e.key === ".") jump(1); });
   const ev = $("#events");
   EVENTS.forEach((e, i) => {
     const d = document.createElement("div"); d.className = "ev"; d.tabIndex = 0; d.dataset.i = i;

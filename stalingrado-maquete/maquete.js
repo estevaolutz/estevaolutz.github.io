@@ -369,23 +369,32 @@ function buildUnits() {
 }
 function rebuildTrails() {
   for (const o of unitObjs) {
-    if (o.trail) { G.trails.remove(o.trail); o.trail.geometry.dispose(); }
+    if (o.trail) { G.trails.remove(o.trail); o.trail.geometry.dispose(); G.trails.remove(o.trailEdge); o.trailEdge.geometry.dispose(); G.trails.remove(o.trailHead); }
     const tr = o.u.track, t0 = tr[0][0], t1 = tr[tr.length - 1][0];
     if (tr.length < 2 || t1 - t0 < 0.5) { o.trail = null; continue; }
     const pts = [];
     for (let t = t0; t <= t1 + 0.01; t += 0.25) { const [la, lo] = trackAt(tr, t); pts.push([t, la, lo]); }
-    const P = [], I = [], times = [];
-    const w = o.u.div ? 0.035 : o.u.ech === "XXXX" ? 0.32 : 0.22;
+    const P = [], PE = [], I = [], times = [], pos = [];
+    const w = o.u.div ? 0.035 : o.u.ech === "XXXX" ? 0.32 : 0.22, we = w * 1.55;
     for (let k = 0; k < pts.length; k++) {
       const [t, la, lo] = pts[k], x = toX(lo), z = toZ(la), y = yAt(la, lo) + (o.u.div ? 0.02 : 0.06);
       const q = pts[Math.min(k + 1, pts.length - 1)], p = pts[Math.max(k - 1, 0)];
       let dx = toX(q[2]) - toX(p[2]), dz = toZ(q[1]) - toZ(p[1]); const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      P.push(x - dz * w, y, z + dx * w, x + dz * w, y, z - dx * w); times.push(t);
+      P.push(x - dz * w, y, z + dx * w, x + dz * w, y, z - dx * w); PE.push(x - dz * we, y, z + dx * we, x + dz * we, y, z - dx * we); times.push(t); pos.push([x, y, z, dx, dz]);
       if (k > 0) { const a = (k - 1) * 2; I.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(P, 3)); geo.setIndex(I);
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: o.u.side === "ax" ? 0x3f7fd6 : 0xd8463a, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
-    m.renderOrder = 3; m.userData.times = times; o.trail = m; G.trails.add(m);
+    const col = ARROW_COL[o.u.side] || ARROW_COL.ax;
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: inkColor(col.fill, 1.25), toneMapped: false, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    m.renderOrder = 3; m.userData.times = times; m.userData.pos = pos; o.trail = m; G.trails.add(m);
+    const ge = new THREE.BufferGeometry(); ge.setAttribute("position", new THREE.Float32BufferAttribute(PE, 3)); ge.setIndex(I);
+    o.trailEdge = new THREE.Mesh(ge, new THREE.MeshBasicMaterial({ color: inkColor(col.edge), toneMapped: false, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    o.trailEdge.renderOrder = 2; G.trails.add(o.trailEdge);
+    // ponta de seta no fim do trajeto percorrido, apontando para onde a unidade vai
+    const hs = w * 3.2, hg = new THREE.BufferGeometry();
+    hg.setAttribute("position", new THREE.Float32BufferAttribute([hs * 1.25, 0, 0, -hs * 0.35, 0, hs * 0.85, -hs * 0.35, 0, -hs * 0.85, hs * 1.6, 0, 0, -hs * 0.6, 0, hs * 1.15, -hs * 0.6, 0, -hs * 1.15], 3));
+    hg.addGroup(3, 3, 0); hg.addGroup(0, 3, 1);
+    o.trailHead = new THREE.Mesh(hg, [o.trailEdge.material, m.material]); o.trailHead.renderOrder = 4; G.trails.add(o.trailHead);
   }
 }
 let cityView = false;
@@ -397,7 +406,9 @@ function updateUnits(t, camPos) {
     o.grp.visible = vis;
     if (o.trail) {
       const times = o.trail.userData.times; let n = 0; while (n < times.length && times[n] <= t) n++;
-      o.trail.visible = vis && n > 1; o.trail.geometry.setDrawRange(0, Math.max(0, (n - 1) * 6));
+      o.trail.visible = o.trailEdge.visible = vis && n > 1; o.trail.geometry.setDrawRange(0, Math.max(0, (n - 1) * 6)); o.trailEdge.geometry.setDrawRange(0, Math.max(0, (n - 1) * 6));
+      const moving = n > 1 && n < times.length; o.trailHead.visible = vis && moving;
+      if (moving) { const [hx, hy, hz, hdx, hdz] = o.trail.userData.pos[n - 1]; o.trailHead.position.set(hx, hy + 0.002, hz); o.trailHead.rotation.set(0, -Math.atan2(hdz, hdx), 0); }
     }
     if (!vis) continue;
     let [la, lo, mv] = trackAt(u.track, t);
@@ -452,35 +463,65 @@ function updateHQs(t, camPos) {
 
 // ---------------- operações: setas sobre o terreno e frentes pintadas ----------------
 const opArrows = [];
-const arrowMat = { ax: new THREE.MeshBasicMaterial({ color: 0x4f8ee0, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -5 }), su: new THREE.MeshBasicMaterial({ color: 0xe0574a, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -5 }) };
+// Setas no padrão das cartas militares: haste que engrossa, cabeça com ombros marcados, contorno escuro de tinta.
+const ARROW_COL = { ax: { fill: 0x3d86ea, edge: 0x0d2340 }, su: { fill: 0xe84a3a, edge: 0x3d0c06 } };
+// a imagem passa por tom e gama no fim: converter as cores de tinta para linear mantém o azul e o vermelho saturados
+const inkColor = (hex, k = 1) => new THREE.Color(hex).convertSRGBToLinear().multiplyScalar(k);
+const arrowMats = {};
+for (const k of ["ax", "su"]) arrowMats[k] = {
+  fill: new THREE.MeshBasicMaterial({ color: inkColor(ARROW_COL[k].fill, 1.25), toneMapped: false, transparent: true, opacity: 0.96, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8 }),
+  edge: new THREE.MeshBasicMaterial({ color: inkColor(ARROW_COL[k].edge), toneMapped: false, transparent: true, opacity: 0.92, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }),
+  shadow: new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
+};
 function buildOps() { EVENTS.forEach((e) => e.arrows.forEach((a) => opArrows.push({ e, a, mesh: null, n: 0 }))); rebuildOps(); }
+// largura da seta ao longo do trajeto: haste 0.55w→w, ombro de 2.5w, ponta afiada
+function arrowWidth(dist, L, w, head, pad) {
+  const fromEnd = L - dist;
+  if (fromEnd <= head) return (w * 2.5 + pad) * (fromEnd / head);
+  return w * (0.55 + 0.45 * Math.min(1, dist / (L - head))) + pad;
+}
+function arrowGeo(sp, L, N, w, head, pad, lift, city, air, tipExtra, shift) {
+  const P = [], I = [];
+  for (let k = 0; k <= N; k++) {
+    const p = sp[k], q = sp[Math.min(k + 1, N)], r = sp[Math.max(k - 1, 0)], dist = (k / N) * L;
+    let dx = q.x - r.x, dz = q.z - r.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    // o contorno passa um pouco da ponta, para a ponta também ganhar borda
+    const ext = k === N ? tipExtra : 0, ww = k === N ? 0 : arrowWidth(dist, L, w, head, pad);
+    const px = p.x + dx * ext + shift, pz = p.z + dz * ext + shift;
+    const lo = (px + KMX / 2) / KX + LON0, la = LAT1 - (pz + KMY / 2) / KY, y = yAt(la, lo) + lift + (air ? Math.sin(Math.PI * k / N) * 7 : 0);
+    P.push(px - dz * ww, y, pz + dx * ww, px + dz * ww, y, pz - dx * ww);
+    if (k > 0) { const a = (k - 1) * 2; I.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(P, 3)); g.setIndex(I); return g;
+}
 function rebuildOps() {
   for (const o of opArrows) {
-    if (o.mesh) { G.ops.remove(o.mesh); o.mesh.geometry.dispose(); }
+    for (const m of [o.mesh, o.edge, o.shadow]) if (m) { G.ops.remove(m); m.geometry.dispose(); m.material.dispose(); }
     const pts0 = o.a.p.map(([p1, p2]) => o.a.city ? cityLL(p1, p2) : [p2, p1]); // [lat, lon]
     const curve = new THREE.CatmullRomCurve3(pts0.map(([la, lo]) => new THREE.Vector3(toX(lo), 0, toZ(la))), false, "centripetal");
-    const L = curve.getLength(), N = Math.max(24, Math.round(L * (o.a.city ? 30 : 2))), w = clamp(L * 0.035, o.a.city ? 0.08 : 1.2, o.a.city ? 0.3 : 4.5) * (o.a.air ? 0.35 : 1), head = Math.min(L * 0.22, w * 3.2);
-    const P = [], I = [];
-    const sp = curve.getSpacedPoints(N);
-    for (let k = 0; k <= N; k++) {
-      const p = sp[k], q = sp[Math.min(k + 1, N)], r = sp[Math.max(k - 1, 0)], dist = (k / N) * L;
-      let dx = q.x - r.x, dz = q.z - r.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      const fromEnd = L - dist, ww = fromEnd < head ? w * 2.2 * (fromEnd / head) : w * (0.55 + 0.45 * k / N);
-      const lo = (p.x + KMX / 2) / KX + LON0, la = LAT1 - (p.z + KMY / 2) / KY, y = yAt(la, lo) + (o.a.city ? 0.04 : 0.12) + (o.a.air ? Math.sin(Math.PI * k / N) * 7 : 0);
-      P.push(p.x - dz * ww, y, p.z + dx * ww, p.x + dz * ww, y, p.z - dx * ww);
-      if (k > 0) { const a = (k - 1) * 2; I.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(P, 3)); g.setIndex(I);
-    o.mesh = new THREE.Mesh(g, arrowMat[o.a.s] || arrowMat.ax); o.mesh.renderOrder = 7; o.mesh.visible = false; o.n = N; o.end = sp[N]; G.ops.add(o.mesh);
+    const city = !!o.a.city, air = !!o.a.air;
+    const L = curve.getLength(), N = Math.max(48, Math.round(L * (city ? 60 : 4)));
+    const w = clamp(L * 0.035, city ? 0.1 : 1.3, city ? 0.32 : 4.5) * (air ? 0.4 : 1), head = Math.min(L * 0.24, w * 3.4);
+    const pad = w * 0.28, lift = city ? 0.06 : 0.3, sp = curve.getSpacedPoints(N);
+    const m0 = arrowMats[o.a.s] || arrowMats.ax, mats = { fill: m0.fill.clone(), edge: m0.edge.clone(), shadow: m0.shadow.clone() }; // cada seta esmaece sozinha
+    o.shadow = new THREE.Mesh(arrowGeo(sp, L, N, w, head, pad * 1.4, lift * 0.6, city, air, pad * 3, w * 0.35), mats.shadow);
+    o.edge = new THREE.Mesh(arrowGeo(sp, L, N, w, head, pad, lift, city, air, pad * 2.4, 0), mats.edge);
+    o.mesh = new THREE.Mesh(arrowGeo(sp, L, N, w, head, 0, lift, city, air, 0, 0), mats.fill);
+    o.shadow.renderOrder = 6; o.edge.renderOrder = 7; o.mesh.renderOrder = 8;
+    for (const m of [o.shadow, o.edge, o.mesh]) { m.visible = false; G.ops.add(m); }
+    if (air) o.shadow.visible = false;
+    o.n = N; o.end = sp[N]; o.pts = sp;
   }
 }
 function updateOps(t) {
   for (const o of opArrows) {
     const dt = t - o.e.t, on = layers.ops && dt >= 0 && dt <= o.e.dur && !!o.a.city === cityView;
-    o.mesh.visible = on; if (!on) continue;
-    const p = clamp(dt / Math.min(2.2, o.e.dur * 0.6), 0.03, 1);
-    o.mesh.geometry.setDrawRange(0, Math.floor(o.n * p) * 6);
-    o.mesh.material.opacity = 0.85 * (o.e.dur - dt < 1 ? clamp(o.e.dur - dt, 0, 1) : 1);
+    o.mesh.visible = o.edge.visible = on; o.shadow.visible = on && !o.a.air; if (!on) continue;
+    // a seta é desenhada da cauda à ponta durante os primeiros dias da operação
+    const p = clamp(dt / Math.min(2.2, o.e.dur * 0.6), 0.03, 1), cnt = Math.floor(o.n * p) * 6;
+    for (const m of [o.mesh, o.edge, o.shadow]) m.geometry.setDrawRange(0, cnt);
+    const fade = o.e.dur - dt < 1 ? clamp(o.e.dur - dt, 0, 1) : 1;
+    o.mesh.material.opacity = 0.96 * fade; o.edge.material.opacity = 0.92 * fade; o.shadow.material.opacity = 0.28 * fade;
   }
 }
 const ZONES = SG.ZONES.map(([d, polys]) => ({ t: day(d), polys }));

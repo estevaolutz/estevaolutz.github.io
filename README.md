@@ -7,7 +7,7 @@ Publicados em https://estevaolutz.github.io
 Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<pasta>/`.
 
 - Mapas e atlas em 3D: `odisseia`, `alexandre`, `mitologia-grega`, `cabeza-de-vaca`, `generais-romanos`, `antartida`, `amyr-klink`, `stalingrado`, `asimov-universe`
-- Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `espectroscopio-ipad`, `gotas`, `desenhos-de-luz`
+- Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `gotas`, `desenhos-de-luz`
 - Política e dados: `quanto-custa-o-poder`, `rolando-no-plenario`
 - Estudos: `katas-shotokan`
 - Ferramentas de som: `medidor-spl`

@@ -319,7 +319,7 @@ function buildPlan() {
     const file = pl.file8k && BIG ? pl.file8k : pl.file;
     const tex = new THREE.TextureLoader().load(file); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     const m = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ map: tex, color: 0xa29c88, roughness: 0.95, transparent: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
-    m.userData.pl = pl; m.receiveShadow = true; m.renderOrder = 1; G.plan.add(m); planMeshes.push(m);
+    m.userData.pl = pl; m.userData.lit = m.material; m.userData.flat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, polygonOffset: true }); m.receiveShadow = true; m.renderOrder = 1; G.plan.add(m); planMeshes.push(m);
   }
   rebuildPlan();
 }
@@ -407,9 +407,10 @@ function updateUnits(t, camPos) {
     const sv = u.sp ? strengthAt(u, t) : null;
     const k = u.type === "air" || !sv ? 1 : clamp(Math.sqrt(sv.men / ECH_REF[u.ech]), 0.6, 1.45);
     const s = (u.div ? clamp(d * 0.03, 0.09, 1.6) : clamp(d * 0.034, 0.5, 14)) * k;
-    const pole = s * 0.42 + (u.type === "air" ? s * 0.9 : 0);
+    const pole = zen ? 0 : s * 0.42 + (u.type === "air" ? s * 0.9 : 0);
+    o.sp.center.set(0.5, zen ? 0.5 : 0); o.pole.visible = !zen; o.sp.material.depthTest = !zen;
     o.grp.position.set(x, y, z);
-    o.sp.position.set(0, pole, 0); o.sp.scale.set(s, s * 0.906, 1);
+    o.sp.position.set(0, zen ? s : pole, 0); o.sp.scale.set(s, s * 0.906, 1);
     o.pole.scale.set(1, pole, 1);
     o.ring.scale.setScalar(s * 0.55);
     o.ring.material.opacity = 0.55 + 0.35 * mv;
@@ -445,7 +446,7 @@ function updateHQs(t, camPos) {
     o.grp.visible = !!s;
     if (!s) continue;
     const d = camPos.distanceTo(o.grp.position), k = clamp(d * 0.03, 0.4, 11);
-    o.sp.scale.set(k, k * 0.906, 1); o.sp.position.y = k * 0.1; o.flag.scale.setScalar(k * 0.9);
+    o.sp.scale.set(k, k * 0.906, 1); o.sp.position.y = zen ? k : k * 0.1; o.sp.center.set(0.5, zen ? 0.5 : 0); o.sp.material.depthTest = !zen; o.flag.scale.setScalar(k * 0.9);
   }
 }
 
@@ -585,7 +586,7 @@ function buildWeather() {
 function updateSeason(t, camD) {
   const s = interp(SNOW_K, t); SNOW.uSnow.value = s; SNOW.uIce.value = interp(ICE_K, t);
   wxNow = SG.wxAt(t);
-  const w = layers.wx ? wxNow : { cloud: 0, fog: 0, snow: 0, wind: 0, rain: 0, haze: 0, smoke: 0 };
+  const w = layers.wx && !cityPlan ? wxNow : { cloud: 0, fog: 0, snow: 0, wind: 0, rain: 0, haze: 0, smoke: 0 };
   const el = interp(ELEV_K, t), ov = Math.max(w.cloud * 0.8, w.snow, w.rain * 0.9), fg = Math.max(w.fog, w.haze * 0.5);
   const er = THREE.MathUtils.degToRad(el), ar = THREE.MathUtils.degToRad(215);
   sun.position.set(Math.sin(ar) * Math.cos(er) * 500, Math.sin(er) * 500, -Math.cos(ar) * Math.cos(er) * 500);
@@ -623,6 +624,7 @@ function togglePlay(v) {
 let fly = null, follow = null;
 function presetPose(p) {
   const asp = innerWidth / innerHeight, portrait = asp < 0.85;
+  if (zen) { const tx = toX(p.lon), tz = toZ(p.lat), ty = yAt(p.lat, p.lon), d = p.dist * (portrait ? 1.25 : 0.95); return { target: new THREE.Vector3(tx, ty, tz), pos: new THREE.Vector3(tx, ty + d, tz + d * 0.0008) }; }
   const tx = toX(p.lon), tz = toZ(p.lat) + (portrait ? p.dist * 0.06 : 0), pol = THREE.MathUtils.degToRad(p.pol - (portrait ? 16 : 0)), az = THREE.MathUtils.degToRad(p.az);
   const d = p.dist * (portrait ? 0.82 : asp < 1.3 ? 1.2 : 1);
   const ty = yAt(p.lat, p.lon);
@@ -630,6 +632,7 @@ function presetPose(p) {
 }
 function flyTo(key, instant) {
   const p = PRESETS[key]; if (!p) return; follow = null;
+  if (cityPlan && key !== "cidade") setCityPlan(false);
   const pose = presetPose(p);
   document.querySelectorAll("#presets .chip").forEach((b) => b.setAttribute("aria-pressed", b.dataset.k === key ? "true" : "false"));
   if (instant) { controls.target.copy(pose.target); camera.position.copy(pose.pos); controls.update(); return; }
@@ -647,6 +650,38 @@ function updateFly(now) {
   const mid = fly.fromP.clone().lerp(fly.toP, e); mid.y += Math.sin(e * Math.PI) * fly.fromP.distanceTo(fly.toP) * 0.12;
   camera.position.copy(mid);
   if (f >= 1) fly = null;
+}
+// ---------------- vista zenital e planta da cidade ----------------
+let zen = false, cityPlan = false, zenBefore = false;
+function setZenith(on, quiet) {
+  if (!on && cityPlan) setCityPlan(false, true);
+  zen = on;
+  controls.enableRotate = !on; controls.screenSpacePanning = on;
+  controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+  controls.touches.ONE = on ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+  controls.minPolarAngle = 0; controls.maxPolarAngle = on ? 0.0009 : THREE.MathUtils.degToRad(84);
+  if (!quiet) {
+    const t = controls.target.clone(), d = camera.position.distanceTo(t);
+    const toP = on ? t.clone().add(new THREE.Vector3(0, d * 1.05, d * 0.0008)) : t.clone().add(new THREE.Vector3(0, Math.cos(0.84) * d, Math.sin(0.84) * d));
+    fly = { t0: performance.now(), dur: 900, fromT: t.clone(), fromP: camera.position.clone(), toT: t, toP };
+  }
+  const b = $("#zenbtn"); if (b) { b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Vista 3D" : "Vista zenital"; }
+}
+function applyCityPlanLayers() {
+  const on = cityPlan;
+  G.trails.visible = layers.trails && !on; G.ops.visible = layers.ops && !on; G.fx.visible = layers.fx && !on;
+  overlay.visible = !on; G.plan.visible = layers.plan || on;
+  terrain.material.color.setScalar(on ? 0.3 : 1);
+  for (const m of planMeshes) { const f = m.userData.flat, l = m.userData.lit; f.polygonOffsetFactor = l.polygonOffsetFactor; f.polygonOffsetUnits = l.polygonOffsetUnits; f.color.setHex(0xe6e0cc); m.material = on ? f : l; }
+  if (weather) weather.group.visible = layers.wx && !on;
+}
+function setCityPlan(on, keepZen) {
+  if (cityPlan === on) return;
+  cityPlan = on;
+  if (on) { zenBefore = zen; if (!zen) setZenith(true, true); }
+  else if (!keepZen && !zenBefore) setZenith(false, true);
+  applyCityPlanLayers();
+  const b = $("#citybtn"); if (b) b.setAttribute("aria-pressed", String(on));
 }
 let autoCam = true, lastAutoIdx = -2, lastUserCam = -1e9;
 function currentEventIdx() { let k = -1; for (let i = 0; i < EVENTS.length; i++) if (EVENTS[i].t <= simT) k = i; return k; }
@@ -729,11 +764,17 @@ const layers = { units: true, trails: true, hqs: true, ops: true, fronts: true, 
 const LNAMES = { units: "Unidades", trails: "Trajetos", hqs: "QGs", ops: "Operações", fronts: "Frentes", plan: "Planta 1942", fx: "Combate", wx: "Clima" };
 function buildUI() {
   const pr = $("#presets");
+  const vb = document.createElement("div"); vb.className = "presets"; vb.style.marginBottom = "2px";
+  vb.innerHTML = '<button class="chip" id="zenbtn" type="button" aria-pressed="false" title="Câmera a prumo, norte para cima (tecla Z)">Vista zenital</button><button class="chip" id="citybtn" type="button" aria-pressed="false" title="Vista de cima só com a planta alemã de 1942 e as forças">Zoom na cidade</button>';
+  pr.parentNode.insertBefore(vb, pr);
+  $("#zenbtn").onclick = () => { setAutoCam(false); setZenith(!zen); };
+  $("#citybtn").onclick = () => { setAutoCam(false); if (cityPlan) { setCityPlan(false); flyTo("geral"); } else { setCityPlan(true); flyToPoint(48.725, 44.54, 31); } };
+  addEventListener("keydown", (e) => { if ((e.key === "z" || e.key === "Z") && !e.target.closest("input,textarea")) setZenith(!zen); });
   for (const [k, p] of Object.entries(PRESETS)) { const b = document.createElement("button"); b.className = "chip"; b.type = "button"; b.dataset.k = k; b.textContent = p.name; b.setAttribute("aria-pressed", "false"); b.onclick = () => { setAutoCam(false); flyTo(k); }; pr.appendChild(b); }
   const ly = $("#layers");
   for (const k of Object.keys(layers)) {
     const l = document.createElement("label"); l.innerHTML = `<input type="checkbox" id="ly-${k}" checked> ${LNAMES[k]}`;
-    l.querySelector("input").onchange = (e) => { layers[k] = e.target.checked; if (G[k]) G[k].visible = layers[k]; if (k === "fronts") lastOverlayKey = ""; if (k === "wx" && weather) weather.group.visible = layers.wx; };
+    l.querySelector("input").onchange = (e) => { layers[k] = e.target.checked; if (G[k]) G[k].visible = layers[k]; if (k === "fronts") lastOverlayKey = ""; applyCityPlanLayers(); };
     ly.appendChild(l);
   }
   const ex = $("#exag"); let exTimer = null;
@@ -822,18 +863,18 @@ function frame(now) {
   controls.update();
   const cp = camera.position, camD = cp.distanceTo(controls.target);
   CITYC.set(toX(44.53), yAt(48.73, 44.53), toZ(48.73));
-  const cv = camD < 60 && controls.target.distanceTo(CITYC) < 18;
+  const cv = cityPlan || (camD < 60 && controls.target.distanceTo(CITYC) < 18);
   if (cv !== cityView) { cityView = cv; lastOverlayKey = ""; }
   updateSeason(simT, camD);
   drawOverlay(simT);
   updateUnits(simT, cp); updateHQs(simT, cp); updateOps(simT);
   updateFX(simT, dt);
-  if (weather) weather.update(layers.wx ? wxNow : { cloud: 0, fog: 0, snow: 0, wind: 0, rain: 0, haze: 0, smoke: 0 }, dt, camD, controls.target, layers.wx);
+  if (weather) weather.update(layers.wx && !cityPlan ? wxNow : { cloud: 0, fog: 0, snow: 0, wind: 0, rain: 0, haze: 0, smoke: 0 }, dt, camD, controls.target, layers.wx && !cityPlan);
   if (now - lastUI > (playing ? 90 : 250)) { lastUI = now; updateClock(); drawTrack(); updateEvents(); if (selected && selected.u && selected.u.sp && $("#cchart")) strChart($("#cchart"), selected.u); }
   renderer.render(scene, camera);
 }
 
 // gancho de teste (?lite): permite pausar o laço e renderizar quadros sob demanda
-if (LITE) window.__MQ = { setTime, flyTo, togglePlay, setAutoCam, layers, get camera() { return camera; }, stop() { renderer.setAnimationLoop(null); }, step(n = 1, ms = 16) { for (let i = 0; i < n; i++) frame(lastFrame + ms); } };
+if (LITE) window.__MQ = { setTime, flyTo, togglePlay, setAutoCam, layers, get camera() { return camera; }, stop() { renderer.setAnimationLoop(null); }, step(n = 1) { for (let i = 0; i < n; i++) frame(performance.now()); } };
 boot().catch((e) => { const L = $("#loading"); if (L) L.querySelector("h2").textContent = "Não foi possível carregar a maquete: " + e.message; console.error(e); });
 })();

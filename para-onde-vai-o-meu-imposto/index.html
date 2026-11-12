@@ -1,0 +1,775 @@
+<!doctype html><html lang="pt-BR"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Para Onde Vai o Meu Imposto?</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: painel de medidor (ponteiro + contador) à esquerda, dinheiro escorrendo em fluxos para uma coluna de destinos à direita; seções de apoio abaixo */
+:root{
+  --bg:#EEF3F0; --surface:#FFFFFF; --ink:#11241D; --muted:#55685F; --line:#CCD9D2;
+  --gold:#B86E05; --gold-soft:#F3DDB4; --teal:#0E6B5F; --teal-soft:#D4EAE5; --red:#A8352B;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0B1612; --surface:#12211C; --ink:#E3EDE8; --muted:#93A8A0; --line:#24382F;
+  --gold:#F0A73A; --gold-soft:#3B2C12; --teal:#4FB9A8; --teal-soft:#16332D; --red:#E0796D; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0B1612; --surface:#12211C; --ink:#E3EDE8; --muted:#93A8A0; --line:#24382F;
+  --gold:#F0A73A; --gold-soft:#3B2C12; --teal:#4FB9A8; --teal-soft:#16332D; --red:#E0796D; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+h1,h2,h3{text-wrap:balance;margin:0}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:12px 24px;margin-bottom:22px}
+header.top h1{font-family:var(--f-display);font-weight:900;font-size:clamp(34px,6vw,64px);line-height:.95;letter-spacing:.01em;text-transform:uppercase}
+header.top h1 span{color:var(--gold)}
+header.top p{margin:6px 0 0;color:var(--muted);max-width:56ch}
+.live{display:inline-flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.25}}
+
+/* PAINEL PRINCIPAL */
+.stage{position:relative;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:0 110px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px}
+.flows{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.flows path{fill:none;stroke-linecap:butt}
+.flows .base{opacity:.22}
+.flows .run{stroke-dasharray:3 14;animation:run 1.6s linear infinite;opacity:.9}
+@keyframes run{to{stroke-dashoffset:-34}}
+.source{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding-block:8px}
+.gauge{width:100%;max-width:440px;height:auto;display:block}
+.gauge text{font-family:var(--f-mono);font-size:11px;fill:var(--muted)}
+.gauge .big{font-family:var(--f-display);font-size:15px;font-weight:700;fill:var(--ink)}
+.counter-box{width:100%;text-align:center;margin-top:-6px}
+.counter{font-family:var(--f-display);font-weight:900;font-size:clamp(30px,3.9vw,50px);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.01em;white-space:nowrap}
+.counter small{font-size:.5em;color:var(--gold);margin-right:4px}
+.counter-sub{color:var(--muted);font-size:13px;margin-top:6px}
+.rates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;margin-top:16px}
+.rate{border-top:2px solid var(--gold);padding-top:6px}
+.rate b{display:block;font-family:var(--f-mono);font-weight:500;font-size:15px;font-variant-numeric:tabular-nums}
+.rate span{font-size:12px;color:var(--muted)}
+
+.dests{position:relative;z-index:1;display:flex;flex-direction:column;gap:4px;padding-block:4px}
+.dests-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.dest{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 12px;width:100%;text-align:left;background:transparent;border:1px solid transparent;border-radius:8px;padding:7px 10px;color:inherit;font:inherit;cursor:pointer;position:relative}
+.dest:hover{background:var(--bg)}
+.dest:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.dest[aria-expanded="true"]{background:var(--bg);border-color:var(--line)}
+.dest .name{font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px;min-width:0}
+.dest .dot{flex:none;width:10px;height:10px;border-radius:2px}
+.dest .pct{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dest .val{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dest .val b{color:var(--ink);font-weight:500}
+.detail{border-left:3px solid var(--gold);margin:2px 0 8px 10px;padding:6px 0 6px 14px;font-size:14px}
+.detail p{margin:0 0 8px;color:var(--muted);max-width:60ch}
+.detail ul{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.detail li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed var(--line);padding-bottom:3px}
+.detail li b{font-family:var(--f-mono);font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* SEÇÕES */
+section{margin-top:44px}
+.sec-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:8px 20px;margin-bottom:16px}
+.sec-head h2{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,3.6vw,36px);text-transform:uppercase;letter-spacing:.01em;line-height:1}
+.sec-head p{margin:0;color:var(--muted);max-width:60ch}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;min-width:0}
+.panel h3{font-size:16px;margin-bottom:12px}
+
+/* calculadora */
+.calc label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+.calc .inrow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:6px 12px;background:var(--bg)}
+.calc .inrow span{font-family:var(--f-display);font-size:28px;font-weight:700;color:var(--gold)}
+.calc input{width:100%;border:0;background:transparent;font-family:var(--f-display);font-size:34px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;outline:none;min-width:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.presets button{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:20px;padding:4px 10px;cursor:pointer}
+.presets button:hover,.presets button:focus-visible{border-color:var(--gold);outline:none}
+.split{display:grid;gap:6px;margin-top:14px}
+.split-row{display:grid;grid-template-columns:minmax(0,9rem) minmax(0,1fr) 6.2rem;align-items:center;gap:10px;font-size:13px}
+.split-row .bar{height:10px;border-radius:2px;background:var(--line);overflow:hidden}
+.split-row .bar i{display:block;height:100%}
+.split-row b{font-family:var(--f-mono);font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+.split-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* tipos de imposto */
+.stack{display:flex;height:34px;border-radius:6px;overflow:hidden;margin:4px 0 14px}
+.stack div{display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:11px;color:#fff;min-width:0;overflow:hidden;white-space:nowrap}
+.legend{display:grid;gap:12px}
+.tgroup h4{margin:0 0 4px;font-size:14px;display:flex;align-items:center;gap:8px}
+.tgroup h4 i{width:10px;height:10px;border-radius:2px;flex:none}
+.tgroup h4 em{font-style:normal;font-family:var(--f-mono);font-weight:400;color:var(--muted);margin-left:auto;font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:4px;padding:2px 7px;color:var(--muted)}
+.chip b{color:var(--ink);font-weight:600}
+.spheres{display:grid;gap:10px}
+.sphere{display:grid;grid-template-columns:7rem minmax(0,1fr) 3.5rem;gap:10px;align-items:center;font-size:14px}
+.sphere .bar{height:14px;background:var(--line);border-radius:2px;overflow:hidden}
+.sphere .bar i{display:block;height:100%;background:var(--teal)}
+.sphere b{font-family:var(--f-mono);font-weight:500;text-align:right}
+.note{font-size:12px;color:var(--muted);margin-top:12px}
+
+/* lupa da política */
+.lupa{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:2px solid var(--ink)}
+.fact{padding:16px 16px 16px 0;border-bottom:1px solid var(--line)}
+.fact+.fact{padding-left:16px;border-left:1px solid var(--line)}
+.fact .n{font-family:var(--f-display);font-weight:700;font-size:clamp(28px,3vw,38px);line-height:1;font-variant-numeric:tabular-nums}
+.fact .n small{font-size:.5em;color:var(--gold)}
+.fact p{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.mil{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:20px}
+.milbar{display:flex;height:40px;border-radius:6px;overflow:hidden;font-family:var(--f-mono);font-size:12px}
+.milbar div{display:flex;align-items:center;padding:0 10px;color:#fff;white-space:nowrap;overflow:hidden}
+
+.sources ol{margin:0;padding-left:20px;display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.sources a{color:var(--teal)}
+.method{font-size:13px;color:var(--muted);max-width:75ch}
+.method p{margin:0 0 8px}
+
+/* camadas */
+.layers{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-bottom:14px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-size:14px;font-weight:500;border:0;background:transparent;color:var(--ink);padding:8px 14px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.seg button:focus-visible,.ufsel:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.ufsel{font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--surface);color:var(--ink);max-width:100%}
+.ufsel.on{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+.layer-note{font-size:13px;color:var(--muted);flex-basis:100%;max-width:80ch}
+.tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;max-width:340px;margin:0 auto}
+.tile{aspect-ratio:1;max-width:100%;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:17px;cursor:pointer;color:var(--ink);background:var(--bg);padding:0;line-height:1}
+.tile small{font-family:var(--f-mono);font-weight:400;font-size:10px;margin-top:3px;color:inherit;opacity:.85}
+.tile:hover,.tile:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.tile[aria-pressed="true"]{outline:3px solid var(--ink);outline-offset:1px}
+.mapwrap{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;align-items:start}
+.metric-pick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.metric-pick button{font:inherit;font-size:12px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:20px;padding:4px 10px;cursor:pointer}
+.metric-pick button[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:#1a1205}
+.scale{display:flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-top:10px;justify-content:center}
+.scale i{display:block;width:120px;height:8px;border-radius:2px;background:linear-gradient(90deg,var(--bg),var(--gold))}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table.uf{border-collapse:collapse;width:100%;min-width:760px;font-size:13px;font-variant-numeric:tabular-nums}
+table.uf th,table.uf td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+table.uf th:first-child,table.uf td:first-child{text-align:left}
+table.uf th{font-family:var(--f-mono);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);position:sticky;top:0;background:var(--surface)}
+table.uf th button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0;text-transform:inherit;letter-spacing:inherit}
+table.uf th button[aria-sort]{color:var(--ink)}
+table.uf tbody tr{cursor:pointer}
+table.uf tbody tr:hover{background:var(--bg)}
+table.uf tbody tr.sel{background:var(--gold-soft)}
+table.uf td.hi{font-weight:600;color:var(--gold)}
+table.uf td b{font-family:var(--f-display);font-size:15px}
+@media (max-width:860px){.mapwrap{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:860px){
+  .stage{grid-template-columns:minmax(0,1fr);gap:18px;padding:18px 14px}
+  .dests{padding-left:22px}
+  .grid2{grid-template-columns:minmax(0,1fr)}
+  .lupa{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .fact:nth-child(3){padding-left:0;border-left:0}
+}
+@media (max-width:460px){
+  .rates{grid-template-columns:minmax(0,1fr)}
+  .split-row{grid-template-columns:minmax(0,7rem) minmax(0,1fr) 5.6rem}
+  .lupa{grid-template-columns:minmax(0,1fr)}
+  .fact,.fact+.fact{padding-left:0;border-left:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .flows .run,.live i{animation:none}
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Monitoramento político · 2026</div>
+      <h1>Para onde vai<br>o meu <span>imposto?</span></h1>
+      <p>Quanto os brasileiros já pagaram em tributos neste ano, e como esse dinheiro se divide segundo o Orçamento da União de 2026.</p>
+    </div>
+    <div class="live"><i></i><span id="clock">Estimativa ao vivo</span></div>
+  </header>
+
+  <div class="layers" role="group" aria-label="Camada">
+    <div class="seg" id="seg">
+      <button type="button" data-layer="uniao" aria-pressed="true">União</button>
+      <button type="button" data-layer="estados" aria-pressed="false">Todos os estados</button>
+    </div>
+    <select class="ufsel" id="ufsel" aria-label="Escolher um estado"><option value="">Escolha um estado…</option></select>
+    <div class="layer-note" id="layerNote"></div>
+  </div>
+
+  <div class="stage" id="stage">
+    <svg class="flows" id="flows" aria-hidden="true"></svg>
+
+    <div class="source" id="source">
+      <svg class="gauge" id="gauge" viewBox="0 0 400 236" role="img" aria-label="Medidor do total pago em impostos em 2026"></svg>
+      <div class="counter-box">
+        <div class="eyebrow" id="counterLabel">Já pagos em 2026 · União, estados e municípios</div>
+        <div class="counter" id="counter"><small>R$</small>0</div>
+        <div class="counter-sub" id="counterSub">desde 1º de janeiro</div>
+      </div>
+      <div class="rates">
+        <div class="rate"><b id="rSec">—</b><span>por segundo</span></div>
+        <div class="rate"><b id="rMonth">—</b><span>por mês, em média</span></div>
+        <div class="rate"><b id="rCap">—</b><span>por habitante, por mês</span></div>
+      </div>
+    </div>
+
+    <div class="dests" id="dests">
+      <div class="dests-head">
+        <span class="eyebrow" id="destLabel">Destino · parte do total já pago</span>
+        <span class="eyebrow">% do orçamento</span>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <h2>Os 27 estados lado a lado</h2>
+      <p>Como cada governo estadual gastou em 2025, por área. Toque num estado no mapa ou na tabela para ver o fluxo dele no painel acima.</p>
+    </div>
+    <div class="mapwrap">
+      <div class="panel">
+        <div class="metric-pick" id="metricPick"></div>
+        <div class="tiles" id="tiles"></div>
+        <div class="scale"><span id="scaleMin">menor</span><i></i><span id="scaleMax">maior</span></div>
+      </div>
+      <div class="tablewrap"><table class="uf" id="ufTable"></table></div>
+    </div>
+    <div class="note">Despesas liquidadas em 2025 por função, Tesouro Nacional, RREO em Foco (6º bimestre de 2025), Tabela 7. "Dívida" é estimada a partir da Tabela 3 (serviço da dívida em % da receita). Assembleia + Tribunal de Contas e Ministério Público usam a despesa com pessoal de 2025 (RGF em Foco, 3º quadrimestre). Os três saem de "Outras". População: Censo 2022 (IBGE).</div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>O seu imposto do mês</h2>
+      <p id="calcIntro">Digite quanto você pagou de imposto e veja quantos reais foram para cada área, na mesma proporção do orçamento federal.</p>
+    </div>
+    <div class="grid2">
+      <div class="panel calc">
+        <label for="myTax">Imposto pago no mês</label>
+        <div class="inrow"><span>R$</span><input id="myTax" inputmode="decimal" value="1.600" autocomplete="off"></div>
+        <div class="presets" id="presets"></div>
+        <div class="note">O valor inicial é a média por habitante: tudo o que se arrecada no país dividido por 213 milhões de pessoas. Inclui o imposto embutido no preço de tudo o que se compra.</div>
+      </div>
+      <div class="panel">
+        <h3 id="splitTitle">Para onde vão R$ 1.600</h3>
+        <div class="split" id="split"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Que impostos nós pagamos</h2>
+      <p>A carga tributária de 2025 chegou a 32,4% do PIB, a maior da série do Tesouro iniciada em 2010. Mais da metade vem de tributos sobre consumo e sobre a folha de salários.</p>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>Por tipo de tributo</h3>
+        <div class="stack" id="stack"></div>
+        <div class="legend" id="legend"></div>
+        <div class="note">Participação aproximada de cada tributo na carga de 2025, em pontos do PIB. ICMS (6,74%) e Imposto de Importação (0,71%) são valores do Tesouro; os demais são estimativas a partir da série recente.</div>
+      </div>
+      <div class="panel">
+        <h3>Quem fica com o dinheiro</h3>
+        <div class="spheres" id="spheres"></div>
+        <div class="note">Carga tributária de 2025 por esfera de governo (Tesouro Nacional): União 21,6% do PIB, estados 8,4%, municípios 2,4%. Parte do que a União arrecada volta para estados e municípios em repasses.</div>
+        <h3 style="margin-top:24px">Segurança pública é paga sobretudo pelos estados</h3>
+        <div class="spheres" id="security"></div>
+        <div class="note">Em 2025 o país gastou R$ 163,1 bilhões com segurança pública (Anuário Brasileiro de Segurança Pública 2026). Os estados responderam por R$ 131,2 bilhões.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Lupa: salários da política e dos militares</h2>
+      <p>Valores pequenos perto do orçamento inteiro, mas que dizem muito sobre prioridades.</p>
+    </div>
+    <div class="lupa">
+      <div class="fact"><div class="n"><small>R$</small>46.366</div><p>Salário bruto mensal de deputado federal, senador e presidente da República em 2026</p></div>
+      <div class="fact"><div class="n"><small>R$</small>18,1 bi</div><p>Orçamento do Congresso (Câmara + Senado) em 2026, para 513 deputados e 81 senadores</p></div>
+      <div class="fact"><div class="n"><small>R$</small>49,9 bi</div><p>Emendas parlamentares no Orçamento de 2026: individuais, de bancada e de comissão</p></div>
+      <div class="fact"><div class="n"><small>R$</small>4,96 bi</div><p>Fundo eleitoral aprovado para as campanhas de 2026</p></div>
+    </div>
+    <div class="mil panel" style="margin-top:20px">
+      <h3>Militares: quem está na ativa custa menos que quem já saiu</h3>
+      <div class="milbar">
+        <div style="flex:36.1;background:var(--teal)">Ativa · R$ 36,1 bi</div>
+        <div style="flex:66.2;background:var(--gold)">Inativos e pensões · R$ 66,2 bi</div>
+      </div>
+      <div class="note">Dotação de 2026 para "Ativos Militares da União" (R$ 36,1 bi, dados do Ministério da Defesa até agosto) e despesa prevista com inatividade e pensões militares (R$ 66,2 bi, Raio X do Orçamento 2026). Os militares contribuem com R$ 9,4 bi; o déficit do sistema é de R$ 56,8 bi. Em 2025, só R$ 11,5 bi da Defesa foram para ações de defesa propriamente ditas.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Como esta conta é feita</h2></div>
+    <div class="grid2">
+      <div class="method">
+        <p><b>O contador</b> parte do Impostômetro da Associação Comercial de São Paulo, que marcou R$ 3,416 trilhões em 2 de novembro de 2026, e avança no ritmo observado desde 28 de setembro (R$ 3 trilhões), cerca de R$ 11,9 bilhões por dia. É uma estimativa: o valor real só é conhecido quando a Receita e os estados publicam seus dados, com atraso.</p>
+        <p><b>As setas</b> dividem o total na proporção das despesas da Lei Orçamentária de 2026 (Lei 15.346), por órgão, mais juros e amortização da dívida. Fica de fora a rolagem da dívida (R$ 1,82 tri), que é paga com dívida nova, não com imposto.</p>
+        <p><b>Atenção:</b> na camada União, o contador soma impostos de União, estados e municípios, mas a divisão usa o orçamento federal.</p>
+        <p><b>Camadas estaduais:</b> mostram o gasto do governo de cada estado, com as despesas de 2025 por área publicadas pelo Tesouro. O contador corre no ritmo de 2025 ao longo de 2026. "Judiciária" é o Tribunal de Justiça. Assembleia + Tribunal de Contas e Ministério Público aparecem pela folha de pessoal de 2025 (RGF), que é quase todo o custo desses órgãos.</p>
+      </div>
+      <div class="sources">
+        <ol>
+          <li><a href="https://folhadoacre.com.br/geral/impostometro-contribuintes-do-acre-ja-pagaram-r-55-bilhoes-em-impostos-em-2026/" target="_blank" rel="noopener">Impostômetro: R$ 3,416 tri em 2/11/2026</a></li>
+          <li><a href="https://dcomercio.com.br/publicacao/s/impostometro-atinge-r-3-trilhoes-e-antecipa-marca-em-relacao-a-2025" target="_blank" rel="noopener">Diário do Comércio: R$ 3 tri em 28/09/2026</a></li>
+          <li><a href="https://www2.camara.leg.br/orcamento-da-uniao/raio-x-do-orcamento/2026/RaioXdoOramento2026PsVetos.pdf/view" target="_blank" rel="noopener">Câmara: Raio X do Orçamento 2026 (pós-vetos)</a></li>
+          <li><a href="https://www.contabeis.com.br/noticias/77032/seis-tributos-atingiram-carga-recorde-em-2025-aponta-tesouro-nacional/" target="_blank" rel="noopener">Tesouro Nacional: carga tributária de 2025</a></li>
+          <li><a href="https://exame.com/brasil/quanto-ganha-um-deputado-federal-em-2026/" target="_blank" rel="noopener">Exame: salário de deputado em 2026</a></li>
+          <li><a href="https://www.nsctotal.com.br/?p=7833877" target="_blank" rel="noopener">NSC Total: orçamento do Congresso em 2026</a></li>
+          <li><a href="https://www.congressoemfoco.com.br/noticia/115071/congresso-aprova-orcamento-de-2026-com-superavit-de-r-34-5-bilhoes" target="_blank" rel="noopener">Congresso em Foco: emendas e fundo eleitoral</a></li>
+          <li><a href="https://www.sociedademilitar.com.br/2026/10/governo-lula-cancela-r-2265-milhoes-em-verbas-da-defesa-incluindo-r-1077-milhoes-para-despesas-com-militares-da-ativa-do-exercito-marinha-e-fab-enquanto-reforca-bpc-em-r-47-bilhoes-afch.html" target="_blank" rel="noopener">Sociedade Militar: ativos militares 2026</a></li>
+          <li><a href="https://cdn.tesouro.gov.br/sistemas-internos/apex/producao/sistemas/thot/arquivos/publicacoes/53966_1733575/RREO-em-Foco-publicacao_2025_6B.pdf" target="_blank" rel="noopener">Tesouro: RREO em Foco, 6º bimestre de 2025 (estados)</a></li>
+          <li><a href="https://cdn.tesouro.gov.br/sistemas-internos/apex/producao/sistemas/thot/arquivos/publicacoes/53985_2525392/RGF_em_Foco_EstadosDF_3ºquad-2025.pdf" target="_blank" rel="noopener">Tesouro: RGF em Foco Estados + DF, 3º quadrimestre de 2025</a></li>
+          <li><a href="https://forumseguranca.org.br/wp-content/uploads/2026/07/anuario-2026.pdf" target="_blank" rel="noopener">Anuário Brasileiro de Segurança Pública 2026</a></li>
+          <li><a href="https://www.brasilparalelo.com.br/noticias/estados-bancam-o-combate-ao-crime-enquanto-o-governo-reduziu-repasses" target="_blank" rel="noopener">Anuário de Segurança Pública 2026</a></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  // ================= DADOS =================
+  const ANCHOR_VAL = 3.416e12;
+  const ANCHOR_T = Date.parse("2026-11-02T12:00:00-03:00");
+  const PER_SEC_TAX = ((3.416e12 - 3.0e12) / 35) / 86400;
+  const YEAR_START = Date.parse("2026-01-01T00:00:00-03:00");
+  const YEAR_END = Date.parse("2027-01-01T00:00:00-03:00");
+  const POP_BR = 213.4e6;
+
+  const C = {
+    prev:"#2F7F72", div:"#B5432F", trans:"#6C7B3A", assist:"#C98A1B", saude:"#3C76B5",
+    edu:"#7A5AB0", def:"#5E6B66", trab:"#9C6B44", jud:"#8A4F7D", obras:"#D06A2A",
+    seg:"#2E5E8C", cong:"#C23B64", out:"#8C9A94", adm:"#6F7F5A"
+  };
+
+  // ---- União (LOA 2026, R$ bi)
+  const UNIAO = [
+    {id:"prev",name:"Previdência (INSS)",v:1145.7,c:C.prev,
+     t:"Aposentadorias, pensões e auxílios pagos pelo INSS. É a maior despesa da União.",
+     f:[["Benefícios do INSS (RGPS)","R$ 1.127,6 bi"],["Contribuições arrecadadas para o INSS","R$ 793,1 bi"],["Déficit coberto por outros impostos","R$ 334,5 bi"]]},
+    {id:"div",name:"Dívida pública (juros e amortização)",v:1041.4,c:C.div,
+     t:"Juros pagos a quem empresta ao governo e parte da dívida quitada. A rolagem (dívida trocada por dívida nova) não entra nesta conta.",
+     f:[["Juros da dívida","R$ 643,9 bi"],["Amortização","R$ 397,5 bi"],["Rolagem, fora desta conta","R$ 1.823,0 bi"]]},
+    {id:"trans",name:"Repasses a estados e municípios",v:640.7,c:C.trans,
+     t:"Parte dos impostos federais volta para governadores e prefeitos, que pagam escolas, postos de saúde, polícia e obras locais. Escolha um estado acima para ver como ele gasta.",
+     f:[["Transferências constitucionais (FPE, FPM e outras)","R$ 592,2 bi"],["Fundo Constitucional do DF","R$ 28,1 bi"]]},
+    {id:"assist",name:"Assistência social",v:302.8,c:C.assist,
+     t:"Ministério do Desenvolvimento e Assistência Social: Bolsa Família, BPC para idosos e pessoas com deficiência, e outros programas.",
+     f:[["Ministério do Desenvolvimento Social","R$ 302,8 bi"],["Investimentos","R$ 0,8 bi"]]},
+    {id:"saude",name:"Saúde",v:269.1,c:C.saude,
+     t:"Ministério da Saúde: SUS, hospitais, vacinas, medicamentos e repasses para estados e municípios.",
+     f:[["Ministério da Saúde","R$ 269,1 bi"],["Investimentos em obras e equipamentos","R$ 16,9 bi"]]},
+    {id:"edu",name:"Educação",v:222.4,c:C.edu,
+     t:"Ministério da Educação: universidades e institutos federais, complemento do Fundeb para a educação básica, merenda e livros.",
+     f:[["Ministério da Educação","R$ 222,4 bi"],["Complementação da União ao Fundeb","R$ 70,0 bi"],["Investimentos","R$ 7,3 bi"]]},
+    {id:"def",name:"Defesa e militares",v:135.9,c:C.def,
+     t:"Exército, Marinha e Aeronáutica. A maior parte vai para salários, aposentadorias e pensões de militares.",
+     f:[["Salários de militares da ativa","R$ 36,1 bi"],["Inativos e pensões militares","R$ 66,2 bi"],["Investimentos (equipamentos, obras)","R$ 8,0 bi"]]},
+    {id:"trab",name:"Trabalho (seguro-desemprego, abono)",v:99.7,c:C.trab,
+     t:"Seguro-desemprego, abono salarial e políticas de emprego.",
+     f:[["Ministério do Trabalho e Emprego","R$ 99,7 bi"]]},
+    {id:"jud",name:"Judiciário e Ministério Público",v:80.0,c:C.jud,
+     t:"Tribunais federais, STF, STJ, Justiça Eleitoral e do Trabalho, Ministério Público e Defensoria da União.",
+     f:[["Judiciário + MP + Defensoria","R$ 80,0 bi"],["Precatórios e sentenças judiciais (à parte)","R$ 121,3 bi"]]},
+    {id:"obras",name:"Obras e infraestrutura",v:46.3,c:C.obras,
+     t:"Estradas, cidades, saneamento e desenvolvimento regional. O investimento federal total (todas as áreas) é de R$ 80,8 bi, mais R$ 30,6 bi em habitação.",
+     f:[["Transportes","R$ 17,5 bi"],["Cidades","R$ 16,6 bi"],["Integração e Desenvolvimento Regional","R$ 12,2 bi"]]},
+    {id:"seg",name:"Segurança pública (federal)",v:23.3,c:C.seg,
+     t:"Ministério da Justiça e Segurança Pública. A maior parte da polícia é paga pelos estados: veja a camada estadual.",
+     f:[["Ministério da Justiça e Segurança","R$ 23,3 bi"],["Polícia Federal (2025)","R$ 10,4 bi"],["Polícia Rodoviária Federal (2025)","R$ 6,8 bi"]]},
+    {id:"cong",name:"Congresso e TCU",v:18.8,c:C.cong,
+     t:"Câmara, Senado e Tribunal de Contas da União: salários de parlamentares e servidores, gabinetes, cota parlamentar e prédios.",
+     f:[["Salário de deputado ou senador","R$ 46.366/mês"],["Custo médio de cada parlamentar","R$ 3,2 mi/ano"],["Emendas parlamentares (gastas em outras áreas)","R$ 49,9 bi"],["Fundo eleitoral","R$ 4,96 bi"]]},
+    {id:"out",name:"Outros ministérios",v:222.9,c:C.out,
+     t:"Ciência e Tecnologia, Fazenda, Agricultura, Meio Ambiente, Presidência e demais órgãos.",
+     f:[["Ciência, Tecnologia e Inovação","R$ 14,9 bi"],["Fazenda","R$ 14,8 bi"],["Demais órgãos","R$ 193,2 bi"]]}
+  ];
+
+  // ---- Estados: despesas liquidadas 2025 por função (R$ bi) — Tesouro, RREO em Foco 6º bim/2025, Tab. 7
+  // [nome, educação, saúde, judiciária, segurança, transporte, previdência, administração, outras, total, serv.dívida % receita (Tab.3), receita corrente total, população Censo 2022]
+  const RAW = {
+    AC:["Acre",3.10,2.44,0.60,1.51,0.45,1.28,0.56,3.49,13.43,4,12.50,830018],
+    AL:["Alagoas",3.31,3.22,1.16,2.70,1.20,3.75,1.14,6.74,23.22,15,20.85,3127683],
+    AM:["Amazonas",6.54,5.53,1.48,3.54,0.08,3.69,0.85,14.85,36.57,7,30.81,3941613],
+    AP:["Amapá",2.37,2.33,0.60,1.17,0.29,0.02,1.06,2.55,10.38,4,9.70,733759],
+    BA:["Bahia",14.54,15.20,4.34,8.10,2.05,13.72,2.30,21.12,81.38,5,76.04,14141626],
+    CE:["Ceará",7.97,7.88,2.70,6.36,2.74,6.12,1.92,15.36,51.06,5,44.98,8794957],
+    DF:["Distrito Federal",9.08,7.53,0.00,1.90,2.85,6.47,4.35,11.92,44.10,3,42.20,2817381],
+    ES:["Espírito Santo",3.98,5.71,1.58,3.11,2.67,5.14,1.04,7.85,31.10,3,30.02,3833712],
+    GO:["Goiás",7.85,6.41,4.23,5.29,3.90,9.56,2.92,14.79,54.95,3,49.52,7056495],
+    MA:["Maranhão",6.54,5.54,2.37,2.46,2.12,4.35,2.39,9.82,35.60,2,34.67,6776699],
+    MG:["Minas Gerais",21.58,19.61,10.70,26.02,2.25,25.85,5.41,20.14,131.56,5,130.55,20539989],
+    MS:["Mato Grosso do Sul",4.67,2.95,1.82,2.46,1.84,4.33,2.01,7.00,27.09,3,25.99,2757013],
+    MT:["Mato Grosso",6.23,5.58,3.06,4.29,3.37,6.90,3.16,10.03,42.61,3,42.18,3658649],
+    PA:["Pará",9.77,6.66,2.81,5.54,3.36,6.03,2.92,15.75,52.84,4,50.46,8120131],
+    PB:["Paraíba",4.23,4.08,2.02,2.69,1.05,4.19,1.03,4.78,24.06,1,23.06,3974687],
+    PE:["Pernambuco",9.24,12.19,3.72,4.28,1.76,10.12,2.26,11.84,55.41,5,52.11,9058931],
+    PI:["Piauí",3.97,3.82,1.34,2.21,1.73,3.25,1.30,13.01,30.63,8,21.93,3271199],
+    PR:["Paraná",18.55,10.09,5.39,8.19,3.51,15.25,2.60,17.17,80.74,3,78.67,11444380],
+    RJ:["Rio de Janeiro",11.97,14.76,9.64,18.19,3.18,27.92,6.59,24.31,116.55,3,115.17,16055174],
+    RN:["Rio Grande do Norte",3.89,3.26,1.62,2.06,0.43,8.06,0.71,3.85,23.87,2,23.33,3302729],
+    RO:["Rondônia",3.04,2.86,1.50,2.39,0.54,1.46,0.91,5.09,17.80,1,17.79,1581196],
+    RR:["Roraima",1.64,1.74,0.49,1.10,0.45,0.37,0.57,2.76,9.13,2,9.61,636707],
+    RS:["Rio Grande do Sul",14.07,12.40,4.16,8.57,2.89,19.98,2.20,23.00,87.28,0,87.21,10882965],
+    SC:["Santa Catarina",9.61,9.04,4.65,4.43,3.53,11.09,3.51,10.52,56.38,4,55.52,7610361],
+    SE:["Sergipe",2.56,3.39,1.01,2.16,0.59,3.36,1.92,3.64,18.62,5,17.98,2210004],
+    SP:["São Paulo",75.91,46.65,26.42,19.47,22.40,30.90,9.28,154.01,385.05,9,287.61,44411238],
+    TO:["Tocantins",2.76,4.25,1.44,1.83,0.70,2.72,1.21,3.83,18.74,4,18.05,1511460]
+  };
+  // Despesa com pessoal 2025 por Poder (R$ bi) — Tesouro, RGF em Foco Estados+DF, 3º quad. 2025, Tab. 1: [Legislativo (Assembleia+TCE), Ministério Público]
+  const RGF = {AC:[0.27,0.18],AL:[0.50,0.22],AM:[0.61,0.34],AP:[0.22,0.14],BA:[1.53,1.07],CE:[0.89,0.64],DF:[0.93,0],ES:[0.46,0.41],GO:[1.23,0.83],MA:[0.78,0.62],MG:[2.34,1.95],MS:[0.47,0.35],MT:[0.84,0.45],PA:[1.17,0.75],PB:[0.59,0.37],PE:[1.06,0.70],PI:[0.43,0.24],PR:[1.17,1.07],RJ:[1.60,1.55],RN:[0.53,0.33],RO:[0.39,0.21],RR:[0.29,0.11],RS:[1.16,1.21],SC:[1.11,0.76],SE:[0.38,0.20],SP:[2.61,4.42],TO:[0.38,0.21]};
+  // Deputados estaduais por Assembleia (legislatura 2023–2027)
+  const DEP = {SP:94,MG:77,RJ:70,BA:63,RS:55,PR:54,PE:49,CE:46,MA:42,GO:41,PA:41,SC:40,PB:36,ES:30,PI:30,AL:27,AM:24,RN:24,MT:24,MS:24,DF:24,AC:24,AP:24,RO:24,RR:24,SE:24,TO:24};
+  const KEYS = ["edu","saude","prev","seg","jud","mp","leg","transp","adm","div","outras"];
+  const KMETA = {
+    edu:{name:"Educação",c:C.edu,t:"Escolas estaduais de ensino médio, universidades estaduais e professores da rede estadual."},
+    saude:{name:"Saúde",c:C.saude,t:"Hospitais estaduais, UPAs, regulação de leitos, medicamentos de alto custo e apoio aos municípios."},
+    prev:{name:"Previdência dos servidores",c:C.prev,t:"Aposentadorias e pensões de professores, policiais e demais servidores estaduais. Não é o INSS."},
+    seg:{name:"Segurança pública",c:C.seg,t:"Polícia Militar, Polícia Civil, Corpo de Bombeiros e perícia. A maior parte da segurança do país é paga pelos estados."},
+    jud:{name:"Judiciário (Tribunal de Justiça)",c:C.jud,t:"Tribunal de Justiça do estado: juízes, servidores e fóruns."},
+    mp:{name:"Ministério Público",c:"#6E4A8F",t:"Promotores e procuradores de Justiça do estado. Valor da folha de pessoal, que é quase todo o custo do órgão."},
+    leg:{name:"Assembleia e Tribunal de Contas",c:C.cong,t:"Deputados estaduais, gabinetes e servidores da Assembleia Legislativa, mais o Tribunal de Contas do Estado. Valor da folha de pessoal, que é quase todo o custo dos dois órgãos."},
+    transp:{name:"Transporte e estradas",c:C.obras,t:"Rodovias estaduais, metrô e trens metropolitanos onde existem, e manutenção de estradas."},
+    adm:{name:"Administração",c:C.adm,t:"Secretarias de governo, Fazenda, planejamento e a máquina administrativa."},
+    div:{name:"Dívida (estimada)",c:C.div,t:"Juros e amortização da dívida do estado, boa parte com a própria União. Estimativa a partir do serviço da dívida em % da receita."},
+    outras:{name:"Outras áreas",c:C.out,t:"Assistência social, habitação, agricultura, cultura, meio ambiente, Defensoria, custeio da Assembleia e do Ministério Público e demais áreas."}
+  };
+
+  const ST = {};
+  for(const uf in RAW){
+    const r=RAW[uf];
+    const div=Math.min(r[10]/100*r[11], r[8]);
+    const leg=RGF[uf][0], mp=RGF[uf][1];
+    ST[uf]={uf,name:r[0],edu:r[1],saude:r[2],jud:r[3],seg:r[4],transp:r[5],prev:r[6],adm:r[7],div:div,leg:leg,mp:mp,outras:r[8]-div-leg-mp,tot:r[9],divPct:r[10],rct:r[11],pop:r[12],dep:DEP[uf]};
+  }
+  const PREP={do:"AC AM AP CE DF ES MA PA PR PI RJ RN RS TO",da:"BA PB"};
+  for(const uf in ST){ST[uf].de=PREP.do.includes(uf)?"do":PREP.da.includes(uf)?"da":"de";}
+  const UFS = Object.keys(ST).sort((a,b)=>ST[a].name.localeCompare(ST[b].name,"pt-BR"));
+  const ALL = {uf:"BR",name:"Todos os estados",pop:0,tot:0};
+  KEYS.forEach(k=>ALL[k]=0);
+  UFS.forEach(u=>{KEYS.forEach(k=>ALL[k]+=ST[u][k]);ALL.tot+=ST[u].tot;ALL.pop+=ST[u].pop;});
+
+  // ================= FORMATOS =================
+  const nf0=new Intl.NumberFormat("pt-BR",{maximumFractionDigits:0});
+  const nf1=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1});
+  const nf2=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  function short(v){
+    if(v>=1e12) return "R$ "+nf2.format(v/1e12)+" tri";
+    if(v>=1e9) return "R$ "+nf1.format(v/1e9)+" bi";
+    if(v>=1e6) return "R$ "+nf1.format(v/1e6)+" mi";
+    return "R$ "+nf0.format(v);
+  }
+  const bi=v=>"R$ "+nf2.format(v)+" bi";
+  const yearFrac=()=>Math.min(1,Math.max(0,(Date.now()-YEAR_START)/(YEAR_END-YEAR_START)));
+
+  // ================= CAMADAS =================
+  function rankOf(uf,k,perCap){
+    const val=u=>perCap? ST[u][k]/ST[u].pop : ST[u][k]/ST[u].tot;
+    const sorted=[...UFS].sort((a,b)=>val(b)-val(a));
+    return sorted.indexOf(uf)+1;
+  }
+  function stateLayer(S){
+    const isAll=S.uf==="BR";
+    const items=KEYS.map(k=>{
+      const m=KMETA[k], v=S[k], perCap=v*1e9/S.pop;
+      const f=[["Gasto em 2025",bi(v)],["Por habitante, no ano","R$ "+nf0.format(perCap)]];
+      if(!isAll && S[k]>0 && k!=="outras"){
+        f.push(["Posição entre os 27 (% do orçamento)",rankOf(S.uf,k,false)+"º"]);
+        f.push(["Posição entre os 27 (por habitante)",rankOf(S.uf,k,true)+"º"]);
+      }
+      if(k==="div"&&!isAll) f.push(["Serviço da dívida em % da receita",S.divPct+"%"]);
+      if(k==="jud"&&S.uf==="DF") f[0]=["Gasto em 2025","pago pela União (TJDFT)"];
+      if(k==="leg"){
+        f.push(["Deputados estaduais",isAll?"1.059":String(S.dep)]);
+        f.push(["Salário máximo de deputado estadual","R$ 34.774,64/mês"]);
+        if(!isAll) f.push(["Folha da Assembleia + TCE por deputado","R$ "+nf1.format(S.leg*1000/S.dep)+" mi/ano"]);
+      }
+      return {id:k,name:m.name,v:v,c:m.c,t:m.t,f:f};
+    }).filter(d=>d.v>0.0001);
+    const total=S.tot*1e9;
+    return {
+      key:isAll?"estados":S.uf.toLowerCase(),
+      items,
+      label: isAll? "Gasto dos 27 governos estaduais em 2026" : "Gasto do governo "+S.de+" "+S.name+" em 2026",
+      sub: ()=>"no ritmo de 2025 · orçamento executado em 2025: "+short(total),
+      value: ()=>total*yearFrac(),
+      perSec: total/((YEAR_END-YEAR_START)/1000),
+      perMonth: total/12,
+      perCap: total/12/S.pop,
+      gaugeMax: total, mark: total, markLabel: "total de 2025: "+short(total).replace("R$ ","R$ "),
+      dest: "Área · parte do gasto até agora",
+      note: isAll
+        ? "Soma das despesas dos 26 estados e do Distrito Federal em 2025, por área (Tesouro Nacional). O contador corre no ritmo de 2025 ao longo de 2026."
+        : S.name+": despesas do governo estadual em 2025 por área (Tesouro Nacional), "+nf0.format(S.pop)+" habitantes. O contador corre no ritmo de 2025 ao longo de 2026.",
+      calc: isAll
+        ? "Na proporção do gasto somado dos 27 governos estaduais."
+        : "Na proporção do gasto do governo "+S.de+" "+S.name+"."
+    };
+  }
+  const LAYER_UNIAO = {
+    key:"uniao", items:UNIAO,
+    label:"Já pagos em 2026 · União, estados e municípios",
+    sub:()=>{const v=ANCHOR_VAL+(Date.now()-ANCHOR_T)/1000*PER_SEC_TAX;return `em ${nf0.format((Date.now()-YEAR_START)/86400000)} dias · ${nf0.format(v/3.98e12*100)}% de tudo o que foi pago em 2025`;},
+    value:()=>ANCHOR_VAL+(Date.now()-ANCHOR_T)/1000*PER_SEC_TAX,
+    perSec:PER_SEC_TAX, perMonth:null, perCap:null,
+    gaugeMax:4.5e12, mark:3.98e12, markLabel:"total de 2025: R$ 3,98 tri",
+    dest:"Destino · parte do total já pago",
+    note:"Impostos pagos em todo o país, divididos na proporção do Orçamento da União de 2026.",
+    calc:"Na mesma proporção do orçamento federal."
+  };
+
+  let L = LAYER_UNIAO;
+
+  // ================= MEDIDOR =================
+  const NS="http://www.w3.org/2000/svg";
+  const g=document.getElementById("gauge");
+  const CX=200,CY=208,R=168;
+  const pt=(f,r)=>{const a=Math.PI*(1-f);return [CX+r*Math.cos(a),CY-r*Math.sin(a)];};
+  function el(n,a,p){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);(p||g).appendChild(e);return e;}
+  function arc(f0,f1,r){const [x0,y0]=pt(f0,r),[x1,y1]=pt(f1,r);return `M${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1}`;}
+  let prog, needle, SCALE=1;
+  function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(x)));const n=x/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;}
+  function buildGauge(){
+    g.innerHTML="";
+    const step=niceStep(L.gaugeMax*1.06/5);
+    SCALE=Math.ceil(L.gaugeMax*1.06/step)*step;
+    const tri=SCALE>=1e12, unit=tri?1e12:1e9, uname=tri?" tri":" bi";
+    el("path",{d:arc(0,1,R),stroke:"var(--line)","stroke-width":18,fill:"none"});
+    prog=el("path",{d:arc(0,0.001,R),stroke:"var(--gold)","stroke-width":18,fill:"none"});
+    const minor=step/5, n=Math.round(SCALE/minor);
+    for(let i=0;i<=n;i++){
+      const f=i/n, major=i%5===0;
+      const [x0,y0]=pt(f,R-14),[x1,y1]=pt(f,R-14-(major?14:5));
+      el("line",{x1:x0,y1:y0,x2:x1,y2:y1,stroke:"var(--muted)","stroke-width":major?2:1});
+      if(major){const [tx,ty]=pt(f,R-44);const t=el("text",{x:tx,y:ty+4,"text-anchor":"middle",class:"big"});
+        const val=i*minor/unit;t.textContent=(val===0?"0":(Number.isInteger(val)?val:nf1.format(val)))+(i===n||i===0?"":"")+(i===0?"":uname);}
+    }
+    const fc=L.mark/SCALE,[m0x,m0y]=pt(fc,R+12),[m1x,m1y]=pt(fc,R-10);
+    el("line",{x1:m0x,y1:m0y,x2:m1x,y2:m1y,stroke:"var(--red)","stroke-width":2.5});
+    const lt=el("text",{x:398,y:232,"text-anchor":"end"});lt.textContent="▌ "+L.markLabel;lt.setAttribute("style","fill:var(--red)");
+    needle=el("g",{});
+    el("polygon",{points:`${CX-6},${CY} ${CX+6},${CY} ${CX+1.2},${CY-R+30} ${CX-1.2},${CY-R+30}`,fill:"var(--ink)"},needle);
+    el("circle",{cx:CX,cy:CY,r:11,fill:"var(--ink)"});
+    el("circle",{cx:CX,cy:CY,r:4,fill:"var(--gold)"});
+  }
+  let shown=0;
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function setNeedle(f){needle.setAttribute("transform",`rotate(${-90+180*f} ${CX} ${CY})`);prog.setAttribute("d",arc(0,Math.max(f,.001),R));}
+
+  // ================= DESTINOS =================
+  const list=document.getElementById("dests");
+  let liveEls=[];
+  function buildDests(){
+    list.querySelectorAll(".dest,.detail").forEach(e=>e.remove());
+    const tot=L.items.reduce((s,d)=>s+d.v,0);
+    L.items.forEach(d=>d.s=d.v/tot);
+    L.items.forEach(d=>{
+      const b=document.createElement("button");
+      b.className="dest";b.type="button";b.id="d-"+d.id;b.setAttribute("aria-expanded","false");
+      b.innerHTML=`<span class="name"><i class="dot" style="background:${d.c}"></i>${d.name}</span><span class="pct">${nf1.format(d.s*100)}%</span><span class="val"><b data-live="${d.id}">—</b><span>${bi(d.v).replace(",00 bi"," bi")} no ano</span></span>`;
+      const det=document.createElement("div");det.className="detail";det.hidden=true;det.style.borderLeftColor=d.c;
+      det.innerHTML=`<p>${d.t}</p><ul>${d.f.map(x=>`<li><span>${x[0]}</span><b>${x[1]}</b></li>`).join("")}</ul>`;
+      b.addEventListener("click",()=>{
+        const open=b.getAttribute("aria-expanded")==="true";
+        list.querySelectorAll(".dest").forEach(o=>{o.setAttribute("aria-expanded","false");o.nextElementSibling.hidden=true;});
+        if(!open){b.setAttribute("aria-expanded","true");det.hidden=false;}
+        requestAnimationFrame(drawFlows);
+      });
+      list.appendChild(b);list.appendChild(det);
+    });
+    liveEls=[...list.querySelectorAll("[data-live]")].map(e=>[e,L.items.find(d=>d.id===e.dataset.live)]);
+  }
+
+  // ================= FLUXOS =================
+  const svg=document.getElementById("flows"), stage=document.getElementById("stage"), src=document.getElementById("counter"), srcBox=document.getElementById("source");
+  function drawFlows(){
+    const sr=stage.getBoundingClientRect(), cr=src.getBoundingClientRect(), br=srcBox.getBoundingClientRect();
+    svg.setAttribute("viewBox",`0 0 ${sr.width} ${sr.height}`);
+    svg.innerHTML="";
+    const narrow=sr.width<858;
+    const maxW=narrow?26:Math.min(cr.height*1.6,90);
+    const widths=L.items.map(d=>Math.max(1.5,d.s*maxW));
+    const sum=widths.reduce((a,b)=>a+b,0);
+    const cy0=(cr.top+cr.bottom)/2-sr.top-sum/2;
+    const sx=narrow?14:br.right-sr.left+8;
+    const syBase=narrow?cr.bottom-sr.top+70:0;
+    let acc=0;
+    L.items.forEach((d,i)=>{
+      const row=document.getElementById("d-"+d.id); if(!row) return;
+      const rr=row.getBoundingClientRect(), w=widths[i];
+      const tx=rr.left-sr.left+(narrow?2:0), ty=rr.top-sr.top+17;
+      let path;
+      if(!narrow){const sy=cy0+acc+w/2;acc+=w;const mx=(sx+tx)/2;path=`M${sx} ${sy} C${mx} ${sy} ${mx} ${ty} ${tx-6} ${ty}`;}
+      else{const x=sx+(i%4)*1.2;path=`M${x} ${syBase} L${x} ${ty-14} Q${x} ${ty} ${tx-4} ${ty}`;}
+      const sw=narrow?Math.max(1.5,d.s*14):w;
+      const base=document.createElementNS(NS,"path");base.setAttribute("d",path);base.setAttribute("class","base");base.setAttribute("stroke",d.c);base.setAttribute("stroke-width",sw);svg.appendChild(base);
+      const run=document.createElementNS(NS,"path");run.setAttribute("d",path);run.setAttribute("class","run");run.setAttribute("stroke",d.c);run.setAttribute("stroke-width",Math.max(1.5,sw*.55));
+      run.style.animationDuration=(1.2+(1-d.s)*1.4).toFixed(2)+"s";svg.appendChild(run);
+      const ah=document.createElementNS(NS,"path");const s=Math.max(5,Math.min(9,sw*.6+4));
+      ah.setAttribute("d",`M${tx-6-s} ${ty-s*.7} L${tx-2} ${ty} L${tx-6-s} ${ty+s*.7} Z`);ah.setAttribute("fill",d.c);svg.appendChild(ah);
+    });
+  }
+  new ResizeObserver(()=>drawFlows()).observe(stage);
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(drawFlows);
+
+  // ================= AO VIVO =================
+  const cEl=document.getElementById("counter"), clock=document.getElementById("clock");
+  function tick(){
+    const v=L.value();
+    cEl.innerHTML=`<small>R$</small>${nf0.format(v)}`;
+    const target=Math.min(v/SCALE,1);
+    shown=reduce?target:shown+(target-shown)*0.06;
+    setNeedle(shown);
+    for(const [e,d] of liveEls) if(d) e.textContent=short(v*d.s);
+    requestAnimationFrame(tick);
+  }
+  function slow(){
+    const v=L.value();
+    document.getElementById("rSec").textContent="R$ "+nf0.format(L.perSec);
+    if(L.key==="uniao"){
+      const months=(Date.now()-YEAR_START)/(86400000*30.4375);
+      document.getElementById("rMonth").textContent=short(v/months);
+      document.getElementById("rCap").textContent="R$ "+nf0.format(v/months/POP_BR);
+    }else{
+      document.getElementById("rMonth").textContent=short(L.perMonth);
+      document.getElementById("rCap").textContent="R$ "+nf0.format(L.perCap);
+    }
+    document.getElementById("counterSub").textContent=L.sub();
+    clock.textContent="Estimativa ao vivo · "+new Date().toLocaleString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  }
+
+  // ================= SELETOR DE CAMADA =================
+  const seg=document.getElementById("seg"), sel=document.getElementById("ufsel");
+  UFS.forEach(u=>{const o=document.createElement("option");o.value=u.toLowerCase();o.textContent=ST[u].name;sel.appendChild(o);});
+  function setLayer(key,push){
+    key=(key||"uniao").toLowerCase();
+    if(key==="uniao") L=LAYER_UNIAO;
+    else if(key==="estados") L=stateLayer(ALL);
+    else if(ST[key.toUpperCase()]) L=stateLayer(ST[key.toUpperCase()]);
+    else {L=LAYER_UNIAO;key="uniao";}
+    seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.layer===key)));
+    const isUF=key!=="uniao"&&key!=="estados";
+    sel.value=isUF?key:""; sel.classList.toggle("on",isUF);
+    document.getElementById("counterLabel").textContent=L.label;
+    document.getElementById("destLabel").textContent=L.dest;
+    document.getElementById("layerNote").textContent=L.note;
+    document.getElementById("calcIntro").textContent="Digite quanto você pagou de imposto e veja quantos reais foram para cada área. "+L.calc;
+    document.getElementById("gauge").setAttribute("aria-label",L.label);
+    shown=0;
+    buildGauge(); buildDests(); slow(); renderSplit(); markSelected(key);
+    requestAnimationFrame(drawFlows);
+    if(push){try{history.replaceState(null,"",key==="uniao"?location.pathname+location.search:"#"+key);}catch(e){}}
+  }
+  seg.addEventListener("click",e=>{const b=e.target.closest("button");if(b)setLayer(b.dataset.layer,true);});
+  sel.addEventListener("change",()=>setLayer(sel.value||"uniao",true));
+  addEventListener("hashchange",()=>setLayer(location.hash.slice(1),false));
+
+  // ================= MEU IMPOSTO =================
+  const inp=document.getElementById("myTax"), split=document.getElementById("split"), stitle=document.getElementById("splitTitle");
+  const brl=x=>"R$ "+nf2.format(x);
+  function parse(s){const n=parseFloat(String(s).replace(/\./g,"").replace(",","."));return isFinite(n)&&n>0?n:0;}
+  function renderSplit(){
+    const x=parse(inp.value);
+    const items=[...L.items].sort((a,b)=>b.v-a.v);
+    stitle.textContent="Para onde vão "+brl(x).replace(",00","")+(L.key==="uniao"?"":" · "+(L.key==="estados"?"estados":ST[L.key.toUpperCase()].name));
+    split.innerHTML=items.map(d=>`<div class="split-row"><span title="${d.name}">${d.name.replace(/ \(.+\)/,"")}</span><div class="bar"><i style="width:${(d.s/items[0].s*100).toFixed(1)}%;background:${d.c}"></i></div><b>${brl(x*d.s)}</b></div>`).join("");
+  }
+  inp.addEventListener("input",renderSplit);
+  const pw=document.getElementById("presets");
+  [["Média por habitante",1600],["R$ 500",500],["R$ 3.000",3000],["R$ 10.000",10000]].forEach(([l,v])=>{const b=document.createElement("button");b.type="button";b.textContent=l;b.onclick=()=>{inp.value=nf0.format(v);renderSplit();};pw.appendChild(b);});
+
+  // ================= MAPA DE ESTADOS =================
+  const POS={RR:[1,0],AP:[3,0],AM:[1,1],PA:[2,1],MA:[3,1],CE:[4,1],RN:[5,1],AC:[0,2],RO:[1,2],TO:[2,2],PI:[3,2],PE:[4,2],PB:[5,2],MT:[1,3],GO:[2,3],BA:[3,3],SE:[4,3],AL:[5,3],MS:[1,4],DF:[2,4],MG:[3,4],ES:[4,4],SP:[2,5],RJ:[3,5],PR:[2,6],SC:[2,7],RS:[1,8]};
+  const METRICS=[
+    {k:"seg",n:"Segurança",pct:true},{k:"edu",n:"Educação",pct:true},{k:"saude",n:"Saúde",pct:true},
+    {k:"prev",n:"Previdência",pct:true},{k:"div",n:"Dívida",pct:true},{k:"legcap",n:"Assembleia + TCE por habitante",pct:false},{k:"cap",n:"Gasto por habitante",pct:false}
+  ];
+  let metric="seg";
+  const mval=(u,k)=>k==="cap"? ST[u].tot*1e9/ST[u].pop : k==="legcap"? ST[u].leg*1e9/ST[u].pop : ST[u][k]/ST[u].tot*100;
+  const mfmt=(v,k)=>k==="cap"? "R$ "+nf1.format(v/1000)+" mil" : k==="legcap"? "R$ "+nf0.format(v) : nf0.format(v)+"%";
+  const tiles=document.getElementById("tiles"), mp=document.getElementById("metricPick");
+  METRICS.forEach(m=>{const b=document.createElement("button");b.type="button";b.textContent=m.n;b.dataset.k=m.k;b.setAttribute("aria-pressed",String(m.k===metric));b.onclick=()=>{metric=m.k;mp.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.k===metric)));renderTiles();};mp.appendChild(b);});
+  for(let r=0;r<9;r++)for(let c=0;c<6;c++){
+    const uf=Object.keys(POS).find(u=>POS[u][0]===c&&POS[u][1]===r);
+    const d=document.createElement(uf?"button":"span");
+    if(uf){d.className="tile";d.type="button";d.dataset.uf=uf;d.title=ST[uf].name;d.onclick=()=>{setLayer(uf.toLowerCase(),true);document.getElementById("stage").scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});};}
+    tiles.appendChild(d);
+  }
+  function renderTiles(){
+    const vals=UFS.map(u=>mval(u,metric)), mn=Math.min(...vals), mx=Math.max(...vals);
+    tiles.querySelectorAll(".tile").forEach(t=>{
+      const v=mval(t.dataset.uf,metric), f=mx>mn?(v-mn)/(mx-mn):0;
+      t.style.background=`color-mix(in srgb, var(--gold) ${Math.round(12+f*88)}%, var(--bg))`;
+      t.style.color=f>0.55?"#1a1205":"var(--ink)";
+      t.innerHTML=`${t.dataset.uf}<small>${mfmt(v,metric)}</small>`;
+    });
+    document.getElementById("scaleMin").textContent=mfmt(mn,metric);
+    document.getElementById("scaleMax").textContent=mfmt(mx,metric);
+    renderTable();
+  }
+
+  // ================= TABELA =================
+  const COLS=[
+    {k:"name",n:"Estado"},{k:"tot",n:"Gasto 2025"},{k:"cap",n:"Por hab."},
+    {k:"edu",n:"Educação"},{k:"saude",n:"Saúde"},{k:"seg",n:"Segurança"},{k:"prev",n:"Previd."},{k:"jud",n:"Judic."},{k:"div",n:"Dívida*"},{k:"legcap",n:"Assemb.+TCE/hab"}
+  ];
+  let sortK="tot", sortDir=-1;
+  const tbl=document.getElementById("ufTable");
+  function cell(u,k){
+    if(k==="name") return ST[u].name;
+    if(k==="tot") return ST[u].tot;
+    if(k==="cap") return ST[u].tot*1e9/ST[u].pop;
+    if(k==="legcap") return ST[u].leg*1e9/ST[u].pop;
+    return ST[u][k]/ST[u].tot*100;
+  }
+  function renderTable(){
+    const rows=[...UFS].sort((a,b)=>{const x=cell(a,sortK),y=cell(b,sortK);return (typeof x==="string"?x.localeCompare(y,"pt-BR"):x-y)*sortDir;});
+    const maxes={};COLS.slice(3).forEach(c=>maxes[c.k]=Math.max(...UFS.map(u=>cell(u,c.k))));
+    tbl.innerHTML=`<thead><tr>${COLS.map(c=>`<th scope="col"><button type="button" data-k="${c.k}" ${c.k===sortK?`aria-sort="${sortDir<0?"descending":"ascending"}"`:""}>${c.n}${c.k===sortK?(sortDir<0?" ↓":" ↑"):""}</button></th>`).join("")}</tr></thead><tbody>${
+      rows.map(u=>`<tr data-uf="${u}"><td><b>${u}</b> ${ST[u].name}</td><td>${bi(ST[u].tot)}</td><td>R$ ${nf0.format(cell(u,"cap"))}</td>${
+        COLS.slice(3).map(c=>{const v=cell(u,c.k);return `<td class="${v===maxes[c.k]?"hi":""}">${c.k==="legcap"?"R$ "+nf0.format(v):nf1.format(v)+"%"}</td>`;}).join("")}</tr>`).join("")
+    }</tbody>`;
+    markSelected(L.key);
+  }
+  tbl.addEventListener("click",e=>{
+    const b=e.target.closest("th button");
+    if(b){const k=b.dataset.k;if(k===sortK)sortDir*=-1;else{sortK=k;sortDir=k==="name"?1:-1;}renderTable();return;}
+    const tr=e.target.closest("tbody tr");
+    if(tr){setLayer(tr.dataset.uf.toLowerCase(),true);document.getElementById("stage").scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});}
+  });
+  function markSelected(key){
+    const uf=(key||"").toUpperCase();
+    tiles.querySelectorAll(".tile").forEach(t=>t.setAttribute("aria-pressed",String(t.dataset.uf===uf)));
+    tbl.querySelectorAll("tbody tr").forEach(r=>r.classList.toggle("sel",r.dataset.uf===uf));
+  }
+
+  // ================= TIPOS DE IMPOSTO / ESFERAS =================
+  const groups=[
+    {n:"Consumo",c:"#B86E05",items:[["ICMS",6.74],["Cofins",3.3],["PIS/Pasep",0.9],["ISS",1.0],["IPI",0.6],["IOF",0.8],["Importação",0.71]]},
+    {n:"Renda e lucro",c:"#0E6B5F",items:[["Imposto de Renda",6.8],["CSLL",1.3]]},
+    {n:"Folha de salários",c:"#3C76B5",items:[["INSS",5.3],["FGTS",1.7]]},
+    {n:"Patrimônio",c:"#8A4F7D",items:[["IPVA",0.6],["IPTU",0.6],["ITCD",0.15]]},
+    {n:"Outros",c:"#7D8C86",items:[["Taxas e demais",1.9]]}
+  ];
+  const sumG=gr=>gr.items.reduce((a,i)=>a+i[1],0);
+  const tot=groups.reduce((s,gr)=>s+sumG(gr),0);
+  document.getElementById("stack").innerHTML=groups.map(gr=>`<div style="flex:${sumG(gr)};background:${gr.c}" title="${gr.n}">${Math.round(sumG(gr)/tot*100)}%</div>`).join("");
+  document.getElementById("legend").innerHTML=groups.map(gr=>`<div class="tgroup"><h4><i style="background:${gr.c}"></i>${gr.n}<em>${nf1.format(sumG(gr))}% do PIB</em></h4><div class="chips">${gr.items.map(i=>`<span class="chip"><b>${i[0]}</b> ${nf1.format(i[1])}</span>`).join("")}</div></div>`).join("");
+  const sph=[["União",21.6],["Estados",8.4],["Municípios",2.4]];
+  document.getElementById("spheres").innerHTML=sph.map(([n,v])=>`<div class="sphere"><span>${n}</span><div class="bar"><i style="width:${(v/21.6*100).toFixed(1)}%"></i></div><b>${Math.round(v/32.4*100)}%</b></div>`).join("");
+  const sec=[["Estados",131.2],["União e municípios",31.9]];
+  document.getElementById("security").innerHTML=sec.map(([n,v])=>`<div class="sphere"><span>${n}</span><div class="bar"><i style="width:${(v/131.2*100).toFixed(1)}%;background:var(--gold)"></i></div><b>${nf1.format(v)}</b></div>`).join("");
+
+  // ================= INÍCIO =================
+  renderTiles();
+  setLayer(location.hash.slice(1)||"uniao",false);
+  setInterval(slow,1000);
+  requestAnimationFrame(tick);
+})();
+</script>
+
+</body></html>

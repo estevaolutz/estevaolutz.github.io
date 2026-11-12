@@ -8,7 +8,7 @@ Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<past
 
 - Mapas e atlas em 3D: `odisseia`, `alexandre`, `mitologia-grega`, `cabeza-de-vaca`, `generais-romanos`, `antartida`, `amyr-klink`, `stalingrado`, `dia-d`, `asimov-universe`
 - Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `gotas`, `desenhos-de-luz`
-- Política e dados: `quanto-custa-o-poder`
+- Política e dados: `quanto-custa-o-poder`, `para-onde-vai-o-meu-imposto`
 - Estudos: `katas-shotokan`, `libras`
 - Ferramentas de som: `medidor-spl`
 

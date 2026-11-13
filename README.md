@@ -15,8 +15,8 @@ Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<past
 
 ## Projetos do TouchDesigner
 
-Ficam em `touchdesigner/<obra>/`: o script que monta a rede, os códigos e um README com instruções. Não são páginas web.
+Ficam em `touchdesigner/<obra>/`: os scripts e um README com instruções e com o local do .toe no Desktop. Não são páginas web.
 
-- `touchdesigner/rosto-de-luz` — Rosto de Luz v2 (rosto e mãos em pontos de luz, som e MIDI do Sub Phatty)
+- `touchdesigner/rosto-de-luz` — Rosto de Luz v4 (rosto e mãos em pontos de luz, som e MIDI do Sub Phatty). O .toe fica no Desktop, em `rosto_de_luz_mediapipe/release`; aqui ficam os scripts e as instruções.
 
 As versões anteriores (mapas 2D, versões para iPad e cópias dos artefatos do Claude) estão na branch `backup-2026-11`.

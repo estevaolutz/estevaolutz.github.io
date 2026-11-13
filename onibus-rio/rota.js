@@ -409,6 +409,7 @@ const Rota = (() => {
   }
   function abrir(pre){
     S.modo = "rota"; S.linha = null; S.ponto = null; S.perto = null;
+    if (S.aba){ S.aba = null; montarFiltros(); }
     if (pre) Object.assign(R, pre);
     aplicarEstado(); render(); expandir();
     atualizarMarcadores(); atualizarResultados();

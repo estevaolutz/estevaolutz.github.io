@@ -1,0 +1,51 @@
+name: Ônibus do Rio — atualizar dados
+
+# Baixa o GTFS oficial da Prefeitura do Rio (SMTR / data.rio) e gera onibus-rio/data/rede.json
+on:
+  schedule:
+    - cron: "17 9 * * 1"   # toda segunda, 06:17 em Brasília
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "onibus-rio/build/**"
+      - ".github/workflows/onibus-rio.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: onibus-rio-dados
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Baixar GTFS oficial
+        run: |
+          set -e
+          baixar () { curl -fsSL --retry 3 -m 600 -o /tmp/gtfs.zip "$1" && unzip -tq /tmp/gtfs.zip >/dev/null; }
+          baixar "https://www.arcgis.com/sharing/rest/content/items/8ffe62ad3b2f42e49814bf941654ea6c/data" \
+            || baixar "https://files.mobilitydatabase.org/mdb-1791/latest.zip"
+          unzip -l /tmp/gtfs.zip
+
+      - name: Processar
+        run: python3 onibus-rio/build/processar.py /tmp/gtfs.zip onibus-rio/data
+
+      - name: Publicar dados
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add onibus-rio/data
+          if git diff --cached --quiet; then echo "sem mudanças"; exit 0; fi
+          git commit -m "Ônibus do Rio: dados atualizados do GTFS da SMTR"
+          git pull --rebase origin main
+          git push

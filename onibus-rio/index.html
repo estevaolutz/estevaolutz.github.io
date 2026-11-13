@@ -339,35 +339,75 @@ function decodificar(str){
 }
 
 // ---------- mapa ----------
-// fundo: mosaicos raster (não dependem de carregar um estilo externo, então o mapa sempre aparece)
-const FUNDOS = {
-  escuro:  {nome:"Escuro",  claro:false, camadas:["f-escuro"]},
-  claro:   {nome:"Claro",   claro:true,  camadas:["f-claro"]},
-  ruas:    {nome:"Ruas",    claro:true,  camadas:["f-ruas"]},
-  satelite:{nome:"Satélite",claro:false, camadas:["f-satelite","f-rotulos"]},
+// fundo: ruas em vetor do OpenFreeMap (gratuito, sem chave de API) desenhadas aqui mesmo,
+// mais OpenStreetMap (raster) e satélite Esri. Os mosaicos raster da CARTO passaram a exigir chave.
+const PAL = {
+  escuro:{agua:"#0f1b29", verde:"#101a15", predio:"#161b24", servico:"#171b23", menor:"#1d222c", media:"#272d39", maior:"#323a4a", via:"#414b60", trilho:"#2a303c", txt:"#8a93a3", txtForte:"#b6bdc9", halo:"#0b0d12", aguaTxt:"#4d6a8a"},
+  claro: {agua:"#c4d4e4", verde:"#dbe6d3", predio:"#dcdcd5", servico:"#f7f7f5", menor:"#ffffff", media:"#ffffff", maior:"#fdf6e3", via:"#f6deaa", trilho:"#c4c4c4", txt:"#5d6571", txtForte:"#2f3540", halo:"#ffffff", aguaTxt:"#5a7fa6"},
+  sat:   {txt:"#e8ecf2", txtForte:"#ffffff", halo:"#000000"},
 };
-const tiles = (t) => ["a","b","c","d"].map(x => `https://${x}.basemaps.cartocdn.com/${t}/{z}/{x}/{y}@2x.png`);
+const FONTE = ["Noto Sans Regular"], FONTE_B = ["Noto Sans Bold"], FONTE_I = ["Noto Sans Italic"];
+const CL = (...c) => ["match",["get","class"], c, true, false];
+const larg = (z0, w0, z1, w1) => ["interpolate",["exponential",1.6],["zoom"], z0, w0, z1, w1];
+function camadasBase(p, pal, soRotulos){
+  const v = {visibility: p === "e" ? "visible" : "none"};
+  const L = [];
+  if (!soRotulos){
+    L.push(
+      {id:p+"-verde", type:"fill", source:"omt", "source-layer":"park", paint:{"fill-color":pal.verde}},
+      {id:p+"-verde2", type:"fill", source:"omt", "source-layer":"landcover", filter:CL("wood","grass"), paint:{"fill-color":pal.verde,"fill-opacity":0.7}},
+      {id:p+"-agua", type:"fill", source:"omt", "source-layer":"water", paint:{"fill-color":pal.agua}},
+      {id:p+"-rio", type:"line", source:"omt", "source-layer":"waterway", minzoom:11, paint:{"line-color":pal.agua,"line-width":larg(11,0.5,18,4)}},
+      {id:p+"-predio", type:"fill", source:"omt", "source-layer":"building", minzoom:14.5, paint:{"fill-color":pal.predio,"fill-opacity":["interpolate",["linear"],["zoom"],14.5,0,16,1]}},
+      {id:p+"-servico", type:"line", source:"omt", "source-layer":"transportation", minzoom:14, filter:CL("service","track"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.servico,"line-width":larg(14,0.5,19,7)}},
+      {id:p+"-menor", type:"line", source:"omt", "source-layer":"transportation", minzoom:12, filter:CL("minor"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.menor,"line-width":larg(12,0.4,19,14)}},
+      {id:p+"-media", type:"line", source:"omt", "source-layer":"transportation", minzoom:9, filter:CL("tertiary","secondary"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.media,"line-width":larg(9,0.4,19,18)}},
+      {id:p+"-maior", type:"line", source:"omt", "source-layer":"transportation", minzoom:7, filter:CL("primary","trunk"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.maior,"line-width":larg(7,0.5,19,22)}},
+      {id:p+"-via", type:"line", source:"omt", "source-layer":"transportation", minzoom:5, filter:CL("motorway"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.via,"line-width":larg(5,0.5,19,24)}},
+      {id:p+"-trilho", type:"line", source:"omt", "source-layer":"transportation", minzoom:11, filter:CL("rail","transit"), paint:{"line-color":pal.trilho,"line-width":larg(11,0.6,18,2.5),"line-dasharray":[3,2]}},
+    );
+  }
+  L.push(
+    {id:p+"-agua-txt", type:"symbol", source:"omt", "source-layer":"water_name", minzoom:10,
+      layout:{"text-field":["coalesce",["get","name:pt"],["get","name"]],"text-font":FONTE_I,"text-size":12,"text-max-width":8},
+      paint:{"text-color":pal.aguaTxt || pal.txt,"text-halo-color":pal.halo,"text-halo-width":1.2}},
+    {id:p+"-rua-txt", type:"symbol", source:"omt", "source-layer":"transportation_name", minzoom:13.5,
+      layout:{"symbol-placement":"line","text-field":["get","name"],"text-font":FONTE,"text-size":["interpolate",["linear"],["zoom"],14,10,18,13],"text-max-angle":30,"symbol-spacing":300},
+      paint:{"text-color":pal.txt,"text-halo-color":pal.halo,"text-halo-width":1.4}},
+    {id:p+"-bairro-txt", type:"symbol", source:"omt", "source-layer":"place", minzoom:11, filter:CL("suburb","neighbourhood","quarter"),
+      layout:{"text-field":["get","name"],"text-font":FONTE,"text-size":["interpolate",["linear"],["zoom"],11,10.5,16,14],"text-transform":"uppercase","text-letter-spacing":0.08,"text-max-width":7},
+      paint:{"text-color":pal.txt,"text-halo-color":pal.halo,"text-halo-width":1.4}},
+    {id:p+"-cidade-txt", type:"symbol", source:"omt", "source-layer":"place", maxzoom:13, filter:CL("city","town"),
+      layout:{"text-field":["get","name"],"text-font":FONTE_B,"text-size":["interpolate",["linear"],["zoom"],7,11,12,16],"text-max-width":8},
+      paint:{"text-color":pal.txtForte,"text-halo-color":pal.halo,"text-halo-width":1.6}},
+  );
+  for (const l of L) l.layout = Object.assign({}, l.layout, v);
+  return L;
+}
+const BASE_E = camadasBase("e", PAL.escuro), BASE_C = camadasBase("c", PAL.claro), BASE_S = camadasBase("s", PAL.sat, true);
+const FUNDOS = {
+  escuro:  {nome:"Escuro",  claro:false, camadas:BASE_E.map(l => l.id)},
+  claro:   {nome:"Claro",   claro:true,  camadas:BASE_C.map(l => l.id)},
+  ruas:    {nome:"Ruas",    claro:true,  camadas:["f-ruas"]},
+  satelite:{nome:"Satélite",claro:false, camadas:["f-satelite", ...BASE_S.map(l => l.id)]},
+};
+const OSM_ATR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const ESTILO = {
   version:8,
-  glyphs:"https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
+  glyphs:"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
   sources:{
-    escuro:{type:"raster", tiles:tiles("dark_all"), tileSize:256, maxzoom:20,
-      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'},
-    claro:{type:"raster", tiles:tiles("light_all"), tileSize:256, maxzoom:20,
-      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'},
-    ruas:{type:"raster", tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize:256, maxzoom:19,
-      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'},
+    omt:{type:"vector", url:"https://tiles.openfreemap.org/planet",
+      attribution:'<a href="https://openfreemap.org">OpenFreeMap</a> ' + OSM_ATR},
+    ruas:{type:"raster", tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize:256, maxzoom:19, attribution:OSM_ATR},
     satelite:{type:"raster", tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize:256, maxzoom:19,
       attribution:"Imagens © Esri, Maxar, Earthstar Geographics"},
-    rotulos:{type:"raster", tiles:tiles("dark_only_labels"), tileSize:256, maxzoom:20},
   },
   layers:[
     {id:"fundo", type:"background", paint:{"background-color":"#0b0d12"}},
-    {id:"f-escuro", type:"raster", source:"escuro"},
-    {id:"f-claro", type:"raster", source:"claro", layout:{visibility:"none"}},
+    ...BASE_E, ...BASE_C,
     {id:"f-ruas", type:"raster", source:"ruas", layout:{visibility:"none"}, paint:{"raster-saturation":-0.3}},
     {id:"f-satelite", type:"raster", source:"satelite", layout:{visibility:"none"}, paint:{"raster-brightness-max":0.75}},
-    {id:"f-rotulos", type:"raster", source:"rotulos", layout:{visibility:"none"}},
+    ...BASE_S,
   ]
 };
 const estiloFalhou = false;
@@ -393,7 +433,7 @@ function montarCamadas(){
   map.addLayer({id:"bairro-sel", type:"line", source:"bairros", filter:["==",["get","i"],-1],
     paint:{"line-color":"#ffcc33","line-width":["interpolate",["linear"],["zoom"],10,1.5,15,3],"line-opacity":0.9}});
   if (!estiloFalhou) map.addLayer({id:"bairros-rot", type:"symbol", source:"bairrosRot", minzoom:10.5, layout:{visibility:"none",
-      "text-field":["get","nome"],"text-size":11.5,"text-font":["Montserrat Regular","Open Sans Regular","Noto Sans Regular","HanWangHeiLight Regular","NanumBarunGothic Regular"],"text-optional":true},
+      "text-field":["get","nome"],"text-size":11.5,"text-font":FONTE,"text-optional":true},
     paint:{"text-color":"#e9ecf1","text-halo-color":"#0b0d12","text-halo-width":1.6,"text-opacity":0.85}});
   map.addSource("trilhos", {type:"geojson", data:geoTrilhos});
   map.addSource("estacoes", {type:"geojson", data:geoEstacoes});
@@ -427,7 +467,7 @@ function montarCamadas(){
            "circle-stroke-color":"#0b0d12","circle-stroke-width":["interpolate",["linear"],["zoom"],9,1,14,2.5]}});
   if (!estiloFalhou) map.addLayer({id:"estacoes-rot", type:"symbol", source:"estacoesRot", minzoom:12,
     layout:{"text-field":["get","nome"],"text-size":12,"text-offset":[0,1.1],"text-anchor":"top","text-optional":true,
-            "text-font":["Montserrat Regular","Open Sans Regular","Noto Sans Regular","HanWangHeiLight Regular","NanumBarunGothic Regular"]},
+            "text-font":FONTE},
     paint:{"text-color":"#ffffff","text-halo-color":"#0b0d12","text-halo-width":1.8}});
   // linha selecionada: sentido oposto discreto, sentido ativo forte com setas
   map.addLayer({id:"sel-casco", type:"line", source:"sel", filter:["==",["get","ativo"],1],
@@ -441,7 +481,7 @@ function montarCamadas(){
     paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],10,3,15,6.5]}});
   if (!estiloFalhou) map.addLayer({id:"sel-setas", type:"symbol", source:"selSetas",
     layout:{"symbol-placement":"line","symbol-spacing":90,"text-field":"›","text-size":["interpolate",["linear"],["zoom"],10,14,15,22],
-            "text-keep-upright":false,"text-allow-overlap":true,"text-font":["Montserrat Medium","Open Sans Bold","Noto Sans Regular","HanWangHeiLight Regular","NanumBarunGothic Regular"],"text-offset":[0,-0.08]},
+            "text-keep-upright":false,"text-allow-overlap":true,"text-font":FONTE_B,"text-offset":[0,-0.08]},
     paint:{"text-color":"#0b0d12","text-opacity":0.85}});
   map.addLayer({id:"sel-pontos", type:"circle", source:"selPontos",
     paint:{"circle-radius":["interpolate",["linear"],["zoom"],10,["case",["==",["get","ponta"],1],5.5,2.2],15,["case",["==",["get","ponta"],1],8,5.5]],
@@ -449,7 +489,7 @@ function montarCamadas(){
            "circle-stroke-color":["case",["==",["get","ponta"],1],"#fff",["get","cor"]],"circle-stroke-width":2}});
   if (!estiloFalhou) map.addLayer({id:"sel-rotulos", type:"symbol", source:"selRotulos", minzoom:14,
     layout:{"text-field":["get","nome"],"text-size":11.5,"text-offset":[0.9,0],"text-anchor":"left","text-optional":true,
-            "text-font":["Montserrat Regular","Open Sans Regular","Noto Sans Regular","HanWangHeiLight Regular","NanumBarunGothic Regular"]},
+            "text-font":FONTE},
     paint:{"text-color":"#fff","text-halo-color":"#0b0d12","text-halo-width":1.6}});
   map.addLayer({id:"destaque", type:"circle", source:"destaque",
     paint:{"circle-radius":11,"circle-color":"rgba(255,204,51,.25)","circle-stroke-color":"#ffcc33","circle-stroke-width":2.5}});
@@ -1007,7 +1047,7 @@ $("#bTudo").addEventListener("click", () => map.fitBounds(RIO, {padding:padMapa(
 S.fundo = (() => { try { return localStorage.getItem("onibusRioFundo") || "escuro"; } catch(e){ return "escuro"; } })();
 if (!FUNDOS[S.fundo]) S.fundo = "escuro";
 function aplicarFundo(nome){
-  if (!map.getLayer("f-escuro")) return;
+  if (!map.getLayer("f-ruas")) return;
   S.fundo = nome; try { localStorage.setItem("onibusRioFundo", nome); } catch(e){}
   for (const [k, f] of Object.entries(FUNDOS)) for (const id of f.camadas) map.setLayoutProperty(id, "visibility", "none");
   for (const id of FUNDOS[nome].camadas) map.setLayoutProperty(id, "visibility", "visible");

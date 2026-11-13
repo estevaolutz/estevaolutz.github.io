@@ -10,7 +10,7 @@ Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<past
 - Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `gotas`, `desenhos-de-luz`, `feedback-digital`
 - Política e dados: `quanto-custa-o-poder`, `para-onde-vai-o-meu-imposto`, `emendas-no-mapa`, `quem-bancou-quem`, `disse-e-votou` (o `quem-bancou-quem` lê as votações de `disse-e-votou/data/votos.json`)
 - Estudos: `katas-shotokan`, `libras`, `reproducao-humana`
-- Cidade: `onibus-rio` (os dados em `onibus-rio/data/rede.json` são regerados toda segunda pelo GitHub Actions — `.github/workflows/onibus-rio.yml` baixa o GTFS oficial da SMTR e roda `onibus-rio/build/processar.py`; dá para rodar na hora em Actions → "Ônibus do Rio — atualizar dados" → Run workflow)
+- Cidade: `onibus-rio` — ônibus, BRT, executivos, metrô e trem. Os ônibus vêm do GTFS oficial da SMTR (`data/rede.json`); metrô e trem vêm do OpenStreetMap via Overpass (`data/trilhos.json`, gerado por `build/trilhos.py` com a consulta `build/trilhos.overpassql`). Os dados são regerados toda segunda pelo GitHub Actions — `.github/workflows/onibus-rio.yml` baixa o GTFS e o OSM e roda `onibus-rio/build/processar.py` e `trilhos.py`; dá para rodar na hora em Actions → "Ônibus do Rio — atualizar dados" → Run workflow)
 - Sol e luz: `rastro-solar`
 - Ferramentas de som: `medidor-spl`
 

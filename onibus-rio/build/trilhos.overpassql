@@ -1,0 +1,10 @@
+[out:json][timeout:300];
+area["boundary"="administrative"]["admin_level"="4"]["name"="Rio de Janeiro"]->.rj;
+rel["type"="route"]["route"~"^(subway|train|light_rail)$"](area.rj)->.rotas;
+.rotas out body;
+.rotas >;
+out skel qt;
+rel["type"="route_master"](br.rotas);
+out body;
+nwr["railway"~"^(station|halt)$"](area.rj);
+out center tags;

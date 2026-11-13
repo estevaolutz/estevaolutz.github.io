@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ônibus do Rio — todas as linhas e pontos</title>
-<meta name="description" content="Mapa interativo de todas as linhas de ônibus, BRT e executivos da cidade do Rio de Janeiro, com trajetos de ida e volta e todos os pontos.">
+<title>Ônibus do Rio — linhas de ônibus, metrô e trem</title>
+<meta name="description" content="Mapa interativo de todas as linhas de ônibus, BRT, executivos, metrô e trem do Rio de Janeiro, com trajetos, pontos e estações.">
 <meta name="theme-color" content="#0b0d12">
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="lib/maplibre-gl.css">
@@ -33,6 +34,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 #filtros{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
 .chip{border:1px solid var(--line);background:#141821;border-radius:99px;padding:4px 10px;font-size:12.5px;color:var(--mut)}
 .chip.on{background:var(--txt);color:#111;border-color:var(--txt);font-weight:600}
+.chip .bol{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px;opacity:.35}
+.chip.on .bol{opacity:1}
 #corpo{overflow:auto;flex:1;min-height:0;overscroll-behavior:contain}
 #rodape{padding:8px 14px;border-top:1px solid var(--line);color:var(--mut);font-size:11.5px}
 #rodape a{color:var(--mut)}
@@ -118,7 +121,7 @@ ol.seq li.ativo{background:rgba(255,204,51,.12)}
   <div id="topo">
     <h1><a href="../" title="Todos os apps">←</a> Ônibus do Rio</h1>
     <div class="sub" id="resumo">&nbsp;</div>
-    <input id="busca" type="search" placeholder="Linha, bairro ou ponto (ex.: 474, Gávea)" autocomplete="off">
+    <input id="busca" type="search" placeholder="Linha, bairro, ponto ou estação (ex.: 474, L1, Gávea)" autocomplete="off">
     <div id="filtros"></div>
   </div>
   <div id="corpo"></div>
@@ -136,16 +139,19 @@ ol.seq li.ativo{background:rgba(255,204,51,.12)}
 <script>
 "use strict";
 // ---------- estado ----------
-const S = {rede:null, filtro:"todos", linha:null, dir:0, ponto:null, perto:null, tema:"escuro"};
+const S = {rede:null, tipos:null, linha:null, dir:0, ponto:null, perto:null, tema:"escuro"};
 const $ = s => document.querySelector(s);
-const TIPOS = {todos:"Todas", bus:"Ônibus", brt:"BRT", exec:"Executivos"};
-const NOME_TIPO = {bus:"Ônibus", brt:"BRT", exec:"Executivo", vlt:"VLT"};
+const TIPOS = {metro:"Metrô", trem:"Trem", bus:"Ônibus", brt:"BRT", exec:"Executivos"};
+const NOME_TIPO = {bus:"Ônibus", brt:"BRT", exec:"Executivo", vlt:"VLT", metro:"Metrô", trem:"Trem"};
+const TRILHO = t => t === "metro" || t === "trem";
+S.tipos = new Set(Object.keys(TIPOS));
+const ativo = t => S.tipos.has(t);
 const RIO = [[-43.80, -23.09], [-43.09, -22.74]];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const semAcento = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // cores: usa a cor oficial da linha, clareando as muito escuras para aparecer no mapa
-const PADRAO = {bus:"#9aa3b5", brt:"#ff9900", exec:"#8f7bff", vlt:"#36c6a0"};
+const PADRAO = {bus:"#9aa3b5", brt:"#ff9900", exec:"#8f7bff", vlt:"#36c6a0", metro:"#e77405", trem:"#0691F6"};
 function corLinha(l){
   let c = (l.c || PADRAO[l.t] || "#9aa3b5").toUpperCase();
   const r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
@@ -189,7 +195,7 @@ const ESTILO_VAZIO = {version:8, glyphs:"https://demotiles.maplibre.org/font/{fo
 
 const map = new maplibregl.Map({
   container:"map", style:ESTILOS.escuro, bounds:RIO, fitBoundsOptions:{padding:20},
-  attributionControl:{compact:true, customAttribution:"Linhas e pontos: SMTR / data.rio (GTFS)"},
+  attributionControl:{compact:true, customAttribution:"Ônibus: SMTR / data.rio (GTFS) · Metrô e trem: © OpenStreetMap"},
   maxBounds:[[-45.6,-24.3],[-41.4,-21.5]], dragRotate:false, pitchWithRotate:false
 });
 map.touchZoomRotate.disableRotation();
@@ -197,12 +203,15 @@ let estiloFalhou = false;
 const timerEstilo = setTimeout(() => { if (!map.isStyleLoaded()) { estiloFalhou = true; map.setStyle(ESTILO_VAZIO); } }, 8000);
 map.on("error", e => { if (!map.isStyleLoaded() && !estiloFalhou && /style|cartocdn/.test(String(e.error && e.error.message))) { estiloFalhou = true; map.setStyle(ESTILO_VAZIO); } });
 
-let geoRede = null, geoPontos = null;
+let geoRede = null, geoPontos = null, geoTrilhos = null, geoEstacoes = null;
 
 function montarCamadas(){
   if (!geoRede || map.getSource("rede")) return;
   map.addSource("rede", {type:"geojson", data:geoRede});
   map.addSource("pontos", {type:"geojson", data:geoPontos});
+  map.addSource("trilhos", {type:"geojson", data:geoTrilhos});
+  map.addSource("estacoes", {type:"geojson", data:geoEstacoes});
+  map.addSource("estacoesRot", {type:"geojson", data:geoEstacoes});
   map.addSource("sel", {type:"geojson", data:vazio()});
   map.addSource("selPontos", {type:"geojson", data:vazio()});
   map.addSource("destaque", {type:"geojson", data:vazio()});
@@ -218,6 +227,20 @@ function montarCamadas(){
     paint:{"circle-radius":["interpolate",["linear"],["zoom"],13,1.6,16,4.5,18,7],
            "circle-color":"#ffffff", "circle-opacity":0.75,
            "circle-stroke-color":"#0b0d12", "circle-stroke-width":["interpolate",["linear"],["zoom"],13,0,16,1.2]}});
+  // metrô e trem: traço grosso com contorno; trem leva tracejado branco de ferrovia
+  map.addLayer({id:"trilhos-casco", type:"line", source:"trilhos", layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":"#0b0d12","line-width":["interpolate",["linear"],["zoom"],9,4,15,10],"line-opacity":0.9}});
+  map.addLayer({id:"trilhos", type:"line", source:"trilhos", layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],9,2.4,15,6]}});
+  map.addLayer({id:"trilhos-trem", type:"line", source:"trilhos", filter:["==",["get","t"],"trem"],
+    paint:{"line-color":"#ffffff","line-width":["interpolate",["linear"],["zoom"],9,0.8,15,2],"line-dasharray":[2,3],"line-opacity":0.8}});
+  map.addLayer({id:"estacoes", type:"circle", source:"estacoes",
+    paint:{"circle-radius":["interpolate",["linear"],["zoom"],9,2.6,13,5,16,8],"circle-color":"#ffffff",
+           "circle-stroke-color":"#0b0d12","circle-stroke-width":["interpolate",["linear"],["zoom"],9,1,14,2.5]}});
+  if (!estiloFalhou) map.addLayer({id:"estacoes-rot", type:"symbol", source:"estacoesRot", minzoom:12,
+    layout:{"text-field":["get","nome"],"text-size":12,"text-offset":[0,1.1],"text-anchor":"top","text-optional":true,
+            "text-font":["Montserrat Regular","Open Sans Regular","Noto Sans Regular","HanWangHeiLight Regular","NanumBarunGothic Regular"]},
+    paint:{"text-color":"#ffffff","text-halo-color":"#0b0d12","text-halo-width":1.8}});
   // linha selecionada: sentido oposto discreto, sentido ativo forte com setas
   map.addLayer({id:"sel-casco", type:"line", source:"sel", filter:["==",["get","ativo"],1],
     layout:{"line-cap":"round","line-join":"round"},
@@ -249,25 +272,37 @@ map.on("style.load", () => { clearTimeout(timerEstilo); montarCamadas(); });
 function vazio(){ return {type:"FeatureCollection", features:[]}; }
 
 // ---------- dados ----------
-fetch("data/rede.json").then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(rede => {
+const json = u => fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+Promise.all([json("data/rede.json"), json("data/trilhos.json").catch(() => null)]).then(([rede, tr]) => {
+  // metrô e trem entram na mesma lista de linhas; as estações entram nos pontos (marcadas com 2)
+  if (tr){
+    const offL = rede.linhas.length, offP = rede.pontos.length;
+    tr.linhas.forEach(l => { l.d.forEach(d => d.s = d.s.map(i => i + offP)); rede.linhas.push(l); });
+    tr.estacoes.forEach(e => rede.pontos.push([e[0], e[1], e[2], e[3].map(i => i + offL), 2]));
+  }
   S.rede = rede;
-  const feats = [];
+  const feats = [], featsT = [];
   rede.linhas.forEach((l, li) => {
     l._cor = corLinha(l);
-    l._busca = semAcento(`${l.n} ${l.l} ${l.d.map(d => d.h).join(" ")}`);
-    l._coords = l.d.map(d => decodificar(d.p));
-    l._coords.forEach((co, di) => feats.push({type:"Feature", properties:{li, di, cor:l._cor, t:l.t},
-      geometry:{type:"LineString", coordinates:co}}));
+    l._busca = semAcento(`${l.n} ${l.l} ${NOME_TIPO[l.t]} ${l.a} ${l.d.map(d => d.h).join(" ")}`);
+    l._coords = l.d.map(d => (Array.isArray(d.p) ? d.p : [d.p]).map(decodificar));
+    l._coords.forEach((co, di) => (TRILHO(l.t) ? featsT : feats).push({type:"Feature", properties:{li, di, cor:l._cor, t:l.t},
+      geometry:{type:"MultiLineString", coordinates:co}}));
   });
   geoRede = {type:"FeatureCollection", features:feats};
-  geoPontos = {type:"FeatureCollection", features:rede.pontos.map((p, i) => ({type:"Feature", properties:{i},
-    geometry:{type:"Point", coordinates:[p[2], p[1]]}}))};
+  geoTrilhos = {type:"FeatureCollection", features:featsT};
+  const pt = (p, i, extra) => ({type:"Feature", properties:{i, ...extra}, geometry:{type:"Point", coordinates:[p[2], p[1]]}});
+  geoPontos = {type:"FeatureCollection", features:rede.pontos.map((p, i) => p[4] === 2 ? null : pt(p, i)).filter(Boolean)};
+  geoEstacoes = {type:"FeatureCollection", features:rede.pontos.map((p, i) => p[4] !== 2 ? null : pt(p, i, {
+    nome:p[0], metro:p[3].some(li => rede.linhas[li].t === "metro") ? 1 : 0, trem:p[3].some(li => rede.linhas[li].t === "trem") ? 1 : 0})).filter(Boolean)};
   rede.pontos.forEach(p => p._busca = semAcento(p[0]));
 
-  const nb = rede.linhas.length, np = rede.pontos.length;
-  const f = rede.feed;
-  $("#resumo").textContent = `${nb} linhas · ${np.toLocaleString("pt-BR")} pontos`;
-  $("#rodape").innerHTML = `Dados oficiais: <a href="https://www.data.rio/datasets/8ffe62ad3b2f42e49814bf941654ea6c/about" target="_blank" rel="noopener">GTFS da SMTR (data.rio)</a> · atualizado automaticamente toda semana · última leitura ${esc(rede.gerado.slice(8,10))}/${esc(rede.gerado.slice(5,7))}/${esc(rede.gerado.slice(0,4))}`;
+  const nb = rede.linhas.filter(l => !TRILHO(l.t)).length, nt = rede.linhas.length - nb;
+  const np = rede.pontos.filter(p => p[4] !== 2).length, ne = rede.pontos.length - np;
+  $("#resumo").textContent = `${nb} linhas de ônibus · ${np.toLocaleString("pt-BR")} pontos` + (nt ? ` · ${nt} de metrô e trem · ${ne} estações` : "");
+  $("#rodape").innerHTML = `Ônibus: <a href="https://www.data.rio/datasets/8ffe62ad3b2f42e49814bf941654ea6c/about" target="_blank" rel="noopener">GTFS oficial da SMTR (data.rio)</a>` +
+    (tr ? ` · Metrô e trem: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>` : "") +
+    ` · atualizado toda semana · última leitura ${esc(rede.gerado.slice(8,10))}/${esc(rede.gerado.slice(5,7))}/${esc(rede.gerado.slice(0,4))}`;
   montarFiltros();
   if (map.isStyleLoaded()) montarCamadas();
   lerEndereco();
@@ -281,14 +316,16 @@ fetch("data/rede.json").then(r => { if (!r.ok) throw new Error(r.status); return
 
 // ---------- filtros e busca ----------
 function montarFiltros(){
-  const cont = {todos:S.rede.linhas.length};
+  const cont = {};
   S.rede.linhas.forEach(l => cont[l.t] = (cont[l.t]||0) + 1);
   $("#filtros").innerHTML = Object.keys(TIPOS).filter(k => cont[k]).map(k =>
-    `<button class="chip ${S.filtro===k?"on":""}" data-f="${k}">${TIPOS[k]} <span class="mono">${cont[k]}</span></button>`).join("");
+    `<button class="chip ${ativo(k)?"on":""}" data-f="${k}" aria-pressed="${ativo(k)}"><i class="bol" style="background:${PADRAO[k]}"></i>${TIPOS[k]} <span class="mono">${cont[k]}</span></button>`).join("");
 }
 $("#filtros").addEventListener("click", e => {
   const b = e.target.closest("[data-f]"); if (!b) return;
-  S.filtro = b.dataset.f; montarFiltros(); aplicarEstado(); render();
+  const k = b.dataset.f;
+  if (ativo(k)){ if (S.tipos.size > 1) S.tipos.delete(k); } else S.tipos.add(k);
+  montarFiltros(); aplicarEstado(); render();
 });
 $("#busca").addEventListener("input", () => { S.linha = null; S.ponto = null; S.perto = null; aplicarEstado(); render(); expandir(); });
 
@@ -311,7 +348,7 @@ function linhaHTML(l, li, extra=""){
 function htmlLista(){
   const q = semAcento($("#busca").value.trim());
   const L = S.rede.linhas;
-  let idx = L.map((l, i) => i).filter(i => S.filtro === "todos" || L[i].t === S.filtro);
+  let idx = L.map((l, i) => i).filter(i => ativo(L[i].t)).sort((a, b) => (TRILHO(L[b].t) - TRILHO(L[a].t)) || a - b);
   let html = "";
   if (q){
     const exato = idx.filter(i => semAcento(L[i].n) === q);
@@ -323,11 +360,11 @@ function htmlLista(){
     if (idx.length) html += `<div class="secao">Linhas · ${idx.length}</div>` + idx.slice(0, 200).map(i => linhaHTML(L[i], i)).join("");
     if (pts.length) html += `<div class="secao">Pontos</div>` + pts.map(i => {
       const p = S.rede.pontos[i];
-      return `<div class="lin" data-p="${i}"><span class="num" style="background:#fff">●</span><div class="nome"><b>${esc(p[0])}</b><small>${p[3].length} linha${p[3].length>1?"s":""}</small></div></div>`;
+      return `<div class="lin" data-p="${i}"><span class="num" style="background:#fff">${p[4] === 2 ? "Estação" : "●"}</span><div class="nome"><b>${esc(p[0])}</b><small>${p[3].length} linha${p[3].length>1?"s":""}</small></div></div>`;
     }).join("");
     return html;
   }
-  return `<div class="secao">${TIPOS[S.filtro]} · toque numa linha ou no mapa</div>` + idx.map(i => linhaHTML(L[i], i)).join("");
+  return `<div class="secao">${idx.length} linhas · toque numa linha ou no mapa</div>` + idx.map(i => linhaHTML(L[i], i)).join("");
 }
 
 function htmlLinha(){
@@ -336,14 +373,17 @@ function htmlLinha(){
   const fatos = [];
   if (l.$ != null) fatos.push(`<div class="fato"><b>R$ ${l.$.toFixed(2).replace(".",",")}</b>tarifa</div>`);
   if (l.i) fatos.push(`<div class="fato"><b>${l.i} min</b>intervalo no pico</div>`);
-  fatos.push(`<div class="fato"><b>${d.s.length}</b>pontos neste sentido</div>`);
+  fatos.push(`<div class="fato"><b>${d.s.length}</b>${TRILHO(l.t) ? "estações" : "pontos neste sentido"}</div>`);
   fatos.push(`<div class="fato"><b>${kmDe(l._coords[S.dir] || l._coords[0])} km</b>percurso</div>`);
   const sent = l.d.length > 1 ? `<div class="sentidos">${l.d.map((x, i) =>
       `<button data-dir="${i}" class="${i===S.dir?"on":""}"><span>sentido</span>${esc(x.h || (i ? "volta" : "ida"))}</button>`).join("")}</div>` : "";
   const seq = d.s.map((pi, k) => {
     const p = P[pi]; const outras = p[3].length - 1;
     const cls = (k === 0 || k === d.s.length - 1) ? "ponta" : "";
-    return `<li class="${cls}" data-p="${pi}">${esc(p[0])}${outras > 0 ? `<small>+${outras} linha${outras>1?"s":""} neste ponto</small>` : ""}</li>`;
+    const nota = !outras ? "" : TRILHO(l.t)
+      ? `<small>integração: ${p[3].filter(i => i !== S.linha).map(i => esc(S.rede.linhas[i].n)).join(" · ")}</small>`
+      : `<small>+${outras} linha${outras>1?"s":""} neste ponto</small>`;
+    return `<li class="${cls}" data-p="${pi}">${esc(p[0])}${nota}</li>`;
   }).join("");
   return `<div class="det">
     <button class="voltar" data-voltar>← todas as linhas</button>
@@ -357,13 +397,29 @@ function htmlLinha(){
 
 function htmlPonto(pi){
   const p = S.rede.pontos[pi], L = S.rede.linhas;
-  const ls = p[3].filter(i => S.filtro === "todos" || L[i].t === S.filtro);
+  const ls = p[3].filter(i => ativo(L[i].t));
+  const estacao = p[4] === 2;
+  const tipoEst = estacao ? [...new Set(p[3].map(i => NOME_TIPO[L[i].t]))].join(" e ") : "";
+  // integração: ônibus perto da estação, ou estações perto do ponto de ônibus
+  const P = S.rede.pontos, aqui = [p[2], p[1]];
+  const vizinhos = P.map((q, j) => [j, q]).filter(([j, q]) => j !== pi && (estacao ? q[4] !== 2 : q[4] === 2))
+    .map(([j, q]) => [j, dist(aqui, [q[2], q[1]])]).filter(x => x[1] <= (estacao ? 300 : 500)).sort((a, b) => a[1] - b[1]);
+  let integra = "";
+  if (estacao){
+    const bus = [...new Set(vizinhos.flatMap(([j]) => P[j][3]))].filter(i => ativo(L[i].t)).sort((a, b) => a - b);
+    if (bus.length) integra = `<div class="secao" style="padding-left:0;margin-top:14px">Ônibus a até 300 m · ${bus.length} linhas</div>
+      <div class="grade">${bus.map(i => `<span data-l="${i}" title="${esc(L[i].l)}">${selo(L[i])}</span>`).join("")}</div>`;
+  } else if (vizinhos.length){
+    integra = `<div class="secao" style="padding-left:0;margin-top:14px">Metrô e trem perto</div>` + vizinhos.slice(0, 4).map(([j, m]) =>
+      `<div class="lin" data-p="${j}" style="padding-left:0;padding-right:0"><span class="num mono" style="background:#fff;font-size:12px">${Math.round(m)} m</span><div class="nome"><b>Estação ${esc(P[j][0])}</b><small>${P[j][3].map(i => esc(L[i].n)).join(" · ")}</small></div></div>`).join("");
+  }
   return `<div class="det pt">
     <button class="voltar" data-voltar>← ${S.perto ? "pontos perto de você" : "todas as linhas"}</button>
-    <h2>${esc(p[0])}</h2>
-    <div class="meta" style="color:var(--mut);font-size:12.5px">${p[3].length} linha${p[3].length>1?"s":""} passam aqui${p[4] ? " · estação" : ""}</div>
+    <h2>${estacao ? "Estação " : ""}${esc(p[0])}</h2>
+    <div class="meta" style="color:var(--mut);font-size:12.5px">${estacao ? tipoEst + " · " : ""}${p[3].length} linha${p[3].length>1?"s":""} passa${p[3].length>1?"m":""} aqui${p[4] === 1 ? " · estação BRT" : ""}</div>
     <div class="grade">${ls.map(i => `<span data-l="${i}" title="${esc(L[i].l)}">${selo(L[i])}</span>`).join("")}</div>
-    <div class="secao" style="padding-left:0;margin-top:12px">Destinos</div>
+    ${integra}
+    <div class="secao" style="padding-left:0;margin-top:12px">${estacao ? "Linhas" : "Destinos"}</div>
     ${ls.map(i => linhaHTML(L[i], i)).join("")}
   </div>`;
 }
@@ -380,9 +436,9 @@ function htmlPerto(){
       return `<div class="lin" data-p="${pi}"><span class="num mono" style="background:#fff;font-size:12px">${Math.round(m)} m</span><div class="nome"><b>${esc(p[0])}</b><small>${p[3].slice(0,8).map(i => esc(L[i].n)).join(" · ")}${p[3].length>8?" …":""}</small></div></div>`; }).join("");
 }
 
-function kmDe(co){
+function kmDe(partes){
   let m = 0;
-  for (let i = 1; i < co.length; i++) m += dist(co[i-1], co[i]);
+  for (const co of partes) for (let i = 1; i < co.length; i++) m += dist(co[i-1], co[i]);
   return (m/1000).toFixed(1).replace(".", ",");
 }
 function dist(a, b){
@@ -440,7 +496,7 @@ function padMapa(){
 }
 function enquadrarLinha(){
   if (S.linha === null) return;
-  const co = S.rede.linhas[S.linha]._coords.flat();
+  const co = S.rede.linhas[S.linha]._coords.flat(2);
   if (!co.length) return;
   const b = co.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(co[0], co[0]));
   map.fitBounds(b, {padding:padMapa(), duration:800, maxZoom:15});
@@ -451,13 +507,26 @@ function aplicarEstado(){
   if (!map.getLayer || !map.getLayer("rede")) return;
   const L = S.rede.linhas;
   // filtro por tipo
-  const filtroTipo = S.filtro === "todos" ? null : ["==", ["get","t"], S.filtro];
-  map.setFilter("rede", filtroTipo);
+  const tiposOn = ["literal", [...S.tipos]];
+  map.setFilter("rede", ["in", ["get","t"], tiposOn]);
+  map.setFilter("trilhos", ["in", ["get","t"], tiposOn]);
+  map.setFilter("trilhos-casco", ["in", ["get","t"], tiposOn]);
+  map.setFilter("trilhos-trem", ["all", ["==", ["get","t"], "trem"], ativo("trem")]);
+  const fEst = ["any", ["all", ativo("metro"), ["==", ["get","metro"], 1]], ["all", ativo("trem"), ["==", ["get","trem"], 1]]];
+  map.setFilter("estacoes", fEst);
+  if (map.getLayer("estacoes-rot")) map.setFilter("estacoes-rot", fEst);
+  map.setLayoutProperty("pontos", "visibility", ["bus","brt","exec"].some(ativo) ? "visible" : "none");
   // linhas que passam pelo ponto escolhido ficam acesas
   let acesas = null;
   if (S.linha !== null) acesas = [S.linha];
   else if (S.ponto !== null) acesas = S.rede.pontos[S.ponto][3];
   else { const q = semAcento($("#busca").value.trim()); if (q) acesas = L.map((l,i)=>i).filter(i => L[i]._busca.includes(q)); }
+  const opT = acesas && acesas.length < L.length
+    ? ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 1, 0.12] : 1;
+  map.setPaintProperty("trilhos", "line-opacity", opT);
+  map.setPaintProperty("trilhos-trem", "line-opacity", acesas && acesas.length < L.length
+    ? ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 0.8, 0.1] : 0.8);
+  map.setPaintProperty("trilhos-casco", "line-opacity", acesas && acesas.length < L.length ? 0.4 : 0.9);
   if (acesas && acesas.length < L.length){
     map.setPaintProperty("rede", "line-opacity", ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 0.95, S.linha !== null ? 0.035 : 0.07]);
     map.setPaintProperty("rede", "line-width", ["case", ["in", ["get","li"], ["literal", acesas]],
@@ -467,11 +536,15 @@ function aplicarEstado(){
     map.setPaintProperty("rede", "line-width", ["interpolate",["linear"],["zoom"],10,0.8,14,2,17,4]);
   }
   map.setPaintProperty("pontos", "circle-opacity", S.linha !== null ? 0.25 : 0.75);
+  const estAcesas = S.linha !== null ? L[S.linha].d.flatMap(d => d.s) : S.ponto !== null ? [S.ponto] : null;
+  const opE = estAcesas ? ["case", ["in", ["get","i"], ["literal", estAcesas]], 1, 0.3] : 1;
+  map.setPaintProperty("estacoes", "circle-opacity", opE);
+  map.setPaintProperty("estacoes", "circle-stroke-opacity", opE);
   // linha selecionada
   if (S.linha !== null){
     const l = L[S.linha];
     const fsel = {type:"FeatureCollection", features:l._coords.map((co, di) => ({type:"Feature",
-      properties:{ativo: di === S.dir ? 1 : 0, cor:l._cor}, geometry:{type:"LineString", coordinates:co}}))};
+      properties:{ativo: di === S.dir ? 1 : 0, cor:l._cor}, geometry:{type:"MultiLineString", coordinates:co}}))};
     map.getSource("sel").setData(fsel);
     map.getSource("selSetas").setData({type:"FeatureCollection", features:fsel.features.filter(f => f.properties.ativo)});
     const d = l.d[S.dir] || l.d[0];
@@ -490,7 +563,7 @@ function aplicarEstado(){
 map.on("click", e => {
   if (!S.rede || !map.getLayer("rede")) return;
   const r = 8, bb = [[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]];
-  const camadasP = ["sel-pontos", "pontos"].filter(id => map.getLayer(id));
+  const camadasP = ["sel-pontos", "estacoes", "pontos"].filter(id => map.getLayer(id));
   const fp = map.queryRenderedFeatures(bb, {layers:camadasP});
   if (fp.length){
     const pi = fp[0].properties.i;
@@ -502,11 +575,11 @@ map.on("click", e => {
     }
     selecionarPonto(pi, false); voarPonto(pi, map.getZoom()); return;
   }
-  const fl = map.queryRenderedFeatures(bb, {layers:["sel", "rede"]});
+  const fl = map.queryRenderedFeatures(bb, {layers:["sel", "trilhos", "rede"]});
   const vis = new Set();
   fl.forEach(f => {
     const li = f.layer.id === "sel" ? S.linha : f.properties.li;
-    if (S.filtro !== "todos" && S.rede.linhas[li].t !== S.filtro) return;
+    if (!ativo(S.rede.linhas[li].t)) return;
     vis.add(li);
   });
   const ls = [...vis];
@@ -516,12 +589,12 @@ map.on("click", e => {
 });
 map.on("mousemove", e => {
   if (!map.getLayer("rede")) return;
-  const r = 6; const f = map.queryRenderedFeatures([[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]], {layers:["rede","pontos","sel-pontos"]});
+  const r = 6; const f = map.queryRenderedFeatures([[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]], {layers:["rede","trilhos","estacoes","pontos","sel-pontos"]});
   map.getCanvas().style.cursor = f.length ? "pointer" : "";
 });
 function mostrarEscolha(pt, ls){
   const L = S.rede.linhas, el = $("#escolha");
-  ls.sort((a,b) => a-b);
+  ls.sort((a, b) => (TRILHO(L[b].t) - TRILHO(L[a].t)) || a - b);
   el.innerHTML = `<div class="secao" style="padding:4px 8px">${ls.length} linhas passam aqui</div>` + ls.map(i => linhaHTML(L[i], i)).join("");
   el.style.display = "block";
   const w = el.offsetWidth, h = el.offsetHeight;
@@ -560,6 +633,12 @@ map.on("style.load", () => {
   const claro = S.tema === "claro";
   map.setPaintProperty("pontos", "circle-color", claro ? "#1b2230" : "#ffffff");
   map.setPaintProperty("pontos", "circle-stroke-color", claro ? "#ffffff" : "#0b0d12");
+  map.setPaintProperty("trilhos-casco", "line-color", claro ? "#ffffff" : "#0b0d12");
+  map.setPaintProperty("estacoes", "circle-stroke-color", claro ? "#1b2230" : "#0b0d12");
+  if (map.getLayer("estacoes-rot")){
+    map.setPaintProperty("estacoes-rot", "text-color", claro ? "#111" : "#fff");
+    map.setPaintProperty("estacoes-rot", "text-halo-color", claro ? "#fff" : "#0b0d12");
+  }
   map.setPaintProperty("sel-pontos", "circle-color", ["case",["==",["get","ponta"],1],["get","cor"], claro ? "#ffffff" : "#0b0d12"]);
   if (map.getLayer("sel-rotulos")){
     map.setPaintProperty("sel-rotulos", "text-color", claro ? "#111" : "#fff");

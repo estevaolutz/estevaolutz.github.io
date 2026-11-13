@@ -116,6 +116,8 @@ summary::marker{color:var(--brass)}
   #rail{grid-template-columns:auto 1fr auto;gap:6px 10px}
   #date{display:none}
   #speeds .eyebrow{display:none}
+  #speeds{grid-column:1/-1;justify-content:flex-start}
+  #tools,#log,#card{bottom:calc(210px + env(safe-area-inset-bottom,0px))}
 }
 .toolhead{display:flex;align-items:center;justify-content:space-between}
 .mixer{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:2px 8px;align-items:center}
@@ -126,6 +128,22 @@ summary::marker{color:var(--brass)}
 .mixer output{font:500 11px/1 var(--f-mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 #mixer.off{opacity:.45}
 #mute{margin-right:10px}
+@media (max-height:500px) and (min-width:701px){
+  #plate{padding:6px 12px;width:auto;max-width:38vw}
+  #plate h1{font-size:19px;margin:3px 0 0}
+  #plate p{display:none}
+  #tools{width:250px;max-height:calc(100% - 128px)}
+  #tools.collapsed>*:not(.toolhead){display:none}
+  #log{top:auto;left:max(16px,env(safe-area-inset-left,0px));width:320px;max-height:calc(100% - 128px - 56px);bottom:calc(112px + env(safe-area-inset-bottom,0px))}
+  #log.hiddenm{display:none}
+  #togglelog{display:inline-block}
+  #card{bottom:calc(112px + env(safe-area-inset-bottom,0px));width:300px;max-height:calc(100% - 124px)}
+  #rail{padding:6px 12px 8px;gap:4px 12px;bottom:calc(8px + env(safe-area-inset-bottom,0px))}
+  #clock{font-size:24px}
+  #date{font-size:11px}#date strong{font-size:12.5px}
+  #trackwrap{height:36px}
+  #speeds .eyebrow{display:none}
+}
 @media (prefers-reduced-motion:reduce){#loading{transition:none}}
 </style>
 
@@ -2104,13 +2122,14 @@ function buildUI() {
   $("#offmap").appendChild(off);
   const tt = $("#toolstoggle"); const toolsEl = $("#tools");
   const setTools = (open) => { toolsEl.classList.toggle("collapsed", !open); tt.setAttribute("aria-expanded", open ? "true" : "false"); tt.textContent = open ? "Fechar" : "Camadas"; };
-  setTools(innerWidth >= 700); tt.onclick = () => setTools(toolsEl.classList.contains("collapsed"));
-  if (innerWidth >= 700) tt.style.display = "none";
+  const compacto = innerWidth < 700 || innerHeight < 500;
+  setTools(!compacto); tt.onclick = () => setTools(toolsEl.classList.contains("collapsed"));
+  if (!compacto) tt.style.display = "none";
   const spd = $("#speeds");
   for (const s of SPEEDS) { const b = document.createElement("button"); b.className = "chip"; b.type = "button"; b.textContent = s + "×"; b.title = s + " minuto(s) por segundo"; b.setAttribute("aria-pressed", s === speed ? "true" : "false"); b.onclick = () => { speed = s; spd.querySelectorAll(".chip[data-s]").forEach((x) => x.setAttribute("aria-pressed", +x.dataset.s === s ? "true" : "false")); }; b.dataset.s = s; spd.insertBefore(b, $("#autocam")); }
   $("#togglelog").onclick = () => $("#log").classList.toggle("hiddenm");
   $("#autocam").onclick = () => setAutoCam(!autoCam);
-  if (innerWidth < 700) $("#log").classList.add("hiddenm");
+  if (compacto) $("#log").classList.add("hiddenm");
   $("#play").onclick = () => togglePlay();
   const jump = (dir) => { const i = currentEventIdx(); const k = dir < 0 ? (i >= 0 && simT - EVENTS[i][0] > 1 ? i : i - 1) : i + 1; if (k < 0 || k >= EVENTS.length) return; setTime(EVENTS[k][0]); lastAutoIdx = k; flyToEvent(k); Snd.init(); Snd.cue(k); };
   $("#prevev").onclick = () => jump(-1); $("#nextev").onclick = () => jump(1);

@@ -63,6 +63,21 @@ aside h3{font:600 11.5px var(--f-m);letter-spacing:.12em;text-transform:uppercas
   .search{width:150px}
   h1{font-size:32px}
 }
+@media (max-width:600px),(max-height:500px){
+  .app{grid-template-rows:auto auto;height:auto}
+  .stage{height:auto;display:flex;flex-direction:column}
+  .top{position:static;padding:14px 14px 8px;order:-1}
+  .home{top:12px;right:12px}
+  .eyebrow{padding-right:70px}
+  canvas{height:62vh;height:62svh;touch-action:none}
+  .legend{position:static;margin:6px 14px 0;background:none;padding:0;gap:6px 12px;font-size:11.5px}
+  .seg{display:flex;width:100%;overflow-x:auto;scrollbar-width:none}
+  .seg button{flex:1 0 auto;padding:9px 10px}
+  .chk{padding:8px 10px}
+  .search{flex:1 1 100%;width:auto;padding:9px 10px;font-size:16px}
+  .eyebrow{font-size:11px}
+}
+@media (max-height:500px){canvas{height:86vh;height:86svh}}
 </style>
 </head>
 <body>
@@ -150,7 +165,7 @@ function build(){
   draw0();side();
 }
 function draw0(){
-  const st=$('#stage');cv=$('#cv');DPR=devicePixelRatio||1;W=st.clientWidth;H=st.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx=cv.getContext('2d');
+  const st=$('#stage');cv=$('#cv');DPR=devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx=cv.getContext('2d');
   sim&&sim.stop();
   const idx=new Map(G.nodes.map(n=>[n.id,n]));
   G.links.forEach(l=>{l.s=idx.get(l.source);l.t=idx.get(l.target)});
@@ -168,8 +183,8 @@ function draw0(){
   ZM=z;tr=d3.zoomIdentity;d3.select(cv).call(z.transform,d3.zoomIdentity);
 }
 let ZM;
-function fit(){if(!G.nodes.length||!ZM)return;const xs=G.nodes.map(n=>n.x),ys=G.nodes.map(n=>n.y);const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
-  const top=innerWidth<860?120:150,pad=30;const k=Math.min(4,Math.max(.2,Math.min((W-2*pad)/(x1-x0||1),(H-top-60)/(y1-y0||1))));
+function fit(){if(!G.nodes.length||!ZM)return;const xs=G.nodes.map(n=>n.x).sort((a,b)=>a-b),ys=G.nodes.map(n=>n.y).sort((a,b)=>a-b),q=f=>Math.floor(f*(xs.length-1));const x0=xs[q(.01)],x1=xs[q(.99)],y0=ys[q(.01)],y1=ys[q(.99)];
+  const fone=matchMedia('(max-width:600px),(max-height:500px)').matches,top=fone?14:innerWidth<860?120:150,pad=fone?16:30;const k=Math.min(4,Math.max(.2,Math.min((W-2*pad)/(x1-x0||1),(H-top-60)/(y1-y0||1))));
   const t=d3.zoomIdentity.translate(W/2-k*(x0+x1)/2,top+(H-top-60)/2-k*(y0+y1)/2).scale(k);d3.select(cv).transition().duration(600).call(ZM.transform,t)}
 function pick(ev){const [x,y]=tr.invert([ev.offsetX,ev.offsetY]);let best=null,bd=1e9;for(const n of G.nodes){const d=Math.hypot(n.x-x,n.y-y);if(d<n.r+4/tr.k&&d<bd){bd=d;best=n}}return best}
 function nbrs(id){const s=new Set([id]);for(const l of G.links){if(l.source===id||l.source.id===id)s.add(l.t.id);if(l.t.id===id)s.add(l.s.id)}return s}
@@ -182,7 +197,13 @@ function draw(){
     if(n.type==='el'){ctx.fillStyle=n.id===S.sel?'#ff5d73':'#e9e7f2';ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,7);ctx.fill()}
     else{ctx.fillStyle=n.id===S.sel?'#ff5d73':COL[n.type];const r=n.r;ctx.fillRect(n.x-r,n.y-r,2*r,2*r)}}
   ctx.globalAlpha=1;ctx.fillStyle='#ecebf1';ctx.font=`${11/tr.k}px "IBM Plex Sans", system-ui, sans-serif`;ctx.textAlign='center';
-  for(const n of G.nodes){if((n.type!=='el'&&(n.n>=3||tr.k>1.6))||(NB&&NB.has(n.id)&&(tr.k>1||n.type!=='el'))||n.id===S.sel){ctx.fillText(n.label.length>28?n.label.slice(0,27)+'…':n.label,n.x,n.y-n.r-3/tr.k)}}
+  // labels: biggest first, skipping any that would overlap one already drawn (keeps small screens legible)
+  const min=W<600?4:3,cand=G.nodes.filter(n=>(n.type!=='el'&&(n.n>=min||tr.k>1.6))||(NB&&NB.has(n.id)&&(tr.k>1||n.type!=='el'))||n.id===S.sel)
+    .sort((a,b)=>(b.id===S.sel)-(a.id===S.sel)||b.v-a.v),used=[];
+  for(const n of cand){const t=n.label.length>28?n.label.slice(0,27)+'…':n.label,w=ctx.measureText(t).width*tr.k,
+      sx=tr.x+n.x*tr.k,sy=tr.y+(n.y-n.r)*tr.k-3,b=[sx-w/2-2,sy-12,sx+w/2+2,sy+1];
+    if(n.id!==S.sel&&used.some(u=>b[0]<u[2]&&b[2]>u[0]&&b[1]<u[3]&&b[3]>u[1]))continue;
+    used.push(b);ctx.fillText(t,n.x,n.y-n.r-3/tr.k)}
   ctx.restore();
 }
 function select(id){S.sel=id;NB=id?nbrs(id):null;draw();side()}

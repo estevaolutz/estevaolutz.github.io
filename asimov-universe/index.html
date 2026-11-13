@@ -132,6 +132,19 @@ button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   #ficha { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); left: max(16px, env(safe-area-inset-left, 0px));
     right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 46%; }
 }
+@media (max-height: 500px) {
+  #cabeca { padding: 12px; gap: 8px; width: 280px; }
+  h1 { font-size: 24px; }
+  .dica { display: none; }
+  #ficha { max-height: calc(100% - 24px); top: 12px; }
+  #controles { left: auto; right: max(12px, env(safe-area-inset-right, 0px)); transform: none; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 760px), (max-height: 500px) {
+  .r-serie { font-size: 13px; letter-spacing: .06em; }
+  #controles button { padding: 10px 10px; }
+  #controles #mais, #controles #menos { width: 40px; padding: 10px 0; }
+  .fio, .rot button, .fechar { min-height: 34px; }
+}
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 
@@ -437,6 +450,8 @@ controles.enableDamping = true; controles.dampingFactor = 0.08;
 controles.minPolarAngle = Math.PI * 0.22; controles.maxPolarAngle = Math.PI * 0.78;
 controles.minAzimuthAngle = -Math.PI * 0.38; controles.maxAzimuthAngle = Math.PI * 0.38;
 controles.minDistance = 5; controles.maxDistance = 170; controles.screenSpacePanning = true;
+// touch: one finger moves along the timeline, two fingers zoom and tilt
+controles.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
 
 // estrelas de fundo
 {
@@ -712,14 +727,22 @@ function visaoGeral(soLimite = false) {
   const esq = estreito ? 16 : Math.min(innerWidth * 0.4, document.getElementById('cabeca').getBoundingClientRect().right + 24);
   const larg = Math.max(200, innerWidth - esq - 24), altPx = Math.max(200, innerHeight - (estreito ? 260 : 90));
   const W = X_DIR - X_ESQ + 1, H = -Y_MIN + CAPA_H + 4;
-  const dist = Math.max(20, W * innerWidth / (larg * k * asp), H * innerHeight / (altPx * k));
+  const distTudo = Math.max(20, W * innerWidth / (larg * k * asp), H * innerHeight / (altPx * k));
+  // phones: fit the three columns to the width and start at the top; one finger scrolls down the timeline
+  const fone = Math.min(innerWidth, innerHeight) < 500;
+  const dist = fone ? Math.max(14, W * innerWidth / (larg * k * asp)) : distTudo;
   const pxPorU = innerWidth / (k * asp * dist);
   const dx = (esq + larg / 2 - innerWidth / 2) / pxPorU;
-  const dy = ((estreito ? 120 : 0) - 0) / pxPorU;
-  const alvo = new THREE.Vector3(X_MEIO - dx, Y_MEIO + 0.6 + dy, 0);
+  let alvoY = Y_MEIO + 0.6 + ((estreito ? 120 : 0) - 0) / pxPorU;
+  if (fone) {
+    const topoPx = (estreito ? document.getElementById('cabeca').getBoundingClientRect().bottom : 0) + 42;
+    alvoY = (CAPA_H / 2 + 1.1) - (innerHeight / 2 - topoPx) / pxPorU;
+    alvoY = Math.max(alvoY, Y_MEIO);
+  }
+  const alvo = new THREE.Vector3(X_MEIO - dx, alvoY, 0);
   const cam = new THREE.Vector3(alvo.x, alvo.y + dist * 0.05, dist);
   // o zoom out para no enquadramento da visão geral
-  controles.maxDistance = cam.distanceTo(alvo) * 1.01;
+  controles.maxDistance = Math.max(cam.distanceTo(alvo), distTudo) * 1.01;
   if (soLimite) return;
   if (reduzir || !voo && camera.position.lengthSq() === 0) { controles.target.copy(alvo); camera.position.copy(cam); return; }
   voo = { t0: performance.now(), dur: 900, alvo0: controles.target.clone(), cam0: camera.position.clone(), alvo, cam };

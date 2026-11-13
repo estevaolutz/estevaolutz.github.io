@@ -1073,13 +1073,14 @@ function buildUI() {
   $("#offmap").appendChild(off);
   const tt = $("#toolstoggle"); const toolsEl = $("#tools");
   const setTools = (open) => { toolsEl.classList.toggle("collapsed", !open); tt.setAttribute("aria-expanded", open ? "true" : "false"); tt.textContent = open ? "Fechar" : "Camadas"; };
-  setTools(innerWidth >= 700); tt.onclick = () => setTools(toolsEl.classList.contains("collapsed"));
-  if (innerWidth >= 700) tt.style.display = "none";
+  const compacto = innerWidth < 700 || innerHeight < 500;
+  setTools(!compacto); tt.onclick = () => setTools(toolsEl.classList.contains("collapsed"));
+  if (!compacto) tt.style.display = "none";
   const spd = $("#speeds");
   for (const s of SPEEDS) { const b = document.createElement("button"); b.className = "chip"; b.type = "button"; b.textContent = (s === 0.5 ? "½" : s) + "×"; b.title = s + " dia(s) por segundo"; b.setAttribute("aria-pressed", s === speed ? "true" : "false"); b.onclick = () => { speed = s; spd.querySelectorAll(".chip[data-s]").forEach((x) => x.setAttribute("aria-pressed", +x.dataset.s === s ? "true" : "false")); }; b.dataset.s = s; spd.insertBefore(b, $("#autocam")); }
   $("#togglelog").onclick = () => $("#log").classList.toggle("hiddenm");
   $("#autocam").onclick = () => setAutoCam(!autoCam);
-  if (innerWidth < 700) $("#log").classList.add("hiddenm");
+  if (compacto) $("#log").classList.add("hiddenm");
   $("#play").onclick = () => togglePlay();
   // anterior / próximo: pula de evento em evento do diário, com o som de cada um
   const jump = (dir) => { const i = currentEventIdx(); const k = dir < 0 ? (i >= 0 && simT - EVENTS[i].t > 0.05 ? i : i - 1) : i + 1; if (k < 0 || k >= EVENTS.length) return; setTime(EVENTS[k].t + 0.01); lastAutoIdx = k; flyToEvent(k); snd?.init(); snd?.cue(k); };

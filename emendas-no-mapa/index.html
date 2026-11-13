@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Emendas no Mapa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#0a0f0d;--panel:rgba(16,23,20,.94);--raise:#18221e;--ink:#e6ece8;--muted:#8fa097;--line:#26332d;
+  --teal:#3fd3a4;--gold:#f0b545;--mag:#ff6f91;--blue:#6aa8ff;--violet:#b58cff;
+  --f-d:"Archivo","Arial Narrow",system-ui,sans-serif;--f-b:"IBM Plex Sans",system-ui,sans-serif;--f-m:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-b);overflow:hidden}
+#map{position:fixed;inset:0}
+.num{font-family:var(--f-m);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+#panel{position:fixed;top:12px;left:12px;bottom:12px;width:380px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+header{padding:16px 18px 10px;border-bottom:1px solid var(--line)}
+.eyebrow{font:500 10.5px var(--f-m);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:850 34px/0.95 var(--f-d);font-stretch:72%;margin:4px 0 6px;letter-spacing:-.01em}
+h1 em{font-style:normal;color:var(--gold)}
+.lede{color:var(--muted);font-size:13px;margin:0}
+.tabs{display:flex;gap:4px;padding:10px 14px 0}
+.tabs button{flex:1;background:none;border:1px solid var(--line);border-radius:8px;padding:7px 6px;font-size:13px;color:var(--muted)}
+.tabs button[aria-pressed=true]{background:var(--raise);color:var(--ink);border-color:#3b4a43}
+.filters{padding:10px 14px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{border:1px solid var(--line);background:none;border-radius:99px;padding:3px 10px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed=true]{color:var(--ink);border-color:#4a5b53;background:var(--raise)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.body{flex:1;overflow:auto;padding:12px 14px 18px}
+.search{width:100%;background:var(--raise);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 11px;font:inherit;margin-bottom:8px}
+.sel{background:var(--raise);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:5px 7px;font:inherit;font-size:12.5px}
+.row{display:flex;gap:6px;margin-bottom:8px}
+.list{display:flex;flex-direction:column}
+.item{display:grid;grid-template-columns:34px 1fr auto;gap:9px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--line);background:none;border-left:0;border-right:0;border-top:0;text-align:left;width:100%}
+.item:hover{background:rgba(255,255,255,.03)}
+.item img,.ph{width:34px;height:34px;border-radius:50%;object-fit:cover;background:#25312b;display:grid;place-items:center;font-size:11px;color:var(--muted)}
+.item b{display:block;font-weight:600;font-size:13.5px;line-height:1.2}
+.item small{color:var(--muted);font-size:11.5px}
+.item .v{font:500 12.5px var(--f-m);color:var(--ink);text-align:right}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 14px}
+.kpi{background:var(--raise);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.kpi span{display:block;font-size:11px;color:var(--muted)}
+.kpi b{font:600 18px var(--f-m)}
+h3{font:700 12px var(--f-m);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.bar{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:12.5px;margin-bottom:6px}
+.bar i{grid-column:1/-1;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i u{display:block;height:100%;background:var(--teal)}
+.who{display:flex;gap:12px;align-items:center;margin:2px 0 6px}
+.who img{width:64px;height:64px;border-radius:12px;object-fit:cover;background:#25312b}
+.who h2{font:800 24px/1 var(--f-d);font-stretch:80%;margin:0 0 4px}
+.who p{margin:0;color:var(--muted);font-size:12.5px}
+.back{background:none;border:0;color:var(--teal);padding:0 0 8px;font-size:13px}
+.obj{font-size:12.5px;border-left:2px solid var(--gold);padding:3px 0 3px 9px;margin:0 0 8px;color:#cfd8d3}
+.obj small{display:block;color:var(--muted);font-family:var(--f-m);font-size:11px}
+.note{font-size:11.5px;color:var(--muted);margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+.note a{color:var(--teal)}
+.legend{position:fixed;right:14px;bottom:14px;z-index:4;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.legend div{display:flex;align-items:center;gap:7px}
+.toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);padding:7px 14px;border-radius:99px;z-index:9;font-size:12.5px;display:none}
+.pill{display:inline-block;font:500 10.5px var(--f-m);padding:1px 6px;border-radius:5px;background:#2b3631;color:var(--muted);margin-left:4px;vertical-align:1px}
+.home{position:fixed;right:14px;top:14px;z-index:4;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-size:12px;color:var(--muted);text-decoration:none}
+@media (max-width:760px){
+  #panel{top:auto;left:0;right:0;bottom:0;width:auto;height:52vh;border-radius:16px 16px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+  h1{font-size:26px}.lede{display:none}
+  .legend{top:12px;bottom:auto;left:12px;right:auto}
+  .home{top:12px}
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<a class="home" href="../">← Apps</a>
+<div class="toast" id="toast"></div>
+<aside id="panel">
+  <header>
+    <div class="eyebrow">Orçamento federal · emendas 2023–2026</div>
+    <h1>Emendas <em>no Mapa</em></h1>
+    <p class="lede">Do Congresso ao município: para onde foi o dinheiro que deputados, senadores, bancadas e comissões indicaram no orçamento.</p>
+  </header>
+  <div class="tabs" role="group">
+    <button data-tab="brasil" aria-pressed="true">Brasil</button>
+    <button data-tab="autores" aria-pressed="false">Quem mandou</button>
+    <button data-tab="municipio" aria-pressed="false">Município</button>
+  </div>
+  <div class="filters">
+    <div class="chips" id="fTipo"></div>
+    <div class="chips" id="fAno"></div>
+  </div>
+  <div class="body" id="body"></div>
+</aside>
+<div class="legend" id="legend"></div>
+
+<script src="lib/deck.min.js"></script>
+<script>
+const BSB=[-47.8645,-15.7998];
+const TIPOS={P:{n:'Emenda Pix',c:[240,181,69],css:'var(--gold)',d:'Transferência especial: cai direto no caixa da prefeitura ou do estado'},
+             F:{n:'Finalidade definida',c:[63,211,164],css:'var(--teal)',d:'Emenda individual com destino e objeto definidos'},
+             B:{n:'Bancada',c:[106,168,255],css:'var(--blue)',d:'Emenda coletiva da bancada do estado'},
+             C:{n:'Comissão',c:[181,140,255],css:'var(--violet)',d:'Emenda de comissão do Congresso'}};
+const ANOS=[2023,2024,2025,2026];
+const S={tab:'brasil',tipos:new Set(['P','F','B','C']),ano:null,autor:null,mun:null,q:'',casa:'',uf:''};
+let R,MA=null,UF=null,DK,AC={};
+const $=s=>document.querySelector(s);
+const brl=v=>v>=1e9?'R$ '+(v/1e9).toLocaleString('pt-BR',{maximumFractionDigits:2})+' bi':v>=1e6?'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi':v>=1e3?'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil':'R$ '+Math.round(v).toLocaleString('pt-BR');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const https=u=>u?u.replace(/^http:/,'https:'):'';
+const title=s=>String(s||'').toLowerCase().replace(/(^|\s|-)(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()).replace(/\b(De|Da|Do|Dos|Das|E)\b/g,w=>w.toLowerCase());
+const nomeA=a=>a.nome||title(a.n);
+const toast=t=>{const e=$('#toast');e.textContent=t;e.style.display=t?'block':'none'};
+
+async function load(){
+  toast('Carregando dados…');
+  [R,UF]=await Promise.all([fetch('data/resumo.json').then(r=>r.json()),fetch('data/uf.geojson').then(r=>r.json())]);
+  R.A=Object.fromEntries(R.autores.map(a=>[a.c,a]));
+  toast('');
+  initDeck();chips();render();
+}
+async function autorData(c){if(!AC[c]){toast('Carregando…');AC[c]=await fetch(`data/a/${c}.json`).then(r=>r.json());toast('')}return AC[c]}
+async function munAut(){if(!MA){toast('Carregando…');MA=await fetch('data/mun_autores.json').then(r=>r.json());toast('')}return MA}
+
+function chips(){
+  $('#fTipo').innerHTML=Object.entries(TIPOS).map(([k,t])=>`<button class="chip" data-t="${k}" aria-pressed="${S.tipos.has(k)}" title="${esc(t.d)}"><span class="dot" style="background:${t.css}"></span>${t.n}</button>`).join('');
+  $('#fAno').innerHTML=`<button class="chip" data-a="" aria-pressed="${!S.ano}">Todos os anos</button>`+ANOS.map(a=>`<button class="chip" data-a="${a}" aria-pressed="${S.ano==a}">${a}</button>`).join('');
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-t]');if(t){const k=t.dataset.t;if(S.tipos.has(k)&&S.tipos.size>1)S.tipos.delete(k);else S.tipos.add(k);chips();render();return}
+  const a=e.target.closest('[data-a]');if(a){S.ano=a.dataset.a?+a.dataset.a:null;chips();render();return}
+  const tb=e.target.closest('[data-tab]');if(tb){S.tab=tb.dataset.tab;if(S.tab!=='autores')S.autor=S.autor;render();return}
+  const au=e.target.closest('[data-autor]');if(au){openAutor(au.dataset.autor);return}
+  const mu=e.target.closest('[data-mun]');if(mu){openMun(mu.dataset.mun);return}
+  if(e.target.closest('[data-back]')){S.autor=null;render();return}
+});
+function setTab(t){S.tab=t;document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.tab===t))}
+
+// valores por município conforme filtros (visão Brasil — totais de todos os anos por tipo)
+function munVal(m){let s=0;for(const k of S.tipos)s+=m[4][k]||0;return s}
+
+function initDeck(){
+  DK=new deck.DeckGL({container:'map',
+    initialViewState:innerWidth<760?{longitude:-53,latitude:-27,zoom:2.55,pitch:40,bearing:-8}:{longitude:-49,latitude:-14.5,zoom:3.7,pitch:48,bearing:-8},
+    controller:true,getTooltip:tip,
+    parameters:{clearColor:[10/255,15/255,13/255,1]}});
+}
+function tip({object,layer}){
+  if(!object)return null;
+  const st={backgroundColor:'rgba(16,23,20,.96)',color:'#e6ece8',fontSize:'12px',borderRadius:'8px',border:'1px solid #26332d',padding:'8px 10px',fontFamily:'IBM Plex Sans,sans-serif'};
+  if(layer.id==='uf')return {html:`<b>${esc(object.properties.nome)}</b>`,style:st};
+  if(object.mun){const m=R.mun[object.mun];return {html:`<b>${esc(m[0])} – ${m[1]}</b><br>${brl(object.v)}${object.tt?'<br><span style="color:#8fa097">'+TIPOS[object.tt].n+'</span>':''}`,style:st}}
+  return null;
+}
+function ufLayer(hl){
+  return new deck.GeoJsonLayer({id:'uf',data:UF,stroked:true,filled:true,extruded:false,pickable:true,
+    getFillColor:f=>hl&&f.properties.uf===hl?[63,211,164,26]:[30,42,37,200],getLineColor:[70,90,80,200],lineWidthMinPixels:0.7,updateTriggers:{getFillColor:[hl]}});
+}
+function colLayer(data,scale,colorFn){
+  return new deck.ColumnLayer({id:'cols',data,diskResolution:10,radius:6500,extruded:true,pickable:true,
+    elevationScale:1,getPosition:d=>d.p,getElevation:d=>Math.sqrt(d.v)*scale,getFillColor:colorFn,
+    onClick:({object})=>object&&openMun(object.mun),transitions:{getElevation:500}});
+}
+
+function render(){
+  setTab(S.tab);
+  const body=$('#body');
+  if(S.tab==='brasil')renderBrasil(body);
+  else if(S.tab==='autores')S.autor?renderAutor(body):renderLista(body);
+  else renderMun(body);
+  legend();
+}
+function legend(){
+  let h=Object.entries(TIPOS).filter(([k])=>S.tipos.has(k)).map(([k,t])=>`<div><span class="dot" style="background:${t.css}"></span>${t.n}</div>`).join('');
+  if(S.tab==='autores'&&S.autor&&R.A[S.autor].uf){h=`<div><span class="dot" style="background:var(--teal)"></span>No estado do parlamentar</div><div><span class="dot" style="background:var(--mag)"></span>Fora do estado</div>`}
+  $('#legend').innerHTML=h+'<div style="margin-top:2px">Altura = valor pago</div>';
+}
+
+function brasilData(){
+  // com filtro de ano, precisa somar fluxos; sem filtro usa totais
+  const out=[];
+  for(const [k,m] of Object.entries(R.mun)){const v=munVal(m);if(v>0){
+    let best='F',bv=-1;for(const t of S.tipos)if((m[4][t]||0)>bv){bv=m[4][t]||0;best=t}
+    out.push({mun:k,p:[m[3],m[2]],v,tt:best})}}
+  return out;
+}
+function renderBrasil(body){
+  S.ano=null;chips();$('#fAno').style.display='none';
+  const data=brasilData();
+  DK.setProps({layers:[ufLayer(),colLayer(data,28,d=>[...TIPOS[d.tt].c,225])]});
+  const tot=data.reduce((s,d)=>s+d.v,0);
+  const top=[...data].sort((a,b)=>b.v-a.v).slice(0,12);
+  const aut=R.autores.filter(a=>a.t==='ind').map(a=>({a,v:a.recebido||0})).sort((x,y)=>y.v-x.v).slice(0,10);
+  const totT=Object.entries(TIPOS).map(([k,t])=>[t,R.tot[k]||0]);
+  const mx=Math.max(...totT.map(x=>x[1]));
+  body.innerHTML=`
+   <div class="kpis"><div class="kpi"><span>Pago com município identificado</span><b class="num">${brl(tot)}</b></div><div class="kpi"><span>Municípios que receberam</span><b class="num">${data.length.toLocaleString('pt-BR')}</b></div>
+   <div class="kpi" style="grid-column:1/-1"><span>Pago via Banco do Brasil/Caixa sem município no arquivo</span><b class="num">${brl(R.nl)}</b></div></div>
+   <h3>Por tipo de emenda</h3>
+   ${totT.map(([t,v])=>`<div class="bar"><span>${t.n}</span><span class="num">${brl(v)}</span><i><u style="width:${v/mx*100}%;background:${t.css}"></u></i></div>`).join('')}
+   <h3>Municípios que mais receberam</h3>
+   <div class="list">${top.map((d,i)=>{const m=R.mun[d.mun];return `<button class="item" data-mun="${d.mun}"><span class="ph">${i+1}</span><span><b>${esc(m[0])}</b><small>${m[1]}</small></span><span class="v">${brl(d.v)}</span></button>`}).join('')}</div>
+   <h3>Parlamentares que mais enviaram</h3>
+   <div class="list">${aut.map(({a,v})=>itemAutor(a,v)).join('')}</div>
+   ${nota()}`;
+}
+function itemAutor(a,v){
+  const img=a.foto?`<img loading="lazy" src="${esc(https(a.foto))}" alt="">`:`<span class="ph">${a.t==='bancada'?'UF':a.t==='comissao'?'CM':'—'}</span>`;
+  const sub=a.t==='ind'?`${a.casa==='sen'?'Senado':'Câmara'} · ${a.partido||''}${a.uf?'-'+a.uf:''}`:a.t==='bancada'?'Bancada estadual':a.t==='comissao'?'Comissão':'';
+  return `<button class="item" data-autor="${a.c}">${img}<span><b>${esc(nomeA(a))}</b><small>${esc(sub)}</small></span><span class="v">${brl(v)}</span></button>`;
+}
+function nota(){return `<p class="note">Fonte: <a href="https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares" target="_blank" rel="noopener">Portal da Transparência (CGU)</a>, arquivo de emendas parlamentares de 12/11/2026. Valores = pagamentos já recebidos pelos favorecidos das emendas dos orçamentos de 2023 a 2026. O ponto no mapa é o município do favorecido (prefeitura, fundo, entidade ou empresa que recebeu), que em geral é onde o recurso é aplicado. Quando o pagamento foi feito ao Banco do Brasil ou à Caixa como intermediários, o valor foi redistribuído pelos beneficiários registrados no Transferegov ou pela localidade da emenda; o que não tem município em nenhum dos arquivos aparece à parte, sem ponto no mapa. Emendas Pix declaram o uso no Transferegov; os textos aparecem como o beneficiário registrou. Partido e foto são os atuais na Câmara e no Senado.</p>`}
+
+function renderLista(body){
+  $('#fAno').style.display='none';
+  DK.setProps({layers:[ufLayer(),colLayer(brasilData(),28,d=>[...TIPOS[d.tt].c,120])]});
+  const ufs=[...new Set(R.autores.map(a=>a.uf).filter(Boolean))].sort();
+  const partidos=[...new Set(R.autores.map(a=>a.partido).filter(Boolean))].sort();
+  body.innerHTML=`<input class="search" id="q" placeholder="Buscar parlamentar, bancada ou comissão" value="${esc(S.q)}">
+   <div class="row"><select class="sel" id="casa"><option value="">Todos</option><option value="dep">Deputados</option><option value="sen">Senadores</option><option value="bancada">Bancadas</option><option value="comissao">Comissões</option></select>
+   <select class="sel" id="uf"><option value="">UF</option>${ufs.map(u=>`<option>${u}</option>`).join('')}</select>
+   <select class="sel" id="pt"><option value="">Partido</option>${partidos.map(u=>`<option>${esc(u)}</option>`).join('')}</select></div>
+   <div class="list" id="lst"></div>${nota()}`;
+  $('#casa').value=S.casa;$('#uf').value=S.uf;$('#pt').value=S.pt||'';
+  const upd=()=>{S.q=$('#q').value;S.casa=$('#casa').value;S.uf=$('#uf').value;S.pt=$('#pt').value;
+    const q=S.q.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+    const l=R.autores.filter(a=>(a.recebido||0)>0).filter(a=>!S.casa||(S.casa==='dep'||S.casa==='sen'?a.casa===S.casa:a.t===S.casa))
+      .filter(a=>!S.uf||a.uf===S.uf).filter(a=>!S.pt||a.partido===S.pt)
+      .filter(a=>!q||(nomeA(a)+' '+a.n).normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().includes(q))
+      .sort((x,y)=>(y.recebido||0)-(x.recebido||0));
+    $('#lst').innerHTML=l.slice(0,150).map(a=>itemAutor(a,a.recebido||0)).join('')+(l.length>150?`<p class="note">Mostrando 150 de ${l.length}. Use a busca para afinar.</p>`:'')};
+  ['q','casa','uf','pt'].forEach(i=>$('#'+i).addEventListener('input',upd));upd();
+}
+
+async function openAutor(c){S.tab='autores';S.autor=c;render()}
+async function renderAutor(body){
+  $('#fAno').style.display='';
+  const a=R.A[S.autor];const d=await autorData(a.c);
+  const fl=d.flows.filter(f=>S.tipos.has(f[2])&&(!S.ano||f[1]===S.ano));
+  const byM={};for(const [m,ano,tt,v] of fl){byM[m]=byM[m]||{mun:m,v:0,t:{}};byM[m].v+=v;byM[m].t[tt]=(byM[m].t[tt]||0)+v}
+  const pts=Object.values(byM).filter(x=>R.mun[x.mun]).map(x=>{const m=R.mun[x.mun];return {...x,p:[m[3],m[2]],uf:m[1]}});
+  const tot=pts.reduce((s,x)=>s+x.v,0);
+  const fora=a.uf?pts.filter(x=>x.uf!==a.uf).reduce((s,x)=>s+x.v,0):0;
+  const pix=fl.filter(f=>f[2]==='P').reduce((s,f)=>s+f[3],0);
+  const mx=Math.max(1,...pts.map(x=>x.v));
+  const domT=x=>Object.entries(x.t).sort((p,q)=>q[1]-p[1])[0][0];
+  const col=x=>a.uf?(x.uf!==a.uf?[255,111,145]:[63,211,164]):TIPOS[domT(x)].c;
+  DK.setProps({layers:[ufLayer(a.uf),
+    new deck.ArcLayer({id:'arcs',data:pts,getSourcePosition:()=>BSB,getTargetPosition:x=>x.p,getSourceColor:x=>[...col(x),60],getTargetColor:x=>[...col(x),230],
+      getWidth:x=>1+5*Math.sqrt(x.v/mx),getHeight:0.6,greatCircle:false,pickable:true,onClick:({object})=>object&&openMun(object.mun)}),
+    colLayer(pts,140,x=>[...col(x),230])]});
+  const top=[...pts].sort((x,y)=>y.v-x.v).slice(0,15);
+  const objs=d.pix.filter(o=>!S.ano||o[1]===S.ano).sort((x,y)=>y[3]-x[3]).slice(0,25);
+  const favs=d.fav.slice(0,12);
+  const fx=Math.max(1,...(a.fun||[]).map(f=>f[1]));
+  const sub=a.t==='ind'?`${a.casa==='sen'?'Senador(a)':'Deputado(a)'} · ${esc(a.partido||'')}${a.uf?'-'+a.uf:''}`:a.t==='bancada'?'Bancada estadual':'Comissão';
+  const link=a.casa==='dep'?`https://www.camara.leg.br/deputados/${a.pid}`:a.casa==='sen'?`https://www25.senado.leg.br/web/senadores/senador/-/perfil/${a.pid}`:'';
+  body.innerHTML=`<button class="back" data-back>← Todos</button>
+   <div class="who">${a.foto?`<img src="${esc(https(a.foto))}" alt="">`:''}<div><h2>${esc(nomeA(a))}</h2><p>${sub}${link?` · <a style="color:var(--teal)" href="${link}" target="_blank" rel="noopener">perfil oficial</a>`:''}</p>${a.subst?`<p>Herdou emendas de ${esc(a.subst)}</p>`:''}</div></div>
+   <div class="kpis">
+    <div class="kpi"><span>Pago (filtros atuais)</span><b class="num">${brl(tot)}</b></div>
+    <div class="kpi"><span>Municípios</span><b class="num">${pts.length}</b></div>
+    <div class="kpi"><span>Via emenda Pix</span><b class="num">${tot?Math.round(pix/tot*100):0}%</b></div>
+    <div class="kpi"><span>Fora do próprio estado</span><b class="num" style="color:${fora?'var(--mag)':'inherit'}">${a.uf&&tot?Math.round(fora/tot*100)+'%':'—'}</b></div>
+    <div class="kpi"><span>Empenhado 2023–26</span><b class="num">${brl(a.emp)}</b></div>
+    <div class="kpi"><span>Emendas</span><b class="num">${a.n_em}</b></div>
+    ${a.nl?`<div class="kpi" style="grid-column:1/-1"><span>Pago via Banco do Brasil/Caixa sem município identificado</span><b class="num">${brl(a.nl)}</b></div>`:''}
+   </div>
+   <h3>Áreas</h3>${(a.fun||[]).map(f=>`<div class="bar"><span>${esc(f[0]==='Encargos especiais'?'Encargos especiais (inclui Pix)':f[0])}</span><span class="num">${brl(f[1])}</span><i><u style="width:${f[1]/fx*100}%"></u></i></div>`).join('')}
+   <h3>Para onde foi</h3><div class="list">${top.map(x=>{const m=R.mun[x.mun];return `<button class="item" data-mun="${x.mun}"><span class="ph" style="color:${x.uf!==a.uf&&a.uf?'var(--mag)':'var(--teal)'}">${m[1]}</span><span><b>${esc(m[0])}</b><small>${Object.entries(x.t).map(([k,v])=>TIPOS[k].n+' '+brl(v)).join(' · ')}</small></span><span class="v">${brl(x.v)}</span></button>`}).join('')||'<p class="note">Nada pago com esses filtros.</p>'}</div>
+   ${objs.length?`<h3>O que a emenda Pix declarou</h3>${objs.map(o=>`<p class="obj">${esc(o[2]||'(sem descrição)')}<small>${esc(R.mun[o[0]]?.[0]||'')} – ${R.mun[o[0]]?.[1]||''} · ${o[1]} · ${brl(o[3])}</small></p>`).join('')}`:''}
+   ${favs.length?`<h3>Quem recebeu (órgãos e entidades)</h3><div class="list">${favs.map(f=>`<div class="item" style="cursor:default"><span class="ph">${R.mun[f[1]]?.[1]||''}</span><span><b style="font-weight:500">${esc(title(f[0]))}</b><small>${esc(f[2])} · ${esc(R.mun[f[1]]?.[0]||'')}</small></span><span class="v">${brl(f[3])}</span></div>`).join('')}</div>`:''}
+   ${nota()}`;
+}
+
+async function openMun(k){S.tab='municipio';S.mun=k;render()}
+async function renderMun(body){
+  $('#fAno').style.display='none';
+  if(!S.mun){
+    body.innerHTML=`<input class="search" id="qm" placeholder="Buscar município"><div class="list" id="lm"></div>${nota()}`;
+    DK.setProps({layers:[ufLayer(),colLayer(brasilData(),28,d=>[...TIPOS[d.tt].c,225])]});
+    const all=Object.entries(R.mun);
+    const upd=()=>{const q=$('#qm').value.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+      const l=(q?all.filter(([k,m])=>m[0].normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().includes(q)):all).map(([k,m])=>[k,m,munVal(m)]).sort((a,b)=>b[2]-a[2]).slice(0,60);
+      $('#lm').innerHTML=l.map(([k,m,v])=>`<button class="item" data-mun="${k}"><span class="ph">${m[1]}</span><span><b>${esc(m[0])}</b></span><span class="v">${brl(v)}</span></button>`).join('')};
+    $('#qm').addEventListener('input',upd);upd();return;
+  }
+  const m=R.mun[S.mun];const ma=(await munAut())[S.mun]||[];
+  const tot=munVal(m);
+  const pts=ma.filter(([c])=>R.A[c]).map(([c,v])=>({c,v,a:R.A[c]}));
+  DK.setProps({layers:[ufLayer(m[1]),
+    new deck.ArcLayer({id:'arcs',data:[{v:tot}],getSourcePosition:()=>BSB,getTargetPosition:()=>[m[3],m[2]],getSourceColor:[240,181,69,80],getTargetColor:[240,181,69,255],getWidth:4,getHeight:0.6}),
+    colLayer([{mun:S.mun,p:[m[3],m[2]],v:tot,tt:'P'}],140,()=>[240,181,69,240])]});
+  DK.setProps({initialViewState:{longitude:m[3],latitude:m[2]-(innerWidth<760?6:2.5),zoom:5,pitch:50,bearing:-8,transitionDuration:900,transitionInterpolator:new deck.FlyToInterpolator()}});
+  const mx=Math.max(...Object.values(m[4]));
+  body.innerHTML=`<button class="back" onclick="S.mun=null;render()">← Municípios</button>
+   <div class="who"><div><h2>${esc(m[0])}</h2><p>${m[1]} · emendas 2023–2026</p></div></div>
+   <div class="kpis"><div class="kpi"><span>Recebido (tipos marcados)</span><b class="num">${brl(tot)}</b></div><div class="kpi"><span>Via emenda Pix</span><b class="num">${brl(m[4].P||0)}</b></div></div>
+   <h3>Por tipo</h3>${Object.entries(TIPOS).map(([k,t])=>`<div class="bar"><span>${t.n}</span><span class="num">${brl(m[4][k]||0)}</span><i><u style="width:${(m[4][k]||0)/mx*100}%;background:${t.css}"></u></i></div>`).join('')}
+   <h3>Quem mandou (todos os tipos)</h3><div class="list">${pts.map(p=>itemAutor(p.a,p.v)).join('')}</div>
+   <p class="note"><a href="https://portaldatransparencia.gov.br/localidades/${S.mun}" target="_blank" rel="noopener">Ver ${esc(m[0])} no Portal da Transparência</a></p>${nota()}`;
+}
+load().catch(e=>{toast('Não consegui carregar os dados: '+e.message)});
+</script>
+</body>
+</html>

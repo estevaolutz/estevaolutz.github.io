@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Quem Bancou Quem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{--bg:#0e0d12;--panel:#17161d;--raise:#201f28;--ink:#ecebf1;--muted:#9a98a8;--line:#2d2b37;
+--partido:#8d8aa0;--pf:#f2b84b;--pj:#5fb0ff;--cand:#c08bff;--fefc:#6f6c83;--el:#e9e7f2;--hl:#ff5d73;
+--f-d:"Archivo","Arial Narrow",system-ui,sans-serif;--f-b:"IBM Plex Sans",system-ui,sans-serif;--f-m:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-b)}
+a{color:var(--pj)}
+button{font:inherit;color:inherit;cursor:pointer}
+.num{font-family:var(--f-m);font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:1fr 400px;height:100vh;height:100dvh}
+.stage{position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:grab}
+.top{position:absolute;left:16px;top:14px;right:16px;pointer-events:none;z-index:2}
+.top>*{pointer-events:auto}
+.eyebrow{font:500 10.5px var(--f-m);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:900 clamp(34px,5vw,58px)/.9 var(--f-d);font-stretch:70%;margin:4px 0 8px}
+h1 em{font-style:normal;color:var(--pf)}
+.ctrl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:820px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
+.seg button{background:none;border:0;padding:6px 11px;font-size:12.5px;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--raise);color:var(--ink)}
+.chk{display:inline-flex;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:5px 10px;font-size:12.5px;color:var(--muted)}
+.chk input{accent-color:var(--pf)}
+.search{background:var(--panel);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:6px 10px;font:inherit;font-size:13px;width:220px}
+.legend{position:absolute;left:16px;bottom:14px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);background:rgba(14,13,18,.8);padding:6px 10px;border-radius:8px;z-index:2}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px}
+.home{position:absolute;right:14px;top:14px;z-index:3;font-size:12px;color:var(--muted);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 9px}
+aside{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:18px 18px 30px}
+aside h2{font:850 28px/1 var(--f-d);font-stretch:78%;margin:4px 0 4px}
+aside h3{font:600 11.5px var(--f-m);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--raise);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.kpi span{display:block;font-size:11px;color:var(--muted)}.kpi b{font:600 17px var(--f-m)}
+.stack{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--line);margin:6px 0 4px}
+.stack i{display:block;height:100%}
+.lg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}
+.lg span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;background:var(--c);vertical-align:-1px}
+.it{display:grid;grid-template-columns:1fr auto;gap:8px;padding:7px 2px;border-bottom:1px solid var(--line);background:none;border-left:0;border-right:0;border-top:0;width:100%;text-align:left}
+.it:hover{background:rgba(255,255,255,.03)}
+.it b{font-weight:600;display:block;font-size:13.5px}.it small{color:var(--muted);font-size:11.5px}
+.it .v{font:500 12.5px var(--f-m)}
+.tag{display:inline-block;font:500 10.5px var(--f-m);padding:1px 6px;border-radius:5px;margin-right:4px;color:#111}
+.vrow{padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.vrow .b{display:grid;grid-template-columns:70px 1fr 40px;gap:6px;align-items:center;margin-top:3px;font-size:11.5px;color:var(--muted)}
+.vrow .b i{display:block;height:6px;border-radius:3px;background:var(--line);position:relative;overflow:hidden}
+.vrow .b u{position:absolute;inset:0 auto 0 0;background:var(--sim,#4cc477)}
+.note{font-size:11.5px;color:var(--muted);margin-top:20px;border-top:1px solid var(--line);padding-top:12px}
+.back{background:none;border:0;color:var(--pj);padding:0;margin-bottom:6px;font-size:13px}
+.tip{position:absolute;pointer-events:none;background:rgba(23,22,29,.96);border:1px solid var(--line);padding:6px 9px;border-radius:7px;font-size:12px;z-index:4;display:none;max-width:280px}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;grid-template-rows:58vh auto;height:auto}
+  .stage{height:58vh}
+  aside{border-left:0;border-top:1px solid var(--line)}
+  .search{width:150px}
+  h1{font-size:32px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+ <div class="stage" id="stage">
+  <canvas id="cv"></canvas>
+  <div class="tip" id="tip"></div>
+  <a class="home" href="../">← Apps</a>
+  <div class="top">
+   <div class="eyebrow">Prestação de contas ao TSE · eleitos</div>
+   <h1>Quem Bancou <em>Quem</em></h1>
+   <div class="ctrl">
+    <div class="seg" id="eleicao">
+     <button data-el="2022-dep" aria-pressed="true">Câmara atual (2022)</button>
+     <button data-el="sen">Senado atual</button>
+     <button data-el="2026-dep">Eleitos 2026 · Câmara</button>
+     <button data-el="2026-sen">Eleitos 2026 · Senado</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="cPart"> mostrar repasses de partidos</label>
+    <label class="chk">ligações mín. <input type="range" id="minL" min="1" max="5" value="2" style="width:70px"><b id="minLv" class="num">2</b></label>
+    <input class="search" id="q" placeholder="Buscar eleito ou doador" list="dl"><datalist id="dl"></datalist>
+   </div>
+  </div>
+  <div class="legend">
+   <span><i style="background:var(--el);border-radius:50%"></i>Eleito</span>
+   <span><i style="background:var(--pf)"></i>Pessoa física (≥ R$ 50 mil)</span>
+   <span><i style="background:var(--pj)"></i>Empresa/entidade</span>
+   <span><i style="background:var(--cand)"></i>Outra campanha</span>
+   <span><i style="background:var(--partido)"></i>Partido</span>
+  </div>
+ </div>
+ <aside id="side"></aside>
+</div>
+<script src="lib/d3.min.js"></script>
+<script>
+const COL={pf:'#f2b84b',pj:'#5fb0ff',cand:'#c08bff',partido:'#8d8aa0'};
+const ORIG=[['partidos','Partidos','#8d8aa0'],['pf','Pessoas físicas','#f2b84b'],['proprios','Recursos próprios','#ff8a5c'],['internet','Vaquinha online','#3fd3a4'],['outCand','Outras campanhas','#c08bff'],['pj','Empresas/entidades','#5fb0ff']];
+const FONTE=e=>[['Fundo eleitoral (FEFC)',R(e,'fefc'),'#6f6c83'],['Fundo partidário',R(e,'fundo'),'#a7a4bb'],['Outros recursos',Math.max(0,R(e,'total')-R(e,'fefc')-R(e,'fundo')),'#3a3846']];
+const pub=e=>(R(e,'fefc')+R(e,'fundo'));
+const TIPO={pf:'Pessoa física',pj:'Empresa/entidade',cand:'Outra campanha',partido:'Partido',pfmenor:'Pessoas físicas (doações menores)',proprio:'Recursos próprios',col:'Vaquinha online'};
+let Q,V=null,F;const S={el:'2022-dep',part:false,minL:2,sel:null};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const brl=v=>v>=1e6?'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:2})+' mi':v>=1e3?'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil':'R$ '+Math.round(v||0).toLocaleString('pt-BR');
+const title=s=>String(s||'').toLowerCase().replace(/(^|\s|-|\()(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()).replace(/\b(De|Da|Do|Dos|Das|E)\b/g,w=>w.toLowerCase());
+const fold=s=>String(s||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+const REG={AC:'NORTE',AM:'NORTE',AP:'NORTE',PA:'NORTE',RO:'NORTE',RR:'NORTE',TO:'NORTE',AL:'NORDESTE',BA:'NORDESTE',CE:'NORDESTE',MA:'NORDESTE',PB:'NORDESTE',PE:'NORDESTE',PI:'NORDESTE',RN:'NORDESTE',SE:'NORDESTE',DF:'CENTROOESTE',GO:'CENTROOESTE',MT:'CENTROOESTE',MS:'CENTROOESTE',ES:'SUDESTE',MG:'SUDESTE',RJ:'SUDESTE',SP:'SUDESTE',PR:'SUL',RS:'SUL',SC:'SUL'};
+const EID={2018:2022802018,2022:2040602022,2026:20322002026};
+const tseLink=e=>`https://divulgacandcontas.tse.jus.br/divulga/#/candidato/${REG[e.uf]}/${e.uf}/${EID[e.ano]}/${e.id}/${e.ano}/${e.uf}`;
+const R=(e,k)=>e.r[Q.campos.indexOf(k)]||0;
+
+function eleitos(){
+  if(S.el==='2022-dep')return Q.eleitos.filter(e=>e.ano===2022&&e.c==='dep');
+  if(S.el==='sen')return Q.eleitos.filter(e=>e.c==='sen'&&(e.ano===2022||e.ano===2018));
+  if(S.el==='2026-dep')return Q.eleitos.filter(e=>e.ano===2026&&e.c==='dep');
+  return Q.eleitos.filter(e=>e.ano===2026&&e.c==='sen');
+}
+async function init(){
+  Q=await fetch('data/quem.json').then(r=>r.json());
+  Q.eleitos.forEach((e,i)=>e.k='e'+i);
+  document.addEventListener('click',ev=>{
+    const b=ev.target.closest('[data-el]');if(b){S.el=b.dataset.el;S.sel=null;document.querySelectorAll('[data-el]').forEach(x=>x.setAttribute('aria-pressed',x===b));build();return}
+    const n=ev.target.closest('[data-node]');if(n){select(n.dataset.node);return}
+    if(ev.target.closest('[data-back]')){select(null)}
+  });
+  $('#cPart').addEventListener('change',e=>{S.part=e.target.checked;build()});
+  $('#minL').addEventListener('input',e=>{S.minL=+e.target.value;$('#minLv').textContent=S.minL;build()});
+  $('#q').addEventListener('change',e=>{const v=fold(e.target.value);const n=G.nodes.find(n=>fold(n.label)===v)||G.nodes.find(n=>fold(n.label).includes(v));if(n)select(n.id)});
+  build();
+}
+let G={nodes:[],links:[]},sim,tr=d3.zoomIdentity,cv,ctx,W,H,DPR;
+function build(){
+  const E=eleitos();
+  const dn={};
+  for(const e of E)for(const [k,v] of e.d){const d=Q.doadores[k];if(!d)continue;if(d.t==='partido'&&!S.part)continue;(dn[k]=dn[k]||{n:0,v:0,es:[]}).n++;dn[k].v+=v;dn[k].es.push([e,v])}
+  const keep=Object.entries(dn).filter(([k,x])=>x.n>=S.minL);
+  const keepSet=new Set(keep.map(x=>x[0]));
+  const links=[];
+  for(const [k,x] of keep)for(const [e,v] of x.es)links.push({source:k,target:e.k,v});
+  const linked=new Set(links.map(l=>l.target));
+  const nodes=[...keep.map(([k,x])=>({id:k,type:Q.doadores[k].t,label:title(Q.doadores[k].n),v:x.v,n:x.n,r:4+Math.sqrt(x.v)/90})),
+    ...E.filter(e=>linked.has(e.k)||S.minL===1).map(e=>({id:e.k,type:'el',label:title(e.u),e,v:R(e,'total'),r:2.6+Math.sqrt(R(e,'total'))/700}))];
+  G={nodes,links,E,dn};
+  $('#dl').innerHTML=nodes.slice(0,2500).map(n=>`<option value="${esc(n.label)}">`).join('');
+  draw0();side();
+}
+function draw0(){
+  const st=$('#stage');cv=$('#cv');DPR=devicePixelRatio||1;W=st.clientWidth;H=st.clientHeight;cv.width=W*DPR;cv.height=H*DPR;ctx=cv.getContext('2d');
+  sim&&sim.stop();
+  const idx=new Map(G.nodes.map(n=>[n.id,n]));
+  G.links.forEach(l=>{l.s=idx.get(l.source);l.t=idx.get(l.target)});
+  sim=d3.forceSimulation(G.nodes)
+    .force('link',d3.forceLink(G.links.map(l=>({source:l.source,target:l.target,v:l.v}))).id(d=>d.id).distance(l=>20+12/Math.max(1,Math.sqrt(l.v/50000))).strength(.5))
+    .force('charge',d3.forceManyBody().strength(d=>d.type==='el'?-14:-60-d.n*4))
+    .force('x',d3.forceX(W/2).strength(.08)).force('y',d3.forceY(H/2+30).strength(.1))
+    .force('col',d3.forceCollide(d=>d.r+1))
+    .alphaDecay(.03).on('tick',draw).on('end',fit);
+  setTimeout(fit,1800);
+  const z=d3.zoom().scaleExtent([.2,8]).on('zoom',ev=>{tr=ev.transform;draw()});
+  d3.select(cv).call(z).on('click',ev=>{const n=pick(ev);select(n?n.id:null)}).on('mousemove',ev=>{const n=pick(ev);const t=$('#tip');if(!n){t.style.display='none';return}
+    t.style.display='block';t.style.left=(ev.offsetX+12)+'px';t.style.top=(ev.offsetY+12)+'px';
+    t.innerHTML=n.type==='el'?`<b>${esc(n.label)}</b> ${esc(n.e.p)}-${n.e.uf}<br>Recebeu ${brl(n.v)}`:`<b>${esc(n.label)}</b><br>${TIPO[n.type]} · ${n.n} eleito(s) · ${brl(n.v)}`});
+  ZM=z;tr=d3.zoomIdentity;d3.select(cv).call(z.transform,d3.zoomIdentity);
+}
+let ZM;
+function fit(){if(!G.nodes.length||!ZM)return;const xs=G.nodes.map(n=>n.x),ys=G.nodes.map(n=>n.y);const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const top=innerWidth<860?120:150,pad=30;const k=Math.min(4,Math.max(.2,Math.min((W-2*pad)/(x1-x0||1),(H-top-60)/(y1-y0||1))));
+  const t=d3.zoomIdentity.translate(W/2-k*(x0+x1)/2,top+(H-top-60)/2-k*(y0+y1)/2).scale(k);d3.select(cv).transition().duration(600).call(ZM.transform,t)}
+function pick(ev){const [x,y]=tr.invert([ev.offsetX,ev.offsetY]);let best=null,bd=1e9;for(const n of G.nodes){const d=Math.hypot(n.x-x,n.y-y);if(d<n.r+4/tr.k&&d<bd){bd=d;best=n}}return best}
+function nbrs(id){const s=new Set([id]);for(const l of G.links){if(l.source===id||l.source.id===id)s.add(l.t.id);if(l.t.id===id)s.add(l.s.id)}return s}
+let NB=null;
+function draw(){
+  if(!ctx)return;ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(tr.x,tr.y);ctx.scale(tr.k,tr.k);
+  for(const l of G.links){const on=!NB||(NB.has(l.s.id)&&NB.has(l.t.id));ctx.strokeStyle=on&&NB?'rgba(255,93,115,.75)':on?'rgba(160,156,180,.18)':'rgba(160,156,180,.04)';ctx.lineWidth=(NB&&on?1.4:.6)/Math.sqrt(tr.k);
+    ctx.beginPath();ctx.moveTo(l.s.x,l.s.y);ctx.lineTo(l.t.x,l.t.y);ctx.stroke()}
+  for(const n of G.nodes){const on=!NB||NB.has(n.id);ctx.globalAlpha=on?1:.15;
+    if(n.type==='el'){ctx.fillStyle=n.id===S.sel?'#ff5d73':'#e9e7f2';ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,7);ctx.fill()}
+    else{ctx.fillStyle=n.id===S.sel?'#ff5d73':COL[n.type];const r=n.r;ctx.fillRect(n.x-r,n.y-r,2*r,2*r)}}
+  ctx.globalAlpha=1;ctx.fillStyle='#ecebf1';ctx.font=`${11/tr.k}px "IBM Plex Sans", system-ui, sans-serif`;ctx.textAlign='center';
+  for(const n of G.nodes){if((n.type!=='el'&&(n.n>=3||tr.k>1.6))||(NB&&NB.has(n.id)&&(tr.k>1||n.type!=='el'))||n.id===S.sel){ctx.fillText(n.label.length>28?n.label.slice(0,27)+'…':n.label,n.x,n.y-n.r-3/tr.k)}}
+  ctx.restore();
+}
+function select(id){S.sel=id;NB=id?nbrs(id):null;draw();side()}
+addEventListener('resize',()=>{clearTimeout(window._rz);window._rz=setTimeout(draw0,200)});
+
+function stack(rows){const t=rows.reduce((s,r)=>s+r[1],0)||1;return `<div class="stack">${rows.map(r=>`<i title="${esc(r[0])}: ${brl(r[1])}" style="width:${r[1]/t*100}%;background:${r[2]}"></i>`).join('')}</div><div class="lg">${rows.filter(r=>r[1]>0).map(r=>`<span style="--c:${r[2]}">${esc(r[0])} ${Math.round(r[1]/t*100)}%</span>`).join('')}</div>`}
+function side(){
+  const sd=$('#side');const n=G.nodes.find(x=>x.id===S.sel);
+  if(!n)return sd.innerHTML=geral();
+  sd.innerHTML=n.type==='el'?fichaEleito(n.e):fichaDoador(n);
+  if(n.type!=='el'&&S.el==='2022-dep')votosGrupo(n);
+}
+function geral(){
+  const E=G.E;const tot=k=>E.reduce((s,e)=>s+R(e,k),0);
+  const total=tot('total');
+  const byP={};for(const e of E){const p=e.p;(byP[p]=byP[p]||{n:0,t:0,pub:0});byP[p].n++;byP[p].t+=R(e,'total');byP[p].pub+=pub(e)}
+  const parts=Object.entries(byP).sort((a,b)=>b[1].t-a[1].t);
+  const topPF=Object.entries(G.dn).filter(([k])=>['pf','pj'].includes(Q.doadores[k].t)).sort((a,b)=>b[1].n-a[1].n||b[1].v-a[1].v).slice(0,12);
+  return `<div class="eyebrow">${E.length} eleitos</div><h2>De onde veio o dinheiro</h2>
+   <p class="sub">Receitas declaradas ao TSE pelas campanhas dos eleitos. Clique num ponto da rede para ver quem doou para quem.</p>
+   <div class="kpis"><div class="kpi"><span>Total arrecadado</span><b class="num">${brl(total)}</b></div><div class="kpi"><span>Média por eleito</span><b class="num">${brl(total/(E.length||1))}</b></div></div>
+   <h3>Quem repassou</h3>${stack(ORIG.map(([k,l,c])=>[l,tot(k),c]))}
+   <h3>De qual fonte</h3>${stack([['Fundo eleitoral (FEFC)',tot('fefc'),'#6f6c83'],['Fundo partidário',tot('fundo'),'#a7a4bb'],['Outros recursos',Math.max(0,total-tot('fefc')-tot('fundo')),'#3a3846']])}
+   <h3>Doadores privados com mais eleitos</h3>
+   ${topPF.map(([k,x])=>`<button class="it" data-node="${k}"><span><b>${esc(title(Q.doadores[k].n))}</b><small><span class="tag" style="background:${COL[Q.doadores[k].t]}">${TIPO[Q.doadores[k].t]}</span>${x.n} eleitos</small></span><span class="v">${brl(x.v)}</span></button>`).join('')||'<p class="sub">Nenhum com esses filtros.</p>'}
+   <h3>Por partido · parcela de fundo público (FEFC + fundo partidário)</h3>
+   ${parts.map(([p,x])=>`<div class="it" style="cursor:default"><span><b>${esc(p)}</b><small>${x.n} eleitos · ${brl(x.t)}</small></span><span class="v">${Math.round(x.pub/(x.t||1)*100)}%</span></div>`).join('')}
+   ${nota()}`;
+}
+function nota(){return `<p class="note">Fonte: <a href="https://divulgacandcontas.tse.jus.br" target="_blank" rel="noopener">DivulgaCandContas (TSE)</a>, última prestação de contas de cada eleito (consulta de 13/11/2026; as contas de 2026 ainda podem ser retificadas). O TSE lista os <b>5 maiores doadores</b> de cada campanha; a rede usa esses cinco. Pessoas físicas aparecem pelo nome só quando doaram R$ 50 mil ou mais a uma campanha; as demais entram como "doações menores". Desde 2015 empresas não podem doar a campanhas: o que aparece como empresa/entidade são, em geral, comitês, diretórios ou outras campanhas. Uma doação não prova influência sobre votos; a comparação de votações mostra coincidências, não causa.</p>`}
+function fichaEleito(e){
+  const ds=e.d.map(([k,v])=>{const d=Q.doadores[k];return d?{k,n:title(d.n),t:d.t,v}:{n:TIPO[k]||k,t:k,v}});
+  const cargo=e.c==='dep'?'Deputado(a) federal':'Senador(a)';
+  return `<button class="back" data-back>← Visão geral</button><div class="eyebrow">${cargo} · eleição ${e.ano}</div><h2>${esc(title(e.u))}</h2>
+   <p class="sub">${esc(e.p)}-${e.uf} · ${esc(e.el)}${e.re?' · reeleição':''}</p>
+   <div class="kpis"><div class="kpi"><span>Arrecadou</span><b class="num">${brl(R(e,'total'))}</b></div><div class="kpi"><span>Gastou (contratado)</span><b class="num">${brl(e.g)}</b></div>
+   <div class="kpi"><span>Fundo público</span><b class="num">${Math.round(pub(e)/(R(e,'total')||1)*100)}%</b></div><div class="kpi"><span>Bens declarados</span><b class="num">${e.b!=null?brl(e.b):'—'}</b></div></div>
+   <h3>Quem repassou</h3>${stack(ORIG.map(([k,l,c])=>[l,R(e,k),c]))}
+   <h3>De qual fonte</h3>${stack(FONTE(e))}
+   <h3>Cinco maiores doadores</h3>
+   ${ds.map(d=>`<${d.k?'button':'div'} class="it" ${d.k?`data-node="${d.k}"`:'style="cursor:default"'}><span><b>${esc(d.n)}</b><small><span class="tag" style="background:${COL[d.t]||'#666'}">${TIPO[d.t]||''}</span></small></span><span class="v">${brl(d.v)}</span></${d.k?'button':'div'}>`).join('')}
+   <h3>Links</h3><p class="sub"><a href="${tseLink(e)}" target="_blank" rel="noopener">Prestação de contas no TSE</a>${e.cid?` · <a href="../disse-e-votou/?dep=${e.cid}">Disse e Votou</a> · <a href="https://www.camara.leg.br/deputados/${e.cid}" target="_blank" rel="noopener">perfil na Câmara</a>`:''}</p>
+   ${nota()}`;
+}
+function fichaDoador(n){
+  const x=G.dn[n.id];const d=Q.doadores[n.id];
+  const es=[...x.es].sort((a,b)=>b[1]-a[1]);
+  const part={};es.forEach(([e,v])=>part[e.p]=(part[e.p]||0)+1);
+  return `<button class="back" data-back>← Visão geral</button><div class="eyebrow">${TIPO[d.t]}</div><h2>${esc(title(d.n))}</h2>
+   <p class="sub">Doou a ${x.n} eleito(s) nesta eleição · ${Object.entries(part).sort((a,b)=>b[1]-a[1]).map(([p,c])=>esc(p)+' '+c).join(' · ')}</p>
+   <div class="kpis"><div class="kpi"><span>Total para esses eleitos</span><b class="num">${brl(x.v)}</b></div><div class="kpi"><span>Eleitos</span><b class="num">${x.n}</b></div></div>
+   <h3>Para quem</h3>${es.map(([e,v])=>`<button class="it" data-node="${e.k}"><span><b>${esc(title(e.u))}</b><small>${esc(e.p)}-${e.uf}</small></span><span class="v">${brl(v)}</span></button>`).join('')}
+   <div id="vg"></div>${nota()}`;
+}
+async function votosGrupo(n){
+  const x=G.dn[n.id];const ids=x.es.map(([e])=>e.cid).filter(Boolean);
+  const box=$('#vg');if(!box||ids.length<2)return;
+  box.innerHTML='<h3>Como esse grupo votou</h3><p class="sub">Carregando votações…</p>';
+  if(!V)V=await fetch('../disse-e-votou/data/votos.json').then(r=>r.json());
+  const ix=new Map(V.deps.map((d,i)=>[d.id,i]));const gi=ids.map(i=>ix.get(i)).filter(i=>i!=null);
+  const rows=[];let gov=0,govN=0,pg=0,pgN=0;
+  for(const v of V.vot){
+    if(!(v.k==='Mérito'||v.k==='Destaque/emenda'))continue;
+    let s=0,nn=0;for(const i of gi){const c=v.v[i];if(c==='S')s++;else if(c==='N')nn++}
+    let S2=0,N2=0;for(const c of v.v){if(c==='S')S2++;else if(c==='N')N2++}
+    if(s+nn<2||S2+N2<50)continue;
+    const g=s/(s+nn),p=S2/(S2+N2);rows.push({v,g,p,diff:Math.abs(g-p),n:s+nn});
+    const go=v.o?.Governo;if(go==='S'||go==='N'){govN+=s+nn;gov+=go==='S'?s:nn;pgN+=S2+N2;pg+=go==='S'?S2:N2}
+  }
+  rows.sort((a,b)=>b.diff-a.diff);
+  const P=V.props;
+  box.innerHTML=`<h3>Como esse grupo votou (Câmara, 2023–2026)</h3>
+   <p class="sub">${gi.length} deputados desse grupo ainda na Câmara. Em votações de mérito e destaques, seguiram a orientação do Governo em <b>${govN?Math.round(gov/govN*100):'—'}%</b> dos votos, contra <b>${pgN?Math.round(pg/pgN*100):'—'}%</b> do plenário inteiro.</p>
+   <p class="sub">Votações em que o grupo mais se distanciou do plenário:</p>
+   ${rows.slice(0,8).map(r=>{const p=P[r.v.p];return `<div class="vrow"><b>${p?esc(p.s+' '+p.n+'/'+p.a):''}</b> ${esc((p?p.e:r.v.d).slice(0,140))}${(p?p.e:r.v.d).length>140?'…':''}<div style="color:var(--muted);font-size:11.5px">${r.v.dt.split('-').reverse().join('/')} · ${esc(r.v.k)}</div>
+     <div class="b"><span>Grupo</span><i><u style="width:${r.g*100}%"></u></i><span class="num">${Math.round(r.g*100)}%</span></div>
+     <div class="b"><span>Plenário</span><i><u style="width:${r.p*100}%;background:#8d8aa0"></u></i><span class="num">${Math.round(r.p*100)}%</span></div></div>`}).join('')}
+   <p class="note" style="margin-top:8px">% = parcela de votos "Sim" entre quem votou Sim ou Não.</p>`;
+}
+init().catch(e=>{$('#side').innerHTML='Erro ao carregar: '+esc(e.message)});
+</script>
+</body>
+</html>

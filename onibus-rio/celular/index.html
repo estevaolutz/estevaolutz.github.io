@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ônibus do Rio — celular</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Mapa interativo de todas as linhas de ônibus, BRT, executivos, metrô, trem, VLT e barcas do Rio de Janeiro, com trajetos, pontos e estações.">
+<meta name="theme-color" content="#0b0d12">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lib/maplibre-gl.css">
+<style>
+:root{
+  --bg:#0b0d12; --panel:rgba(16,19,26,.94); --line:#262b36; --txt:#e9ecf1; --mut:#8d95a5;
+  --acc:#ffcc33; --r:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:14px/1.4 "IBM Plex Sans",system-ui,sans-serif;overflow:hidden}
+#map{position:absolute;inset:0}
+button{font:inherit;color:inherit;cursor:pointer}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+/* painel */
+#painel{position:absolute;top:12px;left:12px;width:370px;max-height:calc(100% - 24px);display:flex;flex-direction:column;
+  background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:0 10px 40px rgba(0,0,0,.45);z-index:5;overflow:hidden}
+#topo{padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+#topo h1{margin:0;font-family:Archivo,sans-serif;font-stretch:118%;font-weight:900;font-size:22px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+#topo h1 a{color:var(--mut);text-decoration:none;font-size:14px;font-weight:600;font-stretch:100%}
+#topo .sub{color:var(--mut);font-size:12.5px;margin:2px 0 10px}
+#busca{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0e1117;color:var(--txt);font:inherit;font-size:15px;outline:none}
+#busca:focus{border-color:var(--acc)}
+#filtros{display:block}
+.chip{border:1px solid var(--line);background:#141821;border-radius:99px;padding:4px 10px;font-size:12.5px;color:var(--mut)}
+.chip.on{background:var(--txt);color:#111;border-color:var(--txt);font-weight:600}
+.bol{display:inline-block;width:8px;height:8px;border-radius:50%}
+.chip .bol{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px;opacity:.35}
+.chip.on .bol{opacity:1}
+#corpo{overflow:auto;flex:1;min-height:0;overscroll-behavior:contain}
+#rodape{padding:8px 14px;border-top:1px solid var(--line);color:var(--mut);font-size:11.5px}
+#rodape a{color:var(--mut)}
+
+/* lista de linhas */
+.lin{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer}
+.lin:hover{background:rgba(255,255,255,.04)}
+.num{flex:none;min-width:54px;text-align:center;padding:4px 6px;border-radius:7px;font-family:Archivo,sans-serif;font-weight:800;font-stretch:90%;font-size:15px;color:#0b0d12}
+.lin .nome{flex:1;min-width:0}
+.lin .nome b{font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lin .nome small{color:var(--mut);font-size:11.5px}
+.vazio{padding:20px 14px;color:var(--mut)}
+.secao{padding:10px 14px 4px;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+
+/* detalhe */
+.det{padding:14px}
+.voltar{background:none;border:0;color:var(--mut);padding:0;margin-bottom:10px;font-size:13px}
+.cab{display:flex;gap:12px;align-items:flex-start}
+.cab .num{font-size:22px;padding:6px 10px;min-width:70px}
+.cab h2{margin:0;font-family:Archivo,sans-serif;font-weight:700;font-size:18px;line-height:1.2}
+.cab .meta{color:var(--mut);font-size:12.5px;margin-top:3px}
+.fatos{display:flex;gap:8px;margin:12px 0 10px;flex-wrap:wrap}
+.fato{background:#141821;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12px;color:var(--mut)}
+.fato b{display:block;color:var(--txt);font-size:15px;font-weight:600}
+.sentidos{display:flex;gap:6px;margin:4px 0 6px}
+.sentidos button{flex:1;border:1px solid var(--line);background:#141821;border-radius:10px;padding:8px;font-size:12.5px;text-align:left;color:var(--mut)}
+.sentidos button.on{border-color:var(--acc);color:var(--txt);background:#1c1a10}
+.sentidos button span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;opacity:.8}
+.acoes{display:flex;gap:6px;margin:8px 0 2px}
+.acoes button{border:1px solid var(--line);background:#141821;border-radius:9px;padding:6px 10px;font-size:12.5px}
+
+/* sequência de pontos */
+ol.seq{list-style:none;margin:6px 0 0;padding:0 0 0 2px;position:relative}
+ol.seq li{position:relative;padding:6px 6px 6px 26px;cursor:pointer;border-radius:8px}
+ol.seq li:hover{background:rgba(255,255,255,.05)}
+ol.seq li::before{content:"";position:absolute;left:9px;top:0;bottom:0;width:3px;background:var(--cor,#888);opacity:.7}
+ol.seq li:first-child::before{top:50%}
+ol.seq li:last-child::before{bottom:50%}
+ol.seq li::after{content:"";position:absolute;left:5px;top:50%;width:11px;height:11px;margin-top:-6px;border-radius:50%;background:#0b0d12;border:2px solid var(--cor,#888)}
+ol.seq li.ponta::after{background:var(--cor,#888)}
+ol.seq li small{display:block;color:var(--mut);font-size:11px}
+ol.seq li.ativo{background:rgba(255,204,51,.12)}
+
+/* ponto */
+.pt h2{margin:0 0 2px;font-family:Archivo,sans-serif;font-size:18px}
+.grade{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.grade .num{cursor:pointer;min-width:52px;font-size:14px}
+.grade .num:hover{outline:2px solid #fff}
+
+/* filtros */
+.fbarra{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:9px}
+.fb{display:flex;align-items:center;gap:6px;min-width:0;border:1px solid var(--line);background:#141821;border-radius:10px;padding:6px 8px;text-align:left;color:var(--mut)}
+.fb svg{flex:none;opacity:.8}
+.fb span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--txt);font-size:13px;font-weight:500;line-height:1.15}
+.fb span small{display:block;color:var(--mut);font-size:9.5px;font-weight:400;text-transform:uppercase;letter-spacing:.02em}
+.fb i{font-style:normal;font-size:10px;opacity:.6;transition:transform .2s}
+.fb.on{border-color:rgba(255,204,51,.6);background:#1c1a10}
+.fb.on svg{color:var(--acc)}
+.fb.aberta{border-color:var(--acc)}
+.fb.aberta i{transform:rotate(180deg)}
+.pilulas{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;align-items:center}
+.pil{border:0;background:var(--acc);color:#111;border-radius:99px;padding:3px 10px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.pil .bol{margin:0;opacity:1}
+.limpar,.lk{border:0;background:none;color:var(--acc);font-size:12.5px;padding:3px 4px;text-decoration:underline;text-underline-offset:2px}
+.aba{padding:12px 14px 6px}
+.aba-topo{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.aba-topo h3{margin:0;font-family:Archivo,sans-serif;font-size:17px}
+.atalhos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.atalhos button{border:1px solid var(--line);background:#141821;border-radius:99px;padding:4px 10px;font-size:12px;color:var(--mut)}
+.expl{color:var(--mut);font-size:12px;margin:2px 0 8px;line-height:1.4}
+.grupo{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin:12px 0 4px}
+.opc{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer}
+.opc input{width:18px;height:18px;accent-color:#ffcc33;flex:none;margin:0}
+.opc span{flex:1;font-size:14px}
+.opc span small{display:block;color:var(--mut);font-size:11.5px}
+.opc em{font-style:normal;color:var(--mut);font-family:"IBM Plex Mono",monospace;font-size:12px}
+.opc.zero{opacity:.5}
+.bol.g{width:12px;height:12px;margin:0;opacity:1;flex:none;border-radius:50%;display:inline-block}
+.bbusca{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:#0e1117;color:var(--txt);font:inherit;font-size:14.5px;outline:none;margin-bottom:4px}
+.bbusca:focus{border-color:var(--acc)}
+.zona{display:flex;justify-content:space-between;align-items:baseline;width:100%;border:0;border-bottom:1px solid var(--line);background:none;padding:12px 2px 6px;margin-top:4px;text-align:left}
+.zona b{font-family:Archivo,sans-serif;font-size:14.5px}
+.zona span{color:var(--mut);font-size:11.5px}
+.zona.on b{color:var(--acc)}
+.bgrade{display:flex;flex-wrap:wrap;gap:5px;padding:7px 0 4px}
+.bai{border:1px solid var(--line);background:#141821;border-radius:8px;padding:5px 8px;font-size:12.5px;display:inline-flex;gap:6px;align-items:baseline}
+.bai em{font-style:normal;color:var(--mut);font-size:10.5px;font-family:"IBM Plex Mono",monospace}
+.bai.on{background:var(--acc);color:#111;border-color:var(--acc)}
+.bai.on em{color:#333}
+.bai.zero{opacity:.45}
+.aba-rodape{position:sticky;bottom:0;padding:10px 14px;background:linear-gradient(transparent,var(--panel) 30%)}
+.ver{width:100%;border:0;background:var(--acc);color:#111;font-weight:700;border-radius:11px;padding:11px;font-size:14px}
+.cabLista{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 2px;color:var(--mut);font-size:12px}
+.vistas{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.vistas button{border:0;background:#141821;color:var(--mut);padding:3px 9px;font-size:13px}
+.vistas button.on{background:var(--txt);color:#111}
+.gcab{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:9px 14px 6px;background:var(--panel);backdrop-filter:blur(8px);font-family:Archivo,sans-serif;font-weight:700;font-size:13.5px;border-bottom:1px solid var(--line)}
+.gcab .bol{margin:0;opacity:1}
+.gcab em{font-style:normal;color:var(--mut);font-weight:500;font-size:12px;font-family:"IBM Plex Mono",monospace}
+.lgrade{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px}
+.lgrade .num{min-width:50px;font-size:13.5px;cursor:pointer}
+.lgrade .num:hover{outline:2px solid #fff}
+.bseq{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:6px}
+.bseq button{border:1px solid var(--line);background:#141821;border-radius:7px;padding:3px 8px;font-size:12px}
+.bseq span{color:var(--mut);font-size:11px}
+
+/* caixa de caminho */
+.linhaBusca{display:flex;gap:6px}
+.linhaBusca #busca{flex:1;min-width:0}
+#bRota{flex:none;display:flex;align-items:center;gap:6px;border:1px solid var(--acc);background:#1c1a10;color:var(--acc);border-radius:10px;padding:0 11px;font-weight:600;font-size:13px}
+#painel.modo-rota .linhaBusca{display:none}
+.rota h2.rt{margin:0 0 10px;font-family:Archivo,sans-serif;font-size:19px}
+.campos{position:relative;display:flex;flex-direction:column;gap:8px}
+.campo{display:flex;align-items:center;gap:6px}
+.campo .pin{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:800 12px Archivo,sans-serif;color:#fff}
+.campo input{flex:1;min-width:0;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:#0e1117;color:var(--txt);font:inherit;font-size:14.5px;outline:none}
+.campo input:focus{border-color:var(--acc)}
+.campo button{flex:none;width:34px;height:36px;border-radius:9px;border:1px solid var(--line);background:#141821;font-size:16px}
+.campo button.on{border-color:var(--acc);color:var(--acc)}
+.trocar{position:absolute;left:-2px;top:31px;width:28px;height:22px;border:0;background:none;color:var(--mut);font-size:15px;z-index:1}
+#rSug{margin-top:6px}
+.sug{display:block;width:100%;text-align:left;background:#141821;border:1px solid var(--line);border-radius:9px;padding:7px 10px;margin-top:5px}
+.sug b{display:block;font-weight:500}
+.sug small{color:var(--mut);font-size:11.5px}
+.sug-carregando{color:var(--mut);font-size:12px;padding:6px 2px}
+.aviso{color:var(--mut);font-size:13px;padding:12px 2px;line-height:1.5}
+.op{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;cursor:pointer;background:#11141b}
+.op.on{border-color:var(--acc);cursor:default}
+.op-topo{display:flex;align-items:baseline;gap:10px}
+.op-topo b{font-family:Archivo,sans-serif;font-size:20px;font-weight:800}
+.op-topo span{color:var(--mut);font-size:12.5px}
+.op-seq{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:7px 0 5px}
+.op-seq .num{min-width:0;font-size:13px;padding:3px 7px}
+.op-seq .pe{color:var(--mut);font-size:12.5px;display:inline-flex;align-items:center;gap:2px}
+.op-seq .seta{color:var(--mut);opacity:.6}
+.op-meta{color:var(--mut);font-size:12px}
+ol.passos{list-style:none;margin:12px 0 4px;padding:0}
+ol.passos li{display:flex;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.05);font-size:13.5px;line-height:1.45}
+ol.passos li .ic{flex:none;width:52px;display:flex;justify-content:center;align-items:flex-start;color:var(--mut)}
+ol.passos li .ic .num{min-width:0;font-size:13px;padding:3px 7px}
+ol.passos li small{display:block;color:var(--mut);font-size:11.5px;margin:2px 0}
+ol.passos li.pr{border-left:3px solid var(--cor);padding-left:0;margin-left:0}
+.nota{color:var(--mut);font-size:11px;margin:12px 2px 4px;line-height:1.45}
+#dicaMapa{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:8;background:var(--acc);color:#111;font-weight:600;font-size:13px;padding:8px 14px;border-radius:99px;box-shadow:0 6px 20px rgba(0,0,0,.4);display:none;pointer-events:none;white-space:nowrap}
+@media (min-width:701px){ #dicaMapa{left:calc(50% + 190px)} }
+.pino-rota{width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);margin-bottom:6px;display:grid;place-items:center;color:#fff;font:800 13px Archivo,sans-serif;border:2px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.5);cursor:grab}
+.pino-rota span{display:inline-block;transform:rotate(45deg)}
+@media (max-width:700px){ #bRota span{display:none} }
+
+/* botões do mapa */
+#ctl{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:4}
+#ctl button{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-size:18px;display:grid;place-items:center}
+#ctl button.on{border-color:var(--acc);color:var(--acc)}
+#menuFundo{position:absolute;right:62px;top:110px;z-index:7;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;display:none;min-width:150px;box-shadow:0 8px 30px rgba(0,0,0,.5);color:var(--txt)}
+#menuFundo.aberto{display:block}
+#menuFundo button{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:8px 8px;border-radius:8px;text-align:left}
+#menuFundo button:hover{background:rgba(255,255,255,.06)}
+#menuFundo button.on{outline:1.5px solid var(--acc)}
+#menuFundo i{width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.25);flex:none}
+#escolha{position:absolute;z-index:6;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;max-width:300px;max-height:260px;overflow:auto;display:none;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#escolha .lin{padding:5px 8px;border:0}
+#escolha .lin .num{min-width:46px;font-size:13px}
+#carregando{position:absolute;inset:0;display:grid;place-items:center;z-index:9;background:var(--bg);font-family:Archivo,sans-serif;font-size:18px;color:var(--mut);transition:opacity .4s}
+.maplibregl-ctrl-attrib{font-size:10px}
+.alca{display:none}
+
+
+/* ===================== versão para celular ===================== */
+:root{--abas:58px;--seg-t:env(safe-area-inset-top);--seg-b:env(safe-area-inset-bottom);--seg-l:env(safe-area-inset-left);--seg-r:env(safe-area-inset-right)}
+html,body{height:100%;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+body{position:fixed;inset:0}
+/* barra de busca no topo */
+#barra{position:fixed;z-index:6;top:calc(8px + var(--seg-t));left:calc(8px + var(--seg-l));right:calc(8px + var(--seg-r));display:flex;gap:8px;align-items:center}
+#barra .ic{flex:none;width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line);color:var(--txt);text-decoration:none;font-size:18px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.campoBusca{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:44px;padding:0 6px 0 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.campoBusca:focus-within{border-color:var(--acc)}
+.campoBusca svg{flex:none;color:var(--mut)}
+#busca{flex:1;min-width:0;border:0;background:none;padding:0;font-size:16px;height:100%}
+#limpaBusca{flex:none;width:32px;height:32px;border:0;border-radius:50%;background:#262b36;color:var(--txt);display:none;font-size:13px}
+.campoBusca.tem #limpaBusca{display:block}
+#barra #bPainel{display:none}
+/* gaveta */
+#painel{position:fixed;top:auto;left:0;right:0;bottom:calc(var(--abas) + var(--seg-b));width:auto;max-height:none;height:var(--h,150px);
+  border-radius:20px 20px 0 0;border-bottom:0;display:flex;flex-direction:column;overflow:hidden;z-index:5;
+  transition:height .28s cubic-bezier(.2,.8,.2,1);box-shadow:0 -8px 30px rgba(0,0,0,.4)}
+#painel.arrastando{transition:none}
+#cabSheet{flex:none;padding:0 12px 8px;touch-action:none;cursor:grab;border-bottom:1px solid var(--line)}
+.alca{display:block;width:100%;height:22px;border:0;background:none;padding:0;position:relative}
+.alca::after{content:"";position:absolute;left:50%;top:8px;width:44px;height:5px;margin-left:-22px;border-radius:9px;background:#454d5e}
+#resumo{color:var(--mut);font-size:11.5px;margin:-2px 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fbarra{margin-top:4px;gap:6px}
+.fb{padding:6px 8px;gap:5px}
+.fb svg{display:none}
+#painel.detalhe #filtros,#painel.detalhe #resumo{display:none}
+#painel.detalhe #cabSheet{padding-bottom:0;border-bottom:0}
+#corpo{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:8px}
+#painel[data-snap="baixo"] #corpo{overflow:hidden}
+.lin{padding:9px 14px;min-height:48px}
+.det{padding:10px 14px 14px}
+.voltar{font-size:14px;padding:6px 0;margin-bottom:6px}
+.acoes button,.atalhos button,.bseq button,.bai{min-height:34px}
+.opc{min-height:48px}
+.aba-rodape{padding:8px 0 4px}
+/* abas embaixo */
+#abas{position:fixed;z-index:7;left:0;right:0;bottom:0;height:calc(var(--abas) + var(--seg-b));padding:0 var(--seg-r) var(--seg-b) var(--seg-l);
+  display:grid;grid-template-columns:repeat(4,1fr);background:#0d1016;border-top:1px solid var(--line)}
+#abas button{border:0;background:none;color:var(--mut);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:500;padding:0;width:auto;height:auto;border-radius:0}
+#abas button svg{width:22px;height:22px}
+#abas button.on{color:var(--acc)}
+#abas button:active{background:rgba(255,255,255,.05)}
+/* controles do mapa */
+#ctl{display:none}
+#bTudo{position:fixed;z-index:4;right:calc(10px + var(--seg-r));bottom:calc(var(--abas) + var(--seg-b) + var(--h,150px) + 40px);width:40px;height:40px;border-radius:12px;
+  border:1px solid var(--line);background:var(--panel);font-size:17px;display:grid;place-items:center;transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
+#painel.arrastando ~ #bTudo{transition:none}
+#menuFundo{position:fixed;top:auto;right:calc(8px + var(--seg-r));bottom:calc(var(--abas) + var(--seg-b) + 8px);min-width:220px;max-width:calc(100% - 16px);z-index:9}
+#menuFundo #rodape{display:block;border-top:1px solid var(--line);margin-top:6px;padding:8px 6px 2px;font-size:11px;line-height:1.45}
+#dicaMapa{top:calc(62px + var(--seg-t));left:50%;max-width:calc(100% - 24px);white-space:normal;text-align:center}
+.maplibregl-ctrl-bottom-right{bottom:calc(var(--abas) + var(--seg-b) + var(--h,150px));transition:bottom .28s}
+.maplibregl-ctrl-bottom-left{display:none}
+body[data-snap="meio"] .maplibregl-ctrl-bottom-right,body[data-snap="cheio"] .maplibregl-ctrl-bottom-right,body[data-snap="cheio"] #bTudo{display:none}
+#corpo{overflow-anchor:none;scroll-padding-bottom:72px}
+
+/* ---------- deitado: painel lateral ---------- */
+@media (orientation:landscape) and (max-height:600px){
+  :root{--lado:min(400px, 46vw)}
+  #barra{right:auto;width:calc(var(--lado) - 8px);top:calc(6px + var(--seg-t))}
+  #barra #bPainel{display:grid}
+  #painel{top:calc(56px + var(--seg-t));bottom:calc(var(--abas) + var(--seg-b));left:0;right:auto;width:var(--lado);height:auto !important;
+    padding-left:var(--seg-l);border-radius:0 16px 16px 0;border-left:0;transition:transform .25s}
+  #painel{display:block;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scroll-padding-bottom:72px}
+  #corpo{overflow:visible !important;flex:none}
+  #cabSheet{cursor:default;touch-action:auto;padding-top:6px}
+  body[data-snap] .maplibregl-ctrl-bottom-right{display:block}
+  body[data-snap] #bTudo{display:grid}
+  .alca{display:none}
+  #painel[data-snap="baixo"] #corpo{overflow-y:auto}
+  #abas{right:auto;width:var(--lado);border-right:1px solid var(--line);border-radius:0 0 14px 0;padding-right:0}
+  #bTudo{bottom:calc(40px + var(--seg-b))}
+  .maplibregl-ctrl-bottom-right{bottom:0}
+  #menuFundo{right:auto;left:calc(var(--lado) + 8px);bottom:calc(8px + var(--seg-b))}
+  #dicaMapa{left:calc(var(--lado) + (100% - var(--lado)) / 2)}
+  /* esconder o painel para ver o mapa inteiro */
+  body.semPainel #painel,body.semPainel #abas{transform:translateX(calc(-100% - 10px))}
+  body.semPainel #barra{width:auto}
+  body.semPainel .campoBusca{display:none}
+  #abas{transition:transform .25s}
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="carregando">carregando a rede de ônibus…</div>
+
+<div id="barra">
+  <a class="ic" href="../../" aria-label="Todos os apps">←</a>
+  <button class="ic" id="bPainel" aria-label="Mostrar ou esconder o painel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10 4v16"/></svg></button>
+  <div class="campoBusca"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <input id="busca" type="search" enterkeyhint="search" placeholder="Linha, bairro, ponto ou estação" autocomplete="off">
+    <button id="limpaBusca" aria-label="Limpar busca">✕</button>
+  </div>
+</div>
+
+<div id="painel" data-snap="baixo">
+  <div id="cabSheet">
+    <button class="alca" id="alca" aria-label="Subir ou descer o painel"></button>
+    <div id="resumo">&nbsp;</div>
+    <div id="filtros"></div>
+  </div>
+  <div id="corpo"></div>
+</div>
+<button id="bTudo" aria-label="Ver a cidade inteira">⤢</button>
+
+<nav id="abas">
+  <button data-tab="linhas" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14M8.5 21l1.5-4M15.5 21 14 17"/><circle cx="8.5" cy="14" r=".6" fill="currentColor"/><circle cx="15.5" cy="14" r=".6" fill="currentColor"/></svg>Linhas</button>
+  <button id="bRota" data-tab="rota"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>Como chegar</button>
+  <button id="bPerto" data-tab="perto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="8"/><path d="M12 1.5V4M12 20v2.5M1.5 12H4M20 12h2.5"/></svg>Perto</button>
+  <button id="bTema" data-tab="mapa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg>Mapa</button>
+</nav>
+<div id="ctl"></div>
+<div id="menuFundo" role="menu">
+  <div class="secao" style="padding:4px 6px 6px">Mapa de fundo</div>
+  <button data-fundo="escuro"><i style="background:#1b1e24"></i>Escuro</button>
+  <button data-fundo="claro"><i style="background:#e8e8e3"></i>Claro</button>
+  <button data-fundo="ruas"><i style="background:linear-gradient(135deg,#f2efe9 50%,#f7d28e 50%)"></i>Ruas</button>
+  <button data-fundo="satelite"><i style="background:linear-gradient(135deg,#2f4a2a,#1f3b52)"></i>Satélite</button>
+  <div id="rodape"></div>
+</div>
+<div id="escolha"></div>
+
+<script src="../lib/maplibre-gl.js"></script>
+<script>
+"use strict";
+// ---------- estado ----------
+const S = {rede:null, tipos:null, linha:null, dir:0, ponto:null, perto:null, tema:"escuro"};
+const $ = s => document.querySelector(s);
+const TIPOS = {metro:"Metrô", trem:"Trem", vlt:"VLT", barca:"Barcas", bus:"Ônibus", brt:"BRT", exec:"Executivos"};
+const NOME_TIPO = {bus:"Ônibus", brt:"BRT", exec:"Executivo", vlt:"VLT", metro:"Metrô", trem:"Trem", barca:"Barca"};
+const TRILHO = t => t === "metro" || t === "trem" || t === "vlt" || t === "barca";
+const PREFIXO = {metro:"Estação ", trem:"Estação ", vlt:"Parada ", barca:"Terminal "};
+S.tipos = new Set(Object.keys(TIPOS));
+S.empresas = new Set();   // vazio = todas
+S.lugar = null;           // {b: índice do bairro} ou {z: "Zona Sul"}
+S.aba = null;             // folha de filtro aberta: "tipo" | "empresa" | "bairro"
+S.vista = (() => { try { return localStorage.getItem("onibusRioVista") || "lista"; } catch(e){ return "lista"; } })();
+const ZONAS = ["Centro", "Zona Sul", "Grande Tijuca", "Zona Norte", "Ilha do Governador", "Barra e Jacarepaguá", "Zona Oeste"];
+const GRUPO_EMPRESA = [["Ônibus", ["Intersul", "Internorte", "Transcarioca", "Santa Cruz", "MOBI-Rio"]],
+                       ["Trilhos e barcas", ["MetrôRio", "SuperVia", "VLT Carioca", "Barcas Rio"]]];
+const ORDEM_TIPO = ["metro", "trem", "vlt", "barca", "brt", "bus", "exec"];
+const NOME_GRUPO = {metro:"Metrô", trem:"Trem", vlt:"VLT", barca:"Barcas", brt:"BRT", bus:"Ônibus", exec:"Executivos"};
+// bairros por onde passa a linha / do lugar escolhido
+function bairrosDoLugar(){
+  if (!S.lugar || !S.bairros) return null;
+  if (S.lugar.b !== undefined) return new Set([S.lugar.b]);
+  return new Set(S.bairros.map((b, i) => b.z === S.lugar.z ? i : -1).filter(i => i >= 0));
+}
+function nomeLugar(){ return !S.lugar ? "" : S.lugar.b !== undefined ? S.bairros[S.lugar.b].n : S.lugar.z; }
+// linha passa nos filtros? (cada filtro pode ser ignorado para contar as opções dele mesmo)
+function passa(l, ignorar){
+  if (ignorar !== "tipo" && !ativo(l.t)) return false;
+  if (ignorar !== "empresa" && S.empresas.size && !S.empresas.has(l.a)) return false;
+  if (ignorar !== "bairro" && S._bset){ let ok = false; for (const b of l._bairros) if (S._bset.has(b)){ ok = true; break; } if (!ok) return false; }
+  return true;
+}
+function filtrosAtivos(){ return S.tipos.size < Object.keys(TIPOS).length || S.empresas.size > 0 || !!S.lugar; }
+const ativo = t => S.tipos.has(t);
+const RIO = [[-43.80, -23.09], [-43.09, -22.74]];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const semAcento = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// cores: usa a cor oficial da linha, clareando as muito escuras para aparecer no mapa
+const PADRAO = {bus:"#9aa3b5", brt:"#ff9900", exec:"#8f7bff", vlt:"#36c6a0", metro:"#e77405", trem:"#0691F6", barca:"#4FC3F7"};
+function corLinha(l){
+  let c = (l.c || PADRAO[l.t] || "#9aa3b5").toUpperCase();
+  const r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
+  const lum = (0.299*r + 0.587*g + 0.114*b)/255;
+  if (lum < 0.33) { // clareia
+    const k = 0.5; c = "#" + [r,g,b].map(v => Math.round(v + (255-v)*k).toString(16).padStart(2,"0")).join("");
+  }
+  return c;
+}
+// versão mais escura da cor, para os fundos claros
+function escurecer(c){
+  const v = [1,3,5].map(i => parseInt(c.slice(i,i+2),16));
+  const lum = (0.299*v[0] + 0.587*v[1] + 0.114*v[2])/255;
+  if (lum < 0.6) return c;
+  return "#" + v.map(x => Math.round(x*0.62).toString(16).padStart(2,"0")).join("");
+}
+function textoSobre(c){
+  const r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
+  return (0.299*r + 0.587*g + 0.114*b)/255 > 0.55 ? "#0b0d12" : "#fff";
+}
+function selo(l, extra=""){
+  const c = l._cor;
+  return `<span class="num ${extra}" style="background:${c};color:${textoSobre(c)}">${esc(l.n)}</span>`;
+}
+
+// polilinha codificada (Google) -> [[lon,lat],...]
+function decodificar(str){
+  const pts = []; let i = 0, lat = 0, lon = 0;
+  while (i < str.length){
+    for (const k of [0,1]){
+      let res = 0, sh = 0, b;
+      do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32);
+      const d = (res & 1) ? ~(res >> 1) : (res >> 1);
+      if (k === 0) lat += d; else lon += d;
+    }
+    pts.push([lon/1e5, lat/1e5]);
+  }
+  return pts;
+}
+
+// ---------- mapa ----------
+// fundo: ruas em vetor do OpenFreeMap (gratuito, sem chave de API) desenhadas aqui mesmo,
+// mais OpenStreetMap (raster) e satélite Esri. Os mosaicos raster da CARTO passaram a exigir chave.
+const PAL = {
+  escuro:{agua:"#0f1b29", verde:"#101a15", predio:"#161b24", servico:"#171b23", menor:"#1d222c", media:"#272d39", maior:"#323a4a", via:"#414b60", trilho:"#2a303c", txt:"#8a93a3", txtForte:"#b6bdc9", halo:"#0b0d12", aguaTxt:"#4d6a8a"},
+  claro: {agua:"#c4d4e4", verde:"#dbe6d3", predio:"#dcdcd5", servico:"#f7f7f5", menor:"#ffffff", media:"#ffffff", maior:"#fdf6e3", via:"#f6deaa", trilho:"#c4c4c4", txt:"#5d6571", txtForte:"#2f3540", halo:"#ffffff", aguaTxt:"#5a7fa6"},
+  sat:   {txt:"#e8ecf2", txtForte:"#ffffff", halo:"#000000"},
+};
+const FONTE = ["Noto Sans Regular"], FONTE_B = ["Noto Sans Bold"], FONTE_I = ["Noto Sans Italic"];
+const CL = (...c) => ["match",["get","class"], c, true, false];
+const larg = (z0, w0, z1, w1) => ["interpolate",["exponential",1.6],["zoom"], z0, w0, z1, w1];
+function camadasBase(p, pal, soRotulos){
+  const v = {visibility: p === "e" ? "visible" : "none"};
+  const L = [];
+  if (!soRotulos){
+    L.push(
+      {id:p+"-verde", type:"fill", source:"omt", "source-layer":"park", paint:{"fill-color":pal.verde}},
+      {id:p+"-verde2", type:"fill", source:"omt", "source-layer":"landcover", filter:CL("wood","grass"), paint:{"fill-color":pal.verde,"fill-opacity":0.7}},
+      {id:p+"-agua", type:"fill", source:"omt", "source-layer":"water", paint:{"fill-color":pal.agua}},
+      {id:p+"-rio", type:"line", source:"omt", "source-layer":"waterway", minzoom:11, paint:{"line-color":pal.agua,"line-width":larg(11,0.5,18,4)}},
+      {id:p+"-predio", type:"fill", source:"omt", "source-layer":"building", minzoom:14.5, paint:{"fill-color":pal.predio,"fill-opacity":["interpolate",["linear"],["zoom"],14.5,0,16,1]}},
+      {id:p+"-servico", type:"line", source:"omt", "source-layer":"transportation", minzoom:14, filter:CL("service","track"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.servico,"line-width":larg(14,0.5,19,7)}},
+      {id:p+"-menor", type:"line", source:"omt", "source-layer":"transportation", minzoom:12, filter:CL("minor"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.menor,"line-width":larg(12,0.4,19,14)}},
+      {id:p+"-media", type:"line", source:"omt", "source-layer":"transportation", minzoom:9, filter:CL("tertiary","secondary"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.media,"line-width":larg(9,0.4,19,18)}},
+      {id:p+"-maior", type:"line", source:"omt", "source-layer":"transportation", minzoom:7, filter:CL("primary","trunk"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.maior,"line-width":larg(7,0.5,19,22)}},
+      {id:p+"-via", type:"line", source:"omt", "source-layer":"transportation", minzoom:5, filter:CL("motorway"), layout:{"line-cap":"round","line-join":"round"}, paint:{"line-color":pal.via,"line-width":larg(5,0.5,19,24)}},
+      {id:p+"-trilho", type:"line", source:"omt", "source-layer":"transportation", minzoom:11, filter:CL("rail","transit"), paint:{"line-color":pal.trilho,"line-width":larg(11,0.6,18,2.5),"line-dasharray":[3,2]}},
+    );
+  }
+  L.push(
+    {id:p+"-agua-txt", type:"symbol", source:"omt", "source-layer":"water_name", minzoom:10,
+      layout:{"text-field":["coalesce",["get","name:pt"],["get","name"]],"text-font":FONTE_I,"text-size":12,"text-max-width":8},
+      paint:{"text-color":pal.aguaTxt || pal.txt,"text-halo-color":pal.halo,"text-halo-width":1.2}},
+    {id:p+"-rua-txt", type:"symbol", source:"omt", "source-layer":"transportation_name", minzoom:13.5,
+      layout:{"symbol-placement":"line","text-field":["get","name"],"text-font":FONTE,"text-size":["interpolate",["linear"],["zoom"],14,10,18,13],"text-max-angle":30,"symbol-spacing":300},
+      paint:{"text-color":pal.txt,"text-halo-color":pal.halo,"text-halo-width":1.4}},
+    {id:p+"-bairro-txt", type:"symbol", source:"omt", "source-layer":"place", minzoom:11, filter:CL("suburb","neighbourhood","quarter"),
+      layout:{"text-field":["get","name"],"text-font":FONTE,"text-size":["interpolate",["linear"],["zoom"],11,10.5,16,14],"text-transform":"uppercase","text-letter-spacing":0.08,"text-max-width":7},
+      paint:{"text-color":pal.txt,"text-halo-color":pal.halo,"text-halo-width":1.4}},
+    {id:p+"-cidade-txt", type:"symbol", source:"omt", "source-layer":"place", maxzoom:13, filter:CL("city","town"),
+      layout:{"text-field":["get","name"],"text-font":FONTE_B,"text-size":["interpolate",["linear"],["zoom"],7,11,12,16],"text-max-width":8},
+      paint:{"text-color":pal.txtForte,"text-halo-color":pal.halo,"text-halo-width":1.6}},
+  );
+  for (const l of L) l.layout = Object.assign({}, l.layout, v);
+  return L;
+}
+const BASE_E = camadasBase("e", PAL.escuro), BASE_C = camadasBase("c", PAL.claro), BASE_S = camadasBase("s", PAL.sat, true);
+const FUNDOS = {
+  escuro:  {nome:"Escuro",  claro:false, camadas:BASE_E.map(l => l.id)},
+  claro:   {nome:"Claro",   claro:true,  camadas:BASE_C.map(l => l.id)},
+  ruas:    {nome:"Ruas",    claro:true,  camadas:["f-ruas"]},
+  satelite:{nome:"Satélite",claro:false, camadas:["f-satelite", ...BASE_S.map(l => l.id)]},
+};
+const OSM_ATR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const ESTILO = {
+  version:8,
+  glyphs:"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+  sources:{
+    omt:{type:"vector", url:"https://tiles.openfreemap.org/planet",
+      attribution:'<a href="https://openfreemap.org">OpenFreeMap</a> ' + OSM_ATR},
+    ruas:{type:"raster", tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize:256, maxzoom:19, attribution:OSM_ATR},
+    satelite:{type:"raster", tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize:256, maxzoom:19,
+      attribution:"Imagens © Esri, Maxar, Earthstar Geographics"},
+  },
+  layers:[
+    {id:"fundo", type:"background", paint:{"background-color":"#0b0d12"}},
+    ...BASE_E, ...BASE_C,
+    {id:"f-ruas", type:"raster", source:"ruas", layout:{visibility:"none"}, paint:{"raster-saturation":-0.3}},
+    {id:"f-satelite", type:"raster", source:"satelite", layout:{visibility:"none"}, paint:{"raster-brightness-max":0.75}},
+    ...BASE_S,
+  ]
+};
+const estiloFalhou = false;
+
+const map = new maplibregl.Map({
+  container:"map", style:ESTILO, bounds:RIO, fitBoundsOptions:{padding:20},
+  attributionControl:{compact:true, customAttribution:"Ônibus: SMTR / data.rio (GTFS) · Metrô, trem, VLT e barcas: © OpenStreetMap"},
+  maxBounds:[[-45.6,-24.3],[-41.4,-21.5]], dragRotate:false, pitchWithRotate:false
+});
+map.touchZoomRotate.disableRotation();
+
+let geoRede = null, geoPontos = null, geoTrilhos = null, geoEstacoes = null, geoBairros = null, geoBairrosRot = null;
+
+function montarCamadas(){
+  if (!geoRede || map.getSource("rede")) return;
+  map.addSource("rede", {type:"geojson", data:geoRede});
+  map.addSource("pontos", {type:"geojson", data:geoPontos});
+  map.addSource("bairros", {type:"geojson", data:geoBairros || vazio()});
+  map.addSource("bairrosRot", {type:"geojson", data:geoBairrosRot || vazio()});
+  map.addLayer({id:"bairros-fill", type:"fill", source:"bairros", paint:{"fill-color":"#ffcc33","fill-opacity":0}});
+  map.addLayer({id:"bairros-linha", type:"line", source:"bairros", layout:{visibility:"none"},
+    paint:{"line-color":"#c9cfdb","line-width":1,"line-opacity":0.35}});
+  map.addLayer({id:"bairro-sel", type:"line", source:"bairros", filter:["==",["get","i"],-1],
+    paint:{"line-color":"#ffcc33","line-width":["interpolate",["linear"],["zoom"],10,1.5,15,3],"line-opacity":0.9}});
+  if (!estiloFalhou) map.addLayer({id:"bairros-rot", type:"symbol", source:"bairrosRot", minzoom:10.5, layout:{visibility:"none",
+      "text-field":["get","nome"],"text-size":11.5,"text-font":FONTE,"text-optional":true},
+    paint:{"text-color":"#e9ecf1","text-halo-color":"#0b0d12","text-halo-width":1.6,"text-opacity":0.85}});
+  map.addSource("trilhos", {type:"geojson", data:geoTrilhos});
+  map.addSource("estacoes", {type:"geojson", data:geoEstacoes});
+  map.addSource("estacoesRot", {type:"geojson", data:geoEstacoes});
+  map.addSource("sel", {type:"geojson", data:vazio()});
+  map.addSource("selPontos", {type:"geojson", data:vazio()});
+  map.addSource("destaque", {type:"geojson", data:vazio()});
+  // rótulos e setas em fontes separadas: se as letras do mapa não carregarem, a linha continua aparecendo
+  map.addSource("selSetas", {type:"geojson", data:vazio()});
+  map.addSource("selRotulos", {type:"geojson", data:vazio()});
+
+  map.addLayer({id:"rede", type:"line", source:"rede",
+    layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["get","cor"], "line-width":["interpolate",["linear"],["zoom"],10,0.8,14,2,17,4],
+           "line-opacity":0.42}});
+  map.addLayer({id:"pontos", type:"circle", source:"pontos", minzoom:13,
+    paint:{"circle-radius":["interpolate",["linear"],["zoom"],13,1.6,16,4.5,18,7],
+           "circle-color":"#ffffff", "circle-opacity":0.75,
+           "circle-stroke-color":"#0b0d12", "circle-stroke-width":["interpolate",["linear"],["zoom"],13,0,16,1.2]}});
+  // metrô e trem: traço grosso com contorno; trem leva tracejado branco de ferrovia
+  map.addLayer({id:"trilhos-casco", type:"line", source:"trilhos", layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":"#0b0d12","line-width":["interpolate",["linear"],["zoom"],9,4,15,10],"line-opacity":0.9}});
+  map.addLayer({id:"barcas", type:"line", source:"trilhos", filter:["==",["get","t"],"barca"], layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],9,2,15,4],"line-dasharray":[1.5,1.5]}});
+  map.addLayer({id:"trilhos", type:"line", source:"trilhos", layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],9,["case",["==",["get","t"],"vlt"],1.6,2.4],15,["case",["==",["get","t"],"vlt"],4.5,6]]}});
+  map.addLayer({id:"trilhos-trem", type:"line", source:"trilhos", filter:["==",["get","t"],"trem"],
+    paint:{"line-color":"#ffffff","line-width":["interpolate",["linear"],["zoom"],9,0.8,15,2],"line-dasharray":[2,3],"line-opacity":0.8}});
+  map.addLayer({id:"estacoes", type:"circle", source:"estacoes",
+    paint:{"circle-radius":["interpolate",["linear"],["zoom"],9,2.6,13,5,16,8],"circle-color":"#ffffff",
+           "circle-stroke-color":"#0b0d12","circle-stroke-width":["interpolate",["linear"],["zoom"],9,1,14,2.5]}});
+  if (!estiloFalhou) map.addLayer({id:"estacoes-rot", type:"symbol", source:"estacoesRot", minzoom:12,
+    layout:{"text-field":["get","nome"],"text-size":12,"text-offset":[0,1.1],"text-anchor":"top","text-optional":true,
+            "text-font":FONTE},
+    paint:{"text-color":"#ffffff","text-halo-color":"#0b0d12","text-halo-width":1.8}});
+  // linha selecionada: sentido oposto discreto, sentido ativo forte com setas
+  map.addLayer({id:"sel-casco", type:"line", source:"sel", filter:["==",["get","ativo"],1],
+    layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":"#000","line-width":["interpolate",["linear"],["zoom"],10,6,15,12],"line-opacity":0.55,"line-blur":2}});
+  map.addLayer({id:"sel-outro", type:"line", source:"sel", filter:["==",["get","ativo"],0],
+    layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],10,1.5,15,3],"line-opacity":0.55,"line-dasharray":[2,2]}});
+  map.addLayer({id:"sel", type:"line", source:"sel", filter:["==",["get","ativo"],1],
+    layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],10,3,15,6.5]}});
+  if (!estiloFalhou) map.addLayer({id:"sel-setas", type:"symbol", source:"selSetas",
+    layout:{"symbol-placement":"line","symbol-spacing":90,"text-field":"›","text-size":["interpolate",["linear"],["zoom"],10,14,15,22],
+            "text-keep-upright":false,"text-allow-overlap":true,"text-font":FONTE_B,"text-offset":[0,-0.08]},
+    paint:{"text-color":"#0b0d12","text-opacity":0.85}});
+  map.addLayer({id:"sel-pontos", type:"circle", source:"selPontos",
+    paint:{"circle-radius":["interpolate",["linear"],["zoom"],10,["case",["==",["get","ponta"],1],5.5,2.2],15,["case",["==",["get","ponta"],1],8,5.5]],
+           "circle-color":["case",["==",["get","ponta"],1],["get","cor"],"#0b0d12"],
+           "circle-stroke-color":["case",["==",["get","ponta"],1],"#fff",["get","cor"]],"circle-stroke-width":2}});
+  if (!estiloFalhou) map.addLayer({id:"sel-rotulos", type:"symbol", source:"selRotulos", minzoom:14,
+    layout:{"text-field":["get","nome"],"text-size":11.5,"text-offset":[0.9,0],"text-anchor":"left","text-optional":true,
+            "text-font":FONTE},
+    paint:{"text-color":"#fff","text-halo-color":"#0b0d12","text-halo-width":1.6}});
+  map.addLayer({id:"destaque", type:"circle", source:"destaque",
+    paint:{"circle-radius":11,"circle-color":"rgba(255,204,51,.25)","circle-stroke-color":"#ffcc33","circle-stroke-width":2.5}});
+  aplicarEstado();
+}
+let estiloPronto = false;
+map.on("style.load", () => { estiloPronto = true; montarCamadas(); aplicarFundo(S.fundo); });
+
+function vazio(){ return {type:"FeatureCollection", features:[]}; }
+
+// ---------- dados ----------
+const json = u => fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+Promise.all([json("../data/rede.json"), json("../data/trilhos.json").catch(() => null), json("../data/bairros.json").catch(() => null)]).then(([rede, tr, ba]) => {
+  // bairro de cada ponto (só se os arquivos estiverem alinhados)
+  const nBus = rede.pontos.length;
+  if (ba && ba.np === nBus && ba.ne === (tr ? tr.estacoes.length : 0)){
+    S.bairros = ba.bairros;
+    rede.pontos.forEach((p, i) => p._b = ba.pontos[i]);
+  }
+  // metrô e trem entram na mesma lista de linhas; as estações entram nos pontos (marcadas com 2)
+  if (tr){
+    const offL = rede.linhas.length, offP = rede.pontos.length;
+    tr.linhas.forEach(l => { l.d.forEach(d => d.s = d.s.map(i => i + offP)); rede.linhas.push(l); });
+    tr.estacoes.forEach((e, k) => { const p = [e[0], e[1], e[2], e[3].map(i => i + offL), 2]; p._b = S.bairros ? ba.estacoes[k] : -1; rede.pontos.push(p); });
+  }
+  S.rede = rede;
+  const feats = [], featsT = [];
+  rede.linhas.forEach((l, li) => {
+    l._cor = corLinha(l);
+    l._busca = semAcento(`${l.n} ${l.l} ${NOME_TIPO[l.t]} ${l.a} ${l.d.map(d => d.h).join(" ")}`);
+    l._coords = l.d.map(d => (Array.isArray(d.p) ? d.p : [d.p]).map(decodificar));
+    l._coords.forEach((co, di) => (TRILHO(l.t) ? featsT : feats).push({type:"Feature", properties:{li, di, cor:l._cor, corEsc:escurecer(l._cor), t:l.t},
+      geometry:{type:"MultiLineString", coordinates:co}}));
+  });
+  geoRede = {type:"FeatureCollection", features:feats};
+  geoTrilhos = {type:"FeatureCollection", features:featsT};
+  const pt = (p, i, extra) => ({type:"Feature", properties:{i, b:p._b ?? -1, ...extra}, geometry:{type:"Point", coordinates:[p[2], p[1]]}});
+  // bairros de cada linha e linhas de cada bairro
+  rede.linhas.forEach(l => { l._bairros = new Set(); l.d.forEach(d => d.s.forEach(i => { const b = rede.pontos[i]._b; if (b >= 0) l._bairros.add(b); })); });
+  if (S.bairros){
+    S.bairros.forEach(b => { b._busca = semAcento(b.n); b._linhas = []; });
+    rede.linhas.forEach((l, li) => l._bairros.forEach(b => S.bairros[b]._linhas.push(li)));
+    geoBairros = {type:"FeatureCollection", features:S.bairros.map((b, i) => ({type:"Feature", properties:{i, z:b.z, nome:b.n},
+      geometry:{type:"MultiPolygon", coordinates:b.p.map(r => [decodificar(r)])}}))};
+    geoBairrosRot = {type:"FeatureCollection", features:S.bairros.map((b, i) => ({type:"Feature", properties:{i, z:b.z, nome:b.n},
+      geometry:{type:"Point", coordinates:[b.c[1], b.c[0]]}}))};
+  }
+  geoPontos = {type:"FeatureCollection", features:rede.pontos.map((p, i) => p[4] === 2 ? null : pt(p, i)).filter(Boolean)};
+  geoEstacoes = {type:"FeatureCollection", features:rede.pontos.map((p, i) => p[4] !== 2 ? null : pt(p, i, {
+    nome:p[0], ...Object.fromEntries(["metro","trem","vlt","barca"].map(k => [k, p[3].some(li => rede.linhas[li].t === k) ? 1 : 0]))})).filter(Boolean)};
+  rede.pontos.forEach(p => p._busca = semAcento(p[0]));
+
+  const nb = rede.linhas.filter(l => !TRILHO(l.t)).length, nt = rede.linhas.length - nb;
+  const np = rede.pontos.filter(p => p[4] !== 2).length, ne = rede.pontos.length - np;
+  $("#resumo").textContent = `${nb} linhas de ônibus · ${np.toLocaleString("pt-BR")} pontos` + (nt ? ` · ${nt} de metrô, trem, VLT e barcas · ${ne} estações e terminais` : "");
+  $("#rodape").innerHTML = `Ônibus: <a href="https://www.data.rio/datasets/8ffe62ad3b2f42e49814bf941654ea6c/about" target="_blank" rel="noopener">GTFS oficial da SMTR (data.rio)</a>` +
+    (tr ? ` · Metrô, trem, VLT e barcas: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>` : "") +
+    ` · atualizado toda semana · última leitura ${esc(rede.gerado.slice(8,10))}/${esc(rede.gerado.slice(5,7))}/${esc(rede.gerado.slice(0,4))}`;
+  montarFiltros();
+  if (estiloPronto){ montarCamadas(); aplicarFundo(S.fundo); }
+  lerEndereco();
+  render();
+  if (S.linha === null && S.ponto === null){
+    snap("baixo", true);
+    map.fitBounds(RIO, {padding:padMapa(), duration:0});
+  }
+  dispatchEvent(new Event("redePronta"));
+  $("#carregando").style.opacity = 0; setTimeout(() => $("#carregando").remove(), 450);
+}).catch(e => { $("#carregando").textContent = "Não consegui carregar os dados das linhas (" + e.message + ")."; });
+
+// ---------- filtros e busca ----------
+const IC = {
+  tipo:`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="14" rx="3"/><path d="M4 11h16M8 21l2-4M16 21l-2-4"/></svg>`,
+  empresa:`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5M9 10h.01M15 10h.01"/></svg>`,
+  bairro:`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>`,
+};
+function montarFiltros(){
+  const nT = Object.keys(TIPOS).length;
+  const vTipo = S.tipos.size === nT ? "Todos" : S.tipos.size === 1 ? TIPOS[[...S.tipos][0]] : `${S.tipos.size} de ${nT}`;
+  const vEmp = !S.empresas.size ? "Todas" : S.empresas.size === 1 ? [...S.empresas][0] : `${S.empresas.size} escolhidas`;
+  const vBai = S.lugar ? nomeLugar() : (S.bairros ? "Todos" : "—");
+  const bt = (k, rot, val, on) => `<button class="fb ${on ? "on" : ""} ${S.aba === k ? "aberta" : ""}" data-aba="${k}">${IC[k]}<span><small>${rot}</small>${esc(val)}</span><i>▾</i></button>`;
+  let h = `<div class="fbarra">${bt("tipo", "Tipo", vTipo, S.tipos.size < nT)}${bt("empresa", "Companhia", vEmp, S.empresas.size > 0)}${S.bairros ? bt("bairro", "Bairro", vBai, !!S.lugar) : ""}</div>`;
+  if (filtrosAtivos()){
+    const pil = [];
+    if (S.lugar) pil.push(`<button class="pil" data-tira="lugar">${esc(nomeLugar())} ✕</button>`);
+    S.empresas.forEach(e => pil.push(`<button class="pil" data-tira="empresa" data-v="${esc(e)}">${esc(e)} ✕</button>`));
+    const fora = Object.keys(TIPOS).filter(t => !ativo(t));
+    if (fora.length && fora.length <= 3) fora.forEach(t => pil.push(`<button class="pil" data-tira="volta-tipo" data-v="${t}">sem ${TIPOS[t]} ✕</button>`));
+    else if (fora.length) [...S.tipos].forEach(t => pil.push(`<button class="pil" data-tira="tipo" data-v="${t}"><i class="bol" style="background:${PADRAO[t]}"></i>${TIPOS[t]} ✕</button>`));
+    h += `<div class="pilulas">${pil.join("")}<button class="limpar" data-tira="tudo">Limpar</button></div>`;
+  }
+  $("#filtros").innerHTML = h;
+}
+function mudouFiltro(){
+  S._bset = bairrosDoLugar();
+  montarFiltros(); aplicarEstado(); render();
+}
+$("#filtros").addEventListener("click", e => {
+  const a = e.target.closest("[data-aba]");
+  if (a){ abrirAba(S.aba === a.dataset.aba ? null : a.dataset.aba); return; }
+  const t = e.target.closest("[data-tira]"); if (!t) return;
+  const k = t.dataset.tira;
+  if (k === "lugar") S.lugar = null;
+  else if (k === "empresa") S.empresas.delete(t.dataset.v);
+  else if (k === "volta-tipo") S.tipos.add(t.dataset.v);
+  else if (k === "tipo"){ if (S.tipos.size > 1) S.tipos.delete(t.dataset.v); else S.tipos = new Set(Object.keys(TIPOS)); }
+  else { S.lugar = null; S.empresas.clear(); S.tipos = new Set(Object.keys(TIPOS)); }
+  mudouFiltro();
+});
+function abrirAba(k){
+  S.aba = k; S.linha = null; S.ponto = null; S.perto = null;
+  if (S.modo === "rota") Rota.sair();
+  expandir(); mudouFiltro();
+  if (k === "bairro") setTimeout(() => { const i = $("#bBusca"); if (i && innerWidth > 700) i.focus(); }, 30);
+}
+$("#busca").addEventListener("input", () => { S.linha = null; S.ponto = null; S.perto = null; S.aba = null; montarFiltros(); aplicarEstado(); render(); expandir(); });
+
+// ---------- render do painel ----------
+function render(){
+  const corpo = $("#corpo");
+  if (!S.rede) return;
+  $("#painel").classList.toggle("modo-rota", S.modo === "rota");
+  marcarAba();
+  if (S.modo === "rota"){ corpo.innerHTML = Rota.html(); corpo.scrollTop = 0; S._chaveTela = "rota"; $("#painel").classList.add("detalhe"); return; }
+  const chave = [S.aba, S.linha, S.dir, S.ponto, !!S.perto, S.aba ? "" : $("#busca").value].join("|");
+  const painel = $("#painel"), mesma = chave === S._chaveTela, rol = corpo.scrollTop, rolP = painel.scrollTop;
+  S._chaveTela = chave;
+  if (S.aba) corpo.innerHTML = htmlAba();
+  else if (S.linha !== null) corpo.innerHTML = htmlLinha();
+  else if (S.ponto !== null) corpo.innerHTML = htmlPonto(S.ponto);
+  else if (S.perto) corpo.innerHTML = htmlPerto();
+  else corpo.innerHTML = htmlLista();
+  corpo.scrollTop = mesma ? rol : 0;
+  // deitado, quem rola é o painel: mesma tela mantém a posição; tela nova mostra o começo do conteúdo
+  if (mesma) painel.scrollTop = rolP; else painel.scrollTop = 0;
+  $("#painel").classList.toggle("detalhe", S.linha !== null || S.ponto !== null || !!S.perto);
+}
+
+// ---------- folhas de filtro ----------
+function contar(ignorar){ return S.rede.linhas.filter(l => passa(l, ignorar)); }
+function rodapeAba(){
+  const n = contar().length;
+  return `<div class="aba-rodape"><button class="ver" data-fechar-aba>Ver ${n} linha${n !== 1 ? "s" : ""}</button></div>`;
+}
+function htmlAba(){
+  const L = S.rede.linhas;
+  if (S.aba === "tipo"){
+    const base = contar("tipo");
+    const linhas = ORDEM_TIPO.filter(t => TIPOS[t]).map(t => {
+      const n = base.filter(l => l.t === t).length;
+      return `<label class="opc"><input type="checkbox" data-tipo="${t}" ${ativo(t) ? "checked" : ""}><i class="bol g" style="background:${PADRAO[t]}"></i><span>${TIPOS[t]}</span><em>${n}</em></label>`;
+    }).join("");
+    return `<div class="aba"><div class="aba-topo"><h3>Tipo de transporte</h3><button class="lk" data-fechar-aba>Fechar</button></div>
+      <div class="atalhos"><button data-tipos="todos">Todos</button><button data-tipos="trilhos">Metrô, trem, VLT e barcas</button><button data-tipos="onibus">Só ônibus e BRT</button></div>
+      ${linhas}</div>${rodapeAba()}`;
+  }
+  if (S.aba === "empresa"){
+    const base = contar("empresa");
+    const cor = {}; base.forEach(l => { (cor[l.a] ||= {})[l._cor] = ((cor[l.a] || {})[l._cor] || 0) + 1; });
+    const corDe = a => { const c = cor[a]; if (!c) return "#666"; return Object.entries(c).sort((x, y) => y[1] - x[1])[0][0]; };
+    const todas = new Set(L.map(l => l.a));
+    const grupos = GRUPO_EMPRESA.map(([g, emps]) => {
+      const lista = emps.filter(e => todas.has(e));
+      const itens = lista.map(e => {
+        const ls = base.filter(l => l.a === e);
+        const comp = ORDEM_TIPO.map(t => [t, ls.filter(l => l.t === t).length]).filter(x => x[1]).map(([t, n]) => `${n} ${NOME_GRUPO[t].toLowerCase()}`).join(" · ");
+        return `<label class="opc ${ls.length ? "" : "zero"}"><input type="checkbox" data-emp="${esc(e)}" ${S.empresas.has(e) ? "checked" : ""}><i class="bol g" style="background:${corDe(e)}"></i><span>${esc(e)}<small>${comp || "nenhuma linha com os outros filtros"}</small></span><em>${ls.length}</em></label>`;
+      }).join("");
+      return `<div class="grupo">${g}</div>${itens}`;
+    }).join("");
+    return `<div class="aba"><div class="aba-topo"><h3>Companhia</h3><button class="lk" data-fechar-aba>Fechar</button></div>
+      <div class="atalhos"><button data-emps="todas">Todas</button></div>
+      <p class="expl">Os ônibus municipais são operados por consórcios; marque um ou mais.</p>${grupos}</div>${rodapeAba()}`;
+  }
+  if (S.aba === "bairro"){
+    const q = semAcento(S._qBairro || "");
+    const base = contar("bairro");
+    const nLinhas = set => base.filter(l => { for (const b of l._bairros) if (set.has(b)) return true; return false; }).length;
+    const B = S.bairros;
+    const grupos = ZONAS.map(z => {
+      const idx = B.map((b, i) => i).filter(i => B[i].z === z && (!q || B[i]._busca.includes(q)));
+      if (!idx.length) return "";
+      const todosZ = new Set(B.map((b, i) => b.z === z ? i : -1).filter(i => i >= 0));
+      const cab = q ? `<div class="grupo">${z}</div>`
+        : `<button class="zona ${S.lugar && S.lugar.z === z ? "on" : ""}" data-zona="${esc(z)}"><b>${z}</b><span>toda a região · ${nLinhas(todosZ)} linhas</span></button>`;
+      return cab + `<div class="bgrade">${idx.map(i => {
+        const n = nLinhas(new Set([i]));
+        return `<button class="bai ${S.lugar && S.lugar.b === i ? "on" : ""} ${n ? "" : "zero"}" data-bai="${i}">${esc(B[i].n)}<em>${n}</em></button>`;
+      }).join("")}</div>`;
+    }).join("");
+    return `<div class="aba"><div class="aba-topo"><h3>Bairro</h3><button class="lk" data-fechar-aba>Fechar</button></div>
+      <input id="bBusca" class="bbusca" type="search" placeholder="Procurar bairro (ex.: Tijuca, Méier)" value="${esc(S._qBairro || "")}" autocomplete="off">
+      <p class="expl">Mostra as linhas que têm algum ponto no bairro. Você também pode tocar num bairro no mapa.</p>
+      <div id="bLista">${grupos || '<div class="vazio">Nenhum bairro com esse nome.</div>'}</div></div>${rodapeAba()}`;
+  }
+  return "";
+}
+$("#corpo").addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.tipo){ if (t.checked) S.tipos.add(t.dataset.tipo); else if (S.tipos.size > 1) S.tipos.delete(t.dataset.tipo); else t.checked = true; mudouFiltro(); }
+  if (t.dataset.emp){ if (t.checked) S.empresas.add(t.dataset.emp); else S.empresas.delete(t.dataset.emp); mudouFiltro(); }
+});
+$("#corpo").addEventListener("input", e => {
+  if (e.target.id === "bBusca"){ S._qBairro = e.target.value; const tmp = document.createElement("div"); tmp.innerHTML = htmlAba(); $("#bLista").innerHTML = tmp.querySelector("#bLista").innerHTML; }
+});
+function escolherLugar(lugar){
+  S.lugar = lugar; S.aba = null; S._qBairro = "";
+  mudouFiltro(); enquadrarLugar(); recolherNoCelularDepois();
+}
+function recolherNoCelularDepois(){ /* deixa a lista aberta: o usuário quer ver as linhas */ }
+function enquadrarLugar(){
+  const set = bairrosDoLugar(); if (!set || !geoBairros) return;
+  const co = geoBairros.features.filter(f => set.has(f.properties.i)).flatMap(f => f.geometry.coordinates.flat(2));
+  if (!co.length) return;
+  const b = co.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(co[0], co[0]));
+  map.fitBounds(b, {padding:padMapa(), duration:800, maxZoom:15});
+}
+
+function linhaHTML(l, li, extra=""){
+  return `<div class="lin" data-l="${li}">${selo(l)}<div class="nome"><b>${esc(l.l)}</b><small>${NOME_TIPO[l.t]||""} · ${esc(l.a)}${extra}</small></div></div>`;
+}
+
+function htmlLista(){
+  const q = semAcento($("#busca").value.trim());
+  const L = S.rede.linhas;
+  let idx = L.map((l, i) => i).filter(i => ativo(L[i].t)).sort((a, b) => (TRILHO(L[b].t) - TRILHO(L[a].t)) || a - b);
+  let html = "";
+  if (q){
+    const exato = idx.filter(i => semAcento(L[i].n) === q);
+    const comeca = idx.filter(i => !exato.includes(i) && semAcento(L[i].n).startsWith(q));
+    const resto = idx.filter(i => !exato.includes(i) && !comeca.includes(i) && L[i]._busca.includes(q));
+    idx = [...exato, ...comeca, ...resto];
+    const pts = q.length >= 3 ? S.rede.pontos.map((p, i) => i).filter(i => S.rede.pontos[i]._busca.includes(q)).slice(0, 30) : [];
+    if (!idx.length && !pts.length && !(S.bairros && S.bairros.some(b => b._busca.includes(q)))) return `<div class="vazio">Nada encontrado para “${esc($("#busca").value)}”.</div>`;
+    const bs = S.bairros && q.length >= 3 ? S.bairros.map((b, i) => i).filter(i => S.bairros[i]._busca.includes(q)).slice(0, 6) : [];
+    if (bs.length) html += `<div class="secao">Bairros</div>` + bs.map(i => `<div class="lin" data-bairro-busca="${i}"><span class="num" style="background:#ffcc33">${IC.bairro}</span><div class="nome"><b>${esc(S.bairros[i].n)}</b><small>${S.bairros[i].z} · ${S.bairros[i]._linhas.length} linhas</small></div></div>`).join("");
+    if (idx.length) html += `<div class="secao">Linhas · ${idx.length}</div>` + idx.slice(0, 200).map(i => linhaHTML(L[i], i)).join("");
+    if (pts.length) html += `<div class="secao">Pontos</div>` + pts.map(i => {
+      const p = S.rede.pontos[i];
+      return `<div class="lin" data-p="${i}"><span class="num" style="background:#fff">${p[4] === 2 ? esc((PREFIXO[S.rede.linhas[p[3][0]].t] || "Estação").trim()) : "●"}</span><div class="nome"><b>${esc(p[0])}</b><small>${p[3].length} linha${p[3].length>1?"s":""}</small></div></div>`;
+    }).join("");
+    return html;
+  }
+  idx = idx.filter(i => passa(L[i]));
+  const vis = `<div class="vistas"><button class="${S.vista === "lista" ? "on" : ""}" data-vista="lista" title="Lista">☰</button><button class="${S.vista === "grade" ? "on" : ""}" data-vista="grade" title="Só os números">▦</button></div>`;
+  const titulo = S.lugar ? `${idx.length} linhas passam por ${esc(nomeLugar())}` : `${idx.length} linhas`;
+  if (!idx.length) return `<div class="cabLista"><span>${titulo}</span>${vis}</div><div class="vazio">Nenhuma linha com esses filtros. <button class="lk" data-tira-tudo>Limpar filtros</button></div>`;
+  const grupos = ORDEM_TIPO.map(t => [t, idx.filter(i => L[i].t === t)]).filter(g => g[1].length);
+  return `<div class="cabLista"><span>${titulo}</span>${vis}</div>` + grupos.map(([t, is]) =>
+    `<div class="gcab"><i class="bol" style="background:${PADRAO[t]}"></i>${NOME_GRUPO[t]}<em>${is.length}</em></div>` +
+    (S.vista === "grade"
+      ? `<div class="lgrade">${is.map(i => `<span data-l="${i}" title="${esc(L[i].l)}">${selo(L[i])}</span>`).join("")}</div>`
+      : is.map(i => linhaHTML(L[i], i)).join(""))).join("");
+}
+
+function htmlLinha(){
+  const l = S.rede.linhas[S.linha], d = l.d[S.dir] || l.d[0];
+  const P = S.rede.pontos;
+  const fatos = [];
+  if (l.$ != null) fatos.push(`<div class="fato"><b>R$ ${l.$.toFixed(2).replace(".",",")}</b>tarifa</div>`);
+  if (l.i) fatos.push(`<div class="fato"><b>${l.i} min</b>intervalo no pico</div>`);
+  fatos.push(`<div class="fato"><b>${d.s.length}</b>${TRILHO(l.t) ? "estações" : "pontos neste sentido"}</div>`);
+  fatos.push(`<div class="fato"><b>${kmDe(l._coords[S.dir] || l._coords[0])} km</b>percurso</div>`);
+  const sent = l.d.length > 1 ? `<div class="sentidos">${l.d.map((x, i) =>
+      `<button data-dir="${i}" class="${i===S.dir?"on":""}"><span>sentido</span>${esc(x.h || (i ? "volta" : "ida"))}</button>`).join("")}</div>` : "";
+  const seq = d.s.map((pi, k) => {
+    const p = P[pi]; const outras = p[3].length - 1;
+    const cls = (k === 0 || k === d.s.length - 1) ? "ponta" : "";
+    const nota = !outras ? "" : TRILHO(l.t)
+      ? `<small>integração: ${p[3].filter(i => i !== S.linha).map(i => esc(S.rede.linhas[i].n)).join(" · ")}</small>`
+      : `<small>+${outras} linha${outras>1?"s":""} neste ponto</small>`;
+    return `<li class="${cls}" data-p="${pi}">${esc(p[0])}${nota}</li>`;
+  }).join("");
+  return `<div class="det">
+    <button class="voltar" data-voltar>← todas as linhas</button>
+    <div class="cab">${selo(l)}<div><h2>${esc(l.l)}</h2><div class="meta">${NOME_TIPO[l.t]||""} · ${esc(l.a)}</div></div></div>
+    <div class="fatos">${fatos.join("")}</div>
+    ${sent}
+    <div class="acoes"><button data-enq>Enquadrar no mapa</button><button data-comp>Compartilhar</button></div>
+    ${htmlBairrosLinha(d)}
+    <ol class="seq" style="--cor:${l._cor}">${seq || '<li>Sem pontos cadastrados neste sentido.</li>'}</ol>
+  </div>`;
+}
+
+function htmlBairrosLinha(d){
+  if (!S.bairros) return "";
+  const seq = [];
+  for (const i of d.s){ const b = S.rede.pontos[i]._b; if (b >= 0 && seq[seq.length - 1] !== b) seq.push(b); }
+  // tira idas e voltas curtas (A, B, A → A, B)
+  const vistos = new Set(), lista = seq.filter(b => vistos.has(b) ? false : (vistos.add(b), true));
+  if (!lista.length) return "";
+  return `<div class="secao" style="padding-left:0;margin-top:12px">Passa por ${lista.length} bairro${lista.length > 1 ? "s" : ""}</div>
+    <div class="bseq">${lista.map(b => `<button data-bai-ir="${b}">${esc(S.bairros[b].n)}</button>`).join("<span>›</span>")}</div>`;
+}
+
+function htmlPonto(pi){
+  const p = S.rede.pontos[pi], L = S.rede.linhas;
+  const ls = p[3].filter(i => ativo(L[i].t));
+  const estacao = p[4] === 2;
+  const tipoEst = estacao ? [...new Set(p[3].map(i => NOME_TIPO[L[i].t]))].join(" e ") : "";
+  // integração: ônibus perto da estação, ou estações perto do ponto de ônibus
+  const P = S.rede.pontos, aqui = [p[2], p[1]];
+  const vizinhos = P.map((q, j) => [j, q]).filter(([j, q]) => j !== pi && (estacao ? q[4] !== 2 : q[4] === 2))
+    .map(([j, q]) => [j, dist(aqui, [q[2], q[1]])]).filter(x => x[1] <= (estacao ? 300 : 500)).sort((a, b) => a[1] - b[1]);
+  let integra = "";
+  if (estacao){
+    const bus = [...new Set(vizinhos.flatMap(([j]) => P[j][3]))].filter(i => ativo(L[i].t)).sort((a, b) => a - b);
+    if (bus.length) integra = `<div class="secao" style="padding-left:0;margin-top:14px">Ônibus a até 300 m · ${bus.length} linhas</div>
+      <div class="grade">${bus.map(i => `<span data-l="${i}" title="${esc(L[i].l)}">${selo(L[i])}</span>`).join("")}</div>`;
+  } else if (vizinhos.length){
+    integra = `<div class="secao" style="padding-left:0;margin-top:14px">Metrô, trem, VLT e barcas perto</div>` + vizinhos.slice(0, 4).map(([j, m]) =>
+      `<div class="lin" data-p="${j}" style="padding-left:0;padding-right:0"><span class="num mono" style="background:#fff;font-size:12px">${Math.round(m)} m</span><div class="nome"><b>${PREFIXO[L[P[j][3][0]].t] || "Estação "}${esc(P[j][0])}</b><small>${P[j][3].map(i => esc(L[i].n)).join(" · ")}</small></div></div>`).join("");
+  }
+  return `<div class="det pt">
+    <button class="voltar" data-voltar>← ${S.perto ? "pontos perto de você" : "todas as linhas"}</button>
+    <h2>${estacao ? (PREFIXO[L[p[3][0]].t] || "Estação ") : ""}${esc(p[0])}</h2>
+    <div class="meta" style="color:var(--mut);font-size:12.5px">${S.bairros && p._b >= 0 ? `<button class="lk" data-bai-ir="${p._b}">${esc(S.bairros[p._b].n)}</button> · ` : ""}${estacao ? tipoEst + " · " : ""}${p[3].length} linha${p[3].length>1?"s":""} passa${p[3].length>1?"m":""} aqui${p[4] === 1 ? " · estação BRT" : ""}</div>
+    <div class="acoes"><button data-rde="${pi}">Sair daqui</button><button data-rpara="${pi}">Ir para cá</button></div>
+    <div class="grade">${ls.map(i => `<span data-l="${i}" title="${esc(L[i].l)}">${selo(L[i])}</span>`).join("")}</div>
+    ${integra}
+    <div class="secao" style="padding-left:0;margin-top:12px">${estacao ? "Linhas" : "Destinos"}</div>
+    ${ls.map(i => linhaHTML(L[i], i)).join("")}
+  </div>`;
+}
+
+function htmlPerto(){
+  const {lista} = S.perto;
+  if (!lista.length) return `<div class="det"><button class="voltar" data-voltar>← todas as linhas</button><div class="vazio">Nenhum ponto de ônibus num raio de 600 m.</div></div>`;
+  const L = S.rede.linhas, todas = new Set();
+  lista.forEach(([pi]) => S.rede.pontos[pi][3].forEach(i => todas.add(i)));
+  return `<div class="det"><button class="voltar" data-voltar>← todas as linhas</button>
+    <h2 style="margin:0;font-family:Archivo,sans-serif;font-size:18px">Perto de você</h2>
+    <div style="color:var(--mut);font-size:12.5px">${lista.length} pontos e ${todas.size} linhas a até 600 m</div></div>` +
+    lista.map(([pi, m]) => { const p = S.rede.pontos[pi];
+      return `<div class="lin" data-p="${pi}"><span class="num mono" style="background:#fff;font-size:12px">${Math.round(m)} m</span><div class="nome"><b>${esc(p[0])}</b><small>${p[3].slice(0,8).map(i => esc(L[i].n)).join(" · ")}${p[3].length>8?" …":""}</small></div></div>`; }).join("");
+}
+
+function kmDe(partes){
+  let m = 0;
+  for (const co of partes) for (let i = 1; i < co.length; i++) m += dist(co[i-1], co[i]);
+  return (m/1000).toFixed(1).replace(".", ",");
+}
+function dist(a, b){
+  const R = 6371000, toR = Math.PI/180;
+  const dLat = (b[1]-a[1])*toR, dLon = (b[0]-a[0])*toR;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a[1]*toR)*Math.cos(b[1]*toR)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+
+// ---------- interação no painel ----------
+$("#corpo").addEventListener("click", e => {
+  const t = e.target;
+  // folhas de filtro
+  if (t.closest("[data-fechar-aba]")){ S.aba = null; S._qBairro = ""; mudouFiltro(); return; }
+  const tps = t.closest("[data-tipos]");
+  if (tps){ const v = tps.dataset.tipos;
+    S.tipos = new Set(v === "todos" ? Object.keys(TIPOS) : v === "trilhos" ? ["metro","trem","vlt","barca"] : ["bus","brt"]); mudouFiltro(); return; }
+  if (t.closest("[data-emps]")){ S.empresas.clear(); mudouFiltro(); return; }
+  const z = t.closest("[data-zona]"); if (z){ escolherLugar(S.lugar && S.lugar.z === z.dataset.zona ? null : {z:z.dataset.zona}); return; }
+  const bai = t.closest("[data-bai]"); if (bai){ escolherLugar(S.lugar && S.lugar.b === +bai.dataset.bai ? null : {b:+bai.dataset.bai}); return; }
+  const bir = t.closest("[data-bai-ir], [data-bairro-busca]");
+  if (bir){ const i = +(bir.dataset.baiIr ?? bir.dataset.bairroBusca); $("#busca").value = ""; S.linha = null; S.ponto = null; S.perto = null; escolherLugar({b:i}); return; }
+  const vt = t.closest("[data-vista]"); if (vt){ S.vista = vt.dataset.vista; try { localStorage.setItem("onibusRioVista", S.vista); } catch(e){} render(); return; }
+  if (t.closest("[data-tira-tudo]")){ S.lugar = null; S.empresas.clear(); S.tipos = new Set(Object.keys(TIPOS)); mudouFiltro(); return; }
+  if (t.closest("[data-voltar]")){ voltar(); return; }
+  const dirB = t.closest("[data-dir]"); if (dirB){ S.dir = +dirB.dataset.dir; aplicarEstado(); render(); enquadrarLinha(); return; }
+  if (t.closest("[data-enq]")){ enquadrarLinha(); recolherNoCelular(); return; }
+  if (t.closest("[data-comp]")){ compartilhar(); return; }
+  const lb = t.closest("[data-l]"); if (lb){ selecionarLinha(+lb.dataset.l); return; }
+  const pb = t.closest("[data-p]");
+  if (pb){
+    const pi = +pb.dataset.p;
+    if (S.linha !== null){ // dentro da linha: só voa até o ponto
+      document.querySelectorAll("ol.seq li.ativo").forEach(x => x.classList.remove("ativo"));
+      pb.classList.add("ativo"); voarPonto(pi, 16); recolherNoCelular();
+    } else selecionarPonto(pi, true);
+  }
+});
+
+function voltar(){
+  if (S.modo === "rota"){ Rota.sair(); return; }
+  if (S.aba){ S.aba = null; mudouFiltro(); return; }
+  if (S.linha !== null && S.ponto !== null){ S.linha = null; }
+  else if (S.ponto !== null && S.perto){ S.ponto = null; }
+  else { S.linha = null; S.ponto = null; S.perto = null; }
+  aplicarEstado(); render(); atualizarEndereco();
+}
+
+function selecionarLinha(li, dir=0, enq=true){
+  S.linha = li; S.dir = Math.min(dir, S.rede.linhas[li].d.length - 1);
+  esconderEscolha(); aplicarEstado(); render(); atualizarEndereco(); expandir();
+  if (enq) enquadrarLinha();
+}
+function selecionarPonto(pi, voar){
+  S.ponto = pi; S.linha = null; esconderEscolha(); aplicarEstado(); render(); atualizarEndereco(); expandir();
+  if (voar) voarPonto(pi, Math.max(map.getZoom(), 15.5));
+}
+function voarPonto(pi, z){
+  const p = S.rede.pontos[pi];
+  if (map.getSource("destaque")) map.getSource("destaque").setData({type:"FeatureCollection",
+    features:[{type:"Feature", properties:{}, geometry:{type:"Point", coordinates:[p[2], p[1]]}}]});
+  map.easeTo({center:[p[2], p[1]], zoom:z, padding:padMapa(), duration:700});
+}
+function padMapa(){
+  if (deitado()){
+    const w = document.body.classList.contains("semPainel") ? 0 : $("#painel").getBoundingClientRect().width;
+    return {top:30, bottom:30, left:w + 30, right:60};
+  }
+  const topo = $("#barra").getBoundingClientRect().bottom;
+  const fundo = innerHeight - $("#painel").getBoundingClientRect().top;
+  return {top:topo + 20, bottom:fundo + 20, left:30, right:56};
+}
+function enquadrarLinha(){
+  if (S.linha === null) return;
+  const co = S.rede.linhas[S.linha]._coords.flat(2);
+  if (!co.length) return;
+  const b = co.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(co[0], co[0]));
+  map.fitBounds(b, {padding:padMapa(), duration:800, maxZoom:15});
+}
+
+// ---------- estado -> mapa ----------
+function aplicarEstado(){
+  if (!map.getLayer || !map.getLayer("rede")) return;
+  const L = S.rede.linhas;
+  // filtros: tipo, companhia e bairro
+  const tiposOn = ["literal", [...S.tipos]];
+  const porLinha = (S.empresas.size || S._bset)
+    ? ["in", ["get","li"], ["literal", L.map((l, i) => passa(l) ? i : -1).filter(i => i >= 0)]] : true;
+  map.setFilter("rede", ["all", ["in", ["get","t"], tiposOn], porLinha]);
+  const semBarca = ["all", ["in", ["get","t"], tiposOn], ["!=", ["get","t"], "barca"], porLinha];
+  map.setFilter("trilhos", semBarca);
+  map.setFilter("trilhos-casco", semBarca);
+  map.setFilter("barcas", ["all", ["==", ["get","t"], "barca"], ativo("barca"), porLinha]);
+  map.setFilter("trilhos-trem", ["all", ["==", ["get","t"], "trem"], ativo("trem"), porLinha]);
+  const noBairro = S._bset ? ["in", ["get","b"], ["literal", [...S._bset]]] : true;
+  const fEst = ["all", ["any", ...["metro","trem","vlt","barca"].map(k => ["all", ativo(k), ["==", ["get",k], 1]])], noBairro];
+  map.setFilter("estacoes", fEst);
+  if (map.getLayer("estacoes-rot")) map.setFilter("estacoes-rot", fEst);
+  map.setFilter("pontos", noBairro);
+  map.setLayoutProperty("pontos", "visibility", ["bus","brt","exec"].some(ativo) ? "visible" : "none");
+  // bairros: contorno do escolhido; na folha de bairros, todos os contornos e nomes
+  if (map.getLayer("bairro-sel")){
+    map.setFilter("bairro-sel", S._bset ? ["in", ["get","i"], ["literal", [...S._bset]]] : ["==", ["get","i"], -1]);
+    const mostrar = S.aba === "bairro" ? "visible" : "none";
+    map.setLayoutProperty("bairros-linha", "visibility", mostrar);
+    if (map.getLayer("bairros-rot")) map.setLayoutProperty("bairros-rot", "visibility", mostrar);
+    map.setPaintProperty("bairros-fill", "fill-opacity", S._bset ? ["case", ["in", ["get","i"], ["literal", [...S._bset]]], 0.07, 0] : 0);
+  }
+  // linhas que passam pelo ponto escolhido ficam acesas
+  let acesas = null;
+  if (S.modo === "rota") acesas = [];
+  else if (S.linha !== null) acesas = [S.linha];
+  else if (S.ponto !== null) acesas = S.rede.pontos[S.ponto][3];
+  else { const q = semAcento($("#busca").value.trim()); if (q) acesas = L.map((l,i)=>i).filter(i => L[i]._busca.includes(q)); }
+  const opT = acesas && acesas.length < L.length
+    ? ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 1, 0.12] : 1;
+  map.setPaintProperty("trilhos", "line-opacity", opT);
+  map.setPaintProperty("barcas", "line-opacity", opT);
+  map.setPaintProperty("trilhos-trem", "line-opacity", acesas && acesas.length < L.length
+    ? ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 0.8, 0.1] : 0.8);
+  map.setPaintProperty("trilhos-casco", "line-opacity", acesas && acesas.length < L.length ? 0.4 : 0.9);
+  if (acesas && acesas.length < L.length){
+    map.setPaintProperty("rede", "line-opacity", ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 0.95, S.linha !== null ? 0.035 : 0.07]);
+    map.setPaintProperty("rede", "line-width", ["case", ["in", ["get","li"], ["literal", acesas]],
+      ["interpolate",["linear"],["zoom"],10,2,15,4.5], ["interpolate",["linear"],["zoom"],10,0.6,14,1.4]]);
+  } else {
+    map.setPaintProperty("rede", "line-opacity", 0.42);
+    map.setPaintProperty("rede", "line-width", ["interpolate",["linear"],["zoom"],10,0.8,14,2,17,4]);
+  }
+  map.setPaintProperty("pontos", "circle-opacity", S.linha !== null ? 0.25 : 0.75);
+  const estAcesas = S.modo === "rota" ? [] : S.linha !== null ? L[S.linha].d.flatMap(d => d.s) : S.ponto !== null ? [S.ponto] : null;
+  const opE = estAcesas ? ["case", ["in", ["get","i"], ["literal", estAcesas]], 1, 0.3] : 1;
+  map.setPaintProperty("estacoes", "circle-opacity", opE);
+  map.setPaintProperty("estacoes", "circle-stroke-opacity", opE);
+  // linha selecionada
+  if (S.linha !== null){
+    const l = L[S.linha];
+    const fsel = {type:"FeatureCollection", features:l._coords.map((co, di) => ({type:"Feature",
+      properties:{ativo: di === S.dir ? 1 : 0, cor:l._cor}, geometry:{type:"MultiLineString", coordinates:co}}))};
+    map.getSource("sel").setData(fsel);
+    map.getSource("selSetas").setData({type:"FeatureCollection", features:fsel.features.filter(f => f.properties.ativo)});
+    const d = l.d[S.dir] || l.d[0];
+    const fpts = {type:"FeatureCollection", features:d.s.map((pi, k) => { const p = S.rede.pontos[pi];
+      return {type:"Feature", properties:{i:pi, nome:p[0], cor:l._cor, ponta:(k===0||k===d.s.length-1)?1:0},
+        geometry:{type:"Point", coordinates:[p[2], p[1]]}}; })};
+    map.getSource("selPontos").setData(fpts);
+    map.getSource("selRotulos").setData(fpts);
+  } else {
+    for (const id of ["sel","selPontos","selSetas","selRotulos"]) map.getSource(id).setData(vazio());
+  }
+  if (S.ponto === null && S.linha === null && !S.perto) map.getSource("destaque").setData(vazio());
+}
+
+// ---------- clique no mapa ----------
+map.on("click", e => {
+  if (!S.rede || !map.getLayer("rede")) return;
+  if (typeof Rota !== "undefined" && Rota.clique(e)) return;
+  if (S.aba === "bairro" && map.getLayer("bairros-fill")){
+    const f = map.queryRenderedFeatures(e.point, {layers:["bairros-fill"]});
+    if (f.length){ escolherLugar({b:f[0].properties.i}); return; }
+  }
+  const r = 8, bb = [[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]];
+  const camadasP = ["sel-pontos", "estacoes", "pontos"].filter(id => map.getLayer(id));
+  const fp = map.queryRenderedFeatures(bb, {layers:camadasP});
+  if (fp.length){
+    const pi = fp[0].properties.i;
+    if (S.linha !== null && fp[0].layer.id === "sel-pontos"){
+      document.querySelectorAll("ol.seq li").forEach(x => x.classList.toggle("ativo", +x.dataset.p === pi));
+      const li = document.querySelector(`ol.seq li[data-p="${pi}"]`); if (li) li.scrollIntoView({block:"center", behavior:"smooth"});
+      voarPonto(pi, map.getZoom());
+      return;
+    }
+    selecionarPonto(pi, false); voarPonto(pi, map.getZoom()); return;
+  }
+  const fl = map.queryRenderedFeatures(bb, {layers:["sel", "trilhos", "barcas", "rede"]});
+  const vis = new Set();
+  fl.forEach(f => {
+    const li = f.layer.id === "sel" ? S.linha : f.properties.li;
+    if (!ativo(S.rede.linhas[li].t)) return;
+    vis.add(li);
+  });
+  const ls = [...vis];
+  if (!ls.length){ if (S.linha !== null || S.ponto !== null){ /* clique no vazio: mantém */ } esconderEscolha(); return; }
+  if (ls.length === 1){ selecionarLinha(ls[0], 0, S.linha !== ls[0]); return; }
+  mostrarEscolha(e.point, ls);
+});
+map.on("mousemove", e => {
+  if (!map.getLayer("rede")) return;
+  const r = 6; const f = map.queryRenderedFeatures([[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]], {layers:["rede","trilhos","barcas","estacoes","pontos","sel-pontos"]});
+  map.getCanvas().style.cursor = f.length ? "pointer" : "";
+});
+function mostrarEscolha(pt, ls){
+  const L = S.rede.linhas, el = $("#escolha");
+  ls.sort((a, b) => (TRILHO(L[b].t) - TRILHO(L[a].t)) || a - b);
+  el.innerHTML = `<div class="secao" style="padding:4px 8px">${ls.length} linhas passam aqui</div>` + ls.map(i => linhaHTML(L[i], i)).join("");
+  el.style.display = "block";
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.min(pt.x + 10, innerWidth - w - 10) + "px";
+  el.style.top = Math.min(pt.y + 10, innerHeight - h - 10) + "px";
+}
+function esconderEscolha(){ $("#escolha").style.display = "none"; }
+$("#escolha").addEventListener("click", e => { const b = e.target.closest("[data-l]"); if (b) selecionarLinha(+b.dataset.l); });
+map.on("movestart", esconderEscolha);
+
+// ---------- perto de mim ----------
+$("#bPerto").addEventListener("click", () => {
+  if (!navigator.geolocation){ alertaSuave("Seu navegador não informa a localização."); return; }
+  $("#bPerto").classList.add("on");
+  navigator.geolocation.getCurrentPosition(pos => {
+    const eu = [pos.coords.longitude, pos.coords.latitude];
+    const lista = S.rede.pontos.map((p, i) => [i, dist(eu, [p[2], p[1]])]).filter(x => x[1] <= 600).sort((a,b) => a[1]-b[1]).slice(0, 40);
+    S.perto = {eu, lista}; S.linha = null; S.ponto = null;
+    aplicarEstado(); render(); expandir();
+    map.getSource("destaque").setData({type:"FeatureCollection", features:[{type:"Feature", properties:{}, geometry:{type:"Point", coordinates:eu}}]});
+    map.easeTo({center:eu, zoom:16, padding:padMapa(), duration:900});
+    $("#bPerto").classList.remove("on");
+  }, err => { $("#bPerto").classList.remove("on"); alertaSuave("Não foi possível obter sua localização."); }, {enableHighAccuracy:true, timeout:12000});
+});
+function alertaSuave(msg){ $("#corpo").insertAdjacentHTML("afterbegin", `<div class="vazio" style="color:#ffcc33">${esc(msg)}</div>`); }
+
+$("#bTudo").addEventListener("click", () => map.fitBounds(RIO, {padding:padMapa(), duration:900}));
+// troca do mapa de fundo sem recarregar o estilo (as camadas de transporte ficam)
+S.fundo = (() => { try { return localStorage.getItem("onibusRioFundo") || "escuro"; } catch(e){ return "escuro"; } })();
+if (!FUNDOS[S.fundo]) S.fundo = "escuro";
+function aplicarFundo(nome){
+  if (!map.getLayer("f-ruas")) return;
+  S.fundo = nome; try { localStorage.setItem("onibusRioFundo", nome); } catch(e){}
+  for (const [k, f] of Object.entries(FUNDOS)) for (const id of f.camadas) map.setLayoutProperty(id, "visibility", "none");
+  for (const id of FUNDOS[nome].camadas) map.setLayoutProperty(id, "visibility", "visible");
+  const claro = FUNDOS[nome].claro;
+  S.tema = claro ? "claro" : "escuro";
+  document.documentElement.style.setProperty("--bg", claro ? "#e9ebee" : "#0b0d12");
+  map.setPaintProperty("fundo", "background-color", claro ? "#e9ebee" : "#0b0d12");
+  document.querySelectorAll("#menuFundo [data-fundo]").forEach(b => b.classList.toggle("on", b.dataset.fundo === nome));
+  if (!map.getLayer("pontos")) return;
+  map.setPaintProperty("pontos", "circle-color", claro ? "#1b2230" : "#ffffff");
+  map.setPaintProperty("pontos", "circle-stroke-color", claro ? "#ffffff" : "#0b0d12");
+  map.setPaintProperty("trilhos-casco", "line-color", claro ? "#ffffff" : "#0b0d12");
+  map.setPaintProperty("estacoes", "circle-stroke-color", claro ? "#1b2230" : "#0b0d12");
+  map.setPaintProperty("rede", "line-color", claro ? ["get","corEsc"] : ["get","cor"]);
+  map.setPaintProperty("sel-pontos", "circle-color", ["case",["==",["get","ponta"],1],["get","cor"], claro ? "#ffffff" : "#0b0d12"]);
+  for (const id of ["estacoes-rot", "sel-rotulos"]) if (map.getLayer(id)){
+    map.setPaintProperty(id, "text-color", claro ? "#111" : "#fff");
+    map.setPaintProperty(id, "text-halo-color", claro ? "#fff" : "#0b0d12");
+  }
+  map.setPaintProperty("sel-casco", "line-color", claro ? "#ffffff" : "#000000");
+}
+$("#bTema").addEventListener("click", e => { e.stopPropagation(); $("#menuFundo").classList.toggle("aberto"); });
+$("#menuFundo").addEventListener("click", e => { const b = e.target.closest("[data-fundo]"); if (!b) return; aplicarFundo(b.dataset.fundo); $("#menuFundo").classList.remove("aberto"); });
+document.addEventListener("click", e => { if (!e.target.closest("#menuFundo")) $("#menuFundo").classList.remove("aberto"); });
+
+// ---------- gaveta no celular ----------
+// ---------- gaveta (em pé) e painel lateral (deitado) ----------
+const deitado = () => matchMedia("(orientation:landscape) and (max-height:600px)").matches;
+function alturas(){
+  const p = $("#painel"), cab = $("#cabSheet");
+  const max = p.getBoundingClientRect().bottom - $("#barra").getBoundingClientRect().bottom - 10;
+  return {baixo:Math.min(cab.scrollHeight + 4, max), meio:Math.round(Math.min(max, Math.max(260, innerHeight * 0.5))), cheio:Math.round(max)};
+}
+function snap(nome, semAnimar){
+  const p = $("#painel");
+  if (deitado()){ p.dataset.snap = "cheio"; delete document.body.dataset.snap; document.body.classList.remove("semPainel"); return; }
+  p.dataset.snap = nome; document.body.dataset.snap = nome;
+  if (semAnimar) p.classList.add("arrastando");
+  document.documentElement.style.setProperty("--h", alturas()[nome] + "px");
+  if (semAnimar) requestAnimationFrame(() => p.classList.remove("arrastando"));
+}
+function expandir(){ if (deitado()) document.body.classList.remove("semPainel"); else if ($("#painel").dataset.snap === "baixo") snap("meio"); }
+function recolherNoCelular(){ if (!deitado()) snap("baixo"); }
+// o cabeçalho muda de altura (pílulas de filtro): a gaveta baixa acompanha
+new ResizeObserver(() => { if ($("#painel").dataset.snap === "baixo" && !deitado()) snap("baixo", true); }).observe($("#cabSheet"));
+addEventListener("resize", () => snap(deitado() ? "cheio" : ($("#painel").dataset.snap || "baixo"), true));
+// arrastar a alça / cabeçalho
+(() => {
+  const p = $("#painel"), cab = $("#cabSheet");
+  let y0 = 0, h0 = 0, t0 = 0, arrastou = false, ativo = false;
+  cab.addEventListener("pointerdown", e => {
+    if (deitado() || e.target.closest("button:not(.alca), input, a")) return;
+    ativo = true; arrastou = false; y0 = e.clientY; h0 = p.getBoundingClientRect().height; t0 = performance.now();
+    cab.setPointerCapture(e.pointerId);
+  });
+  cab.addEventListener("pointermove", e => {
+    if (!ativo) return;
+    const dy = e.clientY - y0;
+    if (Math.abs(dy) > 6) arrastou = true;
+    if (!arrastou) return;
+    const a = alturas();
+    p.classList.add("arrastando");
+    document.documentElement.style.setProperty("--h", Math.max(a.baixo * 0.8, Math.min(a.cheio, h0 - dy)) + "px");
+  });
+  const fim = e => {
+    if (!ativo) return; ativo = false;
+    p.classList.remove("arrastando");
+    const a = alturas(), h = p.getBoundingClientRect().height;
+    if (!arrastou){ // toque na alça: sobe um degrau (ou volta para baixo do topo)
+      if (e.target.closest(".alca")) snap({baixo:"meio", meio:"cheio", cheio:"baixo"}[p.dataset.snap] || "meio");
+      return;
+    }
+    const v = (e.clientY - y0) / Math.max(1, performance.now() - t0); // px/ms, positivo = descendo
+    let alvo;
+    if (v > 0.6) alvo = h > a.meio + 10 ? "meio" : "baixo";
+    else if (v < -0.6) alvo = h < a.meio - 10 ? "meio" : "cheio";
+    else alvo = Object.entries(a).sort((x, y) => Math.abs(x[1] - h) - Math.abs(y[1] - h))[0][0];
+    snap(alvo);
+  };
+  cab.addEventListener("pointerup", fim);
+  cab.addEventListener("pointercancel", fim);
+})();
+map.on("dragstart", () => { if (!deitado() && $("#painel").dataset.snap === "cheio") snap("meio"); });
+// abas
+function marcarAba(){
+  const aba = S.modo === "rota" ? "rota" : S.perto ? "perto" : "linhas";
+  document.querySelectorAll("#abas [data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === aba || (b.dataset.tab === "mapa" && $("#menuFundo").classList.contains("aberto"))));
+}
+$('#abas [data-tab="linhas"]').addEventListener("click", () => {
+  if (S.modo === "rota") Rota.sair();
+  S.linha = null; S.ponto = null; S.perto = null; S.aba = null;
+  montarFiltros(); aplicarEstado(); render(); atualizarEndereco();
+  snap($("#painel").dataset.snap === "baixo" ? "meio" : $("#painel").dataset.snap);
+});
+$("#bRota").addEventListener("click", () => setTimeout(() => { if (!deitado()) snap("cheio"); }, 0));
+$("#bPerto").addEventListener("click", () => marcarAba());
+$("#bTema").addEventListener("click", () => setTimeout(marcarAba, 0));
+document.addEventListener("click", () => setTimeout(marcarAba, 0));
+// busca no topo
+$("#busca").addEventListener("focus", () => { if (S.modo === "rota") Rota.sair(); if (!deitado()) snap("cheio"); });
+$("#busca").addEventListener("input", () => $(".campoBusca").classList.toggle("tem", !!$("#busca").value));
+$("#busca").addEventListener("keydown", e => { if (e.key === "Enter") $("#busca").blur(); });
+$("#limpaBusca").addEventListener("click", () => { $("#busca").value = ""; $(".campoBusca").classList.remove("tem"); $("#busca").dispatchEvent(new Event("input")); });
+// deitado: botão para esconder o painel e ver o mapa todo
+$("#bPainel").addEventListener("click", () => document.body.classList.toggle("semPainel"));
+// créditos do mapa: começam recolhidos no botão "i" (abertos cobririam o mapa no celular)
+(() => {
+  let tocou = false;
+  const fechar = () => { const a = document.querySelector(".maplibregl-ctrl-attrib"); if (a && !tocou) a.classList.remove("maplibregl-compact-show"); };
+  document.addEventListener("click", e => { if (e.target.closest(".maplibregl-ctrl-attrib")) tocou = true; }, true);
+  map.on("idle", fechar); map.on("resize", () => setTimeout(fechar, 0)); setTimeout(fechar, 300);
+})();
+// o teclado do celular encolhe a tela: refaz as alturas
+if (window.visualViewport) visualViewport.addEventListener("resize", () => { if (!deitado()) snap($("#painel").dataset.snap, true); });
+
+// ---------- endereço compartilhável (#linha=474) ----------
+function atualizarEndereco(){
+  let h = "";
+  if (S.linha !== null) h = "#linha=" + encodeURIComponent(S.rede.linhas[S.linha].n) + (S.dir ? "&sentido=2" : "");
+  else if (S.ponto !== null) h = "#ponto=" + S.ponto;
+  history.replaceState(null, "", location.pathname + location.search + h);
+}
+function lerEndereco(){
+  const p = new URLSearchParams(location.hash.slice(1));
+  if (p.get("linha")){
+    const n = semAcento(p.get("linha")); const li = S.rede.linhas.findIndex(l => semAcento(l.n) === n);
+    if (li >= 0){ S.linha = li; S.dir = p.get("sentido") === "2" ? 1 : 0; map.once("idle", enquadrarLinha); }
+  } else if (p.get("ponto") && S.rede.pontos[+p.get("ponto")]){
+    S.ponto = +p.get("ponto"); map.once("idle", () => voarPonto(S.ponto, 16));
+  }
+}
+function compartilhar(){
+  atualizarEndereco();
+  const l = S.rede.linhas[S.linha];
+  const dados = {title:`Linha ${l.n} — ${l.l}`, url:location.href};
+  if (navigator.share) navigator.share(dados).catch(() => {});
+  else navigator.clipboard && navigator.clipboard.writeText(location.href).then(() => alertaSuave("Link copiado."));
+}
+addEventListener("keydown", e => { if (e.key === "Escape") voltar(); if (e.key === "/" && document.activeElement !== $("#busca")){ e.preventDefault(); $("#busca").focus(); } });
+</script>
+<script src="../rota.js"></script>
+</body>
+</html>

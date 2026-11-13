@@ -235,7 +235,25 @@ def _hands(b, st):
             pr = _hand_pts(Hs, st['hsmp'])
             u = pr[:, 0].copy()
             v = (pr[:, 1] - 0.5) * rat + 0.5
-            allp = (pr - T) * S
+            # a mão mantém o tamanho proporcional ao rosto, mas a posição usa o quadro
+            # inteiro da câmera, para a mão nunca sair da tela da obra
+            cpr = Hs.mean(0)
+            esc = float(b.par.Escalamao) if b.par['Escalamao'] is not None else 0.8
+            esp = float(b.par.Espacomao) if b.par['Espacomao'] is not None else 0.9
+            zoom = float(b.par.Zoom) if b.par['Zoom'] is not None else 3.4
+            try:
+                cam = op('olho'); fov = float(cam.par.fov); horz = cam.par.viewanglemethod.eval() == 'horzfov'
+            except Exception:
+                fov, horz = 45.0, True
+            half = zoom * math.tan(math.radians(fov) * 0.5)
+            res = op('render')
+            ar = (res.width / max(res.height, 1)) if res is not None else rat
+            hw, hh = (half, half / ar) if horz else (half * ar, half)
+            yc = 0.78 - 0.5 * ratio
+            pos = np.array([(cpr[0] - 0.5) * 2.0 * hw * esp,
+                            (cpr[1] - yc) / (0.5 * ratio) * hh * esp,
+                            (cpr[2] - T[2]) * S])
+            allp = (pr - cpr) * S * esc + pos
             out.append((allp, u, v, np.full(nh, 3.0), np.full(nh, al)))
         else:
             z = np.zeros(nh)

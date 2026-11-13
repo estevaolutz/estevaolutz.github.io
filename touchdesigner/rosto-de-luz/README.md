@@ -12,7 +12,7 @@ O rosto e as mãos de quem está na frente da câmera viram dezenas de milhares 
 
 Os arquivos estão em `v4/`. O `rdl_v4_aplicar.py` aplica tudo no componente `Cabeca_de_Luz`.
 
-- **Mãos:** até 2 mãos, cada uma com 6 mil pontos nos dedos e na palma, iluminados pelo vídeo como o rosto. Elas aparecem e somem suavemente e continuam funcionando mesmo sem rosto na câmera. Os controles ficam na aba **Mãos**.
+- **Mãos:** até 2 mãos, cada uma com 6 mil pontos nos dedos e na palma, iluminados pelo vídeo como o rosto. Elas aparecem e somem suavemente e continuam funcionando mesmo sem rosto na câmera. Os controles ficam na aba **Mãos** (tamanho, brilho e espaço na tela). A posição das mãos usa o quadro inteiro da câmera, então elas nunca saem da tela da obra. Para funcionar, a opção *Detect hands* do componente MediaPipe precisa estar ligada.
 - **Som** (`som_entrada`, aba **Som**):
   - volume → tamanho, intensidade, halo e respiração
   - graves → dispersão

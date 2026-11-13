@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ônibus do Rio — linhas de ônibus, metrô e trem</title>
-<meta name="description" content="Mapa interativo de todas as linhas de ônibus, BRT, executivos, metrô e trem do Rio de Janeiro, com trajetos, pontos e estações.">
+<title>Ônibus do Rio — ônibus, metrô, trem, VLT e barcas</title>
+<meta name="description" content="Mapa interativo de todas as linhas de ônibus, BRT, executivos, metrô, trem, VLT e barcas do Rio de Janeiro, com trajetos, pontos e estações.">
 <meta name="theme-color" content="#0b0d12">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -89,6 +89,12 @@ ol.seq li.ativo{background:rgba(255,204,51,.12)}
 #ctl{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:4}
 #ctl button{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-size:18px;display:grid;place-items:center}
 #ctl button.on{border-color:var(--acc);color:var(--acc)}
+#menuFundo{position:absolute;right:62px;top:110px;z-index:7;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;display:none;min-width:150px;box-shadow:0 8px 30px rgba(0,0,0,.5);color:var(--txt)}
+#menuFundo.aberto{display:block}
+#menuFundo button{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:8px 8px;border-radius:8px;text-align:left}
+#menuFundo button:hover{background:rgba(255,255,255,.06)}
+#menuFundo button.on{outline:1.5px solid var(--acc)}
+#menuFundo i{width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.25);flex:none}
 #escolha{position:absolute;z-index:6;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;max-width:300px;max-height:260px;overflow:auto;display:none;box-shadow:0 8px 30px rgba(0,0,0,.5)}
 #escolha .lin{padding:5px 8px;border:0}
 #escolha .lin .num{min-width:46px;font-size:13px}
@@ -107,6 +113,8 @@ ol.seq li.ativo{background:rgba(255,204,51,.12)}
   #topo h1{font-size:18px}
   #ctl{top:auto;bottom:calc(52% + 12px)}
   #painel.min ~ #ctl{bottom:160px}
+  #menuFundo{top:auto;bottom:calc(52% + 12px);right:62px}
+  #painel.min ~ #menuFundo{bottom:160px}
   #rodape{display:none}
   #painel.detalhe #filtros{display:none}
 }
@@ -121,7 +129,7 @@ ol.seq li.ativo{background:rgba(255,204,51,.12)}
   <div id="topo">
     <h1><a href="../" title="Todos os apps">←</a> Ônibus do Rio</h1>
     <div class="sub" id="resumo">&nbsp;</div>
-    <input id="busca" type="search" placeholder="Linha, bairro, ponto ou estação (ex.: 474, L1, Gávea)" autocomplete="off">
+    <input id="busca" type="search" placeholder="Linha, bairro, ponto ou estação (ex.: 474, L1, VLT, Paquetá)" autocomplete="off">
     <div id="filtros"></div>
   </div>
   <div id="corpo"></div>
@@ -131,7 +139,14 @@ ol.seq li.ativo{background:rgba(255,204,51,.12)}
 <div id="ctl">
   <button id="bPerto" title="Pontos perto de mim">◎</button>
   <button id="bTudo" title="Ver a cidade inteira">⤢</button>
-  <button id="bTema" title="Mapa claro/escuro">◐</button>
+  <button id="bTema" title="Mapa de fundo" aria-label="Mapa de fundo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg></button>
+</div>
+<div id="menuFundo" role="menu">
+  <div class="secao" style="padding:4px 6px 6px">Mapa de fundo</div>
+  <button data-fundo="escuro"><i style="background:#1b1e24"></i>Escuro</button>
+  <button data-fundo="claro"><i style="background:#e8e8e3"></i>Claro</button>
+  <button data-fundo="ruas"><i style="background:linear-gradient(135deg,#f2efe9 50%,#f7d28e 50%)"></i>Ruas</button>
+  <button data-fundo="satelite"><i style="background:linear-gradient(135deg,#2f4a2a,#1f3b52)"></i>Satélite</button>
 </div>
 <div id="escolha"></div>
 
@@ -141,9 +156,10 @@ ol.seq li.ativo{background:rgba(255,204,51,.12)}
 // ---------- estado ----------
 const S = {rede:null, tipos:null, linha:null, dir:0, ponto:null, perto:null, tema:"escuro"};
 const $ = s => document.querySelector(s);
-const TIPOS = {metro:"Metrô", trem:"Trem", bus:"Ônibus", brt:"BRT", exec:"Executivos"};
-const NOME_TIPO = {bus:"Ônibus", brt:"BRT", exec:"Executivo", vlt:"VLT", metro:"Metrô", trem:"Trem"};
-const TRILHO = t => t === "metro" || t === "trem";
+const TIPOS = {metro:"Metrô", trem:"Trem", vlt:"VLT", barca:"Barcas", bus:"Ônibus", brt:"BRT", exec:"Executivos"};
+const NOME_TIPO = {bus:"Ônibus", brt:"BRT", exec:"Executivo", vlt:"VLT", metro:"Metrô", trem:"Trem", barca:"Barca"};
+const TRILHO = t => t === "metro" || t === "trem" || t === "vlt" || t === "barca";
+const PREFIXO = {metro:"Estação ", trem:"Estação ", vlt:"Parada ", barca:"Terminal "};
 S.tipos = new Set(Object.keys(TIPOS));
 const ativo = t => S.tipos.has(t);
 const RIO = [[-43.80, -23.09], [-43.09, -22.74]];
@@ -151,7 +167,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">"
 const semAcento = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // cores: usa a cor oficial da linha, clareando as muito escuras para aparecer no mapa
-const PADRAO = {bus:"#9aa3b5", brt:"#ff9900", exec:"#8f7bff", vlt:"#36c6a0", metro:"#e77405", trem:"#0691F6"};
+const PADRAO = {bus:"#9aa3b5", brt:"#ff9900", exec:"#8f7bff", vlt:"#36c6a0", metro:"#e77405", trem:"#0691F6", barca:"#4FC3F7"};
 function corLinha(l){
   let c = (l.c || PADRAO[l.t] || "#9aa3b5").toUpperCase();
   const r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
@@ -160,6 +176,13 @@ function corLinha(l){
     const k = 0.5; c = "#" + [r,g,b].map(v => Math.round(v + (255-v)*k).toString(16).padStart(2,"0")).join("");
   }
   return c;
+}
+// versão mais escura da cor, para os fundos claros
+function escurecer(c){
+  const v = [1,3,5].map(i => parseInt(c.slice(i,i+2),16));
+  const lum = (0.299*v[0] + 0.587*v[1] + 0.114*v[2])/255;
+  if (lum < 0.6) return c;
+  return "#" + v.map(x => Math.round(x*0.62).toString(16).padStart(2,"0")).join("");
 }
 function textoSobre(c){
   const r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
@@ -186,22 +209,45 @@ function decodificar(str){
 }
 
 // ---------- mapa ----------
-const ESTILOS = {
-  escuro: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  claro:  "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+// fundo: mosaicos raster (não dependem de carregar um estilo externo, então o mapa sempre aparece)
+const FUNDOS = {
+  escuro:  {nome:"Escuro",  claro:false, camadas:["f-escuro"]},
+  claro:   {nome:"Claro",   claro:true,  camadas:["f-claro"]},
+  ruas:    {nome:"Ruas",    claro:true,  camadas:["f-ruas"]},
+  satelite:{nome:"Satélite",claro:false, camadas:["f-satelite","f-rotulos"]},
 };
-const ESTILO_VAZIO = {version:8, glyphs:"https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-  sources:{}, layers:[{id:"fundo", type:"background", paint:{"background-color":"#0b0d12"}}]};
+const tiles = (t) => ["a","b","c","d"].map(x => `https://${x}.basemaps.cartocdn.com/${t}/{z}/{x}/{y}@2x.png`);
+const ESTILO = {
+  version:8,
+  glyphs:"https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
+  sources:{
+    escuro:{type:"raster", tiles:tiles("dark_all"), tileSize:256, maxzoom:20,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'},
+    claro:{type:"raster", tiles:tiles("light_all"), tileSize:256, maxzoom:20,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'},
+    ruas:{type:"raster", tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize:256, maxzoom:19,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'},
+    satelite:{type:"raster", tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize:256, maxzoom:19,
+      attribution:"Imagens © Esri, Maxar, Earthstar Geographics"},
+    rotulos:{type:"raster", tiles:tiles("dark_only_labels"), tileSize:256, maxzoom:20},
+  },
+  layers:[
+    {id:"fundo", type:"background", paint:{"background-color":"#0b0d12"}},
+    {id:"f-escuro", type:"raster", source:"escuro"},
+    {id:"f-claro", type:"raster", source:"claro", layout:{visibility:"none"}},
+    {id:"f-ruas", type:"raster", source:"ruas", layout:{visibility:"none"}, paint:{"raster-saturation":-0.3}},
+    {id:"f-satelite", type:"raster", source:"satelite", layout:{visibility:"none"}, paint:{"raster-brightness-max":0.75}},
+    {id:"f-rotulos", type:"raster", source:"rotulos", layout:{visibility:"none"}},
+  ]
+};
+const estiloFalhou = false;
 
 const map = new maplibregl.Map({
-  container:"map", style:ESTILOS.escuro, bounds:RIO, fitBoundsOptions:{padding:20},
-  attributionControl:{compact:true, customAttribution:"Ônibus: SMTR / data.rio (GTFS) · Metrô e trem: © OpenStreetMap"},
+  container:"map", style:ESTILO, bounds:RIO, fitBoundsOptions:{padding:20},
+  attributionControl:{compact:true, customAttribution:"Ônibus: SMTR / data.rio (GTFS) · Metrô, trem, VLT e barcas: © OpenStreetMap"},
   maxBounds:[[-45.6,-24.3],[-41.4,-21.5]], dragRotate:false, pitchWithRotate:false
 });
 map.touchZoomRotate.disableRotation();
-let estiloFalhou = false;
-const timerEstilo = setTimeout(() => { if (!map.isStyleLoaded()) { estiloFalhou = true; map.setStyle(ESTILO_VAZIO); } }, 8000);
-map.on("error", e => { if (!map.isStyleLoaded() && !estiloFalhou && /style|cartocdn/.test(String(e.error && e.error.message))) { estiloFalhou = true; map.setStyle(ESTILO_VAZIO); } });
 
 let geoRede = null, geoPontos = null, geoTrilhos = null, geoEstacoes = null;
 
@@ -230,8 +276,10 @@ function montarCamadas(){
   // metrô e trem: traço grosso com contorno; trem leva tracejado branco de ferrovia
   map.addLayer({id:"trilhos-casco", type:"line", source:"trilhos", layout:{"line-cap":"round","line-join":"round"},
     paint:{"line-color":"#0b0d12","line-width":["interpolate",["linear"],["zoom"],9,4,15,10],"line-opacity":0.9}});
+  map.addLayer({id:"barcas", type:"line", source:"trilhos", filter:["==",["get","t"],"barca"], layout:{"line-cap":"round","line-join":"round"},
+    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],9,2,15,4],"line-dasharray":[1.5,1.5]}});
   map.addLayer({id:"trilhos", type:"line", source:"trilhos", layout:{"line-cap":"round","line-join":"round"},
-    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],9,2.4,15,6]}});
+    paint:{"line-color":["get","cor"],"line-width":["interpolate",["linear"],["zoom"],9,["case",["==",["get","t"],"vlt"],1.6,2.4],15,["case",["==",["get","t"],"vlt"],4.5,6]]}});
   map.addLayer({id:"trilhos-trem", type:"line", source:"trilhos", filter:["==",["get","t"],"trem"],
     paint:{"line-color":"#ffffff","line-width":["interpolate",["linear"],["zoom"],9,0.8,15,2],"line-dasharray":[2,3],"line-opacity":0.8}});
   map.addLayer({id:"estacoes", type:"circle", source:"estacoes",
@@ -267,7 +315,8 @@ function montarCamadas(){
     paint:{"circle-radius":11,"circle-color":"rgba(255,204,51,.25)","circle-stroke-color":"#ffcc33","circle-stroke-width":2.5}});
   aplicarEstado();
 }
-map.on("style.load", () => { clearTimeout(timerEstilo); montarCamadas(); });
+let estiloPronto = false;
+map.on("style.load", () => { estiloPronto = true; montarCamadas(); aplicarFundo(S.fundo); });
 
 function vazio(){ return {type:"FeatureCollection", features:[]}; }
 
@@ -286,7 +335,7 @@ Promise.all([json("data/rede.json"), json("data/trilhos.json").catch(() => null)
     l._cor = corLinha(l);
     l._busca = semAcento(`${l.n} ${l.l} ${NOME_TIPO[l.t]} ${l.a} ${l.d.map(d => d.h).join(" ")}`);
     l._coords = l.d.map(d => (Array.isArray(d.p) ? d.p : [d.p]).map(decodificar));
-    l._coords.forEach((co, di) => (TRILHO(l.t) ? featsT : feats).push({type:"Feature", properties:{li, di, cor:l._cor, t:l.t},
+    l._coords.forEach((co, di) => (TRILHO(l.t) ? featsT : feats).push({type:"Feature", properties:{li, di, cor:l._cor, corEsc:escurecer(l._cor), t:l.t},
       geometry:{type:"MultiLineString", coordinates:co}}));
   });
   geoRede = {type:"FeatureCollection", features:feats};
@@ -294,17 +343,17 @@ Promise.all([json("data/rede.json"), json("data/trilhos.json").catch(() => null)
   const pt = (p, i, extra) => ({type:"Feature", properties:{i, ...extra}, geometry:{type:"Point", coordinates:[p[2], p[1]]}});
   geoPontos = {type:"FeatureCollection", features:rede.pontos.map((p, i) => p[4] === 2 ? null : pt(p, i)).filter(Boolean)};
   geoEstacoes = {type:"FeatureCollection", features:rede.pontos.map((p, i) => p[4] !== 2 ? null : pt(p, i, {
-    nome:p[0], metro:p[3].some(li => rede.linhas[li].t === "metro") ? 1 : 0, trem:p[3].some(li => rede.linhas[li].t === "trem") ? 1 : 0})).filter(Boolean)};
+    nome:p[0], ...Object.fromEntries(["metro","trem","vlt","barca"].map(k => [k, p[3].some(li => rede.linhas[li].t === k) ? 1 : 0]))})).filter(Boolean)};
   rede.pontos.forEach(p => p._busca = semAcento(p[0]));
 
   const nb = rede.linhas.filter(l => !TRILHO(l.t)).length, nt = rede.linhas.length - nb;
   const np = rede.pontos.filter(p => p[4] !== 2).length, ne = rede.pontos.length - np;
-  $("#resumo").textContent = `${nb} linhas de ônibus · ${np.toLocaleString("pt-BR")} pontos` + (nt ? ` · ${nt} de metrô e trem · ${ne} estações` : "");
+  $("#resumo").textContent = `${nb} linhas de ônibus · ${np.toLocaleString("pt-BR")} pontos` + (nt ? ` · ${nt} de metrô, trem, VLT e barcas · ${ne} estações e terminais` : "");
   $("#rodape").innerHTML = `Ônibus: <a href="https://www.data.rio/datasets/8ffe62ad3b2f42e49814bf941654ea6c/about" target="_blank" rel="noopener">GTFS oficial da SMTR (data.rio)</a>` +
-    (tr ? ` · Metrô e trem: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>` : "") +
+    (tr ? ` · Metrô, trem, VLT e barcas: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>` : "") +
     ` · atualizado toda semana · última leitura ${esc(rede.gerado.slice(8,10))}/${esc(rede.gerado.slice(5,7))}/${esc(rede.gerado.slice(0,4))}`;
   montarFiltros();
-  if (map.isStyleLoaded()) montarCamadas();
+  if (estiloPronto){ montarCamadas(); aplicarFundo(S.fundo); }
   lerEndereco();
   render();
   if (S.linha === null && S.ponto === null){
@@ -360,7 +409,7 @@ function htmlLista(){
     if (idx.length) html += `<div class="secao">Linhas · ${idx.length}</div>` + idx.slice(0, 200).map(i => linhaHTML(L[i], i)).join("");
     if (pts.length) html += `<div class="secao">Pontos</div>` + pts.map(i => {
       const p = S.rede.pontos[i];
-      return `<div class="lin" data-p="${i}"><span class="num" style="background:#fff">${p[4] === 2 ? "Estação" : "●"}</span><div class="nome"><b>${esc(p[0])}</b><small>${p[3].length} linha${p[3].length>1?"s":""}</small></div></div>`;
+      return `<div class="lin" data-p="${i}"><span class="num" style="background:#fff">${p[4] === 2 ? esc((PREFIXO[S.rede.linhas[p[3][0]].t] || "Estação").trim()) : "●"}</span><div class="nome"><b>${esc(p[0])}</b><small>${p[3].length} linha${p[3].length>1?"s":""}</small></div></div>`;
     }).join("");
     return html;
   }
@@ -410,12 +459,12 @@ function htmlPonto(pi){
     if (bus.length) integra = `<div class="secao" style="padding-left:0;margin-top:14px">Ônibus a até 300 m · ${bus.length} linhas</div>
       <div class="grade">${bus.map(i => `<span data-l="${i}" title="${esc(L[i].l)}">${selo(L[i])}</span>`).join("")}</div>`;
   } else if (vizinhos.length){
-    integra = `<div class="secao" style="padding-left:0;margin-top:14px">Metrô e trem perto</div>` + vizinhos.slice(0, 4).map(([j, m]) =>
-      `<div class="lin" data-p="${j}" style="padding-left:0;padding-right:0"><span class="num mono" style="background:#fff;font-size:12px">${Math.round(m)} m</span><div class="nome"><b>Estação ${esc(P[j][0])}</b><small>${P[j][3].map(i => esc(L[i].n)).join(" · ")}</small></div></div>`).join("");
+    integra = `<div class="secao" style="padding-left:0;margin-top:14px">Metrô, trem, VLT e barcas perto</div>` + vizinhos.slice(0, 4).map(([j, m]) =>
+      `<div class="lin" data-p="${j}" style="padding-left:0;padding-right:0"><span class="num mono" style="background:#fff;font-size:12px">${Math.round(m)} m</span><div class="nome"><b>${PREFIXO[L[P[j][3][0]].t] || "Estação "}${esc(P[j][0])}</b><small>${P[j][3].map(i => esc(L[i].n)).join(" · ")}</small></div></div>`).join("");
   }
   return `<div class="det pt">
     <button class="voltar" data-voltar>← ${S.perto ? "pontos perto de você" : "todas as linhas"}</button>
-    <h2>${estacao ? "Estação " : ""}${esc(p[0])}</h2>
+    <h2>${estacao ? (PREFIXO[L[p[3][0]].t] || "Estação ") : ""}${esc(p[0])}</h2>
     <div class="meta" style="color:var(--mut);font-size:12.5px">${estacao ? tipoEst + " · " : ""}${p[3].length} linha${p[3].length>1?"s":""} passa${p[3].length>1?"m":""} aqui${p[4] === 1 ? " · estação BRT" : ""}</div>
     <div class="grade">${ls.map(i => `<span data-l="${i}" title="${esc(L[i].l)}">${selo(L[i])}</span>`).join("")}</div>
     ${integra}
@@ -509,10 +558,12 @@ function aplicarEstado(){
   // filtro por tipo
   const tiposOn = ["literal", [...S.tipos]];
   map.setFilter("rede", ["in", ["get","t"], tiposOn]);
-  map.setFilter("trilhos", ["in", ["get","t"], tiposOn]);
-  map.setFilter("trilhos-casco", ["in", ["get","t"], tiposOn]);
+  const semBarca = ["all", ["in", ["get","t"], tiposOn], ["!=", ["get","t"], "barca"]];
+  map.setFilter("trilhos", semBarca);
+  map.setFilter("trilhos-casco", semBarca);
+  map.setFilter("barcas", ["all", ["==", ["get","t"], "barca"], ativo("barca")]);
   map.setFilter("trilhos-trem", ["all", ["==", ["get","t"], "trem"], ativo("trem")]);
-  const fEst = ["any", ["all", ativo("metro"), ["==", ["get","metro"], 1]], ["all", ativo("trem"), ["==", ["get","trem"], 1]]];
+  const fEst = ["any", ...["metro","trem","vlt","barca"].map(k => ["all", ativo(k), ["==", ["get",k], 1]])];
   map.setFilter("estacoes", fEst);
   if (map.getLayer("estacoes-rot")) map.setFilter("estacoes-rot", fEst);
   map.setLayoutProperty("pontos", "visibility", ["bus","brt","exec"].some(ativo) ? "visible" : "none");
@@ -524,6 +575,7 @@ function aplicarEstado(){
   const opT = acesas && acesas.length < L.length
     ? ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 1, 0.12] : 1;
   map.setPaintProperty("trilhos", "line-opacity", opT);
+  map.setPaintProperty("barcas", "line-opacity", opT);
   map.setPaintProperty("trilhos-trem", "line-opacity", acesas && acesas.length < L.length
     ? ["case", ["in", ["get","li"], ["literal", acesas]], S.linha !== null ? 0 : 0.8, 0.1] : 0.8);
   map.setPaintProperty("trilhos-casco", "line-opacity", acesas && acesas.length < L.length ? 0.4 : 0.9);
@@ -575,7 +627,7 @@ map.on("click", e => {
     }
     selecionarPonto(pi, false); voarPonto(pi, map.getZoom()); return;
   }
-  const fl = map.queryRenderedFeatures(bb, {layers:["sel", "trilhos", "rede"]});
+  const fl = map.queryRenderedFeatures(bb, {layers:["sel", "trilhos", "barcas", "rede"]});
   const vis = new Set();
   fl.forEach(f => {
     const li = f.layer.id === "sel" ? S.linha : f.properties.li;
@@ -589,7 +641,7 @@ map.on("click", e => {
 });
 map.on("mousemove", e => {
   if (!map.getLayer("rede")) return;
-  const r = 6; const f = map.queryRenderedFeatures([[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]], {layers:["rede","trilhos","estacoes","pontos","sel-pontos"]});
+  const r = 6; const f = map.queryRenderedFeatures([[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]], {layers:["rede","trilhos","barcas","estacoes","pontos","sel-pontos"]});
   map.getCanvas().style.cursor = f.length ? "pointer" : "";
 });
 function mostrarEscolha(pt, ls){
@@ -622,29 +674,35 @@ $("#bPerto").addEventListener("click", () => {
 function alertaSuave(msg){ $("#corpo").insertAdjacentHTML("afterbegin", `<div class="vazio" style="color:#ffcc33">${esc(msg)}</div>`); }
 
 $("#bTudo").addEventListener("click", () => map.fitBounds(RIO, {padding:padMapa(), duration:900}));
-$("#bTema").addEventListener("click", () => {
-  if (estiloFalhou) return;
-  S.tema = S.tema === "escuro" ? "claro" : "escuro";
-  map.setStyle(ESTILOS[S.tema]);
-  document.documentElement.style.setProperty("--bg", S.tema === "escuro" ? "#0b0d12" : "#e9ebee");
-});
-map.on("style.load", () => {
+// troca do mapa de fundo sem recarregar o estilo (as camadas de transporte ficam)
+S.fundo = (() => { try { return localStorage.getItem("onibusRioFundo") || "escuro"; } catch(e){ return "escuro"; } })();
+if (!FUNDOS[S.fundo]) S.fundo = "escuro";
+function aplicarFundo(nome){
+  if (!map.getLayer("f-escuro")) return;
+  S.fundo = nome; try { localStorage.setItem("onibusRioFundo", nome); } catch(e){}
+  for (const [k, f] of Object.entries(FUNDOS)) for (const id of f.camadas) map.setLayoutProperty(id, "visibility", "none");
+  for (const id of FUNDOS[nome].camadas) map.setLayoutProperty(id, "visibility", "visible");
+  const claro = FUNDOS[nome].claro;
+  S.tema = claro ? "claro" : "escuro";
+  document.documentElement.style.setProperty("--bg", claro ? "#e9ebee" : "#0b0d12");
+  map.setPaintProperty("fundo", "background-color", claro ? "#e9ebee" : "#0b0d12");
+  document.querySelectorAll("#menuFundo [data-fundo]").forEach(b => b.classList.toggle("on", b.dataset.fundo === nome));
   if (!map.getLayer("pontos")) return;
-  const claro = S.tema === "claro";
   map.setPaintProperty("pontos", "circle-color", claro ? "#1b2230" : "#ffffff");
   map.setPaintProperty("pontos", "circle-stroke-color", claro ? "#ffffff" : "#0b0d12");
   map.setPaintProperty("trilhos-casco", "line-color", claro ? "#ffffff" : "#0b0d12");
   map.setPaintProperty("estacoes", "circle-stroke-color", claro ? "#1b2230" : "#0b0d12");
-  if (map.getLayer("estacoes-rot")){
-    map.setPaintProperty("estacoes-rot", "text-color", claro ? "#111" : "#fff");
-    map.setPaintProperty("estacoes-rot", "text-halo-color", claro ? "#fff" : "#0b0d12");
-  }
+  map.setPaintProperty("rede", "line-color", claro ? ["get","corEsc"] : ["get","cor"]);
   map.setPaintProperty("sel-pontos", "circle-color", ["case",["==",["get","ponta"],1],["get","cor"], claro ? "#ffffff" : "#0b0d12"]);
-  if (map.getLayer("sel-rotulos")){
-    map.setPaintProperty("sel-rotulos", "text-color", claro ? "#111" : "#fff");
-    map.setPaintProperty("sel-rotulos", "text-halo-color", claro ? "#fff" : "#0b0d12");
+  for (const id of ["estacoes-rot", "sel-rotulos"]) if (map.getLayer(id)){
+    map.setPaintProperty(id, "text-color", claro ? "#111" : "#fff");
+    map.setPaintProperty(id, "text-halo-color", claro ? "#fff" : "#0b0d12");
   }
-});
+  map.setPaintProperty("sel-casco", "line-color", claro ? "#ffffff" : "#000000");
+}
+$("#bTema").addEventListener("click", e => { e.stopPropagation(); $("#menuFundo").classList.toggle("aberto"); });
+$("#menuFundo").addEventListener("click", e => { const b = e.target.closest("[data-fundo]"); if (!b) return; aplicarFundo(b.dataset.fundo); $("#menuFundo").classList.remove("aberto"); });
+document.addEventListener("click", e => { if (!e.target.closest("#menuFundo")) $("#menuFundo").classList.remove("aberto"); });
 
 // ---------- gaveta no celular ----------
 function expandir(){ $("#painel").classList.remove("min"); }

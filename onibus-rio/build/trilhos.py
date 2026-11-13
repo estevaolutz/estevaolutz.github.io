@@ -18,6 +18,11 @@ CURTO_METRO = {"1": "L1", "2": "L2", "4": "L4"}
 
 
 def tipo_de(tags):
+    nome = (tags.get("name") or "").lower()
+    if nome.startswith("vlt carioca"):
+        return "vlt"
+    if tags.get("route") == "ferry" and "barcas" in (tags.get("operator") or "").lower():
+        return "barca"
     op = (tags.get("operator") or "").lower().replace(" ", "")
     for k, v in OPERADORAS.items():
         if k.replace(" ", "") in op:
@@ -34,7 +39,9 @@ def dist(a, b):
 def main(entrada, outdir):
     els = json.load(open(entrada, encoding="utf-8"))["elements"]
     nos = {e["id"]: (e["lat"], e["lon"]) for e in els if e["type"] == "node" and "lat" in e}
+    nome_no = {e["id"]: e["tags"]["name"].strip() for e in els if e["type"] == "node" and e.get("tags", {}).get("name")}
     vias = {e["id"]: e["nodes"] for e in els if e["type"] == "way" and "nodes" in e}
+    nome_via = {e["id"]: e["tags"]["name"].strip() for e in els if e["type"] == "way" and e.get("tags", {}).get("name")}
     rels = {e["id"]: e for e in els if e["type"] == "relation"}
 
     # estações (nós, vias e relações com centro)
@@ -80,19 +87,27 @@ def main(entrada, outdir):
                     mestre_de[m["ref"]] = r
     for r in rels.values():
         t = r.get("tags", {})
-        if t.get("type") != "route" or t.get("route") not in ("subway", "train"):
+        if t.get("type") != "route" or t.get("route") not in ("subway", "train", "tram", "ferry"):
             continue
         tp = tipo_de(t) or (tipo_de(mestre_de[r["id"]].get("tags", {})) if r["id"] in mestre_de else None)
         if not tp:
             continue
-        chave = mestre_de[r["id"]]["id"] if r["id"] in mestre_de else ("ref", tp, t.get("ref"))
+        if tp == "barca":
+            # só as barcas da Baía de Guanabara; ida e volta viram uma linha só
+            if any(nos.get(m["ref"], (0, 0))[1] < -43.5 for m in r.get("members", []) if m["type"] == "node"):
+                continue
+            chave = ("barca", frozenset(x.strip() for x in (t.get("name") or "").split(" - ")))
+        elif r["id"] in mestre_de:
+            chave = mestre_de[r["id"]]["id"]
+        else:
+            chave = ("ref", tp, t.get("ref"))
         grupos[chave].append(r)
 
     def montar(rel):
         """Junta as vias da relação numa sequência de trechos contínuos (listas de nós)."""
         trechos = []
         for m in rel.get("members", []):
-            if m["type"] != "way" or m["ref"] not in vias or m.get("role") in ("platform", "platform_entry_only", "platform_exit_only"):
+            if m["type"] != "way" or m["ref"] not in vias or (m.get("role") or "").startswith(("platform", "stop")):
                 continue
             w = list(vias[m["ref"]])
             if trechos:
@@ -107,19 +122,48 @@ def main(entrada, outdir):
             trechos.append(w)
         return [[nos[n] for n in t if n in nos] for t in trechos]
 
+    def parada_nomeada(nome, c, modo):
+        """VLT e barcas: a parada é o próprio nó da rota; junta as de mesmo nome que estão perto."""
+        for i, s in enumerate(estacoes):
+            if modo in s["modos"] and s["nome"] == nome and dist(c, s["c"]) < 400:
+                return i
+        estacoes.append({"nome": nome, "c": c, "linhas": set(), "modos": {modo}})
+        return len(estacoes) - 1
+
     def paradas(rel, modo):
         seq = []
         for m in rel.get("members", []):
-            if not (m.get("role") or "").startswith("stop"):
+            papel = m.get("role") or ""
+            if modo == "barca":
+                # nas barcas o cais às vezes vem como via, ou como nó sem papel
+                if m["type"] == "way" and papel.startswith("stop") and m["ref"] in nome_via:
+                    pts = [nos[n] for n in vias.get(m["ref"], []) if n in nos]
+                    if pts:
+                        c = (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+                        i = parada_nomeada(nome_via[m["ref"]], c, modo)
+                        if not seq or seq[-1] != i:
+                            seq.append(i)
+                    continue
+                if m["type"] == "node" and papel in ("", "stop", "stop_entry_only", "stop_exit_only") and m["ref"] in nome_no and m["ref"] in nos:
+                    i = parada_nomeada(nome_no[m["ref"]], nos[m["ref"]], modo)
+                    if not seq or seq[-1] != i:
+                        seq.append(i)
+                continue
+            if not papel.startswith("stop"):
                 continue
             c = None
             if m["type"] == "node" and m["ref"] in nos:
                 c = nos[m["ref"]]
             if c is None:
                 continue
-            i = estacao_mais_proxima(c, modo)
+            if modo in ("vlt", "barca") and m["ref"] in nome_no:
+                i = parada_nomeada(nome_no[m["ref"]], c, modo)
+            else:
+                i = estacao_mais_proxima(c, modo)
             if i is not None and (not seq or seq[-1] != i):
                 seq.append(i)
+        if modo == "barca":  # cada terminal uma vez só
+            seq = [x for k, x in enumerate(seq) if x not in seq[:k]]
         return seq
 
     linhas = []
@@ -156,16 +200,22 @@ def main(entrada, outdir):
             estacoes[i]["linhas"].add(len(linhas))
         ref = (tags.get("ref") or "").strip()
         nome = (tags.get("name") or "").split(":")[0].replace("Metrô Rio", "").replace("Linha", "").strip()
+        a, b = estacoes[ida[0][0]]["nome"], estacoes[ida[0][-1]]["nome"]
         if tp == "metro":
             n = CURTO_METRO.get(ref, "L" + ref if ref else nome)
+        elif tp == "vlt":
+            n = "VLT " + ref
+        elif tp == "barca":
+            n = next((x for x in (a, b) if "XV" not in x), b).replace("Praça ", "")
         else:
             n = nome or ref
-        a, b = estacoes[ida[0][0]]["nome"], estacoes[ida[0][-1]]["nome"]
+        cor = (tags.get("colour") or "").strip()
+        cor = {"blue": "#2F7BD8", "green": "#2FA24A", "red": "#D93A3A", "yellow": "#F1C232", "orange": "#EC6F29"}.get(cor.lower(), cor).upper()
         linhas.append({
             "n": n, "l": f"{a} – {b}", "t": tp,
-            "a": "MetrôRio" if tp == "metro" else "SuperVia",
-            "c": (tags.get("colour") or "").upper(), "d": dirs,
-            "_ord": (0 if tp == "metro" else 1, n),
+            "a": {"metro": "MetrôRio", "trem": "SuperVia", "vlt": "VLT Carioca", "barca": tags.get("operator") or "Barcas"}[tp],
+            "c": cor, "d": dirs,
+            "_ord": ({"metro": 0, "trem": 1, "vlt": 2, "barca": 3}[tp], n),
         })
 
     # reordena: metrô (L1, L2, L4) e depois trens; remapeia índices das estações

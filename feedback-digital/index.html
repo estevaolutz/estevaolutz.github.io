@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Feedback Digital · iPad</title>
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Feedback">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{color-scheme:dark;--panel:#121726;--line:#2a3150;--fg:#e8ebf6;--mute:#98a1bf;--ac:#e879f9}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--fg);font:14px/1.45 system-ui,-apple-system,sans-serif;overflow:hidden;
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-text-size-adjust:100%;touch-action:none;overscroll-behavior:none}
+canvas#tela{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;background:#000}
+.app-ui{position:fixed;z-index:30;color:var(--fg)}
+#entrada{z-index:40;inset:0;display:grid;place-items:center;overflow-y:auto;
+  padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
+  background:radial-gradient(ellipse at 50% 35%,rgba(0,0,0,.35),rgba(0,0,0,.93) 70%)}
+#entrada[hidden],#compart[hidden],.ic[hidden]{display:none!important}
+#entrada .c{width:min(30rem,100%);display:grid;gap:14px}
+#entrada h1{margin:0;font:200 clamp(1.6rem,6vw,3rem)/1 system-ui,-apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase}
+#entrada h1 b{font-weight:600;color:var(--ac)}
+#entrada p{margin:0;color:var(--mute);line-height:1.5}
+.big{display:block;width:100%;text-align:left;padding:15px 16px;border-radius:14px;font:500 16px/1.3 system-ui,-apple-system,sans-serif;border:1px solid #38425c;background:rgba(23,28,42,.9);color:var(--fg);cursor:pointer}
+.big small{display:block;color:var(--mute);font-size:12.5px;font-weight:400;margin-top:2px}
+.big.p{background:var(--ac);color:#1a0420;border-color:var(--ac)}.big.p small{color:rgba(0,0,0,.62)}
+#topo{top:0;right:0;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 0 0;display:flex;gap:8px;transition:opacity .35s,right .25s ease}
+body.quieto #topo{opacity:0;pointer-events:none}
+body.inicio #topo{display:none}
+body:not(.nopanel) #topo{right:min(340px,100vw)}
+.ic{width:48px;height:48px;border-radius:50%;border:1px solid #38425c;background:rgba(12,15,23,.72);color:var(--fg);font:19px/1 system-ui,sans-serif;padding:0;display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ic.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
+#dica{left:50%;top:max(18px,env(safe-area-inset-top));transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(12,15,23,.85);font-size:13px;opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap;z-index:41}
+#dica.v{opacity:1}
+#compart{left:50%;bottom:max(28px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:45;width:min(22rem,90vw)}
+aside{position:fixed;z-index:35;top:0;right:0;bottom:0;width:min(340px,100vw);background:rgba(18,23,38,.96);border-left:1px solid var(--line);
+  padding:max(14px,env(safe-area-inset-top)) 14px max(30px,env(safe-area-inset-bottom));overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;transition:transform .25s ease;touch-action:pan-y}
+body.nopanel aside{transform:translateX(102%)}
+aside h2{font:600 16px system-ui;margin:4px 0 2px}aside p.sub{margin:0 0 10px;color:var(--mute);font-size:13px}
+aside h4{margin:16px 0 6px;font:600 11px system-ui;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
+#fecharPainel{float:right;width:40px;height:40px;border-radius:50%;padding:0;font-size:17px}
+aside button{font:inherit;color:var(--fg);background:#1a2036;border:1px solid #38425f;border-radius:8px;padding:8px 11px;min-height:40px;cursor:pointer}
+aside button.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.sl{display:grid;grid-template-columns:1fr auto;gap:1px 8px;margin:7px 0}.sl output{color:var(--mute);font:11px ui-monospace,monospace}
+.sl input{grid-column:1/3;width:100%;height:30px;accent-color:var(--ac)}
+.chk{display:flex;gap:10px;align-items:center;margin:8px 0}.chk input{width:22px;height:22px;accent-color:var(--ac)}
+</style>
+</head><body class="nopanel inicio">
+<canvas id="tela"></canvas>
+
+<div id="entrada" class="app-ui" role="dialog" aria-labelledby="entT"><div class="c">
+  <h1 id="entT">Feedback <b>Digital</b></h1>
+  <p id="entradaP">O seu movimento, a sua voz e o seu toque alimentam um feedback que derrete ao acaso. Ajustes completos no ⚙.</p>
+  <button class="big p" id="eCamF" type="button">Câmera da frente<small>Fique de frente para o iPad e se mexa</small></button>
+  <button class="big" id="eCamT" type="button">Câmera de trás<small>Aponte o iPad para quem se move</small></button>
+  <button class="big" id="eSem" type="button">Sem câmera<small>Só o toque e o microfone</small></button>
+</div></div>
+
+<div id="topo" class="app-ui">
+  <button class="ic" id="tLimpa" type="button" aria-label="Limpar a tela">🗑</button>
+  <button class="ic" id="tCongela" type="button" aria-label="Congelar">❄︎</button>
+  <button class="ic" id="tSalva" type="button" aria-label="Salvar imagem">⤓</button>
+  <button class="ic" id="tFonte" type="button" aria-label="Trocar a câmera">⇄</button>
+  <button class="ic" id="tAjustes" type="button" aria-label="Todos os ajustes">⚙︎</button>
+  <button class="ic" id="tTela" type="button" aria-label="Tela cheia">⛶</button>
+</div>
+<div id="dica" class="app-ui" role="status" aria-live="polite"></div>
+<div id="compart" class="app-ui" hidden><button class="big p" type="button">Salvar ou compartilhar<small id="compartN"></small></button></div>
+
+<aside id="painel">
+  <button id="fecharPainel" type="button" aria-label="Fechar ajustes">✕</button>
+  <h2>Feedback Digital</h2>
+  <p class="sub">Motor do Feedback Lab. Movimento da câmera e toque alimentam o laço; o microfone dá zoom, cor, pulso e separação RGB.</p>
+  <h4>Modo</h4>
+  <div class="row" id="modos"></div>
+  <div id="sliders"></div>
+</aside>
+
+<video id="cam" playsinline muted style="display:none"></video>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ---------------- parâmetros (iguais aos do TouchDesigner) ---------------- */
+const MODOS = ['Túnel', 'Fluido', 'Estrias', 'Derreter', 'Pixel sort'];
+const P = { Modo: 3, Congelar: false, Automatico: false };
+const SPEC = [
+  ['Feedback'],
+  ['Rastro', 'Rastro (persistência)', 0.975, 0.9, 0.9995, 0.0005],
+  ['Realce', 'Realce', 0.15, 0, 1.5, 0.01],
+  ['Zoom', 'Zoom', 0.003, -0.03, 0.03, 0.0005],
+  ['Rotacao', 'Rotação', 0, -0.05, 0.05, 0.001],
+  ['Deslocamento', 'Deslocamento (derreter/fluido)', 1, 0, 3, 0.05],
+  ['Escalaruido', 'Escala do ruído', 4, 1, 9, 0.1],
+  ['Matiz', 'Giro de matiz', 0, -0.3, 0.3, 0.005],
+  ['Rgb', 'Separação RGB', 1, 0, 4, 0.05],
+  ['Semente', 'Força da semente', 0.9, 0, 1.5, 0.05],
+  ['Linhaaudio', 'Linha do áudio', 0.25, 0, 1, 0.01],
+  ['Respiracao', 'Respiração (LFO)', 0.004, 0, 0.02, 0.0005],
+  ['Lfo', 'Velocidade do LFO', 0.15, 0.01, 2, 0.01],
+  ['Inverter', 'Inversão', 0, 0, 1, 0.01],
+  ['Brilho', 'Brilho', 1, 0.4, 1.6, 0.01],
+  ['Entradas'],
+  ['Camera', 'Imagem da câmera (0 = transparente)', 0, 0, 1, 0.01],
+  ['Movimento', 'Ganho do movimento', 6, 0, 20, 0.1],
+  ['Micgain', 'Ganho do microfone', 12, 0, 40, 0.5],
+  ['Zoomaudio', 'Zoom pelo volume', 0.012, 0, 0.05, 0.001],
+  ['Pulsograve', 'Pulso pelo grave', 0.015, 0, 0.05, 0.001],
+  ['Rotaudio', 'Rotação pelo grave', 0.02, 0, 0.08, 0.001],
+  ['Rgbaudio', 'RGB pelo agudo', 3, 0, 8, 0.1],
+  ['Matizaudio', 'Matiz pelo volume', 0.1, 0, 0.5, 0.01],
+  ['Toque', 'Tamanho do toque', 0.04, 0.01, 0.3, 0.005],
+  ['Acaso'],
+  ['Acaso', 'Quantidade de acaso', 0.7, 0, 1, 0.01],
+  ['Velacaso', 'Velocidade do acaso', 0.12, 0.01, 1, 0.01],
+  ['Trocamin', 'Troca mínima (s)', 6, 1, 60, 1],
+  ['Trocamax', 'Troca máxima (s)', 20, 2, 120, 1],
+];
+function montaPainel() {
+  const box = $('sliders'); let html = '';
+  for (const s of SPEC) {
+    if (s.length === 1) {
+      html += `<h4>${s[0]}</h4>`;
+      if (s[0] === 'Feedback') html += `<div class="chk"><input type="checkbox" id="cCongelar"><label for="cCongelar">Congelar</label></div>`;
+      if (s[0] === 'Acaso') html += `<div class="chk"><input type="checkbox" id="cAuto"><label for="cAuto">Troca de modo automática</label></div>`;
+      continue;
+    }
+    const [k, lab, d, lo, hi, st] = s; P[k] = d;
+    html += `<div class="sl"><label for="s_${k}">${lab}</label><output id="o_${k}"></output><input type="range" id="s_${k}" min="${lo}" max="${hi}" step="${st}" value="${d}"></div>`;
+  }
+  html += `<h4>Tela</h4><div class="row"><button id="bLimpar" type="button">Limpar tela</button><button id="bPadrao" type="button">Valores padrão</button></div>`;
+  box.innerHTML = html;
+  const fmt = (v, st) => (st >= 1 ? v.toFixed(0) : st >= 0.01 ? v.toFixed(2) : v.toFixed(4));
+  for (const s of SPEC) {
+    if (s.length === 1) continue;
+    const [k, , , , , st] = s, el = $('s_' + k), o = $('o_' + k);
+    const up = () => { P[k] = parseFloat(el.value); o.textContent = fmt(P[k], st); };
+    el.oninput = up; up();
+  }
+  $('cCongelar').onchange = (e) => { P.Congelar = e.target.checked; $('tCongela').classList.toggle('on', P.Congelar); };
+  $('cAuto').onchange = (e) => { P.Automatico = e.target.checked; };
+  $('bLimpar').onclick = () => limpar();
+  $('bPadrao').onclick = () => { for (const s of SPEC) if (s.length > 1) { $('s_' + s[0]).value = s[2]; $('s_' + s[0]).oninput(); } setModo(3); };
+  const m = $('modos');
+  MODOS.forEach((nome, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = nome; b.onclick = () => setModo(i); m.appendChild(b); });
+  setModo(P.Modo);
+}
+function setModo(i) { P.Modo = i; [...$('modos').children].forEach((b, j) => b.classList.toggle('on', j === i)); }
+
+/* ---------------- interface do iPad ---------------- */
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+const toggleFs = async () => { const el = document.documentElement;
+  try { if (fsEl()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document); else await (el.requestFullscreen || el.webkitRequestFullscreen).call(el); } catch (e) {} };
+const instalado = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+const temFs = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+let dT = 0; const dica = (t, ms = 2600) => { const d = $('dica'); d.textContent = t; d.classList.add('v'); clearTimeout(dT); dT = setTimeout(() => d.classList.remove('v'), ms); };
+let lock = null, comecou = false;
+const manterAcesa = async () => { try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch (e) {} };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && comecou) { manterAcesa(); if (actx && actx.state !== 'running') actx.resume(); } });
+['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault()));
+let qT = 0; const acorda = () => { document.body.classList.remove('quieto'); clearTimeout(qT);
+  qT = setTimeout(() => { if ($('entrada').hidden && document.body.classList.contains('nopanel')) document.body.classList.add('quieto'); }, 3500); };
+['pointerdown', 'keydown'].forEach((ev) => addEventListener(ev, acorda, true));
+const painel = (abrir) => { document.body.classList.toggle('nopanel', !abrir); acorda(); };
+const entrada = (mostrar) => { $('entrada').hidden = !mostrar; document.body.classList.toggle('inicio', mostrar); if (!mostrar) { comecou = true; manterAcesa(); acorda(); } };
+$('tTela').onclick = toggleFs; if (instalado || !temFs) $('tTela').hidden = true;
+$('tAjustes').onclick = () => painel(document.body.classList.contains('nopanel'));
+$('fecharPainel').onclick = () => painel(false);
+$('tFonte').onclick = () => entrada(true);
+$('tLimpa').onclick = () => limpar();
+$('tCongela').onclick = () => { P.Congelar = !P.Congelar; $('cCongelar').checked = P.Congelar; $('tCongela').classList.toggle('on', P.Congelar); dica(P.Congelar ? 'Congelado' : 'Descongelado', 1200); };
+$('tSalva').onclick = () => { querSalvar = true; };
+function saveBlob(b, name) {
+  let file = null; try { file = new File([b], name, { type: b.type }); } catch (e) {}
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    const box = $('compart'); $('compartN').textContent = name; box.hidden = false;
+    box.querySelector('button').onclick = async () => { box.hidden = true; try { await navigator.share({ files: [file] }); } catch (e) {} };
+    clearTimeout(box._t); box._t = setTimeout(() => { box.hidden = true; }, 20000); return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+/* ---------------- WebGL2 ---------------- */
+const cv = $('tela');
+const gl = cv.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+if (!gl) { document.body.innerHTML = '<p style="padding:2rem;color:#fff">Este navegador não tem WebGL2. Atualize o iPadOS.</p>'; throw new Error('sem webgl2'); }
+const temFloat = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+
+const VS = `#version 300 es
+in vec2 aP; out vec2 vUV; void main(){ vUV=aP*.5+.5; gl_Position=vec4(aP,0.,1.); }`;
+
+const COMUM = `#version 300 es
+precision highp float; in vec2 vUV; out vec4 fragColor;
+float hash(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z);}
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);}
+float fbm(vec2 p){ float a=.5,s=0.; for(int i=0;i<4;i++){ s+=a*vnoise(p); p=p*2.03+vec2(1.7,9.2); a*=.5;} return s;}
+vec2 curl(vec2 p){ float e=.02; return vec2(fbm(p+vec2(0,e))-fbm(p-vec2(0,e)), -(fbm(p+vec2(e,0))-fbm(p-vec2(e,0))))/(2.*e);}
+vec3 hueRot(vec3 c,float h){ vec3 k=vec3(0.57735); float co=cos(h); return c*co+cross(k,c)*sin(h)+k*dot(k,c)*(1.-co); }
+float lum(vec3 c){ return dot(c,vec3(.299,.587,.114)); }
+`;
+
+// FEEDBACK DIGITAL — motor do Feedback Lab (5 modos), com centro e dobra aleatórios
+const FS_FB = COMUM + `
+uniform sampler2D uPrev, uWave, uSeed;
+uniform vec4 uT, uF1, uF2, uF3, uF4, uR;
+uniform vec2 uRes;
+vec3 P(vec2 uv){ if(uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.) return vec3(0.); return texture(uPrev,uv).rgb; }
+vec2 toUV(vec2 c,float asp){ c.x/=asp; return c+.5; }
+void main(){
+  vec2 res=uRes; float asp=res.x/res.y; vec2 px=1./res;
+  vec2 uv=vUV; vec2 c=uv-.5; c.x*=asp; vec2 o=uR.xy; c-=o;
+  int mode=int(uT.w+0.5);
+  float z=1.0-uF1.z-uF4.w-uF4.z; float an=uF1.w;
+  mat2 R=mat2(cos(an),sin(an),-sin(an),cos(an));
+  vec2 src=c; vec3 col;
+  if(mode==0){ src=R*(c*z); }
+  else if(mode==1){ src=R*(c*z) - curl(c*uF2.y+vec2(0.,uT.x*.05))*uF2.x*0.004; }
+  else if(mode==2){ src=R*(c*z); }
+  else if(mode==3){
+    vec2 u0=uv;
+    float gx=lum(P(u0+vec2(px.x*3.,0.)))-lum(P(u0-vec2(px.x*3.,0.)));
+    float gy=lum(P(u0+vec2(0.,px.y*3.)))-lum(P(u0-vec2(0.,px.y*3.)));
+    src=R*(c*z) + vec2(gy,-gx)*uF2.x*0.03 + vec2(0.,0.0008*(1.0+uF2.x));
+  } else {
+    float l=lum(P(uv));
+    src=R*(c*z) + vec2(0.,(l-0.35)*uF2.x*0.012);
+  }
+  src -= curl(c*uR.w+vec2(uT.x*.031,-uT.x*.023))*uR.z*0.004;
+  src += o;
+  vec2 su=toUV(src,asp);
+  float ch=uF2.w*0.004;
+  vec3 prev=vec3(P(su+vec2(ch,0.)).r, P(su).g, P(su-vec2(ch,0.)).b);
+  vec3 bl=(P(su+vec2(px.x,0.))+P(su-vec2(px.x,0.))+P(su+vec2(0.,px.y))+P(su-vec2(0.,px.y)))*.25;
+  float sh=uF1.y*(mode==2?2.2:0.6);
+  col=prev+(prev-bl)*sh;
+  if(mode==2) col+=abs(prev-bl)*uF1.y*1.5;
+  col=hueRot(col,uF2.z);
+  col*=uF1.x;
+  vec3 sd=texture(uSeed,uv).rgb;
+  col=max(col, sd*uF3.x);
+  float w=texture(uWave,vec2(uv.x,.5)).r;
+  float yy=.5+clamp(w*1.4,-1.,1.)*.4;
+  col+=vec3(.9,.95,1.)*(1.0-smoothstep(px.y*.8,px.y*2.5,abs(uv.y-yy)))*uF3.y;
+  col=clamp(col,0.,1.0);
+  if(uF3.w>0.5) col=P(uv);
+  fragColor=vec4(col,1.);
+}`;
+
+// semente: movimento da câmera (diferença entre quadros, colorida) + luzes do toque
+const FS_SEED = COMUM + `
+uniform sampler2D uCam, uCamPrev;
+uniform float uCamOn, uGain, uBlack, uAsp, uMirror;
+uniform vec2 uCamScale; uniform vec3 uTint;
+uniform vec4 uTouch[10]; uniform vec3 uTouchCol[10];
+vec2 camUV(vec2 uv){ vec2 q=(uv-.5)*uCamScale+.5; if(uMirror>.5) q.x=1.-q.x; return q; }
+float L(sampler2D s, vec2 q){ return lum(texture(s,q).rgb); }
+void main(){
+  vec2 uv=vUV; vec3 col=vec3(0.);
+  if(uCamOn>.5){
+    vec2 q=camUV(uv); vec2 e=vec2(2.5/640.,2.5/480.);
+    float d=0.;
+    d+=abs(L(uCam,q)-L(uCamPrev,q));
+    d+=abs(L(uCam,q+vec2(e.x,0.))-L(uCamPrev,q+vec2(e.x,0.)));
+    d+=abs(L(uCam,q-vec2(e.x,0.))-L(uCamPrev,q-vec2(e.x,0.)));
+    d+=abs(L(uCam,q+vec2(0.,e.y))-L(uCamPrev,q+vec2(0.,e.y)));
+    d+=abs(L(uCam,q-vec2(0.,e.y))-L(uCamPrev,q-vec2(0.,e.y)));
+    d/=5.;
+    float m=clamp((d*uGain-uBlack)/(1.-uBlack),0.,1.);
+    col=m*uTint;
+  }
+  vec2 p=uv; p.x*=uAsp;
+  for(int i=0;i<10;i++){
+    vec4 t=uTouch[i]; if(t.w<0.002) continue;
+    vec2 c=t.xy; c.x*=uAsp;
+    float r=t.z; float dd=length(p-c);
+    float a=(1.-smoothstep(r*0.55,r*1.35,dd))*t.w;
+    col=max(col,uTouchCol[i]*a);
+  }
+  fragColor=vec4(col,1.);
+}`;
+
+// saída: brilho, inversão e a imagem da câmera por cima (transparência)
+const FS_OUT = COMUM + `
+uniform sampler2D uFb, uCam; uniform float uBright, uInv, uCamMix, uCamOn, uMirror; uniform vec2 uCamScale;
+void main(){
+  vec3 c=texture(uFb,vUV).rgb*uBright; c=clamp(c,0.,1.); c=mix(c,vec3(1.)-c,uInv);
+  if(uCamOn>.5 && uCamMix>0.001){ vec2 q=(vUV-.5)*uCamScale+.5; if(uMirror>.5) q.x=1.-q.x;
+    vec3 k=texture(uCam,q).rgb*uCamMix; c=1.-(1.-c)*(1.-k); }
+  fragColor=vec4(c,1.);
+}`;
+
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const l = gl.getShaderInfoLog(s); console.error(l); throw new Error(l); } return s; }
+function prog(fs) { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'aP'); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace(/\[0\]$/, ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u }; }
+const PF = prog(FS_FB), PS = prog(FS_SEED), PO = prog(FS_OUT);
+const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function tex(w, h, fmt) { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  if (fmt === 'f') gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; }
+function fbo(t) { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE; gl.bindFramebuffer(gl.FRAMEBUFFER, null); return ok ? f : null; }
+
+let W = 0, H = 0, A = [], seedT = null, seedF = null, fmtFb = temFloat ? 'f' : '8', cur = 0;
+function alocar() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  let w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+  const k = Math.min(1, 1440 / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k);
+  if (w === W && h === H) return; W = w; H = h; cv.width = W; cv.height = H;
+  for (const o of A) { gl.deleteTexture(o.t); gl.deleteFramebuffer(o.f); }
+  if (seedT) { gl.deleteTexture(seedT); gl.deleteFramebuffer(seedF); }
+  A = [];
+  for (let i = 0; i < 2; i++) { let t = tex(W, H, fmtFb), f = fbo(t);
+    if (!f && fmtFb === 'f') { fmtFb = '8'; gl.deleteTexture(t); t = tex(W, H, '8'); f = fbo(t); } A.push({ t, f }); }
+  seedT = tex(W, H, '8'); seedF = fbo(seedT); limpar();
+}
+function limpar() { for (const o of A) { gl.bindFramebuffer(gl.FRAMEBUFFER, o.f); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); } gl.bindFramebuffer(gl.FRAMEBUFFER, null); }
+
+// câmera: duas texturas (quadro atual e anterior)
+const video = $('cam'); let camOn = false, camFacing = 'user', camStream = null, camLast = -1, camTs = [null, null], camIdx = 0;
+camTs = [tex(2, 2, '8'), tex(2, 2, '8')];
+function subirCamera() {
+  if (!camOn || video.readyState < 2) return;
+  const t = video.currentTime; if (t === camLast) return; camLast = t;
+  camIdx ^= 1; gl.bindTexture(gl.TEXTURE_2D, camTs[camIdx]);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, video); } catch (e) {}
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+}
+function camEscala() {
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 480, va = vw / vh, a = W / H;
+  return va > a ? [a / va, 1] : [1, va / a];
+}
+async function ligarCamera(facing) {
+  pararCamera(); camFacing = facing;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false });
+    video.srcObject = camStream; await video.play(); camOn = true; return true;
+  } catch (e) { camOn = false; return false; }
+}
+function pararCamera() { if (camStream) camStream.getTracks().forEach((t) => t.stop()); camStream = null; camOn = false; }
+
+// áudio: onda, volume, grave e agudo
+let actx = null, an = null, onda = new Float32Array(1024), freq = null, vol = 0, grave = 0, agudo = 0;
+const waveT = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, waveT);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, 1024, 1, 0, gl.RED, gl.FLOAT, new Float32Array(1024));
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+async function ligarMicrofone() {
+  if (an) return true;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    if (actx.state !== 'running') await actx.resume();
+    const src = actx.createMediaStreamSource(st); an = actx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0.5;
+    src.connect(an); freq = new Uint8Array(an.frequencyBinCount); return true;
+  } catch (e) { return false; }
+}
+const lag = (v, alvo, sobe, desce, dt) => v + (alvo - v) * (1 - Math.exp(-dt / (alvo > v ? sobe : desce)));
+function lerAudio(dt) {
+  const g = P.Micgain;
+  if (!an) { vol = lag(vol, 0, .02, .25, dt); grave = lag(grave, 0, .01, .3, dt); agudo = lag(agudo, 0, .01, .2, dt); onda.fill(0); }
+  else {
+    an.getFloatTimeDomainData(onda); an.getByteFrequencyData(freq);
+    let s = 0; for (let i = 0; i < onda.length; i++) s += onda[i] * onda[i];
+    const rms = Math.sqrt(s / onda.length);
+    const hz = actx.sampleRate / an.fftSize, bin = (f) => Math.max(1, Math.round(f / hz));
+    let b = 0, nb = bin(150); for (let i = 1; i <= nb; i++) b += freq[i]; b /= nb * 255;
+    let t = 0, i0 = bin(3000), i1 = Math.min(freq.length - 1, bin(12000)); for (let i = i0; i <= i1; i++) t += freq[i]; t /= (i1 - i0 + 1) * 255;
+    vol = lag(vol, clamp(rms * g, 0, 1), .02, .25, dt);
+    grave = lag(grave, clamp(Math.max(0, b - 0.25) * g * 0.12, 0, 1), .01, .3, dt);
+    agudo = lag(agudo, clamp(Math.max(0, t - 0.05) * g * 0.25, 0, 1), .01, .2, dt);
+    const k = g * 0.25; for (let i = 0; i < onda.length; i++) onda[i] *= k;
+  }
+  gl.bindTexture(gl.TEXTURE_2D, waveT); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 1, gl.RED, gl.FLOAT, onda);
+}
+
+// toque: até 10 dedos; a luz apaga devagar depois que solta
+const toques = new Map(); let toqueN = 0;
+function corDoToque() { const t = performance.now() / 1000 * 1.3; return [.5 + .5 * Math.sin(t), .5 + .5 * Math.sin(t + 2.09), .5 + .5 * Math.sin(t + 4.18)]; }
+function posToque(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, 1 - (e.clientY - r.top) / r.height]; }
+cv.addEventListener('pointerdown', (e) => { e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  if (!document.body.classList.contains('nopanel') && matchMedia('(max-width:999px), (orientation:portrait)').matches) painel(false);
+  const [x, y] = posToque(e); toques.set(e.pointerId, { x, y, a: 1, solto: false, cor: corDoToque(), n: toqueN++ }); });
+cv.addEventListener('pointermove', (e) => { const t = toques.get(e.pointerId); if (!t || t.solto) return; [t.x, t.y] = posToque(e); });
+const solta = (e) => { const t = toques.get(e.pointerId); if (t) t.solto = true; };
+cv.addEventListener('pointerup', solta); cv.addEventListener('pointercancel', solta);
+const uTouch = new Float32Array(40), uTouchCol = new Float32Array(30);
+function atualizaToques(dt) {
+  uTouch.fill(0); uTouchCol.fill(0); let i = 0;
+  for (const [id, t] of toques) {
+    if (t.solto) { t.a *= Math.exp(-dt / 0.25); if (t.a < 0.003) { toques.delete(id); continue; } }
+    if (i >= 10) continue;
+    const r = P.Toque * (0.5 + (t.solto ? t.a : 1));
+    uTouch.set([t.x, t.y, r, t.a], i * 4); uTouchCol.set(t.cor, i * 3); i++;
+  }
+}
+
+/* ---------------- acaso: cada canal caminha até alvos sorteados ---------------- */
+const NOMES = ['cx', 'cy', 'zm', 'rt', 'hu', 'wp'];
+const AC = { v: {}, alvo: {}, quando: {}, prox: 0 }; NOMES.forEach((n) => { AC.v[n] = 0; AC.alvo[n] = 0; AC.quando[n] = 0; });
+function acaso(now, dt) {
+  const vel = P.Velacaso;
+  for (const n of NOMES) {
+    if (now >= AC.quando[n]) { AC.alvo[n] = Math.random() * 2 - 1; AC.quando[n] = now + (1 + Math.random() * 5) / Math.max(vel * 8, 0.05); }
+    const k = 1 - Math.pow(1 - Math.min(1, vel * 0.08), dt * 60);
+    AC.v[n] += (AC.alvo[n] - AC.v[n]) * k;
+  }
+  if (P.Automatico && now >= AC.prox) {
+    const op = [0, 1, 2, 3, 4].filter((m) => m !== P.Modo); setModo(op[Math.floor(Math.random() * op.length)]);
+    const lo = P.Trocamin, hi = Math.max(lo + 0.5, P.Trocamax); AC.prox = now + lo + Math.random() * (hi - lo);
+  }
+}
+
+/* ---------------- laço de desenho ---------------- */
+let querSalvar = false, tAnt = performance.now();
+function quadro(ms) {
+  requestAnimationFrame(quadro);
+  const now = ms / 1000, dt = clamp((ms - tAnt) / 1000, 1 / 240, 0.1); tAnt = ms;
+  alocar(); subirCamera(); lerAudio(dt); atualizaToques(dt); acaso(now, dt);
+  const Rv = AC.v, ac = P.Acaso, esc = camEscala(), mirror = camFacing === 'user' ? 1 : 0;
+  gl.viewport(0, 0, W, H);
+
+  // 1 semente
+  gl.bindFramebuffer(gl.FRAMEBUFFER, seedF); gl.useProgram(PS.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, camTs[camIdx]); gl.uniform1i(PS.u.uCam, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, camTs[camIdx ^ 1]); gl.uniform1i(PS.u.uCamPrev, 1);
+  gl.uniform1f(PS.u.uCamOn, camOn ? 1 : 0); gl.uniform1f(PS.u.uGain, P.Movimento); gl.uniform1f(PS.u.uBlack, 0.12);
+  gl.uniform1f(PS.u.uAsp, W / H); gl.uniform1f(PS.u.uMirror, mirror); gl.uniform2f(PS.u.uCamScale, esc[0], esc[1]);
+  const tt = now * 0.4; gl.uniform3f(PS.u.uTint, .6 + .4 * Math.sin(tt), .6 + .4 * Math.sin(tt + 2.09), .6 + .4 * Math.sin(tt + 4.18));
+  gl.uniform4fv(PS.u.uTouch, uTouch); gl.uniform3fv(PS.u.uTouchCol, uTouchCol);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // 2 feedback (pingue-pongue)
+  const src = A[cur], dst = A[cur ^ 1];
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.useProgram(PF.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(PF.u.uPrev, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, waveT); gl.uniform1i(PF.u.uWave, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, seedT); gl.uniform1i(PF.u.uSeed, 2);
+  gl.uniform2f(PF.u.uRes, W, H);
+  const sgn = Rv.rt > 0 ? 1 : -1, lfo = Math.sin(now * P.Lfo * 6.2832);
+  gl.uniform4f(PF.u.uT, now, dt, W / H, P.Modo);
+  gl.uniform4f(PF.u.uF1, P.Congelar ? 1 : P.Rastro, P.Realce, P.Zoom + Rv.zm * 0.012 * ac + vol * P.Zoomaudio, P.Rotacao + Rv.rt * 0.025 * ac + grave * P.Rotaudio * sgn);
+  gl.uniform4f(PF.u.uF2, P.Deslocamento * (1 + agudo * 2), P.Escalaruido, P.Matiz + Rv.hu * 0.06 * ac + vol * P.Matizaudio, P.Rgb + agudo * P.Rgbaudio);
+  gl.uniform4f(PF.u.uF3, P.Semente, P.Linhaaudio * (0.3 + vol), 0, P.Congelar ? 1 : 0);
+  gl.uniform4f(PF.u.uF4, 0, 1, grave * P.Pulsograve, lfo * P.Respiracao);
+  gl.uniform4f(PF.u.uR, Rv.cx * 0.45 * ac, Rv.cy * 0.3 * ac, (0.5 + Math.abs(Rv.wp)) * 1.6 * ac, 2 + Math.abs(Rv.wp) * 5);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  cur ^= 1;
+
+  // 3 saída
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.useProgram(PO.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dst.t); gl.uniform1i(PO.u.uFb, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, camTs[camIdx]); gl.uniform1i(PO.u.uCam, 1);
+  gl.uniform1f(PO.u.uBright, P.Brilho); gl.uniform1f(PO.u.uInv, P.Inverter); gl.uniform1f(PO.u.uCamMix, P.Camera);
+  gl.uniform1f(PO.u.uCamOn, camOn ? 1 : 0); gl.uniform1f(PO.u.uMirror, mirror); gl.uniform2f(PO.u.uCamScale, esc[0], esc[1]);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  if (querSalvar) { querSalvar = false; const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    cv.toBlob((b) => b && saveBlob(b, `feedback-digital-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}.png`), 'image/png'); }
+}
+
+/* ---------------- abertura ---------------- */
+async function comecar(qual) {
+  entrada(false); dica('Ligando…', 1500);
+  const mic = await ligarMicrofone();
+  let cam = false;
+  if (qual === 'sem') pararCamera(); else cam = await ligarCamera(qual === 'tras' ? 'environment' : 'user');
+  if (qual !== 'sem' && !cam) dica('Câmera bloqueada: libere em Ajustes › Safari › Câmera. Toque e som continuam.', 5000);
+  else if (!mic) dica('Microfone bloqueado: libere em Ajustes › Safari › Microfone.', 5000);
+  else dica(qual === 'sem' ? 'Toque na tela e fale' : 'Mexa-se, toque na tela e fale', 3000);
+}
+$('eCamF').onclick = () => comecar('frente');
+$('eCamT').onclick = () => comecar('tras');
+$('eSem').onclick = () => comecar('sem');
+addEventListener('keydown', (e) => { if (e.key === 'c' || e.key === 'C') limpar(); if (e.key === ' ') $('tCongela').onclick(); });
+
+montaPainel(); alocar(); requestAnimationFrame(quadro);
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+window.__fd = { P, gl, temFloat: () => fmtFb, vol: () => vol };
+</script>
+</body></html>

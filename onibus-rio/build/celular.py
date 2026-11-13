@@ -21,6 +21,11 @@ def troca(s, a, b, n=1):
 
 
 s = src
+# a página de celular não pode redirecionar para si mesma
+i = s.index("<!--celular-->"); j = s.index("<!--/celular-->") + len("<!--/celular-->")
+s = s[:i] + s[j:]
+# o link do rodapé vira "versão completa" (guarda a escolha no aparelho)
+s = troca(s, '` · <a href="./?celular">versão para celular</a>`', '` · <a href="../?completo">versão completa (computador)</a>`')
 # ---------- caminhos (a página fica uma pasta abaixo) ----------
 s = troca(s, 'href="lib/maplibre-gl.css"', 'href="../lib/maplibre-gl.css"')
 s = troca(s, 'src="lib/maplibre-gl.js"', 'src="../lib/maplibre-gl.js"')

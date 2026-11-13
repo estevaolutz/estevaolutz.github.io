@@ -44,3 +44,15 @@ Os arquivos estão em `v4/`. O `rdl_v4_aplicar.py` aplica tudo no componente `Ca
 | Oitava Osc 1 | 74 | troca a paleta |
 
 **Para ligar o Sub Phatty:** no TouchDesigner, em *Dialogs → MIDI Device Mapper*, adicione o Sub Phatty como entrada com **ID 1**. Para o som do synth, escolha a interface de áudio no `som_entrada`, que hoje usa a entrada padrão do Mac.
+
+## v5 (13/11/2026): espectrômetro nos pontos
+
+Os arquivos estão em `v5/`. O `rdl_v5_aplicar_espectro.py` acrescenta o efeito ao `Cabeca_de_Luz`.
+
+O microfone (`som_entrada`) vira um espectro de 64 bandas, de 40 Hz a 14 kHz, guardado com 48 linhas de histórico (`espectro` → `espectro_tex`). Cada ponto do rosto e das mãos escuta uma banda: ganha a cor do arco-íris daquela frequência, brilha e se projeta para fora conforme a força do som. Os controles ficam na aba **Espectro**:
+
+- **Modo:**
+  - *Barras*: graves embaixo, agudos em cima
+  - *Radial*: graves no centro, agudos na borda
+  - *Cascata*: espectrograma que corre de cima para baixo, com a frequência no eixo horizontal
+- **Ajustes:** quantidade, cor do espectro, altura dos picos, ganho do microfone e suavização.

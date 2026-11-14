@@ -15,6 +15,10 @@ Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<past
 - Sol e luz: `rastro-solar`
 - Ferramentas de som: `medidor-spl`
 
+## Modo leitura
+
+`lib/leitura.js` cria o botão **Modo leitura** nos mapas: o texto das paradas rola por cima do mapa e, quando um trecho passa pelo meio da tela, o mapa voa até o lugar. Cada mapa chama `Leitura.init({...})` no fim do seu script, informando as paradas (`itens`), como ir até elas (`ir`) e qual contêiner do mapa vira tela cheia (`mapa`). Está em: Odisseia, Alexandre, Mitologia Grega, Cabeza de Vaca, Generais Romanos, Antártida, Amyr Klink, Stalingrado, Dia D e Asimov Universe.
+
 ## Projetos do TouchDesigner
 
 Ficam em `touchdesigner/<obra>/`: os scripts e um README com instruções e com o local do .toe no Desktop. Não são páginas web.

@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body><script src="../lib/leitura.js"></script>
 <title>Atlas dos Generais Romanos 3D</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2261,6 +2261,43 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors
 new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 boot();
 renderSweep();
+
+
+/* ---------- Modo leitura: texto rolando sobre o mapa ---------- */
+if (window.Leitura) {
+  const ltP = t => String(t || "").split(/\n\s*\n/).map(x => `<p>${x}</p>`).join("");
+  const ltParada = (m, p, k) => ({
+    m, k, cor: m.cor || "#e0b34f",
+    sobre: [p.tempo, p.moderno].filter(Boolean).join(" · "),
+    titulo: p.nome,
+    html: (p.grego ? `<p class="greek" lang="grc">${p.grego}</p>` : "") +
+      (p.ref ? `<span class="lt-tag">${p.ref}</span>` : "") + (p.certeza ? `<span class="lt-tag">${p.certeza}</span>` : "") +
+      ltP(p.texto) + (p.sentido ? `<h3>O que representa</h3><p>${p.sentido}</p>` : "") + (p.hoje ? `<h3>Onde fica hoje</h3><p>${p.hoje}</p>` : "")
+  });
+  const ltSecao = m => ({ m, k: -1, secao: true, cor: m.cor || "#e0b34f", sobre: [m.vida, m.papel].filter(Boolean).join(" · "), titulo: m.nome, html: (m.latim ? `<p class="greek">${m.latim}</p>` : "") + ltP(m.resumo) + (m.fontes ? `<h3>Fontes</h3><p>${m.fontes.join(" · ")}</p>` : "") });
+  Leitura.init({
+    titulo: "Atlas dos Grandes Generais Romanos",
+    intro: "As campanhas lugar por lugar. Com um general aberto, a leitura segue só a carreira dele; sem general aberto, percorre todos.",
+    botao: { em: ".layers", onde: "append" },
+    mapa: "#mapwrap",
+    esconder: [".hint3", ".notice", ".layers", ".legend"],
+    aoEntrar: () => stopPlay(),
+    itens: () => {
+      const lista = state.myth ? [state.myth] : GENS.filter(m => !state.filter || state.filter.has(m.era));
+      const out = [];
+      lista.forEach(m => { if (!state.myth) out.push(ltSecao(m)); m.paradas.forEach((p, k) => out.push(ltParada(m, p, k))); });
+      return out;
+    },
+    ir: (i, it) => {
+      if (state.myth !== it.m) openMyth(it.m.id);
+      if (it.k < 0) return;
+      goTo(it.k, false);
+      const p = it.m.paradas[it.k];
+      if (T3) T3.centerOn([+p.lon, +p.lat], 1000);
+    },
+    inicio: () => state.myth ? state.cur : -1
+  });
+}
 
 </script>
 

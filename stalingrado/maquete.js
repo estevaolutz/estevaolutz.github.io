@@ -1084,6 +1084,18 @@ function buildUI() {
   $("#play").onclick = () => togglePlay();
   // anterior / próximo: pula de evento em evento do diário, com o som de cada um
   const jump = (dir) => { const i = currentEventIdx(); const k = dir < 0 ? (i >= 0 && simT - EVENTS[i].t > 0.05 ? i : i - 1) : i + 1; if (k < 0 || k >= EVENTS.length) return; setTime(EVENTS[k].t + 0.01); lastAutoIdx = k; flyToEvent(k); snd?.init(); snd?.cue(k); };
+  /* ---------- Modo leitura: texto rolando sobre o mapa ---------- */
+  if (window.Leitura) Leitura.init({
+    titulo: "Stalingrado · 1942–1943",
+    intro: "A batalha dia a dia, do avanço alemão até o Volga ao cerco do 6º Exército.",
+    botao: { em: "#speeds", onde: "append" },
+    mapa: null,
+    esconder: ["#plate", "#tools", "#log", "#card", "#rail", "#tip"],
+    aoEntrar: () => togglePlay(false),
+    itens: () => EVENTS.map((e, i) => ({ i, cor: e.side === "ax" || e.side === "G" ? "#6ea6ef" : "#ec6656", sobre: fmt(e.t)[0], titulo: e.title, html: `<p>${esc(e.text)}</p>` })),
+    ir: (k) => { const e = EVENTS[k]; setTime(e.t+ 0.01); lastAutoIdx = k; flyToEvent(k); },
+    inicio: () => currentEventIdx()
+  });
   $("#prevev").onclick = () => jump(-1); $("#nextev").onclick = () => jump(1);
   addEventListener("keydown", (e) => { if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return; if (e.key === ",") jump(-1); if (e.key === ".") jump(1); });
   const ev = $("#events");

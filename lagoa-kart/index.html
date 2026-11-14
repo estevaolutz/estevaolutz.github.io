@@ -473,7 +473,7 @@ const skyMat = new THREE.ShaderMaterial({
       #include <colorspace_fragment>
     }`,
 });
-const sky = new THREE.Mesh(new THREE.SphereGeometry(9000, 32, 16), skyMat); sky.renderOrder = -10; sky.frustumCulled = false;
+const sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMat); sky.renderOrder = -10; sky.frustumCulled = false;
 scene.add(sky);
 const hemi = new THREE.HemisphereLight(0xdfefff, 0x8a7a60, 0.7); scene.add(hemi);
 const sunLight = new THREE.DirectionalLight(0xfff0d8, 2.3);
@@ -494,9 +494,9 @@ const waterNormal = canvasTex(512, 512, (g, w, h) => {
   }
   g.putImageData(img, 0, 0);
 }, true, false);
-waterNormal.repeat.set(220, 220);
+waterNormal.repeat.set(130, 130);
 const waterMat = new THREE.MeshStandardMaterial({ color: 0x15607e, roughness: 0.16, metalness: 0.0, normalMap: waterNormal, normalScale: new THREE.Vector2(0.5, 0.5), envMapIntensity: 0.55 });
-const water = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), waterMat); water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; water.receiveShadow = true;
+const water = new THREE.Mesh(new THREE.PlaneGeometry(24000, 24000), waterMat); water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; water.receiveShadow = true;
 scene.add(water);
 const grainTex = canvasTex(256, 256, (g, w, h) => { const img = g.createImageData(w, h); for (let i = 0; i < w * h; i++) { const v = 200 + Math.random() * 55; img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; } g.putImageData(img, 0, 0); });
 function envFromSky(renderer) {
@@ -1656,7 +1656,7 @@ const NET = {
 //  Jogo: corrida, física, colisões, itens, IA, câmeras, HUD, menus
 // ============================================================
 const $ = (id) => document.getElementById(id);
-const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(/lite=1/.test(location.search) ? 0.5 : Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1679,8 +1679,8 @@ const saveSettings = () => { try { localStorage.setItem('lagoakart2_settings', J
 
 let STATE = 'loading';
 const G = { karts: [], boxes: [], hazards: [], projectiles: [], fx: [], t: 0, raceT: 0, countdown: 0, humans: [], finishedOrder: [], endTimer: -1, online: false, nextId: 1 };
-const titleCam = new THREE.PerspectiveCamera(55, 1, 0.5, 14000);
-const showCam = new THREE.PerspectiveCamera(50, 1, 0.3, 14000);
+const titleCam = new THREE.PerspectiveCamera(55, 1, 2, 12000);
+const showCam = new THREE.PerspectiveCamera(50, 1, 0.5, 9000);
 
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms); }
 function fmtTime(t) { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); }
@@ -2174,7 +2174,7 @@ function startRace(roster) {
   });
   G.humans = G.karts.filter(k => k.human >= 0 && !k.remote).sort((a, b) => a.human - b.human);
   G.humans.forEach((k, i) => {
-    k.cam = new THREE.PerspectiveCamera(68, 1, 0.3, 14000); k.cam.position.set(k.x + Math.sin(k.h) * 8, k.y + 4, k.z + Math.cos(k.h) * 8);
+    k.cam = new THREE.PerspectiveCamera(68, 1, 0.5, 9000); k.cam.position.set(k.x + Math.sin(k.h) * 8, k.y + 4, k.z + Math.cos(k.h) * 8);
     k.cam.layers.enable(0); for (let j = 0; j < 4; j++) if (j !== i) k.cam.layers.enable(10 + j);
     k.mesh.userData.tag.layers.set(10 + i); k.engine = AUDIO.makeEngine(k.cfg, false); makeHud(k);
   });
@@ -2619,6 +2619,7 @@ $('sTitle').onclick = () => { if (STATE === 'title') { AUDIO.init(); AUDIO.play(
   STATE = 'title'; menuOpen('title');
   requestAnimationFrame(frame);
 })().catch(e => { $('loadMsg').textContent = 'Erro: ' + e.message; console.error(e); });
+window.__fps = () => new Promise(res => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 4000) requestAnimationFrame(f); else res({ fps: +(n / 4).toFixed(1), q: QUAL.level, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }); }; requestAnimationFrame(f); });
 window.__G = G; window.__STATE = () => STATE; window.__dbg = { MENUS, INPUT, PADCFG, NET, SETTINGS, loadTrack };
 window.__ff = (n) => { for (let i = 0; i < n; i++) { INPUT.poll(); raceStep(1 / 60); } for (const k of G.humans) { k.camYaw = k.h; for (let j = 0; j < 60; j++) updateCam(k, 1 / 30); } };
 

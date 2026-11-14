@@ -121,12 +121,51 @@
   #musicDock iframe{width:100%;height:100%;border:0;border-radius:10px}
   body.racing #musicDock{opacity:.85}
   body.racing #musicDock:not(.big){width:min(300px,40vw)}
-</style>
+
+  #touch,#rotate,#mobileLink{display:none}
+  #mobileLink{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:80;background:#ff6a2b;color:#fff;padding:10px 18px;border-radius:30px;font-weight:700;text-decoration:none}
+  body.mobile.racing #touch{display:block}
+  #touch{position:fixed;inset:0;z-index:30;pointer-events:none;-webkit-user-select:none;touch-action:none}
+  #touch .steer{position:absolute;left:0;bottom:0;width:46%;height:62%;pointer-events:auto}
+  #touch .steer .hint{position:absolute;left:18px;bottom:16px;font-size:14px;opacity:.55}
+  #touch .knob{position:absolute;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;border:3px solid rgba(255,255,255,.5);background:rgba(0,0,0,.15);display:none}
+  #touch .knob.on{display:block}
+  #touch .knob i{position:absolute;left:30px;top:30px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.75)}
+  #touch .tbtns{position:absolute;right:10px;bottom:10px;display:grid;grid-template-columns:repeat(2,74px);gap:10px;pointer-events:auto}
+  #touch .tb{width:74px;height:74px;border-radius:50%;font-size:28px;background:rgba(0,0,0,.35);border:3px solid rgba(255,255,255,.6);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;line-height:1}
+  #touch .tb small{font-size:10px;margin-top:2px;font-weight:600}
+  #touch .tb.on{background:rgba(255,210,63,.6);transform:scale(.94)}
+  #touch .item{background:rgba(255,106,43,.45)}
+  #touch .pause{position:absolute;left:50%;top:auto;bottom:8px;transform:translateX(-50%);width:44px;height:44px;font-size:18px;pointer-events:auto}
+  body.mobile .hud .spd,body.mobile .hud .who{display:none}
+  body.mobile #credit,body.mobile.racing #fsBtn{display:none}
+  body.mobile .hud.small .itembox{top:6px}
+  @media (orientation:portrait){ body.mobile #rotate{display:flex} }
+  #rotate{position:fixed;inset:0;z-index:200;background:#0f4c81;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-size:20px;text-align:center}
+  #rotate div{font-size:70px}
+  @media (max-height:520px){
+    .panel{padding:12px 18px;min-width:min(520px,94vw);max-height:94vh;overflow:auto;border-radius:18px}
+    .panel h2{font-size:22px;margin-bottom:6px}
+    .mi{font-size:16px;padding:6px 12px;margin:3px 0}
+    .note,.keys{font-size:12px;margin-top:6px}
+    .logo{font-size:56px}.press{margin-top:20px;font-size:18px}.fam{font-size:15px;margin-top:10px}
+    #sSelect h2{font-size:24px;top:8px}
+    .card{min-width:0;width:22vw;padding:6px 8px;border-width:3px;border-radius:14px}
+    .card .nm{font-size:18px}.card .ds{display:none}.st{font-size:9px;margin:1px 0}.st label{width:52px}.card .who{min-height:20px}
+    #selHint{font-size:13px;margin-top:6px}
+    .hud .msg{font-size:28px}
+    #musicDock{width:min(260px,40vw)}
+  }
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 </head>
 <body>
 <div id="game"></div>
 <div id="huds"></div>
+<div id="touch"><div class="steer"><div class="knob"><i></i></div><span class="hint">◀ arraste ▶</span></div>
+  <div class="tbtns"><button data-b="item" class="tb item">🎁</button><button data-b="drift" class="tb drift">⤴<small>pular</small></button><button data-b="brake" class="tb brake">⏬<small>freio</small></button><button data-b="accel" class="tb accel">⏫<small>acelera</small></button></div>
+  <button data-b="start" class="tb pause">⏸</button></div>
+<div id="rotate"><div>📱↻</div><p>Gire o celular para deitado</p><button id="rotateFs">Tela cheia</button></div>
+<a id="mobileLink" href="celular/">📱 Abrir a versão para celular</a>
 <canvas id="minimap" width="200" height="200"></canvas>
 <div id="big"></div>
 <div id="toast"></div>
@@ -192,6 +231,7 @@ import * as THREE from 'three';
 // ============================================================
 //  LAGOA KART 2 — núcleo: pistas reais, relevo real, consultas
 // ============================================================
+const MOBILE = !!window.LK_MOBILE;
 const S = 0.22;                 // unidades do jogo por metro real (horizontal e vertical)
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -477,7 +517,7 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMat); sky.
 scene.add(sky);
 const hemi = new THREE.HemisphereLight(0xdfefff, 0x8a7a60, 0.7); scene.add(hemi);
 const sunLight = new THREE.DirectionalLight(0xfff0d8, 2.3);
-sunLight.castShadow = true; sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.castShadow = !MOBILE; sunLight.shadow.mapSize.set(2048, 2048);
 Object.assign(sunLight.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 400 });
 sunLight.shadow.bias = -0.0006; sunLight.shadow.normalBias = 0.04;
 scene.add(sunLight, sunLight.target);
@@ -818,7 +858,7 @@ function buildVegetation(GR) {
   for (let j = 0; j < g.nz; j++) for (let i = 0; i < g.nx; i++) {
     const x = g.x0 + i * g.st, z = g.z0 + j * g.st, h = WORLD.terrH[j * g.nx + i]; if (h < 3.5) continue;
     const [dt] = nearestTrack(x, z, 3); const near = dt < 150;
-    const n = near ? dens : (hash(i * 1.7 + j * 9.1) < 0.55 ? 1 : 0);
+    const n = MOBILE ? (near ? Math.max(1, dens >> 1) : (hash(i * 1.7 + j * 9.1) < 0.22 ? 1 : 0)) : near ? dens : (hash(i * 1.7 + j * 9.1) < 0.55 ? 1 : 0);
     for (let k = 0; k < n; k++) {
       const r1 = hash(i * 13.1 + j * 7.7 + k), r2 = hash(i * 3.3 + j * 17.9 + k * 5);
       if (r1 < 0.3) continue;
@@ -1505,6 +1545,7 @@ const INPUT = {
     let st = { steer: 0 };
     const merge = (o) => { for (const k in o) { if (k === 'steer') { if (Math.abs(o.steer) > Math.abs(st.steer)) st.steer = o.steer; } else st[k] = st[k] || o[k]; } };
     if (pads[i]) merge(this.readPad(pads[i]));
+    if (i === 0) { const ts = touchState(); if (ts) merge(ts); }
     if (i === 0) merge(this.readKeys(0));
     if (i === 1 && !pads[1]) merge(this.readKeys(1));
     if (i === 0 && pads.length === 0) merge(this.readKeys(1)); // WASD também serve para o J1 se não houver ninguém
@@ -1656,12 +1697,12 @@ const NET = {
 //  Jogo: corrida, física, colisões, itens, IA, câmeras, HUD, menus
 // ============================================================
 const $ = (id) => document.getElementById(id);
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(/lite=1/.test(location.search) ? 0.5 : Math.min(devicePixelRatio, 1.5));
+const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE, powerPreference: 'high-performance' });
+renderer.setPixelRatio(/lite=1/.test(location.search) ? 0.5 : MOBILE ? Math.min(devicePixelRatio, 1.35) : Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.8;
-renderer.shadowMap.enabled = !/lite=1/.test(location.search); renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = !/lite=1/.test(location.search) && !MOBILE; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.autoClear = false;
 $('game').appendChild(renderer.domElement);
 
@@ -1675,6 +1716,7 @@ const DIFF = [{ name: 'Fácil (50cc)', cc: 0.8, ai: 0.86 }, { name: 'Normal (100
 const SETTINGS = { players: 1, diff: 1, laps: 3, track: 'lagoa' };
 try { Object.assign(SETTINGS, JSON.parse(localStorage.getItem('lagoakart2_settings') || '{}')); } catch (e) {}
 if (!TRACK_IDS.includes(SETTINGS.track)) SETTINGS.track = 'lagoa';
+if (MOBILE) SETTINGS.players = 1;
 const saveSettings = () => { try { localStorage.setItem('lagoakart2_settings', JSON.stringify(SETTINGS)); } catch (e) {} };
 
 let STATE = 'loading';
@@ -1771,7 +1813,7 @@ function spinOut(k, src, bySrc = true) {
   if (k.starT > 0 || k.invT > 0 || k.sinkT > 0 || k.finished || k.spinT > 0) return false;
   k.spinT = 1.15; k.v *= 0.35; k.drift = 0; k.charge = 0; k.boostT = 0;
   if (k.human >= 0 || (src && src.human >= 0)) AUDIO.play('hit');
-  if (k.human >= 0) hudMsg(k, 'Ai! 😵', 900);
+  if (k.human >= 0) { hudMsg(k, 'Ai! 😵', 900); buzz([60, 40, 60]); }
   setFace(k.mesh.userData.char, 'oh'); k.faceT = 1.4;
   return true;
 }
@@ -1870,7 +1912,7 @@ function updateKart(k, inp, dt) {
     if (vn < 0) {
       k.kvx -= nx * vn * 1.5; k.kvz -= nz * vn * 1.5; k.v *= 1 - clamp(-vn / 30, 0.05, 0.45);
       const th = Math.atan2(-t[0], -t[1]); if (Math.abs(angDiff(k.h, th)) < 1.4) k.h += angDiff(k.h, th) * 0.12;
-      if (-vn > 4) { if (k.human >= 0) AUDIO.play('wall', clamp(-vn / 20, 0.3, 1)); fx(k.x - nx * KART_HX, k.y + 0.6, k.z - nz * KART_HX, { tex: sparkTex, color: 0xffd27a, add: true, vx: nx * 3, vz: nz * 3, vy: 3, g: 10, life: 0.35, size: 0.8 }); }
+      if (-vn > 4) { if (k.human >= 0) { AUDIO.play('wall', clamp(-vn / 20, 0.3, 1)); buzz(30); } fx(k.x - nx * KART_HX, k.y + 0.6, k.z - nz * KART_HX, { tex: sparkTex, color: 0xffd27a, add: true, vx: nx * 3, vz: nz * 3, vy: 3, g: 10, life: 0.35, size: 0.8 }); }
     }
     const q2 = trackQuery(k.x, k.z, k.ti); k.lat = q2.lat;
   }
@@ -1890,7 +1932,7 @@ function updateKart(k, inp, dt) {
   }
   if (overWater && k.y < WATER_Y + 0.2 && k.sinkT <= 0) {
     k.sinkT = 1.5; k.drift = 0; k.boostT = 0; k.spinT = 0; splash(k.x, k.z);
-    if (k.human >= 0) { AUDIO.play('splash'); setTimeout(() => AUDIO.play('bubbles'), 400); hudMsg(k, 'Tchibum! 💦', 1500); }
+    if (k.human >= 0) { AUDIO.play('splash'); setTimeout(() => AUDIO.play('bubbles'), 400); hudMsg(k, 'Tchibum! 💦', 1500); buzz(200); }
     else AUDIO.play('splash', 0.35);
     setFace(k.mesh.userData.char, 'oh'); k.faceT = 3;
   }
@@ -1982,7 +2024,7 @@ function collideKarts() {
       if (la) { a.kvx -= n[0] * jimp / wa; a.kvz -= n[1] * jimp / wa; a.v *= 1 - clamp(-rel / 60, 0, 0.18); a.h += (Math.random() - 0.5) * clamp(-rel / 40, 0, 0.25); }
       if (lb) { b.kvx += n[0] * jimp / wb; b.kvz += n[1] * jimp / wb; b.v *= 1 - clamp(-rel / 60, 0, 0.18); b.h += (Math.random() - 0.5) * clamp(-rel / 40, 0, 0.25); }
       if (-rel > 3) {
-        const vol = clamp(-rel / 18, 0.25, 1); if (a.human >= 0 || b.human >= 0) AUDIO.play('bump', vol);
+        const vol = clamp(-rel / 18, 0.25, 1); if (a.human >= 0 || b.human >= 0) { AUDIO.play('bump', vol); if ((a.human === 0 && !a.remote) || (b.human === 0 && !b.remote)) buzz(25); }
         const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
         for (let s = 0; s < 6; s++) fx(cx, (a.y + b.y) / 2 + 0.7, cz, { tex: sparkTex, color: 0xffe08a, add: true, vx: (Math.random() - 0.5) * 8, vz: (Math.random() - 0.5) * 8, vy: 2 + Math.random() * 3, g: 12, life: 0.3, size: 0.6 });
       }
@@ -2179,13 +2221,14 @@ function startRace(roster) {
     k.mesh.userData.tag.layers.set(10 + i); k.engine = AUDIO.makeEngine(k.cfg, false); makeHud(k);
   });
   for (const k of G.karts) { k.mesh.userData.tag.visible = true; if (!(k.human >= 0 && !k.remote)) { k.mesh.userData.tag.layers.set(0); if (G.humans.length === 1) k.engine = AUDIO.makeEngine(k.cfg, true); } }
-  G.raceT = 0; G.countdown = 3.9; G.lastBeep = 4; G.endTimer = -1; AUDIO.tempo = 1; G.acc = 0;
+  G.raceT = 0; G.countdown = 3.9; G.lastBeep = 4; G.endTimer = -1; AUDIO.tempo = 1; G.acc = 0; TOUCH.tiltZero = null;
   $('minimap').style.display = 'block'; layoutMinimap();
   showScreen(null); STATE = 'race'; MENU = null; AUDIO.startMusic(); MUSIC.apply(); $('musicDock').classList.remove('big');
 }
 function layoutMinimap() {
-  const n = G.humans.length, s = n >= 3 ? 150 : n === 2 ? 170 : 200;
+  const n = G.humans.length, s = MOBILE ? 118 : n >= 3 ? 150 : n === 2 ? 170 : 200;
   mm.width = s; mm.height = s; mmBounds = null;
+  if (MOBILE) { Object.assign(mm.style, { left: '10px', top: '70px', right: 'auto', bottom: 'auto' }); return; }
   Object.assign(mm.style, n >= 3 ? { left: (innerWidth - s) / 2 + 'px', top: (innerHeight - s) / 2 + 'px', right: 'auto', bottom: 'auto' } : { left: 'auto', right: '16px', bottom: '16px', top: 'auto' });
 }
 const STEP = 1 / 120;
@@ -2299,7 +2342,10 @@ const MENUS = {
   main: {
     items: [
       { label: () => `Pista: <b>◀ ${trackName()} ▶</b>`, left: () => changeTrack(-1), right: () => changeTrack(1) },
-      { label: () => `Jogadores neste computador: <b>◀ ${SETTINGS.players} ▶</b>`, left: () => SETTINGS.players = Math.max(1, SETTINGS.players - 1), right: () => SETTINGS.players = Math.min(4, SETTINGS.players + 1) },
+      ...(MOBILE ? [
+        { label: () => `Direção: <b>◀ ${TOUCH.tilt ? 'Inclinar o celular' : 'Arrastar o dedo'} ▶</b>`, left: () => { TOUCH.tilt = !TOUCH.tilt; saveTouch(); }, right: () => { TOUCH.tilt = !TOUCH.tilt; saveTouch(); }, ok: () => { TOUCH.tilt = !TOUCH.tilt; saveTouch(); } },
+        { label: () => `Acelerar sozinho: <b>◀ ${TOUCH.auto ? 'Sim' : 'Não'} ▶</b>`, left: () => { TOUCH.auto = !TOUCH.auto; saveTouch(); }, right: () => { TOUCH.auto = !TOUCH.auto; saveTouch(); }, ok: () => { TOUCH.auto = !TOUCH.auto; saveTouch(); } },
+      ] : [{ label: () => `Jogadores neste computador: <b>◀ ${SETTINGS.players} ▶</b>`, left: () => SETTINGS.players = Math.max(1, SETTINGS.players - 1), right: () => SETTINGS.players = Math.min(4, SETTINGS.players + 1) }]),
       { label: () => `Dificuldade: <b>◀ ${DIFF[SETTINGS.diff].name} ▶</b>`, left: () => SETTINGS.diff = Math.max(0, SETTINGS.diff - 1), right: () => SETTINGS.diff = Math.min(2, SETTINGS.diff + 1) },
       { label: () => `Voltas: <b>◀ ${SETTINGS.laps} ▶</b>`, left: () => SETTINGS.laps = Math.max(1, SETTINGS.laps - 1), right: () => SETTINGS.laps = Math.min(6, SETTINGS.laps + 1) },
       { label: () => '🏁 Escolher pilotos e correr', ok: () => openSelect(), cls: 'go' },
@@ -2307,7 +2353,7 @@ const MENUS = {
       { label: () => `🎵 Música: <b>${MUSIC.label()}</b>`, ok: () => openMusic() },
       { label: () => '🎮 Configurar controle de PS2', ok: () => openPadCfg() },
       { label: soundLabel, left: () => cycleSound(-1), right: () => cycleSound(1), ok: () => cycleSound(1) },
-    ], sel: 4, back: () => menuOpen('title'),
+    ], sel: MOBILE ? 5 : 4, back: () => menuOpen('title'),
   },
   pause: {
     items: [
@@ -2604,6 +2650,7 @@ function autoQuality(dt) {
   const fps = QUAL.n / QUAL.acc; QUAL.acc = 0; QUAL.n = 0;
   if (fps < 38 && QUAL.level === 0) { QUAL.level = 1; renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); }); }
   else if (fps < 30 && QUAL.level === 1) { QUAL.level = 2; renderer.setPixelRatio(Math.min(1, devicePixelRatio)); renderer.setSize(innerWidth, innerHeight); }
+  else if (fps < 26 && QUAL.level === 2) { QUAL.level = 3; renderer.setPixelRatio(0.75); renderer.setSize(innerWidth, innerHeight); scene.fog.far *= 0.6; }
 }
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); if (STATE === 'race') layoutMinimap(); });
 addEventListener('pointerdown', () => AUDIO.init());
@@ -2612,7 +2659,8 @@ $('fsBtn').onclick = () => { AUDIO.init(); const el = document.documentElement; 
 $('sTitle').onclick = () => { if (STATE === 'title') { AUDIO.init(); AUDIO.play('confirm'); menuOpen('main'); } };
 
 (async () => {
-  INPUT.init(); MUSIC.load();
+  INPUT.init(); MUSIC.load(); setupTouch();
+  if (!MOBILE && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) && 'ontouchstart' in window) { const a = document.getElementById('mobileLink'); if (a) a.style.display = 'block'; }
   try { await Promise.race([document.fonts.load('bold 60px Fredoka'), new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
   envFromSky(renderer);
   await loadTrack(SETTINGS.track);
@@ -2622,6 +2670,59 @@ $('sTitle').onclick = () => { if (STATE === 'title') { AUDIO.init(); AUDIO.play(
 window.__fps = () => new Promise(res => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 4000) requestAnimationFrame(f); else res({ fps: +(n / 4).toFixed(1), q: QUAL.level, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }); }; requestAnimationFrame(f); });
 window.__G = G; window.__STATE = () => STATE; window.__dbg = { MENUS, INPUT, PADCFG, NET, SETTINGS, loadTrack };
 window.__ff = (n) => { for (let i = 0; i < n; i++) { INPUT.poll(); raceStep(1 / 60); } for (const k of G.humans) { k.camYaw = k.h; for (let j = 0; j < 60; j++) updateCam(k, 1 / 30); } };
+
+// ============================================================
+//  Versão para celular: controles de toque, inclinação, tela deitada
+// ============================================================
+const TOUCH = { steer: 0, accel: false, brake: false, drift: false, item: false, start: false, tilt: false, auto: true, tiltZero: null, tiltRaw: 0, pads: {} };
+try { const s = JSON.parse(localStorage.getItem('lagoakart_touch') || '{}'); if (s.tilt !== undefined) TOUCH.tilt = s.tilt; if (s.auto !== undefined) TOUCH.auto = s.auto; } catch (e) {}
+const saveTouch = () => { try { localStorage.setItem('lagoakart_touch', JSON.stringify({ tilt: TOUCH.tilt, auto: TOUCH.auto })); } catch (e) {} };
+function buzz(ms) { if (MOBILE && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {} }
+
+function setupTouch() {
+  if (!MOBILE) return;
+  document.body.classList.add('mobile');
+  const T = document.getElementById('touch');
+  // volante virtual: arrastar para os lados na metade esquerda
+  const zone = T.querySelector('.steer'), knob = T.querySelector('.knob');
+  let sid = null, sx = 0;
+  zone.addEventListener('touchstart', e => { const t = e.changedTouches[0]; sid = t.identifier; sx = t.clientX; knob.style.left = (t.clientX - zone.getBoundingClientRect().left) + 'px'; knob.style.top = (t.clientY - zone.getBoundingClientRect().top) + 'px'; knob.classList.add('on'); e.preventDefault(); }, { passive: false });
+  zone.addEventListener('touchmove', e => { for (const t of e.changedTouches) if (t.identifier === sid) { TOUCH.steer = clamp((t.clientX - sx) / 55, -1, 1); knob.querySelector('i').style.transform = `translateX(${TOUCH.steer * 34}px)`; } e.preventDefault(); }, { passive: false });
+  const endS = e => { for (const t of e.changedTouches) if (t.identifier === sid) { sid = null; TOUCH.steer = 0; knob.classList.remove('on'); knob.querySelector('i').style.transform = ''; } };
+  zone.addEventListener('touchend', endS); zone.addEventListener('touchcancel', endS);
+  // botões (multitoque)
+  T.querySelectorAll('[data-b]').forEach(b => {
+    const k = b.dataset.b;
+    const on = e => { TOUCH[k] = true; b.classList.add('on'); buzz(8); e.preventDefault(); };
+    const off = e => { TOUCH[k] = false; b.classList.remove('on'); e.preventDefault(); };
+    b.addEventListener('touchstart', on, { passive: false }); b.addEventListener('touchend', off, { passive: false }); b.addEventListener('touchcancel', off, { passive: false });
+    b.addEventListener('mousedown', on); b.addEventListener('mouseup', off); b.addEventListener('mouseleave', off);
+  });
+  // inclinação do celular como volante
+  addEventListener('deviceorientation', e => {
+    const ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+    const v = ang === 90 ? e.beta : ang === 270 || ang === -90 ? -e.beta : e.gamma;
+    if (v == null) return; TOUCH.tiltRaw = v;
+  });
+  // tela cheia + travar deitado no primeiro toque
+  const fs = () => {
+    const el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
+  };
+  addEventListener('touchend', fs, { once: true });
+  document.getElementById('rotateFs').onclick = fs;
+}
+function touchState() {
+  if (!MOBILE) return null;
+  let steer = TOUCH.steer;
+  if (TOUCH.tilt && STATE === 'race') {
+    if (TOUCH.tiltZero === null) TOUCH.tiltZero = TOUCH.tiltRaw;
+    const d = TOUCH.tiltRaw - TOUCH.tiltZero; if (Math.abs(d) > 2) steer = clamp((d - Math.sign(d) * 2) / 18, -1, 1);
+  }
+  const st = { steer, accel: (TOUCH.auto && STATE === 'race' && !TOUCH.brake) || TOUCH.accel, brake: TOUCH.brake, drift: TOUCH.drift, item: TOUCH.item, start: TOUCH.start, left: steer < -0.5, right: steer > 0.5 };
+  st.aimUp = false; st.aimDown = TOUCH.brake;
+  return st;
+}
 
 
 </script>

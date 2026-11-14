@@ -567,6 +567,17 @@ function facadeTex(kind) {
 }
 const FACADES = [0, 1, 2, 3].map(facadeTex);
 
+// recorta (descarta) fragmentos de um material dentro do corredor da pista
+function maskOutTrack(mat, thr = 0.25) {
+  mat.onBeforeCompile = (sh) => {
+    const M = WORLD.trackMask;
+    sh.uniforms.uTMask = { value: M.tex }; sh.uniforms.uTMB = { value: new THREE.Vector3(M.x0, M.z0, M.span) };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vTMw;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvTMw = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vTMw; uniform sampler2D uTMask; uniform vec3 uTMB;').replace('void main() {', 'void main() {\n  { vec2 tuv = (vTMw - uTMB.xy) / uTMB.z; if (tuv.x > 0.0 && tuv.y > 0.0 && tuv.x < 1.0 && tuv.y < 1.0 && texture2D(uTMask, tuv).r > ' + thr.toFixed(2) + ') discard; }');
+  };
+  mat.customProgramCacheKey = () => 'tmask' + thr;
+  return mat;
+}
 // ---------------- construção da pista atual ----------------
 async function buildTrackScene(progress) {
   if (WORLD.group) { scene.remove(WORLD.group); WORLD.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => { if (m.map && !FACADES.includes(m.map) && m.map !== grainTex) m.map.dispose(); m.dispose(); }); }); }
@@ -576,6 +587,25 @@ async function buildTrackScene(progress) {
   let [bx0, bx1, bz0, bz1] = polyBounds(TP);
   WORLD.center.set((bx0 + bx1) / 2, 0, (bz0 + bz1) / 2); WORLD.radius = Math.max(bx1 - bx0, bz1 - bz0) / 2;
 
+  // ----- máscara da pista: nada do cenário (relevo, parques, ruas) pode aparecer sobre o asfalto -----
+  {
+    const pad = 40; const mx0 = bx0 - pad, mz0 = bz0 - pad, span = Math.max(bx1 - bx0, bz1 - bz0) + pad * 2;
+    const N = MOBILE ? 2048 : 4096, k = N / span;
+    const cv = document.createElement('canvas'); cv.width = cv.height = N; const g2 = cv.getContext('2d');
+    g2.fillStyle = '#000'; g2.fillRect(0, 0, N, N); g2.lineCap = 'round'; g2.lineJoin = 'round';
+    // cinza = faixa lateral (grama/calçadão); branco = asfalto + zebras
+    for (const [col, inner] of [['#808080', false], ['#fff', true]]) {
+      g2.strokeStyle = col;
+      for (let i = 0; i < TN; i++) {
+        const j = (i + 1) % TN, eL = Math.min(isFinite(SHORE[i][0]) ? SHORE[i][0] : HW + 3.4, HW + 3.4), eR = Math.min(isFinite(SHORE[i][1]) ? SHORE[i][1] : HW + 3.4, HW + 3.4);
+        g2.lineWidth = 2 * (inner ? HW + 1.0 : Math.max(HW + 1.1, Math.min(eL, eR) - 0.35)) * k;
+        g2.beginPath(); g2.moveTo((TP[i][0] - mx0) * k, (TP[i][1] - mz0) * k); g2.lineTo((TP[j][0] - mx0) * k, (TP[j][1] - mz0) * k); g2.stroke();
+      }
+    }
+    const tex = new THREE.CanvasTexture(cv); tex.flipY = false; tex.generateMipmaps = false; tex.minFilter = tex.magFilter = THREE.LinearFilter;
+    if (WORLD.trackMask) WORLD.trackMask.tex.dispose();
+    WORLD.trackMask = { tex, x0: mx0, z0: mz0, span };
+  }
   // ----- relevo -----
   await progress('Erguendo os morros do Rio (relevo real)…');
   {
@@ -606,7 +636,7 @@ async function buildTrackScene(progress) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx); geo.computeVertexNormals();
-    const m = add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, map: grainTex, roughness: 0.95, metalness: 0 }))); m.receiveShadow = true;
+    const m = add(new THREE.Mesh(geo, maskOutTrack(new THREE.MeshStandardMaterial({ vertexColors: true, map: grainTex, roughness: 0.95, metalness: 0 })))); m.receiveShadow = true;
     WORLD.terrH = H;
   }
   const onTerrain = (x, z) => terrainH(x, z);
@@ -624,7 +654,7 @@ async function buildTrackScene(progress) {
       polyFill(g, pts, (x, z) => terrainH(x, z) + (t === 6 ? 0.03 : 0.07), C(GCOL[t] || '#79b956'));
       if (t === 1 || t === 3 || t === 5) greenPolys.push({ t, pts });
     }
-    const m = add(new THREE.Mesh(g.build(), new THREE.MeshStandardMaterial({ vertexColors: true, map: grainTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }))); m.receiveShadow = true;
+    const m = add(new THREE.Mesh(g.build(), maskOutTrack(new THREE.MeshStandardMaterial({ vertexColors: true, map: grainTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })))); m.receiveShadow = true;
     WORLD.greenPolys = greenPolys;
   }
 
@@ -646,7 +676,7 @@ async function buildTrackScene(progress) {
         g.tri(a0, a1, b0); g.tri(a1, b1, b0);
       }
     }
-    const m = add(new THREE.Mesh(g.build(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }))); m.receiveShadow = true;
+    const m = add(new THREE.Mesh(g.build(), maskOutTrack(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })))); m.receiveShadow = true;
   }
 
   // ----- prédios -----
@@ -710,9 +740,9 @@ async function buildTrackScene(progress) {
         const sp = trackPos(s, lat);
         const gg = new THREE.Group();
         const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.4, 6), new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6, roughness: 0.4 })); post.position.y = 2.2; gg.add(post);
-        const plate = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), new THREE.MeshBasicMaterial({ map: textCanvas(nm, { w: 640, h: 160, bg: '#13407f', font: 'bold 60px Fredoka, sans-serif' }), side: THREE.DoubleSide }));
-        plate.position.y = 4.5; gg.add(plate);
-        gg.position.set(sp.x, sp.y, sp.z); gg.rotation.y = Math.atan2(-sp.tx, -sp.tz) + Math.PI; add(gg);
+        const pm = new THREE.MeshBasicMaterial({ map: textCanvas(nm, { w: 640, h: 160, bg: '#13407f', font: 'bold 60px Fredoka, sans-serif' }) });
+        for (const r of [0, Math.PI]) { const plate = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), pm); plate.position.y = 4.5; plate.rotation.y = r; gg.add(plate); }   // texto legível dos dois lados
+        gg.position.set(sp.x, sp.y, sp.z); gg.rotation.y = Math.atan2(-sp.tx, -sp.tz); add(gg);
       }
     }
     const seen = new Set();
@@ -778,9 +808,9 @@ function buildRoad(GR) {
   const curbM = new THREE.MeshStandardMaterial({ map: curbTex, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6, ...ds });
   strip(HW, HW + 1.1, k => ty(k) + 0.08, k => ty(k) + 0.08, 4, curbM);
   strip(-HW - 1.1, -HW, k => ty(k) + 0.08, k => ty(k) + 0.08, 4, curbM);
-  const vergeM = new THREE.MeshStandardMaterial({ map: vergeTex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, ...ds });
-  const embM = new THREE.MeshStandardMaterial({ map: TR.style === 'cristo' ? dirtTex : TR.style === 'copacabana' ? calcTex : grassTex, roughness: 1, ...ds });
-  const stoneM = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.9, ...ds });
+  const vergeM = maskOutTrack(new THREE.MeshStandardMaterial({ map: vergeTex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, ...ds }), 0.75);
+  const embM = maskOutTrack(new THREE.MeshStandardMaterial({ map: TR.style === 'cristo' ? dirtTex : TR.style === 'copacabana' ? calcTex : grassTex, roughness: 1, ...ds }));
+  const stoneM = maskOutTrack(new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.9, ...ds }));
   for (const sd of [-1, 1]) {
     const si = sd < 0 ? 0 : 1;
     const edge = (k) => Math.min(isFinite(SHORE[k][si]) ? SHORE[k][si] : HW + 3.4, HW + 3.4);

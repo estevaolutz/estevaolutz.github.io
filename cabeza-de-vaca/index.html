@@ -1158,9 +1158,17 @@ function create(o) {
     S.t = Math.min(TMAX, Math.max(0, S.t));
     S.x = Math.min(WX / 2, Math.max(-WX / 2, S.x)); S.z = Math.min(WZ / 2, Math.max(-WZ / 2, S.z));
   };
-  function place() {
+  function settle() {   /* a altura do alvo acompanha o relevo; fora de animações o alvo desliza pela linha de visada, então a imagem não se mexe */
+    const goal = heightW(S.x, S.z) * .7;
+    if (anim) { ty = goal; return; }
+    const dy = (goal - ty) * .35; if (Math.abs(dy) < 1e-4) return;
+    const st = Math.sin(S.t), ct = Math.max(.05, Math.cos(S.t)), lam = -dy / ct, nd = S.d + lam;
+    if (nd >= MIND && nd <= fullD * 1.3) { S.x += lam * Math.sin(S.h) * st; S.z -= lam * Math.cos(S.h) * st; S.d = nd; }
+    ty += dy;
+  }
+  function place() { settle(); placeCam(); }
+  function placeCam() {
     const st = Math.sin(S.t), ct = Math.cos(S.t), sh = Math.sin(S.h), ch = Math.cos(S.h);
-    ty += (heightW(S.x, S.z) * .7 - ty) * (anim ? 1 : .35);
     let cx = S.x - sh * st * S.d, cz = S.z + ch * st * S.d, cy = ty + S.d * ct;
     cy = Math.max(cy, heightW(cx, cz) + 2);
     cam.position.set(cx, cy, cz);
@@ -1222,11 +1230,44 @@ function create(o) {
     hit.copy(ray.ray.origin).addScaledVector(d, k);
     return { x: hit.x, z: hit.z };
   };
-  function zoomAt(f, cx, cy) {
-    place();
-    const g = ground(cx, cy) || { x: S.x, z: S.z };
+  const rayAt = (cx, cy) => {
+    const r = host.getBoundingClientRect();
+    ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, cam); return ray.ray;
+  };
+  const rayPlane = (cx, cy, y) => {
+    const R = rayAt(cx, cy), d = R.direction; if (Math.abs(d.y) < 1e-6) return null;
+    const k = (y - R.origin.y) / d.y; if (k <= 0 || k > cam.far * 2) return null;
+    return { x: R.origin.x + d.x * k, y, z: R.origin.z + d.z * k };
+  };
+  let hTop = -1;
+  const surf = (cx, cy) => {   /* ponto do relevo sob o cursor (o terreno visível, não um plano) */
+    if (hTop < 0 && Hm) { let m = 0; for (let i = 0; i < Hm.length; i++) if (Hm[i] > m) m = Hm[i]; hTop = m; }
+    const R = rayAt(cx, cy), o = R.origin, d = R.direction;
+    if (d.y > -1e-5) return null;
+    const top = Math.max(0, hTop) * exag / 1000 + 1;
+    const k0 = o.y > top ? (top - o.y) / d.y : 0, k1 = Math.min(cam.far * 2, (-1 - o.y) / d.y);
+    if (!(k1 > k0)) return null;
+    const f = k => o.y + d.y * k - heightW(o.x + d.x * k, o.z + d.z * k), N = 96, dk = (k1 - k0) / N;
+    let a = k0;
+    if (f(a) <= 0) return { x: o.x + d.x * a, y: o.y + d.y * a, z: o.z + d.z * a };
+    for (let i = 1; i <= N; i++) {
+      const b = k0 + dk * i;
+      if (f(b) <= 0) {
+        let lo = a, hi = b; for (let j = 0; j < 22; j++) { const m = (lo + hi) / 2; if (f(m) > 0) lo = m; else hi = m; }
+        return { x: o.x + d.x * hi, y: o.y + d.y * hi, z: o.z + d.z * hi };
+      }
+      a = b;
+    }
+    return null;
+  };
+  function zoomAt(f, cx, cy) {   /* aproxima a câmera do ponto do relevo sob o cursor: ele fica parado na tela */
+    placeCam();
+    const A = surf(cx, cy);
     const nd = Math.min(fullD * 1.3, Math.max(MIND, S.d / f)), k = nd / S.d;
-    S.x = g.x + (S.x - g.x) * k; S.z = g.z + (S.z - g.z) * k; S.d = nd; clampAll(); req();
+    if (A) { S.x = A.x + (S.x - A.x) * k; S.z = A.z + (S.z - A.z) * k; ty = A.y + (ty - A.y) * k; }
+    S.d = nd; clampAll(); req();
+    return A;
   }
   const ptrs = new Map();
   let gmode = null, grab = null, moved = false, start = null, last2 = null;
@@ -1237,7 +1278,7 @@ function create(o) {
     if (ptrs.size === 1) {
       moved = false; start = { x: e.clientX, y: e.clientY };
       gmode = (e.button === 2 || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) ? "rot" : "pan";
-      place(); grab = ground(e.clientX, e.clientY);
+      placeCam(); grab = surf(e.clientX, e.clientY);
     } else last2 = null;
   });
   host.addEventListener("pointermove", e => {
@@ -1248,8 +1289,8 @@ function create(o) {
       if (!moved && Math.hypot(p.x - start.x, p.y - start.y) < 5) return;
       if (!moved) { moved = true; host.classList.add("dragging"); try { host.setPointerCapture(e.pointerId); } catch (_) {} }
       if (gmode === "pan") {
-        place(); const g = ground(p.x, p.y);
-        if (g && grab) { S.x += grab.x - g.x; S.z += grab.z - g.z; clampAll(); }
+        placeCam(); const g = grab && rayPlane(p.x, p.y, grab.y);
+        if (g) { S.x += grab.x - g.x; S.z += grab.z - g.z; clampAll(); }
       } else { S.h += (p.x - prev.x) * .006; S.t -= (p.y - prev.y) * .005; clampAll(); }
       req();
     } else if (ptrs.size === 2) {
@@ -1257,10 +1298,12 @@ function create(o) {
       const [a, b] = [...ptrs.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x), mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       if (last2) {
-        zoomAt(dist / last2.dist, mid.x, mid.y);
+        const A = zoomAt(dist / last2.dist, mid.x, mid.y);
         S.h -= wrap(ang - last2.ang);
         S.t -= (mid.y - last2.mid.y) * .004;
-        clampAll(); req();
+        clampAll();
+        if (A) { placeCam(); const q = rayPlane(mid.x, mid.y, A.y); if (q) { S.x += A.x - q.x; S.z += A.z - q.z; clampAll(); } }   /* o ponto entre os dedos continua entre os dedos */
+        req();
       }
       last2 = { dist, ang, mid };
     }
@@ -1269,7 +1312,7 @@ function create(o) {
     if (!ptrs.has(e.pointerId)) return;
     ptrs.delete(e.pointerId);
     last2 = null;
-    if (ptrs.size === 1) { const [p] = [...ptrs.values()]; gmode = "pan"; place(); grab = ground(p.x, p.y); }
+    if (ptrs.size === 1) { const [p] = [...ptrs.values()]; gmode = "pan"; placeCam(); grab = surf(p.x, p.y); }
     if (ptrs.size === 0) { host.classList.remove("dragging"); setTimeout(() => { moved = false; }, 0); }
   };
   host.addEventListener("pointerup", endPtr);

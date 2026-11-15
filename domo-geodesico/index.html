@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domo Geodésico — Projeto e Construção</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f1ea;--panel:#fffdf8;--ink:#1f2a2e;--mute:#6b7478;--line:#e2ddd2;--acc:#d9622b;--acc2:#1f7a6d;--warn:#b7791f;--r:14px}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:15px}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+header{padding:18px 20px 6px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+header h1{margin:0;font-size:22px;letter-spacing:-.02em}
+header h1 span{color:var(--acc)}
+header p{margin:0;color:var(--mute);font-size:13px}
+.layout{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:12px 20px 40px;max-width:1500px;margin:0 auto}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.controls{display:flex;flex-direction:column;gap:14px;align-self:start;position:sticky;top:12px}
+.controls h2,.sec h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:0 0 8px;font-weight:600}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:500}
+label.f small{color:var(--mute);font-weight:400}
+input,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);width:100%}
+input:focus,select:focus{outline:2px solid var(--acc);outline-offset:-1px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.seg button{font:inherit;font-weight:600;padding:8px 0;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;color:var(--ink)}
+.seg button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+input[type=range]{padding:0;accent-color:var(--acc)}
+.main{display:flex;flex-direction:column;gap:16px;min-width:0}
+.viewer{position:relative;height:min(62vh,560px);padding:0;overflow:hidden;background:radial-gradient(ellipse at 50% 30%,#ffffff 0%,#ebe6db 100%)}
+#view3d{position:absolute;inset:0}
+#view3d canvas{display:block;touch-action:none}
+.vtools{position:absolute;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;z-index:2}
+.chip{font:inherit;font-size:12px;font-weight:600;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.9);cursor:pointer;color:var(--ink)}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.vinfo{position:absolute;right:12px;bottom:10px;font-size:12px;color:var(--mute);z-index:2;text-align:right}
+.legend{position:absolute;left:10px;bottom:10px;display:flex;gap:4px;flex-wrap:wrap;z-index:2;max-width:70%}
+.legend button{font:600 12px 'JetBrains Mono',monospace;border:0;border-radius:6px;padding:5px 8px;color:#fff;cursor:pointer;opacity:.95}
+.legend button.dim{opacity:.25}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stat b{display:block;font-size:20px;letter-spacing:-.02em;margin-top:2px}
+.stat span{font-size:12px;color:var(--mute)}
+.stat.warn{border-color:#ecd3a3;background:#fff8ea}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.tabs button{font:inherit;font-size:14px;font-weight:600;padding:8px 12px;border:0;border-radius:8px;background:transparent;color:var(--mute);cursor:pointer}
+.tabs button.on{background:var(--ink);color:#fff}
+.pane{display:none}.pane.on{display:block}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.num,th.num{text-align:right;font-family:'JetBrains Mono',monospace}
+tr.click{cursor:pointer}
+tr.click:hover td{background:#f7f3ea}
+tr.sel td{background:#fbeee5}
+tfoot td{font-weight:700;border-bottom:0}
+.tag{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 6px;border-radius:6px;color:#fff;font:700 13px 'JetBrains Mono',monospace}
+.note{font-size:13px;color:var(--mute);line-height:1.5;margin:10px 0 0}
+.note b{color:var(--ink)}
+.btn{font:inherit;font-weight:600;font-size:13px;padding:8px 12px;border-radius:9px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--ink)}
+.bars{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.barrow{display:grid;grid-template-columns:56px 1fr;gap:10px;align-items:center}
+.barrow .x{font:600 13px 'JetBrains Mono',monospace;text-align:right}
+.bar{display:flex;height:28px;border-radius:6px;overflow:hidden;background:repeating-linear-gradient(45deg,#e9e3d6,#e9e3d6 6px,#f3efe6 6px,#f3efe6 12px);border:1px solid var(--line)}
+.bar i{display:flex;align-items:center;justify-content:center;color:#fff;font:700 11px 'JetBrains Mono',monospace;font-style:normal;border-right:2px solid #fffdf8;overflow:hidden;white-space:nowrap}
+.msg{padding:10px 12px;border-radius:10px;font-size:13px;margin-top:10px}
+.msg.warn{background:#fff3dc;color:#7a4e0c}
+.msg.ok{background:#e4f3ef;color:#14594f}
+.steps{margin:0;padding-left:20px;line-height:1.6;font-size:14px}
+.steps li{margin-bottom:8px}
+textarea{width:100%;height:160px;font:12px 'JetBrains Mono',monospace;border:1px solid var(--line);border-radius:9px;padding:8px;margin-top:8px}
+.diagram{display:flex;justify-content:center;margin-top:8px}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr;padding:8px 12px 40px}
+  .controls{position:static}
+  .viewer{height:min(62vh,440px)}
+  .vinfo{display:none}
+  .legend{max-width:95%}
+  header{padding:14px 14px 0}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Domo <span>Geodésico</span></h1>
+  <p>Projeto, lista de hastes, conectores, painéis e plano de corte</p>
+</header>
+<div class="layout">
+  <aside class="card controls">
+    <div>
+      <h2>Geometria</h2>
+      <label class="f">Frequência <small>mais alta = mais redondo, mais peças</small></label>
+      <div class="seg" id="freq" style="margin-top:6px"></div>
+    </div>
+    <label class="f">Diâmetro (m)
+      <div class="row2" style="grid-template-columns:1fr 84px">
+        <input type="range" id="diamR" min="1" max="30" step="0.1">
+        <input type="number" id="diam" min="0.5" max="100" step="0.1">
+      </div>
+    </label>
+    <label class="f">Corte do domo <small>fração da esfera · altura</small>
+      <select id="cut"></select>
+    </label>
+    <div>
+      <h2>Construção</h2>
+      <label class="f">Sistema
+        <select id="sys">
+          <option value="flat">Tubo achatado e parafusado</option>
+          <option value="hub">Hastes com conector (hub)</option>
+          <option value="custom">Personalizado</option>
+        </select>
+      </label>
+    </div>
+    <div class="row2">
+      <label class="f"><span id="adjLbl">Furo até a ponta (cm)</span>
+        <input type="number" id="adj" step="0.1"></label>
+      <label class="f">Folga da serra (mm)
+        <input type="number" id="kerf" step="0.5" min="0"></label>
+    </div>
+    <div class="row2">
+      <label class="f">Barra comercial (m)
+        <input type="number" id="stock" step="0.1" min="0.5"></label>
+      <label class="f">Preço da barra (R$)
+        <input type="number" id="price" step="1" min="0"></label>
+    </div>
+    <div class="row2">
+      <label class="f">Preço do conector (R$)
+        <input type="number" id="hubPrice" step="1" min="0"></label>
+      <label class="f">Peso (kg/m)
+        <input type="number" id="kgm" step="0.01" min="0"></label>
+    </div>
+    <p class="note" id="sysNote" style="margin:0"></p>
+  </aside>
+
+  <div class="main">
+    <section class="card viewer">
+      <div id="view3d"></div>
+      <div class="vtools">
+        <button class="chip on" data-t="struts">Hastes</button>
+        <button class="chip on" data-t="hubs">Conectores</button>
+        <button class="chip" data-t="panels">Painéis</button>
+        <button class="chip on" data-t="person">Pessoa 1,75 m</button>
+        <button class="chip" data-t="spin">Girar</button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="vinfo" id="vinfo">arraste para girar · pinça para zoom</div>
+    </section>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="card sec">
+      <div class="tabs" id="tabs">
+        <button class="on" data-p="hastes">Hastes</button>
+        <button data-p="conectores">Conectores</button>
+        <button data-p="paineis">Painéis</button>
+        <button data-p="corte">Plano de corte</button>
+        <button data-p="base">Base e fundação</button>
+        <button data-p="montagem">Montagem</button>
+      </div>
+      <div class="pane on" id="p-hastes"></div>
+      <div class="pane" id="p-conectores"></div>
+      <div class="pane" id="p-paineis"></div>
+      <div class="pane" id="p-corte"></div>
+      <div class="pane" id="p-base"></div>
+      <div class="pane" id="p-montagem"></div>
+    </section>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// GEO-START
+const GEO = (() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const norm = p => { const l = Math.hypot(p[0], p[1], p[2]); return [p[0] / l, p[1] / l, p[2] / l]; };
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+  function icosa() {
+    const v = [[0, 0, 1]], zr = 1 / Math.sqrt(5), rr = 2 / Math.sqrt(5);
+    for (let k = 0; k < 5; k++) v.push([rr * Math.cos(72 * k * D2R), rr * Math.sin(72 * k * D2R), zr]);
+    for (let k = 0; k < 5; k++) v.push([rr * Math.cos((72 * k + 36) * D2R), rr * Math.sin((72 * k + 36) * D2R), -zr]);
+    v.push([0, 0, -1]);
+    const f = [];
+    for (let k = 0; k < 5; k++) {
+      const U = 1 + k, U1 = 1 + (k + 1) % 5, L = 6 + k, L1 = 6 + (k + 1) % 5;
+      f.push([0, U, U1], [U, L, U1], [U1, L, L1], [11, L1, L]);
+    }
+    return { v, f };
+  }
+
+  // Classe I, método 1: subdivide cada face plana em partes iguais e projeta na esfera
+  function geodesic(freq) {
+    const { v: iv, f: ifc } = icosa();
+    const verts = [], map = new Map();
+    const add = p => {
+      p = norm(p);
+      const k = p.map(x => Math.round(x * 1e6)).join(',');
+      if (map.has(k)) return map.get(k);
+      map.set(k, verts.length); verts.push(p); return verts.length - 1;
+    };
+    const tris = [];
+    for (const [ia, ib, ic] of ifc) {
+      const A = iv[ia], B = iv[ib], C = iv[ic];
+      const g = [];
+      for (let i = 0; i <= freq; i++) {
+        g[i] = [];
+        for (let j = 0; j <= freq - i; j++) {
+          const p = [0, 1, 2].map(d => A[d] + (B[d] - A[d]) * i / freq + (C[d] - A[d]) * j / freq);
+          g[i][j] = add(p);
+        }
+      }
+      for (let i = 0; i < freq; i++) for (let j = 0; j < freq - i; j++) {
+        tris.push([g[i][j], g[i + 1][j], g[i][j + 1]]);
+        if (i + j < freq - 1) tris.push([g[i + 1][j], g[i + 1][j + 1], g[i][j + 1]]);
+      }
+    }
+    // orienta todos os triângulos no sentido anti-horário visto de fora
+    for (const t of tris) {
+      const [a, b, c] = t.map(i => verts[i]);
+      const n = cross(sub(b, a), sub(c, a));
+      const cen = [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3];
+      if (dot(n, cen) < 0) { const x = t[1]; t[1] = t[2]; t[2] = x; }
+    }
+    // tipos de haste (na esfera completa, para as letras ficarem estáveis)
+    const lenKeys = new Map();
+    const ekey = (a, b) => a < b ? a + '-' + b : b + '-' + a;
+    const allEdges = new Map();
+    for (const t of tris) for (let k = 0; k < 3; k++) {
+      const a = t[k], b = t[(k + 1) % 3], key = ekey(a, b);
+      if (!allEdges.has(key)) {
+        const L = dist(verts[a], verts[b]);
+        const lk = Math.round(L * 1e5);
+        if (!lenKeys.has(lk)) lenKeys.set(lk, L);
+        allEdges.set(key, { a: Math.min(a, b), b: Math.max(a, b), lk });
+      }
+    }
+    const sorted = [...lenKeys.entries()].sort((x, y) => x[1] - y[1]);
+    const types = sorted.map(([lk, cf], i) => ({ lk, cf, letter: String.fromCharCode(65 + i), idx: i }));
+    const byLk = new Map(types.map(t => [t.lk, t]));
+    for (const e of allEdges.values()) e.type = byLk.get(e.lk).idx;
+    // níveis de corte possíveis
+    const zs = [...new Set(verts.map(p => Math.round(p[2] * 1e6)))].map(z => z / 1e6).sort((a, b) => b - a);
+    return { freq, verts, tris, edgeMap: allEdges, types, levels: zs.slice(1), ekey };
+  }
+
+  function dome(geo, level) {
+    const eps = 1e-6, V = geo.verts;
+    const tris = geo.tris.filter(t => Math.min(V[t[0]][2], V[t[1]][2], V[t[2]][2]) >= level - eps);
+    const edgeUse = new Map();
+    for (const t of tris) for (let k = 0; k < 3; k++) {
+      const key = geo.ekey(t[k], t[(k + 1) % 3]);
+      edgeUse.set(key, (edgeUse.get(key) || 0) + 1);
+    }
+    const edges = [...edgeUse.keys()].map(k => ({ ...geo.edgeMap.get(k), boundary: edgeUse.get(k) === 1 }));
+    const vset = new Set(); tris.forEach(t => t.forEach(i => vset.add(i)));
+    const vIdx = [...vset];
+    const bset = new Set(); edges.filter(e => e.boundary).forEach(e => { bset.add(e.a); bset.add(e.b); });
+    const isSphere = bset.size === 0;
+    let maxDiff = 0; bset.forEach(i => { maxDiff = Math.max(maxDiff, V[i][2] - level); });
+    const flat = !isSphere && maxDiff < 1e-5;
+    const top = 1, bottom = isSphere ? -1 : level;
+    const fraction = (top - bottom) / 2;
+
+    // conectores
+    const inc = new Map(vIdx.map(i => [i, []]));
+    for (const e of edges) { inc.get(e.a).push(e.type); inc.get(e.b).push(e.type); }
+    const hubGroups = new Map();
+    for (const i of vIdx) {
+      const list = inc.get(i).slice().sort((a, b) => a - b);
+      const counts = {}; list.forEach(t => counts[t] = (counts[t] || 0) + 1);
+      const comp = Object.keys(counts).map(Number).sort((a, b) => a - b).map(t => counts[t] + '×' + geo.types[t].letter).join(' + ');
+      const base = bset.has(i);
+      const key = (base ? 'B|' : 'C|') + comp;
+      if (!hubGroups.has(key)) hubGroups.set(key, { comp, base, valence: list.length, count: 0, verts: [] });
+      const g = hubGroups.get(key); g.count++; g.verts.push(i);
+    }
+    const hubs = [...hubGroups.values()].sort((a, b) => (a.base - b.base) || (b.valence - a.valence) || (b.count - a.count));
+    hubs.forEach((h, i) => h.label = 'H' + (i + 1));
+
+    // painéis
+    const L = (a, b) => geo.types[geo.edgeMap.get(geo.ekey(a, b)).type].letter;
+    const panelGroups = new Map();
+    let area = 0;
+    for (const t of tris) {
+      const seq = [L(t[0], t[1]), L(t[1], t[2]), L(t[2], t[0])];
+      const rots = s => [s.join(''), [s[1], s[2], s[0]].join(''), [s[2], s[0], s[1]].join('')];
+      const canon = rots(seq).sort()[0];
+      const mirror = rots([seq[2], seq[1], seq[0]]).sort()[0];
+      const chiral = canon !== mirror;
+      const base = [canon, mirror].sort()[0];
+      const hand = chiral ? (canon === base ? 'D' : 'E') : '';
+      const key = base + hand;
+      const [a, b, c] = t.map(i => V[i]);
+      const ar = 0.5 * Math.hypot(...cross(sub(b, a), sub(c, a)));
+      area += ar;
+      if (!panelGroups.has(key)) {
+        // lados e ângulos
+        const s = [dist(a, b), dist(b, c), dist(c, a)];
+        const ang = (x, y, z) => Math.acos((x * x + y * y - z * z) / (2 * x * y)) * R2D;
+        panelGroups.set(key, { key, letters: base, hand, chiral, count: 0, sides: s, area: ar,
+          angles: [ang(s[2], s[0], s[1]), ang(s[0], s[1], s[2]), ang(s[1], s[2], s[0])], seq });
+      }
+      panelGroups.get(key).count++;
+    }
+    const panels = [...panelGroups.values()].sort((x, y) => x.key.localeCompare(y.key));
+
+    // contagem de hastes
+    const strutCounts = geo.types.map(() => 0);
+    edges.forEach(e => strutCounts[e.type]++);
+
+    // volume (tetraedros a partir do centro do piso)
+    const c0 = [0, 0, isSphere ? 0 : level];
+    let vol = 0;
+    for (const t of tris) {
+      const [a, b, c] = t.map(i => sub(V[i], c0));
+      vol += dot(a, cross(b, c)) / 6;
+    }
+    // piso
+    const baseVerts = [...bset].map(i => ({ i, p: V[i], az: (Math.atan2(V[i][1], V[i][0]) * R2D + 360) % 360 })).sort((a, b) => a.az - b.az);
+    let floor = 0;
+    for (let k = 0; k < baseVerts.length; k++) {
+      const p = baseVerts[k].p, q = baseVerts[(k + 1) % baseVerts.length].p;
+      floor += p[0] * q[1] - q[0] * p[1];
+    }
+    floor = Math.abs(floor) / 2;
+
+    return { level, tris, edges, vIdx, bset, isSphere, flat, maxDiff, fraction, hubs, panels, strutCounts, area, vol: Math.abs(vol), floor, baseVerts };
+  }
+  return { geodesic, dome, R2D, D2R };
+})();
+// GEO-END
+if (typeof module !== 'undefined') module.exports = GEO;
+// ---------- estado ----------
+const PALETTE = ['#d9622b','#1f7a6d','#e0a21b','#3d5a80','#8a4fbf','#c2185b','#2e9bd6','#6a8d2f','#8d5a3b','#455a64','#e57373','#00897b'];
+const colorOf = i => PALETTE[i % PALETTE.length];
+const SYS = {
+  flat:  { adj: 2.5, lbl: 'Furo até a ponta (cm)', sign: +1,
+    note: 'Corte = centro a centro + 2× a distância do furo à ponta. Achate as pontas, fure no comprimento centro a centro e dobre cada ponta no <b>ângulo de dobra</b>.' },
+  hub:   { adj: 5, lbl: 'Raio do conector (cm)', sign: -1,
+    note: 'Corte = centro a centro − 2× o raio do conector (distância do centro do hub até onde a haste encosta). Chanfre as pontas no <b>ângulo de chanfro</b>.' },
+  custom:{ adj: 0, lbl: 'Ajuste por ponta (cm)', sign: +1,
+    note: 'Corte = centro a centro + 2× o ajuste (use valor negativo para descontar).' }
+};
+let S = { freq: 3, diam: 6, target: 0.625, sys: 'flat', adj: 2.5, kerf: 3, stock: 6, price: 60, hubPrice: 0, kgm: 0.5, cutIdx: null };
+try { const s = JSON.parse(localStorage.getItem('domo-geo-v1') || 'null'); if (s) S = { ...S, ...s }; } catch (e) {}
+const save = () => { try { localStorage.setItem('domo-geo-v1', JSON.stringify(S)); } catch (e) {} };
+
+const $ = id => document.getElementById(id);
+const nf = (n, d = 1) => n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const cm = m => nf(m * 100, 1);
+const mm = m => Math.round(m * 1000).toLocaleString('pt-BR');
+const tag = (t) => `<span class="tag" style="background:${colorOf(t.idx)}">${t.letter}</span>`;
+const fracName = f => {
+  const known = [[1/4,'1/4'],[1/3,'1/3'],[3/8,'3/8'],[4/9,'4/9'],[1/2,'1/2'],[5/9,'5/9'],[5/8,'5/8'],[2/3,'2/3'],[3/4,'3/4']];
+  for (const [v, n] of known) if (Math.abs(f - v) < 0.035) return (Math.abs(f - v) < 0.002 ? '' : '≈ ') + n;
+  return '';
+};
+
+let geoCache = {}, G, Dm, selType = null, selHub = null;
+const getGeo = f => geoCache[f] || (geoCache[f] = GEO.geodesic(f));
+
+// ---------- controles ----------
+const freqBox = $('freq');
+for (let f = 1; f <= 8; f++) {
+  const b = document.createElement('button'); b.textContent = f + 'V'; b.dataset.f = f;
+  b.onclick = () => { S.freq = f; S.cutIdx = null; selType = null; selHub = null; update(true); };
+  freqBox.appendChild(b);
+}
+$('diam').value = S.diam; $('diamR').value = Math.min(30, S.diam);
+$('diamR').oninput = e => { S.diam = +e.target.value; $('diam').value = S.diam; update(true); };
+$('diam').onchange = e => { const v = +e.target.value; if (v > 0) { S.diam = v; $('diamR').value = Math.min(30, v); update(true); } };
+$('cut').onchange = e => { S.cutIdx = +e.target.value; const lv = G.cutList[S.cutIdx]; S.target = lv.fr; selHub = null; update(true); };
+$('sys').value = S.sys;
+$('sys').onchange = e => { S.sys = e.target.value; S.adj = SYS[S.sys].adj; $('adj').value = S.adj; update(false); };
+for (const k of ['adj', 'kerf', 'stock', 'price', 'hubPrice', 'kgm']) {
+  $(k).value = S[k];
+  $(k).oninput = e => { const v = parseFloat(e.target.value); if (!isNaN(v)) { S[k] = v; update(false); } };
+}
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.p));
+});
+
+// ---------- cálculo ----------
+function cutLength(cf) {
+  const R = S.diam / 2, sign = SYS[S.sys].sign;
+  return cf * R + 2 * sign * S.adj / 100;
+}
+
+function buildCutList(g) {
+  const list = [];
+  for (const l of g.levels) {
+    const d = GEO.dome(g, l);
+    if (d.fraction < 0.2) continue;
+    list.push({ level: l, fr: d.fraction, flat: d.flat, maxDiff: d.maxDiff, n: d.edges.length });
+  }
+  return list;
+}
+
+function update(rebuild3d) {
+  save();
+  G = getGeo(S.freq);
+  if (!G.cutList) G.cutList = buildCutList(G);
+  // escolhe o corte
+  if (S.cutIdx == null || S.cutIdx >= G.cutList.length) {
+    let best = 0, bd = 1e9;
+    G.cutList.forEach((c, i) => { const d = Math.abs(c.fr - S.target) - (c.flat ? 0.03 : 0); if (d < bd) { bd = d; best = i; } });
+    S.cutIdx = best;
+  }
+  const R = S.diam / 2;
+  $('cut').innerHTML = G.cutList.map((c, i) => {
+    const h = c.fr * 2 * R;
+    const fn = fracName(c.fr);
+    const name = c.fr > 0.999 ? 'Esfera completa' : `${fn ? fn + ' · ' : ''}${nf(c.fr * 100, 0)}%`;
+    return `<option value="${i}" ${i === S.cutIdx ? 'selected' : ''}>${name} · h ${nf(h, 2)} m · ${c.n} hastes${c.fr > 0.999 ? '' : c.flat ? ' · base plana' : ' · base irregular'}</option>`;
+  }).join('');
+  document.querySelectorAll('#freq button').forEach(b => b.classList.toggle('on', +b.dataset.f === S.freq));
+  $('adjLbl').textContent = SYS[S.sys].lbl;
+  $('sysNote').innerHTML = SYS[S.sys].note;
+
+  const cut = G.cutList[S.cutIdx];
+  Dm = GEO.dome(G, cut.level);
+  renderAll();
+  if (rebuild3d) build3d(); else restyle3d();
+}
+
+function strutRows() {
+  const R = S.diam / 2;
+  return G.types.map((t, i) => ({ t, n: Dm.strutCounts[i], cc: t.cf * R, cut: cutLength(t.cf),
+    theta: 2 * Math.asin(t.cf / 2) * GEO.R2D, bend: Math.asin(t.cf / 2) * GEO.R2D })).filter(r => r.n > 0);
+}
+
+function cutPlan(rows) {
+  const kerf = S.kerf / 1000, stock = S.stock;
+  const pieces = [];
+  rows.forEach(r => { for (let k = 0; k < r.n; k++) pieces.push({ t: r.t, len: r.cut }); });
+  pieces.sort((a, b) => b.len - a.len);
+  const bars = []; let tooLong = null;
+  for (const p of pieces) {
+    if (p.len > stock + 1e-9) { tooLong = p; continue; }
+    let bar = bars.find(b => b.rem >= p.len - 1e-9);
+    if (!bar) { bar = { rem: stock, pcs: [] }; bars.push(bar); }
+    bar.pcs.push(p); bar.rem -= p.len + kerf;
+  }
+  const patterns = new Map();
+  for (const b of bars) {
+    const key = b.pcs.map(p => p.t.letter).join('');
+    if (!patterns.has(key)) patterns.set(key, { pcs: b.pcs, rem: Math.max(0, b.rem), n: 0 });
+    patterns.get(key).n++;
+  }
+  const used = pieces.reduce((s, p) => s + p.len, 0);
+  return { bars, patterns: [...patterns.values()].sort((a, b) => b.n - a.n), tooLong, used, waste: bars.length ? 1 - used / (bars.length * stock) : 0 };
+}
+
+// ---------- render ----------
+function renderAll() {
+  const R = S.diam / 2, rows = strutRows();
+  const nStruts = rows.reduce((s, r) => s + r.n, 0);
+  const lin = rows.reduce((s, r) => s + r.n * r.cut, 0);
+  const plan = cutPlan(rows);
+  const h = Dm.isSphere ? 2 * R : (1 - Dm.level) * R;
+  const cost = plan.bars.length * S.price + Dm.vIdx.length * S.hubPrice;
+  const weight = lin * S.kgm;
+  const baseOK = Dm.isSphere || Dm.flat;
+  const stats = [
+    ['Diâmetro', nf(S.diam, 2) + ' m'],
+    ['Altura', nf(h, 2) + ' m'],
+    ['Área do piso', Dm.isSphere ? '—' : nf(Dm.floor * R * R, 1) + ' m²'],
+    ['Cobertura', nf(Dm.area * R * R, 1) + ' m²'],
+    ['Volume aprox.', nf(Dm.vol * R * R * R, 1) + ' m³'],
+    ['Hastes', `${nStruts} <span>· ${rows.length} tipos</span>`],
+    ['Conectores', Dm.vIdx.length],
+    ['Painéis', Dm.tris.length],
+    ['Metros lineares', nf(lin, 1) + ' m'],
+    ['Barras de ' + nf(S.stock, 1) + ' m', plan.bars.length + ` <span>· ${nf(plan.waste * 100, 0)}% perda</span>`],
+    ['Custo estimado', cost > 0 ? 'R$ ' + cost.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : '—'],
+    ['Peso da estrutura', weight > 0 ? nf(weight, 0) + ' kg' : '—'],
+    ['Base', Dm.isSphere ? 'esfera' : Dm.flat ? 'plana' : 'irregular', !baseOK]
+  ];
+  $('stats').innerHTML = stats.map(([k, v, w]) => `<div class="stat${w ? ' warn' : ''}"><span>${k}</span><b>${v}</b></div>`).join('');
+
+  // hastes
+  const sysAngle = S.sys === 'hub' ? 'Chanfro' : 'Dobra';
+  $('p-hastes').innerHTML = `<div class="tw"><table>
+    <thead><tr><th>Tipo</th><th class="num">Qtd</th><th class="num">Fator corda</th><th class="num">Centro a centro</th><th class="num">Corte</th><th class="num">${sysAngle}</th><th class="num">Âng. central</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="click ${selType === r.t.idx ? 'sel' : ''}" data-t="${r.t.idx}">
+      <td>${tag(r.t)}</td><td class="num">${r.n}</td><td class="num">${r.t.cf.toFixed(5)}</td>
+      <td class="num">${cm(r.cc)} cm</td><td class="num"><b>${cm(r.cut)} cm</b></td>
+      <td class="num">${nf(r.bend, 2)}°</td><td class="num">${nf(r.theta, 2)}°</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">${nStruts}</td><td></td><td></td><td class="num">${nf(lin, 2)} m</td><td></td><td></td></tr></tfoot>
+  </table></div>
+  <p class="note">Toque numa linha para destacar o tipo no 3D. <b>Centro a centro</b> é a distância entre os centros dos conectores (= fator de corda × raio). <b>${sysAngle}</b> é o ângulo entre a haste e o plano tangente à esfera em cada ponta (metade do ângulo central). Meça e corte um tipo por vez e marque cada haste com a cor/letra.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" id="copyCsv">Copiar lista (CSV)</button><button class="btn ghost" id="showCsv">Mostrar texto</button></div>
+  <div id="csvBox"></div>`;
+  $('p-hastes').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { const t = +tr.dataset.t; selType = selType === t ? null : t; renderAll(); restyle3d(); });
+  const csv = () => ['Tipo;Quantidade;Fator de corda;Centro a centro (mm);Corte (mm);Ângulo ' + sysAngle.toLowerCase() + ' (°);Ângulo central (°)']
+    .concat(rows.map(r => [r.t.letter, r.n, r.t.cf.toFixed(5), Math.round(r.cc * 1000), Math.round(r.cut * 1000), r.bend.toFixed(2), r.theta.toFixed(2)].join(';'))).join('\n');
+  $('copyCsv').onclick = async () => {
+    try { await navigator.clipboard.writeText(csv()); $('copyCsv').textContent = 'Copiado ✓'; setTimeout(() => $('copyCsv').textContent = 'Copiar lista (CSV)', 1500); }
+    catch (e) { $('csvBox').innerHTML = `<textarea readonly>${csv()}</textarea>`; }
+  };
+  $('showCsv').onclick = () => { $('csvBox').innerHTML = `<textarea readonly>${csv()}</textarea>`; };
+
+  // conectores
+  if (selHub == null || selHub >= Dm.hubs.length) selHub = 0;
+  $('p-conectores').innerHTML = `<div class="tw"><table>
+    <thead><tr><th>Tipo</th><th class="num">Qtd</th><th class="num">Nº hastes</th><th>Composição</th><th>Posição</th></tr></thead>
+    <tbody>${Dm.hubs.map((hb, i) => `<tr class="click ${selHub === i ? 'sel' : ''}" data-h="${i}"><td><b>${hb.label}</b></td><td class="num">${hb.count}</td><td class="num">${hb.valence}</td>
+      <td class="mono">${hb.comp}</td><td>${hb.base ? 'base' : hb.valence === 5 ? 'pentágono' : 'corpo'}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">${Dm.vIdx.length}</td><td></td><td></td><td></td></tr></tfoot>
+  </table></div>
+  <div id="hubDiag"></div>
+  <p class="note">Conectores de <b>5 hastes</b> ficam nos 6 vértices do icosaedro original (pentágonos); os de <b>6</b> formam os hexágonos. Os de base têm menos hastes e normalmente recebem uma placa ou chumbador. Toque numa linha para ver o desenho em planta.</p>`;
+  $('p-conectores').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { selHub = +tr.dataset.h; renderAll(); restyle3d(); });
+  $('hubDiag').innerHTML = hubDiagram(Dm.hubs[selHub]);
+
+  // painéis
+  const totArea = Dm.area * R * R;
+  $('p-paineis').innerHTML = `<div class="tw"><table>
+    <thead><tr><th>Painel</th><th class="num">Qtd</th><th class="num">Lados (cm)</th><th class="num">Ângulos</th><th class="num">Área un.</th><th class="num">Área total</th></tr></thead>
+    <tbody>${Dm.panels.map(p => `<tr><td><span class="mono"><b>${p.letters.split('').join('·')}</b></span>${p.chiral ? ` <small style="color:var(--mute)">${p.hand === 'D' ? 'direito' : 'espelhado'}</small>` : ''}</td>
+      <td class="num">${p.count}</td><td class="num">${p.sides.map(s => cm(s * R)).join(' / ')}</td>
+      <td class="num">${p.angles.map(a => nf(a, 1) + '°').join(' / ')}</td>
+      <td class="num">${nf(p.area * R * R, 3)} m²</td><td class="num">${nf(p.area * p.count * R * R, 2)} m²</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">${Dm.tris.length}</td><td></td><td></td><td></td><td class="num">${nf(totArea, 2)} m²</td></tr></tfoot>
+  </table></div>
+  <p class="note">Medidas de centro a centro de vértice — para cobertura em painéis rígidos, descontar a espessura da estrutura; para lona, somar sobreposição/bainha (10–15%: ~${nf(totArea * 1.12, 0)} m²). Triângulos com três lados diferentes existem em versão <b>direita</b> e <b>espelhada</b>: corte cada versão na quantidade indicada.</p>`;
+
+  // plano de corte
+  const maxCut = Math.max(...rows.map(r => r.cut));
+  $('p-corte').innerHTML = `
+    ${plan.tooLong ? `<div class="msg warn">A haste ${plan.tooLong.t.letter} (${cm(plan.tooLong.len)} cm) é maior que a barra de ${nf(S.stock, 2)} m. Aumente a barra ou use uma frequência maior.</div>` : ''}
+    <div class="msg ok"><b>${plan.bars.length} barras de ${nf(S.stock, 2)} m</b> para ${nStruts} hastes · aproveitamento ${nf((1 - plan.waste) * 100, 0)}% · sobra total ${nf(plan.bars.length * S.stock - plan.used, 2)} m${S.price > 0 ? ` · R$ ${(plan.bars.length * S.price).toLocaleString('pt-BR')}` : ''}</div>
+    <div class="bars">${plan.patterns.map(p => `<div class="barrow"><div class="x">${p.n}×</div>
+      <div class="bar">${p.pcs.map(pc => `<i style="width:${pc.len / S.stock * 100}%;background:${colorOf(pc.t.idx)}" title="${pc.t.letter} ${cm(pc.len)} cm">${pc.t.letter} ${pc.len / S.stock > 0.08 ? cm(pc.len) : ''}</i>`).join('')}</div></div>`).join('')}</div>
+    <p class="note">Cada linha é um <b>padrão de corte</b>: corte o número indicado de barras exatamente assim. A área listrada é sobra. Considera ${nf(S.kerf, 1)} mm de perda por corte. A haste mais longa tem ${cm(maxCut)} cm.</p>`;
+
+  // base
+  const bv = Dm.baseVerts;
+  if (Dm.isSphere) {
+    $('p-base').innerHTML = `<p class="note">Esfera completa — sem base. Para apoiar, escolha um corte.</p>`;
+  } else {
+    const posts = new Map();
+    bv.forEach(v => { const hh = Math.round((v.p[2] - Dm.level) * R * 1000); posts.set(hh, (posts.get(hh) || 0) + 1); });
+    const rBase = Math.max(...bv.map(v => Math.hypot(v.p[0], v.p[1]))) * R;
+    $('p-base').innerHTML = `
+      ${Dm.flat ? `<div class="msg ok">Base plana: todos os ${bv.length} pontos de apoio ficam no chão, num círculo de raio <b>${cm(rBase)} cm</b>.</div>`
+        : `<div class="msg warn">Base irregular (desnível máximo de ${cm(Dm.maxDiff * R)} cm). Use pés/meia-parede com as alturas abaixo para nivelar, ou escolha um corte marcado como “base plana”.</div>
+        <div class="tw"><table><thead><tr><th>Altura do pé de nivelamento</th><th class="num">Qtd</th></tr></thead>
+        <tbody>${[...posts.entries()].sort((a, b) => a[0] - b[0]).map(([hh, n]) => `<tr><td class="mono">${hh === 0 ? 'no chão (0)' : nf(hh / 10, 1) + ' cm'}</td><td class="num">${n}</td></tr>`).join('')}</tbody></table></div>`}
+      <div class="diagram">${baseDiagram(bv, R)}</div>
+      <div class="tw"><table><thead><tr><th>Ponto</th><th class="num">Azimute</th><th class="num">Raio</th><th class="num">Altura</th></tr></thead>
+      <tbody>${bv.map((v, i) => `<tr><td>P${i + 1}</td><td class="num">${nf(v.az, 1)}°</td><td class="num">${cm(Math.hypot(v.p[0], v.p[1]) * R)} cm</td><td class="num">${cm(Math.max(0, (v.p[2] - Dm.level) * R))} cm</td></tr>`).join('')}</tbody></table></div>
+      <p class="note">Para marcar a fundação: crave uma estaca no centro, use uma trena como compasso e marque cada ponto pelo azimute (ângulo a partir de uma direção de referência) e raio. A distância entre pontos vizinhos deve bater com o comprimento das hastes da base.</p>`;
+  }
+
+  // montagem
+  $('p-montagem').innerHTML = `<ol class="steps">
+    <li><b>Corte e marque</b> todas as hastes por tipo (fita colorida ou tinta na ponta: ${rows.map(r => r.t.letter).join(', ')}). Faça um gabarito para cada tipo e confira as 3 primeiras peças antes de cortar o lote.</li>
+    <li><b>${S.sys === 'hub' ? 'Prepare os conectores' : 'Achate, fure e dobre'}</b>: ${S.sys === 'hub' ? 'chanfre cada ponta no ângulo indicado e prepare os conectores por tipo (H1, H2…).' : 'furos a ' + nf(S.adj, 1) + ' cm das pontas, com distância centro a centro exata; dobre as pontas no ângulo de dobra do tipo.'}</li>
+    <li><b>Marque a base</b> na aba “Base e fundação” e fixe os pontos de apoio${Dm.flat ? '' : ' com os pés de nivelamento'}.</li>
+    <li><b>Monte de baixo para cima</b>: feche o anel da base e suba anel por anel, sempre completando triângulos. Ou monte de cima para baixo, levantando o domo com tripés/cavaletes à medida que os anéis são adicionados.</li>
+    <li><b>Siga o 3D</b>: toque num tipo de haste para ver onde ele vai. Os pentágonos (conectores de 5) servem de referência — começam no topo.</li>
+    <li><b>Aperte tudo só no fim</b>: deixe os parafusos frouxos até fechar a estrutura, depois aperte do topo para a base.</li>
+    <li><b>Ancore</b> à fundação antes de colocar a cobertura — domos cobertos pegam muito vento.</li>
+  </ol>
+  <p class="note">Geometria: icosaedro classe I, método 1 (subdivisão igual das faces, projetada na esfera), com um vértice no topo. Medidas teóricas — confira com um protótipo em escala antes de comprar material. Para domos habitáveis, consulte um profissional para cargas de vento e cobertura.</p>`;
+
+  // legenda 3D
+  $('legend').innerHTML = rows.map(r => `<button style="background:${colorOf(r.t.idx)}" class="${selType != null && selType !== r.t.idx ? 'dim' : ''}" data-t="${r.t.idx}">${r.t.letter} ×${r.n}</button>`).join('');
+  $('legend').querySelectorAll('button').forEach(b => b.onclick = () => { const t = +b.dataset.t; selType = selType === t ? null : t; renderAll(); restyle3d(); });
+}
+
+function hubDiagram(hb) {
+  if (!hb) return '';
+  const V = G.verts, i0 = hb.verts[0], p = V[i0], R = S.diam / 2;
+  const nb = Dm.edges.filter(e => e.a === i0 || e.b === i0).map(e => ({ q: V[e.a === i0 ? e.b : e.a], t: G.types[e.type] }));
+  const up = Math.abs(p[2]) > 0.95 ? [1, 0, 0] : [0, 0, 1];
+  const c = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const nrm = a => { const l = Math.hypot(...a); return a.map(x => x / l); };
+  const e1 = nrm(c(up, p)), e2 = c(p, e1);
+  const spokes = nb.map(({ q, t }) => {
+    const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+    return { t, az: (Math.atan2(d[0] * e2[0] + d[1] * e2[1] + d[2] * e2[2], d[0] * e1[0] + d[1] * e1[1] + d[2] * e1[2]) * GEO.R2D + 360) % 360,
+      dn: Math.asin(t.cf / 2) * GEO.R2D };
+  }).sort((a, b) => a.az - b.az);
+  const W = 300, C = W / 2, L = 105;
+  let svg = `<svg viewBox="0 0 ${W} ${W}" width="${W}" height="${W}" style="max-width:100%">`;
+  svg += `<circle cx="${C}" cy="${C}" r="${L + 18}" fill="none" stroke="#e2ddd2" stroke-dasharray="3 4"/>`;
+  spokes.forEach((s, k) => {
+    const a = s.az * Math.PI / 180, x = C + Math.cos(a) * L, y = C - Math.sin(a) * L;
+    svg += `<line x1="${C}" y1="${C}" x2="${x}" y2="${y}" stroke="${colorOf(s.t.idx)}" stroke-width="9" stroke-linecap="round"/>`;
+    svg += `<text x="${C + Math.cos(a) * (L + 4)}" y="${C - Math.sin(a) * (L + 4) + 4}" font-family="JetBrains Mono" font-weight="700" font-size="13" text-anchor="middle" fill="#1f2a2e">${s.t.letter}</text>`;
+    const n = spokes[(k + 1) % spokes.length];
+    let gap = (n.az - s.az + 360) % 360; if (spokes.length === 1) gap = 360;
+    const mid = (s.az + gap / 2) * Math.PI / 180;
+    if (spokes.length > 1) svg += `<text x="${C + Math.cos(mid) * 58}" y="${C - Math.sin(mid) * 58 + 4}" font-family="JetBrains Mono" font-size="11" text-anchor="middle" fill="#6b7478">${nf(gap, 1)}°</text>`;
+  });
+  svg += `<circle cx="${C}" cy="${C}" r="16" fill="#1f2a2e"/><text x="${C}" y="${C + 4}" fill="#fff" font-size="11" font-weight="700" text-anchor="middle" font-family="Inter">${hb.label}</text></svg>`;
+  const dn = [...new Map(spokes.map(s => [s.t.letter, s.dn])).entries()].map(([l, d]) => `${l}: ${nf(d, 2)}°`).join(' · ');
+  return `<div class="diagram">${svg}</div><p class="note" style="text-align:center">Planta do conector <b>${hb.label}</b> (visto de fora). Ângulos entre hastes vizinhas no plano tangente. Inclinação de cada haste abaixo do plano: ${dn}.</p>`;
+}
+
+function baseDiagram(bv, R) {
+  const W = 260, C = W / 2, sc = 100 / Math.max(...bv.map(v => Math.hypot(v.p[0], v.p[1])));
+  const pts = bv.map(v => [C + v.p[0] * sc, C - v.p[1] * sc]);
+  let s = `<svg viewBox="0 0 ${W} ${W}" width="${W}" height="${W}" style="max-width:100%"><circle cx="${C}" cy="${C}" r="100" fill="none" stroke="#e2ddd2" stroke-dasharray="3 4"/>`;
+  s += `<polygon points="${pts.map(p => p.join(',')).join(' ')}" fill="#fbeee5" stroke="#d9622b" stroke-width="2"/>`;
+  s += `<line x1="${C}" y1="${C}" x2="${C + 112}" y2="${C}" stroke="#6b7478" stroke-dasharray="2 3"/><text x="${C + 114}" y="${C - 4}" font-size="10" fill="#6b7478" font-family="Inter" text-anchor="end">0°</text>`;
+  pts.forEach((p, i) => { const dz = bv[i].p[2] - Dm.level; s += `<circle cx="${p[0]}" cy="${p[1]}" r="${dz > 1e-5 ? 5 : 4}" fill="${dz > 1e-5 ? '#e0a21b' : '#1f2a2e'}"/>`;
+    if (bv.length <= 40) s += `<text x="${C + (p[0] - C) * 1.16}" y="${C + (p[1] - C) * 1.16 + 3}" font-size="9" text-anchor="middle" fill="#6b7478" font-family="JetBrains Mono">${i + 1}</text>`; });
+  s += `<circle cx="${C}" cy="${C}" r="3" fill="#d9622b"/></svg>`;
+  return s;
+}
+
+// ---------- 3D ----------
+let renderer, scene, camera, controls, domeGroup, person, strutMeshes = [], hubMesh, panelMesh, hubHi;
+const vis = { struts: true, hubs: true, panels: false, person: true, spin: false };
+function init3d() {
+  if (typeof THREE === 'undefined') { $('view3d').innerHTML = '<p class="note" style="padding:20px">Não foi possível carregar o visualizador 3D. As tabelas continuam funcionando.</p>'; return false; }
+  const el = $('view3d');
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  el.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(40, 1, 0.05, 1000);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb9ad98, 0.85));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.55); dl.position.set(5, 10, 7); scene.add(dl);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.95;
+  person = new THREE.Group();
+  const pm = new THREE.MeshLambertMaterial({ color: 0x3d5a80 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.14, 1.5, 16), pm); body.position.y = 0.75; person.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), pm); head.position.y = 1.63; person.add(head);
+  scene.add(person);
+  new ResizeObserver(resize).observe(el); resize();
+  document.querySelectorAll('.vtools .chip').forEach(b => b.onclick = () => { const k = b.dataset.t; vis[k] = !vis[k]; b.classList.toggle('on', vis[k]); restyle3d(); });
+  (function loop() { requestAnimationFrame(loop); if (vis.spin && domeGroup) domeGroup.rotation.y += 0.004; controls.update(); renderer.render(scene, camera); })();
+  return true;
+}
+function resize() { if (!renderer) return; const el = $('view3d'); const w = el.clientWidth, h = el.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+
+let lastDiam = null, lastFreqView = null;
+function build3d() {
+  if (!scene) return;
+  if (domeGroup) { scene.remove(domeGroup); domeGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  domeGroup = new THREE.Group(); scene.add(domeGroup);
+  const R = S.diam / 2, V = G.verts, lv = Dm.isSphere ? -1 : Dm.level;
+  const P = i => new THREE.Vector3(V[i][0] * R, (V[i][2] - lv) * R, -V[i][1] * R);
+  const rad = Math.max(0.012, R * 0.007);
+  const cyl = new THREE.CylinderGeometry(1, 1, 1, 8);
+  const up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  strutMeshes = [];
+  G.types.forEach((t, ti) => {
+    const es = Dm.edges.filter(e => e.type === ti); if (!es.length) return;
+    const mat = new THREE.MeshLambertMaterial({ color: colorOf(ti), transparent: true });
+    const im = new THREE.InstancedMesh(cyl, mat, es.length);
+    es.forEach((e, k) => {
+      const a = P(e.a), b = P(e.b), mid = a.clone().add(b).multiplyScalar(0.5), dir = b.clone().sub(a);
+      q.setFromUnitVectors(up, dir.clone().normalize()); sc.set(rad, dir.length(), rad);
+      m.compose(mid, q, sc); im.setMatrixAt(k, m);
+    });
+    im.userData.type = ti; strutMeshes.push(im); domeGroup.add(im);
+  });
+  const sph = new THREE.SphereGeometry(rad * 1.9, 12, 8);
+  hubMesh = new THREE.InstancedMesh(sph, new THREE.MeshLambertMaterial({ color: 0x1f2a2e }), Dm.vIdx.length);
+  Dm.vIdx.forEach((i, k) => { m.makeTranslation(...P(i).toArray()); hubMesh.setMatrixAt(k, m); });
+  domeGroup.add(hubMesh);
+  hubHi = new THREE.Group(); domeGroup.add(hubHi);
+  const pos = [];
+  Dm.tris.forEach(t => t.forEach(i => pos.push(...P(i).toArray())));
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); pg.computeVertexNormals();
+  panelMesh = new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: 0xf2e8d5, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+  domeGroup.add(panelMesh);
+  // chão
+  const gsize = Math.ceil(S.diam * 1.6);
+  const grid = new THREE.GridHelper(gsize, gsize, 0xc9c0ad, 0xddd6c7); domeGroup.add(grid);
+  person.position.set(Dm.isSphere ? R * 1.3 : 0, 0, 0);
+  if (Dm.isSphere) person.position.y = 0;
+  const h = Dm.isSphere ? 2 * R : (1 - Dm.level) * R;
+  if (lastDiam !== S.diam || lastFreqView === null) {
+    const asp = Math.max(0.5, Math.min(1, camera.aspect)); const d = Math.max(S.diam, h) * 1.75 / asp;
+    camera.position.set(d * 0.75, h * 0.9 + d * 0.3, d * 0.85);
+    controls.target.set(0, h * 0.4, 0);
+    camera.far = d * 20; camera.updateProjectionMatrix();
+    lastDiam = S.diam;
+  }
+  lastFreqView = S.freq;
+  restyle3d();
+}
+function restyle3d() {
+  if (!scene || !domeGroup) return;
+  strutMeshes.forEach(im => { im.visible = vis.struts; const on = selType == null || selType === im.userData.type; im.material.opacity = on ? 1 : 0.12; im.material.depthWrite = on; });
+  hubMesh.visible = vis.hubs; panelMesh.visible = vis.panels; person.visible = vis.person;
+  // destaque do conector selecionado
+  while (hubHi.children.length) { const c = hubHi.children.pop(); c.geometry.dispose(); c.material.dispose(); }
+  const hb = Dm.hubs[selHub];
+  const activeTab = document.querySelector('#tabs button.on').dataset.p;
+  if (hb && activeTab === 'conectores') {
+    const R = S.diam / 2, V = G.verts, lv = Dm.isSphere ? -1 : Dm.level, rad = Math.max(0.012, R * 0.007) * 3.2;
+    const g = new THREE.SphereGeometry(rad, 14, 10);
+    const im = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0xd9622b }), hb.verts.length);
+    const m = new THREE.Matrix4();
+    hb.verts.forEach((i, k) => { m.makeTranslation(V[i][0] * R, (V[i][2] - lv) * R, -V[i][1] * R); im.setMatrixAt(k, m); });
+    hubHi.add(im);
+  }
+}
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => restyle3d()));
+
+init3d();
+update(true);
+</script>
+</body>
+</html>

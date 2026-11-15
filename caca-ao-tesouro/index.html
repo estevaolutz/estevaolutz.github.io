@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Caça ao Tesouro da Matemática</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --mar1:#0d4f7a;--mar2:#1a7fb0;--areia:#f3d99b;--areia2:#e2bd6a;--verde:#3fa35b;--madeira:#7a4a24;
+  --papel:#fff6e0;--tinta:#3b2a17;--ouro:#f5b81c;--vermelho:#e0493b;--azul:#2a7bd6;--ok:#2fa84f;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden}
+body{font-family:"Baloo 2",system-ui,sans-serif;color:var(--tinta);background:var(--mar1);user-select:none;-webkit-user-select:none}
+button{font:inherit;cursor:pointer;border:0}
+.tela{position:fixed;inset:0;display:none;flex-direction:column}
+.tela.on{display:flex}
+/* barra superior */
+.barra{display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(0,0,0,.28);color:#fff;z-index:5}
+.barra .eu{display:flex;align-items:center;gap:6px;font-weight:700;font-size:17px;flex:1;min-width:0}
+.barra .eu span.av{font-size:26px}
+.barra .eu span.nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{background:rgba(255,255,255,.16);border-radius:999px;padding:3px 10px;font-weight:700;color:#fff;font-size:16px;display:flex;align-items:center;gap:4px}
+.ib{background:rgba(255,255,255,.16);color:#fff;border-radius:12px;width:40px;height:40px;font-size:21px;display:grid;place-items:center}
+.ib:active{transform:scale(.92)}
+/* mapa */
+#mapaWrap{flex:1;position:relative;overflow:hidden}
+#mapa{width:100%;height:100%;display:block}
+.ilha{cursor:pointer}
+.ilha .pulso{animation:pulso 1.6s ease-in-out infinite;transform-origin:center;transform-box:fill-box}
+@keyframes pulso{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:.7;transform:scale(1.18)}}
+.onda{animation:onda 6s linear infinite}
+@keyframes onda{from{transform:translateX(0)}to{transform:translateX(-60px)}}
+#navio{transition:transform 1.2s cubic-bezier(.5,0,.3,1)}
+.balanca{animation:balanca 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center bottom}
+@keyframes balanca{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+.mundo{position:absolute;left:50%;transform:translateX(-50%);top:8px;background:var(--papel);border:3px solid var(--madeira);border-radius:14px;padding:2px 16px;font-weight:800;font-size:18px;box-shadow:0 3px 0 rgba(0,0,0,.25);white-space:nowrap}
+/* painel de jogo */
+#jogo{background:linear-gradient(#1f8fc4,#0d4f7a)}
+#palco{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}
+.cartao{background:var(--papel);border-radius:22px 22px 0 0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -4px 18px rgba(0,0,0,.25);max-width:560px;width:100%;margin:0 auto}
+.enunciado{font-size:clamp(19px,5vw,25px);font-weight:700;line-height:1.2;text-align:center;min-height:2.2em;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap}
+.enunciado .conta{font-size:clamp(30px,9vw,44px);font-weight:800;letter-spacing:.5px}
+.resps{display:flex;gap:8px;justify-content:center;margin:8px 0}
+.resp{background:#fff;border:3px solid #d8c7a0;border-radius:14px;min-width:150px;padding:2px 12px;font-size:32px;font-weight:800;text-align:center;min-height:56px;display:flex;align-items:center;justify-content:center;flex-direction:column;line-height:1}
+.resp small{font-size:13px;font-weight:700;color:#9a8460;margin-bottom:2px}
+.resp.foco{border-color:var(--azul);box-shadow:0 0 0 3px rgba(42,123,214,.2)}
+.resp.duas{min-width:120px}
+.teclado{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:6px}
+.teclado button{background:#fff;border-bottom:4px solid #d4c39b;border-radius:14px;font-size:26px;font-weight:800;height:clamp(46px,7.5vh,60px);color:var(--tinta)}
+.teclado button:active{transform:translateY(2px);border-bottom-width:2px}
+.teclado .ok{background:var(--ok);color:#fff;border-bottom-color:#1d7a37;grid-row:span 2;height:auto}
+.teclado .apaga{background:#f1e3c1}
+.dica{background:#fff;border:2px dashed #e0a73a;border-radius:14px;padding:8px 10px;margin:6px 0 2px;font-size:16px;line-height:1.3;display:none}
+.dica.on{display:block}
+.dica b{color:#c26b00}
+.armado{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:24px;font-weight:700;text-align:right;display:inline-block;line-height:1.15;margin:4px auto;padding:0 6px}
+.armado .lin{border-top:3px solid var(--tinta)}
+.pontos{display:inline-grid;gap:3px;margin:4px auto}
+.pontos i{width:11px;height:11px;border-radius:50%;background:var(--azul);display:block}
+.grupos{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:4px 0}
+.grupo{border:2px solid #9bc2ea;border-radius:12px;padding:4px;display:flex;flex-wrap:wrap;gap:3px;max-width:64px;justify-content:center}
+.grupo i{width:10px;height:10px;border-radius:50%;background:var(--ouro);display:block}
+.centro{text-align:center}
+.topojogo{display:flex;align-items:center;gap:8px;padding:8px 10px;color:#fff}
+.topojogo .tit{flex:1;font-weight:800;font-size:19px;text-shadow:0 2px 0 rgba(0,0,0,.25)}
+/* elementos do palco */
+.papagaio{display:flex;align-items:flex-end;gap:8px;max-width:520px;padding:0 14px}
+.papagaio .bicho{font-size:62px;line-height:1;animation:balanca 2s ease-in-out infinite}
+.balao{background:#fff;border-radius:18px;padding:10px 14px;font-size:18px;font-weight:600;position:relative;box-shadow:0 3px 0 rgba(0,0,0,.15)}
+.balao:before{content:"";position:absolute;left:-10px;bottom:14px;border:10px solid transparent;border-right-color:#fff;border-left:0}
+.pegadas{display:flex;gap:6px;justify-content:center;margin-top:10px}
+.pegadas span{font-size:24px;opacity:.3;filter:grayscale(1)}
+.pegadas span.feito{opacity:1;filter:none}
+/* torre */
+.torreArea{position:relative;height:100%;width:100%;display:flex;align-items:flex-end;justify-content:center}
+.torre{display:flex;flex-direction:column-reverse;align-items:center;margin-bottom:16px;transform-origin:bottom center;transition:transform .3s}
+.torre.treme{animation:treme .5s}
+@keyframes treme{0%,100%{transform:rotate(0)}20%{transform:rotate(-6deg)}40%{transform:rotate(5deg)}60%{transform:rotate(-4deg)}80%{transform:rotate(2deg)}}
+.bloco{height:var(--h);width:var(--w);border-radius:6px;border:3px solid rgba(0,0,0,.18);margin-top:-1px;animation:cai .35s ease-out;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.9);font-weight:800;font-size:14px}
+@keyframes cai{from{transform:translateY(-140px);opacity:0}to{transform:translateY(0);opacity:1}}
+.chao{position:absolute;bottom:0;left:0;right:0;height:18px;background:var(--areia2)}
+.metaTorre{position:absolute;left:0;right:0;border-top:3px dashed rgba(255,255,255,.7);color:#fff;font-weight:800;text-align:right;padding-right:12px;font-size:15px}
+.blocoCaindo{position:absolute;animation:despenca .9s ease-in forwards}
+@keyframes despenca{to{transform:translate(120px,320px) rotate(80deg);opacity:0}}
+/* monstro */
+.arena{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+.monstro{font-size:clamp(80px,22vh,140px);line-height:1;transition:transform .2s;filter:drop-shadow(0 6px 0 rgba(0,0,0,.25))}
+.monstro.dano{animation:dano .5s}
+@keyframes dano{0%,100%{transform:translateX(0)}25%{transform:translateX(-14px) rotate(-8deg);filter:brightness(2)}75%{transform:translateX(14px) rotate(8deg)}}
+.monstro.ataca{animation:ataca .6s}
+@keyframes ataca{50%{transform:scale(1.12) translateY(10px)}}
+.hp{width:220px;height:16px;background:rgba(0,0,0,.3);border-radius:999px;overflow:hidden;border:2px solid #fff}
+.hp i{display:block;height:100%;background:linear-gradient(90deg,#e0493b,#ff8a3d);transition:width .4s}
+.nomeMonstro{color:#fff;font-weight:800;font-size:19px;text-shadow:0 2px 0 rgba(0,0,0,.3)}
+.vidas{font-size:26px;letter-spacing:2px}
+.fase{position:relative;z-index:2;white-space:nowrap;background:#fff;border-radius:999px;padding:3px 14px;font-weight:800;font-size:17px}
+.fase.atk{color:#c0392b}.fase.def{color:#2a7bd6}
+/* relâmpago */
+.relogio{width:150px;height:150px;position:relative}
+.relogio svg{width:100%;height:100%;transform:rotate(-90deg)}
+.relogio .num{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:48px;font-weight:800}
+.placar{color:#fff;font-size:22px;font-weight:800;text-align:center}
+.flash{position:absolute;top:10px;left:50%;transform:translateX(-50%);font-size:22px;font-weight:800;padding:4px 16px;border-radius:999px;background:#fff;opacity:0;transition:opacity .2s}
+.flash.on{opacity:1}
+/* telas de papel */
+.papel{background:var(--papel);flex:1;overflow:auto;padding:16px;padding-bottom:40px}
+.papel h2{margin:4px 0 10px;font-size:26px}
+.papel h3{margin:18px 0 6px;font-size:20px}
+.btn{background:var(--ouro);color:var(--tinta);border-radius:16px;padding:10px 22px;font-weight:800;font-size:20px;border-bottom:5px solid #c58d07}
+.btn:active{transform:translateY(3px);border-bottom-width:2px}
+.btn.azul{background:var(--azul);color:#fff;border-bottom-color:#1a559a}
+.btn.cinza{background:#e7dcc3;border-bottom-color:#bfae86}
+.btn.verm{background:var(--vermelho);color:#fff;border-bottom-color:#a82c20}
+.grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.medalha{background:#fff;border-radius:16px;padding:10px;text-align:center;border:3px solid #eadbb5}
+.medalha .ic{font-size:40px}
+.medalha.nao{opacity:.4;filter:grayscale(1)}
+.medalha b{display:block;font-size:16px}
+.medalha small{font-size:13px;color:#7d6a4a;line-height:1.2;display:block}
+.av-op{background:#fff;border-radius:16px;padding:8px;text-align:center;border:3px solid #eadbb5}
+.av-op .ic{font-size:44px}
+.av-op.sel{border-color:var(--azul)}
+.av-op .preco{font-weight:800;font-size:15px}
+/* overlay */
+#modal{position:fixed;inset:0;background:rgba(0,20,40,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:18px}
+#modal.on{display:flex}
+#modal .caixa{background:var(--papel);border-radius:24px;padding:18px;max-width:420px;width:100%;text-align:center;border:4px solid var(--madeira);box-shadow:0 10px 0 rgba(0,0,0,.25);animation:surge .3s}
+@keyframes surge{from{transform:scale(.7);opacity:0}}
+#modal h2{margin:0 0 4px;font-size:28px}
+#modal p{font-size:18px;margin:6px 0 12px}
+.estrelas{font-size:44px;letter-spacing:4px}
+.estrelas .apagada{opacity:.25;filter:grayscale(1)}
+.botoes{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+input.txt{font:inherit;font-size:22px;padding:8px 12px;border-radius:14px;border:3px solid #d8c7a0;width:100%;text-align:center;font-weight:700;color:var(--tinta)}
+/* bau */
+.bau{font-size:120px;line-height:1;cursor:pointer;animation:balanca 1.5s ease-in-out infinite}
+.moedaVoa{position:fixed;font-size:30px;pointer-events:none;z-index:60;animation:voa 1.4s ease-out forwards}
+@keyframes voa{to{transform:translate(var(--dx),var(--dy)) rotate(360deg);opacity:0}}
+/* painel dos pais */
+.barraOp{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:16px}
+.barraOp .nm{width:150px;font-weight:700;white-space:nowrap}
+.barraOp .tr{flex:1;height:16px;background:#eadbb5;border-radius:999px;overflow:hidden}
+.barraOp .tr i{display:block;height:100%;background:var(--ok)}
+.barraOp .pc{width:46px;text-align:right;font-weight:800}
+.nivel{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:16px}
+.nivel .nm{width:150px;font-weight:700;white-space:nowrap}
+.nivel button{width:34px;height:34px;border-radius:10px;background:#e7dcc3;font-weight:800;font-size:20px}
+.nivel b{flex:1;max-width:150px;text-align:center;font-size:15px;line-height:1.1}
+table.erros{width:100%;border-collapse:collapse;font-size:15px}
+table.erros td{padding:4px 6px;border-bottom:1px solid #eadbb5}
+.segurar{position:relative;overflow:hidden}
+.segurar i{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(0,0,0,.15)}
+.confete{position:fixed;top:-20px;width:10px;height:14px;z-index:70;pointer-events:none;animation:confete linear forwards}
+@keyframes confete{to{transform:translateY(110vh) rotate(720deg)}}
+@media (min-height:760px){.resp{min-height:64px}}
+</style>
+</head>
+<body>
+
+<!-- primeira vez -->
+<section class="tela" id="tInicio" style="background:linear-gradient(#1f8fc4,#0d4f7a)">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:14px;color:#fff;text-align:center">
+    <div style="font-size:80px" class="balanca">🏴‍☠️</div>
+    <h1 style="margin:0;font-size:clamp(30px,8vw,46px);line-height:1;text-shadow:0 3px 0 rgba(0,0,0,.3)">Caça ao Tesouro<br>da Matemática</h1>
+    <div style="background:var(--papel);color:var(--tinta);border-radius:22px;padding:16px;max-width:380px;width:100%">
+      <p style="margin:0 0 8px;font-size:19px;font-weight:700">🦜 Ahoy! Eu sou a Pipoca. Qual é o seu nome, capitã(o)?</p>
+      <input class="txt" id="inNome" maxlength="14" placeholder="Seu nome" autocomplete="off">
+      <p style="margin:12px 0 6px;font-weight:700">Escolha sua cara de pirata:</p>
+      <div id="avIni" style="display:flex;gap:8px;justify-content:center;font-size:38px"></div>
+      <button class="btn" style="margin-top:14px;width:100%" id="btComecar">Zarpar! ⛵</button>
+    </div>
+  </div>
+</section>
+
+<!-- mapa -->
+<section class="tela" id="tMapa">
+  <div class="barra">
+    <div class="eu"><span class="av" id="mAv">🧒</span><span class="nm" id="mNome"></span></div>
+    <div class="pill">🪙 <span id="mMoedas">0</span></div>
+    <button class="ib" id="btMedalhas" title="Medalhas">🏅</button>
+    <button class="ib" id="btLoja" title="Loja do porto">⚓</button>
+    <button class="ib" id="btPais" title="Painel dos pais">⚙️</button>
+  </div>
+  <div id="mapaWrap">
+    <svg id="mapa" viewBox="0 0 360 640" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="mundo" id="mMundo">Mapa 1</div>
+  </div>
+</section>
+
+<!-- jogo -->
+<section class="tela" id="tJogo">
+  <div class="topojogo">
+    <button class="ib" id="btSair">✕</button>
+    <div class="tit" id="jTitulo"></div>
+    <button class="ib" id="btSom">🔊</button>
+  </div>
+  <div id="palco"></div>
+  <div class="cartao" id="cartao">
+    <div class="enunciado" id="enun"></div>
+    <div class="dica" id="dica"></div>
+    <div class="resps" id="resps"></div>
+    <div class="teclado" id="teclado">
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="del" class="apaga">⌫</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="ok" class="ok">OK</button>
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="tab" class="apaga" id="kTab" style="font-size:18px">resto</button><button data-k="0">0</button><button data-k="clr" class="apaga" style="font-size:18px">limpar</button>
+    </div>
+  </div>
+</section>
+
+<!-- medalhas -->
+<section class="tela" id="tMedalhas">
+  <div class="barra"><button class="ib voltar">←</button><div class="eu">🏅 Baú de medalhas</div></div>
+  <div class="papel"><div class="grade" id="gMedalhas"></div></div>
+</section>
+
+<!-- loja -->
+<section class="tela" id="tLoja">
+  <div class="barra"><button class="ib voltar">←</button><div class="eu">⚓ Loja do porto</div><div class="pill">🪙 <span id="lMoedas">0</span></div></div>
+  <div class="papel">
+    <p style="margin-top:0;font-size:17px">Troque suas moedas por novos piratas. Toque para comprar ou para usar.</p>
+    <div class="grade" id="gLoja"></div>
+  </div>
+</section>
+
+<!-- pais -->
+<section class="tela" id="tPais">
+  <div class="barra"><button class="ib voltar">←</button><div class="eu">⚙️ Painel dos pais</div></div>
+  <div class="papel" id="pPais"></div>
+</section>
+
+<div id="modal"><div class="caixa" id="mCaixa"></div></div>
+
+<script>
+"use strict";
+/* ============ utilidades ============ */
+const $=s=>document.querySelector(s);
+const rnd=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const fmt=n=>n.toLocaleString('pt-BR');
+const OPS={add:{nome:'Adição',sim:'+',ic:'➕'},sub:{nome:'Subtração',sim:'−',ic:'➖'},mul:{nome:'Multiplicação',sim:'×',ic:'✖️'},div:{nome:'Divisão',sim:'÷',ic:'➗'}};
+
+/* ============ estado salvo ============ */
+const CHAVE='cacaTesouroMat_v1';
+const AVATARES=[
+  {ic:'👧',preco:0},{ic:'🧒',preco:0},{ic:'🦜',preco:0},{ic:'🐱',preco:0},
+  {ic:'🐶',preco:60},{ic:'🐼',preco:90},{ic:'🦊',preco:120},{ic:'🐸',preco:150},
+  {ic:'🦄',preco:220},{ic:'🧜‍♀️',preco:300},{ic:'🦈',preco:380},{ic:'🐉',preco:480},{ic:'🤖',preco:600},{ic:'👑',preco:800}
+];
+function estadoNovo(){return{nome:'',av:'👧',comprados:['👧','🧒','🦜','🐱'],mundo:1,liberada:0,estrelas:{},moedas:0,medalhas:[],
+  niveis:{add:1,sub:1,mul:1,div:1},stats:{add:{c:0,e:0},sub:{c:0,e:0},mul:{c:0,e:0},div:{c:0,e:0}},
+  erros:[],recordeRaio:0,tempo:0,seqMax:0,som:true,tesouros:0}}
+let E=estadoNovo();
+try{const s=localStorage.getItem(CHAVE);if(s){E=Object.assign(estadoNovo(),JSON.parse(s));}}catch(e){}
+let tIni=Date.now();
+function salvar(){E.tempo+=Math.round((Date.now()-tIni)/1000);tIni=Date.now();try{localStorage.setItem(CHAVE,JSON.stringify(E))}catch(e){}}
+setInterval(salvar,30000);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)salvar();else tIni=Date.now()});
+
+/* ============ som ============ */
+let AC=null;
+function tom(f,d,t='sine',v=.15,atraso=0){if(!E.som)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=t;o.frequency.value=f;const t0=AC.currentTime+atraso;g.gain.setValueAtTime(v,t0);g.gain.exponentialRampToValueAtTime(.001,t0+d);o.connect(g).connect(AC.destination);o.start(t0);o.stop(t0+d)}catch(e){}}
+const SOM={
+  certo(){tom(660,.12,'triangle');tom(990,.18,'triangle',.15,.1)},
+  errado(){tom(220,.25,'square',.08)},
+  moeda(){tom(1320,.08,'square',.06);tom(1760,.12,'square',.06,.07)},
+  vitoria(){[523,659,784,1047].forEach((f,i)=>tom(f,.25,'triangle',.15,i*.13))},
+  bloco(){tom(330,.1,'square',.07)},
+  golpe(){tom(140,.3,'sawtooth',.12)},
+  tique(){tom(1200,.03,'square',.03)}
+};
+
+/* ============ ilhas ============ */
+const ILHAS=[
+  {id:'soma',tipo:'missao',ops:['add'],nome:'Ilha da Soma',ic:'🌴',x:70,y:560},
+  {id:'sub',tipo:'missao',ops:['sub'],nome:'Baía da Subtração',ic:'🐚',x:250,y:520},
+  {id:'torre1',tipo:'torre',ops:['add','sub'],nome:'Torre do Farol',ic:'🗼',x:110,y:430},
+  {id:'mul',tipo:'missao',ops:['mul'],nome:'Selva da Multiplicação',ic:'🐒',x:270,y:370},
+  {id:'raio',tipo:'raio',ops:['add','sub','mul','div'],nome:'Vulcão Relâmpago',ic:'🌋',x:90,y:300},
+  {id:'div',tipo:'missao',ops:['div'],nome:'Gruta da Divisão',ic:'🦇',x:250,y:240},
+  {id:'torre2',tipo:'torre',ops:['mul','div'],nome:'Torre da Caveira',ic:'💀',x:90,y:170},
+  {id:'monstro',tipo:'monstro',ops:['mul','div'],nome:'Covil do Monstro',ic:'🐙',x:260,y:110},
+  {id:'tesouro',tipo:'bau',ops:[],nome:'O Tesouro!',ic:'💰',x:140,y:52}
+];
+const MONSTROS=[
+  {ic:'🐙',nome:'Polvo Gigante'},{ic:'🦑',nome:'Lula das Profundezas'},{ic:'🐉',nome:'Dragão do Mar'},
+  {ic:'🦀',nome:'Caranguejo Rei'},{ic:'👹',nome:'Ogro da Névoa'},{ic:'🦖',nome:'Rex Pirata'}
+];
+const FALAS={
+  soma:'Some certinho e eu te dou a primeira pista do mapa!',
+  sub:'O polvo roubou umas pérolas... descubra quantas sobraram!',
+  mul:'Os macacos guardam a pista em cestos. Multiplique para abrir!',
+  div:'Na gruta, tudo tem que ser dividido igualzinho entre os piratas.'
+};
+
+/* ============ gerador de perguntas ============ */
+function gerar(op,nv){
+  let a,b,c,r=0,txt,res,res2=null,historia=null;
+  if(op==='add'){
+    if(nv===1){a=rnd(12,89);b=rnd(11,89)}
+    else if(nv===2){a=rnd(120,899);b=rnd(45,899)}
+    else if(nv===3){a=rnd(1200,8999);b=rnd(150,8999)}
+    else if(nv===4){a=rnd(12000,89999);b=rnd(1500,89999)}
+    else {a=rnd(1200,9999);b=rnd(300,9999);c=rnd(100,4999)}
+    res=a+b+(c||0);
+    txt=c?`${fmt(a)} + ${fmt(b)} + ${fmt(c)}`:`${fmt(a)} + ${fmt(b)}`;
+    if(!c)historia=pick([
+      `O navio tinha <b>${fmt(a)}</b> moedas e achou mais <b>${fmt(b)}</b>. Quantas moedas tem agora?`,
+      `<b>${fmt(a)}</b> piratas no navio azul e <b>${fmt(b)}</b> no vermelho. Quantos piratas ao todo?`,
+      `Você remou <b>${fmt(a)}</b> metros de manhã e <b>${fmt(b)}</b> à tarde. Quantos metros no total?`]);
+  }
+  if(op==='sub'){
+    if(nv===1){a=rnd(30,99);b=rnd(11,a-5)}
+    else if(nv===2){a=rnd(200,999);b=rnd(45,a-20)}
+    else if(nv===3){a=pick([rnd(1000,9999),rnd(1,9)*1000,rnd(10,99)*100]);b=rnd(120,a-50)}
+    else if(nv===4){a=rnd(10000,99999);b=rnd(1500,a-500)}
+    else {a=rnd(2,9)*10000+pick([0,0,rnd(1,9)*100]);b=rnd(1200,a-800)}
+    res=a-b;txt=`${fmt(a)} − ${fmt(b)}`;
+    historia=pick([
+      `O baú tinha <b>${fmt(a)}</b> pérolas. O polvo roubou <b>${fmt(b)}</b>. Quantas sobraram?`,
+      `A ilha fica a <b>${fmt(a)}</b> metros. Você já remou <b>${fmt(b)}</b>. Quanto falta?`,
+      `Tinha <b>${fmt(a)}</b> bananas no porão. Os macacos comeram <b>${fmt(b)}</b>. Quantas restaram?`]);
+  }
+  if(op==='mul'){
+    if(nv===1){a=rnd(2,9);b=rnd(2,10)}
+    else if(nv===2){a=rnd(12,99);b=rnd(2,9)}
+    else if(nv===3){a=rnd(102,999);b=rnd(2,9)}
+    else if(nv===4){a=rnd(12,99);b=rnd(11,99)}
+    else {a=rnd(102,999);b=rnd(11,99)}
+    res=a*b;txt=`${fmt(a)} × ${fmt(b)}`;
+    historia=pick([
+      `São <b>${fmt(a)}</b> caixas com <b>${b}</b> bananas cada. Quantas bananas ao todo?`,
+      `O navio tem <b>${fmt(a)}</b> fileiras com <b>${b}</b> canhões cada. Quantos canhões?`,
+      `Cada baú guarda <b>${fmt(a)}</b> moedas. Quantas moedas há em <b>${b}</b> baús?`]);
+  }
+  if(op==='div'){
+    if(nv===1){b=rnd(2,9);res=rnd(2,10);a=b*res}
+    else if(nv===2){b=rnd(2,9);res=rnd(11,30);a=b*res}
+    else if(nv===3){b=rnd(2,9);res=rnd(21,150);a=b*res}
+    else if(nv===4){b=rnd(3,9);res=rnd(8,99);r=rnd(1,b-1);a=b*res+r;res2=r}
+    else {b=rnd(11,25);res=rnd(12,60);a=b*res}
+    txt=`${fmt(a)} ÷ ${fmt(b)}`;
+    historia=res2!==null?
+      `<b>${fmt(a)}</b> moedas divididas igualmente entre <b>${b}</b> piratas. Quanto cada um recebe e quantas sobram?`:
+      pick([`<b>${fmt(a)}</b> moedas divididas igualmente entre <b>${b}</b> piratas. Quanto cada um recebe?`,
+            `<b>${fmt(a)}</b> cocos em <b>${b}</b> cestos iguais. Quantos cocos em cada cesto?`,
+            `<b>${fmt(a)}</b> marujos em <b>${b}</b> botes iguais. Quantos em cada bote?`]);
+  }
+  return {op,nv,a,b,c,txt,res,res2,historia};
+}
+
+/* ============ dicas visuais ============ */
+function digitos(n){return String(n)}
+function dicaHTML(q){
+  const {op,a,b,c}=q;
+  if(op==='add'||op==='sub'){
+    const nums=[a,b].concat(c?[c]:[]);const w=Math.max(...nums.map(n=>digitos(n).length))+1;
+    const lin=nums.map((n,i)=>(i===nums.length-1?(op==='add'?'+':'−'):'&nbsp;')+digitos(n).padStart(w-1,' ').replace(/ /g,'&nbsp;'));
+    const arm=`<div class="centro"><div class="armado">${lin.slice(0,-1).join('<br>')}<br>${lin[lin.length-1]}<div class="lin" style="height:6px"></div></div></div>`;
+    return arm+(op==='add'?'<b>Monte a conta em pé.</b> Comece pelas unidades, da direita para a esquerda. Se passar de 9, escreva a unidade e <b>vai um</b> para a casa do lado.'
+      :'<b>Monte a conta em pé.</b> Comece pelas unidades. Se o número de cima for menor, <b>peça emprestado</b> à casa do lado (ela perde 1 e você ganha 10).');
+  }
+  if(op==='mul'){
+    if(a<=10&&b<=10){
+      let p='';for(let i=0;i<a*b;i++)p+='<i></i>';
+      return `<div class="centro"><div class="pontos" style="grid-template-columns:repeat(${b},11px)">${p}</div></div><b>${a} fileiras</b> com <b>${b} bolinhas</b> cada. Conte de ${b} em ${b}!`;
+    }
+    const [g,p]=a>=b?[a,b]:[b,a];
+    const partes=[];let s=String(g);
+    for(let i=0;i<s.length;i++){const d=+s[i];if(d)partes.push(d*10**(s.length-1-i))}
+    return `<b>Quebre o número em pedaços:</b><br>${fmt(g)} × ${fmt(p)} = ${partes.map(x=>`(${fmt(x)} × ${fmt(p)})`).join(' + ')}<br>Faça cada pedaço e depois some tudo.`;
+  }
+  if(op==='div'){
+    if(a<=40&&q.res2===null){
+      let gs='';for(let i=0;i<b;i++){let d='';for(let j=0;j<q.res;j++)d+='<i></i>';gs+=`<div class="grupo">${d}</div>`}
+      return `Reparta <b>${a}</b> bolinhas em <b>${b}</b> grupos iguais:<div class="grupos">${gs}</div>Quantas ficaram em cada grupo?`;
+    }
+    const linhas=[];const passo=b>=11?10:(q.res>=100?50:10);
+    for(let k=passo;k<=Math.min(q.res+passo,passo*12);k+=passo){linhas.push(`${b} × ${k} = ${fmt(b*k)}`);if(b*k>a)break}
+    let t=`<b>Qual número vezes ${b} chega perto de ${fmt(a)}?</b><br>${linhas.join(' &nbsp;·&nbsp; ')}<br>Depois vá ajustando de pouquinho em pouquinho.`;
+    if(q.res2!==null)t+=`<br><b>Resto</b> é o que sobra no final, e é sempre menor que ${b}.`;
+    return t;
+  }
+  return '';
+}
+function explicacao(q){
+  if(q.res2!==null)return `${q.txt} = <b>${fmt(q.res)}</b> e sobra <b>${q.res2}</b> (${q.b} × ${fmt(q.res)} + ${q.res2} = ${fmt(q.a)})`;
+  if(q.op==='div')return `${q.txt} = <b>${fmt(q.res)}</b> (porque ${q.b} × ${fmt(q.res)} = ${fmt(q.a)})`;
+  return `${q.txt} = <b>${fmt(q.res)}</b>`;
+}
+
+/* ============ telas ============ */
+function mostrar(id){document.querySelectorAll('.tela').forEach(t=>t.classList.toggle('on',t.id===id))}
+function modal(html){$('#mCaixa').innerHTML=html;$('#modal').classList.add('on')}
+function fechaModal(){$('#modal').classList.remove('on')}
+document.querySelectorAll('.voltar').forEach(b=>b.onclick=()=>{SOM.tique();abrirMapa()});
+
+/* ---------- início ---------- */
+function telaInicio(){
+  const box=$('#avIni');box.innerHTML='';
+  ['👧','🧒','🦜','🐱'].forEach(ic=>{const b=document.createElement('button');b.textContent=ic;b.style.cssText='background:#fff;border-radius:14px;font-size:38px;width:58px;height:58px;border:3px solid '+(E.av===ic?'var(--azul)':'#eadbb5');b.onclick=()=>{E.av=ic;telaInicio()};box.appendChild(b)});
+  $('#inNome').value=E.nome||'';mostrar('tInicio');
+}
+$('#btComecar').onclick=()=>{const n=$('#inNome').value.trim();if(!n){$('#inNome').focus();$('#inNome').style.borderColor='var(--vermelho)';return}E.nome=n;salvar();SOM.vitoria();abrirMapa()};
+
+/* ---------- mapa ---------- */
+function abrirMapa(){
+  pararRaio();
+  $('#mAv').textContent=E.av;$('#mNome').textContent=E.nome;$('#mMoedas').textContent=fmt(E.moedas);$('#mMundo').textContent='Mapa '+E.mundo;
+  desenhaMapa();mostrar('tMapa');
+}
+function chaveEst(i){return E.mundo+':'+ILHAS[i].id}
+function desenhaMapa(){
+  const s=$('#mapa');let h='';
+  h+=`<defs><linearGradient id="gm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a7fb0"/><stop offset="1" stop-color="#0d4f7a"/></linearGradient>
+  <radialGradient id="ga"><stop offset="0" stop-color="#f7e3ad"/><stop offset="1" stop-color="#e2bd6a"/></radialGradient></defs>
+  <rect x="-200" y="-200" width="760" height="1040" fill="url(#gm)"/>`;
+  for(let y=20;y<640;y+=48){h+=`<g class="onda" style="animation-delay:-${y%6}s;opacity:.25"><path d="M-60 ${y} q15 -6 30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0" stroke="#fff" stroke-width="2" fill="none"/></g>`}
+  // caminho
+  let d=`M${ILHAS[0].x} ${ILHAS[0].y}`;
+  for(let i=1;i<ILHAS.length;i++){const p=ILHAS[i-1],q=ILHAS[i];d+=` Q ${(p.x+q.x)/2+(i%2?30:-30)} ${(p.y+q.y)/2} ${q.x} ${q.y}`}
+  h+=`<path d="${d}" stroke="#fff6e0" stroke-width="4" stroke-dasharray="2 10" stroke-linecap="round" fill="none" opacity=".85"/>`;
+  // rosa dos ventos e enfeites
+  h+=`<text x="318" y="616" font-size="34" text-anchor="middle" opacity=".7">🧭</text><text x="320" y="470" font-size="22" opacity=".6">🐬</text><text x="30" y="370" font-size="20" opacity=".55">🦈</text>`;
+  ILHAS.forEach((il,i)=>{
+    const lib=i<=E.liberada,atual=i===E.liberada,est=E.estrelas[chaveEst(i)]||0;
+    const ehBau=il.tipo==='bau';
+    h+=`<g class="ilha" data-i="${i}" opacity="${lib?1:.55}">`;
+    if(atual)h+=`<ellipse class="pulso" cx="${il.x}" cy="${il.y+4}" rx="48" ry="30" fill="#fff"/>`;
+    h+=`<ellipse cx="${il.x}" cy="${il.y+8}" rx="44" ry="25" fill="#7fd0f0" opacity=".5"/>
+        <ellipse cx="${il.x}" cy="${il.y+4}" rx="38" ry="21" fill="url(#ga)"/>
+        <ellipse cx="${il.x-4}" cy="${il.y}" rx="22" ry="12" fill="${lib?'#4fb36a':'#8a9a8e'}"/>
+        <text x="${il.x}" y="${il.y+6}" font-size="${ehBau?36:30}" text-anchor="middle">${lib?il.ic:'🔒'}</text>
+        <text x="${il.x}" y="${il.y+42}" font-size="12.5" font-weight="800" text-anchor="middle" fill="#fff" stroke="#0d4f7a" stroke-width="3" paint-order="stroke" font-family="Baloo 2,sans-serif">${il.nome}</text>`;
+    if(est&&!ehBau)h+=`<text x="${il.x}" y="${il.y-20}" font-size="13" text-anchor="middle">${'⭐'.repeat(est)}</text>`;
+    h+=`</g>`;
+  });
+  const at=ILHAS[Math.min(E.liberada,ILHAS.length-1)];
+  h+=`<g id="navio" style="transform:translate(${at.x+44}px,${at.y+2}px)"><g class="balanca"><text x="0" y="0" font-size="30" text-anchor="middle">⛵</text><text x="10" y="-22" font-size="17" text-anchor="middle">${E.av}</text></g></g>`;
+  s.innerHTML=h;
+  s.querySelectorAll('.ilha').forEach(g=>g.onclick=()=>{const i=+g.dataset.i;if(i>E.liberada){SOM.errado();modal(`<h2>🔒 Ainda trancada</h2><p>Complete as ilhas anteriores para chegar aqui!</p><button class="btn" onclick="fechaModal()">Ok</button>`);return}SOM.tique();introIlha(i)});
+}
+function introIlha(i){
+  const il=ILHAS[i];
+  const desc={missao:`Acerte <b>6 desafios</b> de ${il.ops.map(o=>OPS[o].nome.toLowerCase()).join(' e ')} para achar a pista.`,
+    torre:`Cada acerto empilha um bloco. Construa a torre até a <b>bandeira</b> (10 blocos)! Errar duas vezes derruba um bloco.`,
+    raio:`Você tem <b>60 segundos</b>! Acerte o máximo de contas que conseguir. Precisa de pelo menos <b>8</b> para passar.`,
+    monstro:`O monstro guarda o tesouro! <b>Ataque com multiplicação</b> e <b>defenda com divisão</b>. Você tem 3 vidas.`,
+    bau:`Você chegou ao tesouro! Toque no baú para abrir.`}[il.tipo];
+  const est=E.estrelas[chaveEst(i)]||0;
+  modal(`<div style="font-size:60px">${il.ic}</div><h2>${il.nome}</h2><p>${desc}</p>${est&&il.tipo!=='bau'?`<div class="estrelas" style="font-size:26px">${estrelasHTML(est)}</div>`:''}
+    <div class="botoes"><button class="btn cinza" onclick="fechaModal()">Voltar</button><button class="btn" id="btIr">${il.tipo==='bau'?'Abrir!':'Vamos lá!'}</button></div>`);
+  $('#btIr').onclick=()=>{fechaModal();comecar(i)};
+}
+function estrelasHTML(n){let s='';for(let k=1;k<=3;k++)s+=`<span class="${k<=n?'':'apagada'}">⭐</span>`;return s}
+
+/* ============ motor do jogo ============ */
+let J=null; // estado da partida
+let respostas=['',''],foco=0;
+function comecar(i){
+  const il=ILHAS[i];
+  J={i,il,tipo:il.tipo,feitos:0,erros:0,tent:0,q:null,opIdx:0,seq:0};
+  $('#jTitulo').textContent=il.ic+' '+il.nome;
+  $('#btSom').textContent=E.som?'🔊':'🔇';
+  $('#cartao').style.display='';
+  mostrar('tJogo');
+  if(il.tipo==='missao'){J.meta=6}
+  if(il.tipo==='torre'){J.meta=10;J.blocos=[];J.caidos=0;J.errSeg=0}
+  if(il.tipo==='monstro'){J.m=MONSTROS[(E.mundo-1)%MONSTROS.length];J.hpMax=5;J.hp=5;J.vidas=3;J.fase='atk'}
+  if(il.tipo==='raio'){J.pontos=0;J.tempo=60}
+  if(il.tipo==='bau'){telaBau();return}
+  desenhaPalco();
+  proxima();
+  if(il.tipo==='raio')iniciaRaio();
+}
+function opAtual(){
+  const il=J.il;
+  if(J.tipo==='monstro')return J.fase==='atk'?'mul':'div';
+  if(J.tipo==='raio')return pick(il.ops);
+  if(il.ops.length===1)return il.ops[0];
+  return il.ops[J.opIdx++%il.ops.length];
+}
+function nivelPara(op){
+  let n=E.niveis[op];
+  if(J.tipo==='raio')n=Math.max(1,n-1);           // cálculo mental: um pouco mais fácil
+  if(J.tipo==='torre')n=Math.min(5,n+Math.floor((J.blocos.length)/5)); // sobe com a altura
+  if(J.tipo==='monstro'&&E.mundo>1)n=Math.min(5,n+1);
+  if(J.tipo==='raio'&&(op==='mul'||op==='div'))n=Math.min(n,2);
+  if(J.tipo==='raio'&&(op==='add'||op==='sub'))n=Math.min(n,2);
+  return n;
+}
+function proxima(){
+  const op=opAtual();
+  J.q=gerar(op,nivelPara(op));J.tent=0;
+  const usaHist=J.tipo==='missao'&&J.q.historia&&Math.random()<.45||(J.q.res2!==null&&J.tipo!=='raio');
+  $('#enun').innerHTML=usaHist?`<span style="font-size:.92em">${J.q.historia}</span>`:`<span class="conta">${J.q.txt} = ?</span>`;
+  if(J.tipo==='raio'&&J.q.res2!==null){J.q=gerar(op,1);$('#enun').innerHTML=`<span class="conta">${J.q.txt} = ?</span>`}
+  $('#dica').classList.remove('on');$('#dica').innerHTML='';
+  respostas=['',''];foco=0;desenhaResp();
+}
+function desenhaResp(){
+  const duas=J.q.res2!==null;
+  $('#resps').innerHTML=duas?
+    `<div class="resp duas ${foco===0?'foco':''}" data-f="0"><small>cada um</small>${respostas[0]||'&nbsp;'}</div><div class="resp duas ${foco===1?'foco':''}" data-f="1"><small>resto</small>${respostas[1]||'&nbsp;'}</div>`:
+    `<div class="resp foco">${respostas[0]||'&nbsp;'}</div>`;
+  $('#resps').querySelectorAll('[data-f]').forEach(d=>d.onclick=()=>{foco=+d.dataset.f;desenhaResp()});
+  $('#kTab').style.visibility=duas?'visible':'hidden';
+}
+function tecla(k){
+  if(!J||!J.q||J.travado)return;
+  if(k==='del')respostas[foco]=respostas[foco].slice(0,-1);
+  else if(k==='clr')respostas[foco]='';
+  else if(k==='tab'){if(J.q.res2!==null)foco=1-foco}
+  else if(k==='ok'){responder();return}
+  else if(respostas[foco].length<7){if(respostas[foco]==='0')respostas[foco]='';respostas[foco]+=k}
+  SOM.tique();desenhaResp();
+}
+$('#teclado').addEventListener('pointerdown',e=>{const b=e.target.closest('button');if(!b)return;e.preventDefault();tecla(b.dataset.k)});
+document.addEventListener('keydown',e=>{
+  if(!$('#tJogo').classList.contains('on')||$('#modal').classList.contains('on'))return;
+  if(/^[0-9]$/.test(e.key))tecla(e.key);
+  else if(e.key==='Backspace')tecla('del');
+  else if(e.key==='Enter')tecla('ok');
+  else if(e.key==='Tab'){e.preventDefault();tecla('tab')}
+});
+function responder(){
+  const q=J.q;
+  if(respostas[0]===''){pisca();return}
+  if(q.res2!==null&&respostas[1]===''){foco=1;desenhaResp();pisca();return}
+  const ok=+respostas[0]===q.res&&(q.res2===null||+respostas[1]===q.res2);
+  registra(q,ok);
+  if(ok)acertou();else errou();
+}
+function pisca(){const r=$('#resps .foco');if(r){r.style.borderColor='var(--vermelho)';setTimeout(()=>r.style.borderColor='',400)}}
+function registra(q,ok){
+  const st=E.stats[q.op];
+  if(ok){st.c++;J.seq++;E.seqAtual=(E.seqAtual||0)+1;E.seqMax=Math.max(E.seqMax,E.seqAtual);
+    E['ok_'+q.op]=(E['ok_'+q.op]||0)+1;E['er_'+q.op]=0;
+    if(E['ok_'+q.op]>=4&&E.niveis[q.op]<5&&J.tent===0){E.niveis[q.op]++;E['ok_'+q.op]=0}
+  }else{st.e++;J.seq=0;E.seqAtual=0;E['ok_'+q.op]=0;E['er_'+q.op]=(E['er_'+q.op]||0)+1;
+    if(E['er_'+q.op]>=2&&E.niveis[q.op]>1){E.niveis[q.op]--;E['er_'+q.op]=0}
+    E.erros.unshift({c:q.txt+(q.res2!==null?' (com resto)':''),r:q.res2!==null?`${q.res} r ${q.res2}`:fmt(q.res),d:q.res2!==null?`${respostas[0]} r ${respostas[1]}`:respostas[0],op:q.op,t:Date.now()});
+    E.erros=E.erros.slice(0,40);
+  }
+  checaMedalhas();
+}
+function ganhaMoedas(n){E.moedas+=n;SOM.moeda()}
+function acertou(){
+  SOM.certo();ganhaMoedas(J.tipo==='raio'?2:5);
+  J.travado=true;
+  const t=J.tipo;
+  if(t==='raio'){J.pontos++;flash('✔ Certo!','#2fa84f');desenhaPalco();J.travado=false;proxima();return}
+  feedbackResp(true);
+  setTimeout(()=>{
+    J.travado=false;
+    if(t==='missao'){J.feitos++;desenhaPalco();if(J.feitos>=J.meta)return fim(true);proxima()}
+    else if(t==='torre'){J.errSeg=0;J.blocos.push(corBloco());SOM.bloco();desenhaPalco();if(J.blocos.length>=J.meta)return setTimeout(()=>fim(true),600);proxima()}
+    else if(t==='monstro'){
+      if(J.fase==='atk'){J.travado=true;J.hp--;SOM.golpe();desenhaPalco('dano');if(J.hp<=0)return setTimeout(()=>fim(true),700);J.fase='def';setTimeout(()=>{J.travado=false;desenhaPalco('ataca');proxima()},700)}
+      else{flashPalco('🛡️ Defendeu!');J.fase='atk';desenhaPalco();proxima()}
+    }
+  },550);
+}
+function errou(){
+  SOM.errado();J.erros++;J.tent++;
+  const t=J.tipo;
+  if(t==='raio'){flash('✗ '+explicacaoCurta(J.q),'#e0493b');proxima();return}
+  if(t==='monstro'){
+    J.travado=true;
+    const def=J.fase==='def';
+    if(def){J.vidas--;desenhaPalco('ataca')}
+    $('#dica').innerHTML=(def?'💥 O monstro te acertou! ':'💨 O ataque errou! ')+'A resposta era '+explicacao(J.q);$('#dica').classList.add('on');
+    setTimeout(()=>{J.travado=false;if(J.vidas<=0)return fim(false);J.fase=def?'atk':'def';desenhaPalco(def?'':'ataca');proxima()},2600);
+    return;
+  }
+  if(t==='torre'){$('.torre')&&($('.torre').classList.remove('treme'),void $('.torre').offsetWidth,$('.torre').classList.add('treme'))}
+  if(J.tent===1){
+    $('#dica').innerHTML='🦜 Quase! Olha a dica e tente de novo:<br>'+dicaHTML(J.q);$('#dica').classList.add('on');
+    respostas=['',''];foco=0;desenhaResp();feedbackResp(false);
+  }else{
+    J.travado=true;
+    $('#dica').innerHTML='🦜 Essa era difícil! '+explicacao(J.q);$('#dica').classList.add('on');
+    if(t==='torre'&&J.blocos.length){J.caidos++;derrubaBloco()}
+    setTimeout(()=>{J.travado=false;proxima()},2800);
+  }
+}
+function explicacaoCurta(q){return q.txt+' = '+fmt(q.res)}
+function feedbackResp(ok){const r=$('#resps');r.querySelectorAll('.resp').forEach(d=>{d.style.borderColor=ok?'var(--ok)':'var(--vermelho)';d.style.background=ok?'#e3f7e8':'#fde7e4'})}
+function flash(t,cor){const f=$('#palco .flash');if(!f)return;f.textContent=t;f.style.color=cor;f.classList.add('on');clearTimeout(f._t);f._t=setTimeout(()=>f.classList.remove('on'),900)}
+function flashPalco(t){const d=document.createElement('div');d.className='flash on';d.style.color='#2a7bd6';d.textContent=t;$('#palco').appendChild(d);setTimeout(()=>d.remove(),900)}
+const CORES=['#e0493b','#f39c12','#f5b81c','#2fa84f','#2a7bd6','#8e44ad','#e84393','#16a085','#d35400','#3d5afe'];
+function corBloco(){return CORES[J.blocos.length%CORES.length]}
+
+/* ---------- palco de cada modo ---------- */
+function desenhaPalco(anim){
+  const p=$('#palco');const t=J.tipo;
+  if(t==='missao'){
+    let pg='';for(let k=0;k<J.meta;k++)pg+=`<span class="${k<J.feitos?'feito':''}">${k===J.meta-1?'🗺️':'👣'}</span>`;
+    const fala=J.feitos===0?FALAS[J.il.id]:pick(['Isso aí!','Muito bem, capitã(o)!','Mais uma pegada!','Estamos chegando!','Que cabeça boa!']);
+    p.innerHTML=`<div style="width:100%"><div class="papagaio" style="margin:0 auto"><div class="bicho">🦜</div><div class="balao">${fala}</div></div><div class="pegadas">${pg}</div></div>`;
+  }
+  if(t==='torre'){
+    const alt=p.clientHeight||300;const hb=Math.max(14,Math.min(30,(alt-70)/J.meta));
+    let bl='';J.blocos.forEach((c,k)=>{bl+=`<div class="bloco" style="--h:${hb}px;--w:${96-(k%2)*10}px;background:${c};${k<J.blocos.length-1?'animation:none':''}">${k+1}</div>`});
+    p.innerHTML=`<div class="torreArea"><div class="chao"></div><div class="metaTorre" style="bottom:${16+hb*J.meta}px">🚩 ${J.blocos.length}/${J.meta}</div><div class="torre">${bl}</div></div>`;
+  }
+  if(t==='monstro'){
+    p.innerHTML=`<div class="arena"><div class="nomeMonstro">${J.m.nome}</div><div class="hp"><i style="width:${J.hp/J.hpMax*100}%"></i></div>
+      <div class="monstro ${anim||''}">${J.m.ic}</div>
+      <div class="fase ${J.fase}">${J.fase==='atk'?'⚔️ ATAQUE! (multiplicação)':'🛡️ DEFENDA! (divisão)'}</div>
+      <div class="vidas">${'❤️'.repeat(J.vidas)}${'🖤'.repeat(3-J.vidas)}</div></div>`;
+  }
+  if(t==='raio'){
+    const C=2*Math.PI*64;
+    if(!$('#palco .relogio')){
+      p.innerHTML=`<div class="arena"><div class="flash"></div><div class="relogio"><svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="64" stroke="rgba(255,255,255,.2)" stroke-width="14" fill="none"/><circle id="arco" cx="75" cy="75" r="64" stroke="#f5b81c" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg><div class="num" id="rNum">60</div></div><div class="placar">⚡ <span id="rPts">0</span> acertos · recorde ${E.recordeRaio}</div></div>`;
+    }
+    $('#rPts').textContent=J.pontos;$('#rNum').textContent=J.tempo;
+    $('#arco').style.strokeDashoffset=C*(1-J.tempo/60);$('#arco').style.stroke=J.tempo<=10?'#e0493b':'#f5b81c';
+  }
+}
+function derrubaBloco(){
+  const torre=$('.torre');const ult=torre&&torre.lastElementChild;
+  if(ult){const r=ult.getBoundingClientRect(),pr=$('#palco').getBoundingClientRect();const c=ult.cloneNode(true);c.classList.add('blocoCaindo');c.style.left=(r.left-pr.left)+'px';c.style.top=(r.top-pr.top)+'px';$('#palco').appendChild(c)}
+  J.blocos.pop();SOM.golpe();setTimeout(desenhaPalco,150);
+}
+
+/* ---------- relâmpago ---------- */
+let relogioRaio=null;
+function iniciaRaio(){pararRaio();relogioRaio=setInterval(()=>{if($('#modal').classList.contains('on'))return;J.tempo--;if(J.tempo<=10&&J.tempo>0)SOM.tique();desenhaPalco();if(J.tempo<=0){pararRaio();fim(J.pontos>=8)}},1000)}
+function pararRaio(){if(relogioRaio){clearInterval(relogioRaio);relogioRaio=null}}
+
+/* ---------- fim de fase ---------- */
+function estrelasDaFase(){
+  const t=J.tipo;
+  if(t==='missao')return J.erros<=1?3:J.erros<=3?2:1;
+  if(t==='torre')return J.caidos===0&&J.erros<=2?3:J.caidos<=2?2:1;
+  if(t==='monstro')return J.vidas===3?3:J.vidas===2?2:1;
+  if(t==='raio')return J.pontos>=20?3:J.pontos>=14?2:1;
+  return 1;
+}
+function fim(venceu){
+  pararRaio();J.travado=true;
+  const novas=[];
+  if(J.tipo==='raio'){if(J.pontos>E.recordeRaio){E.recordeRaio=J.pontos;novas.push('🏆 Novo recorde!')}}
+  if(J.tipo==='torre'&&venceu&&J.erros===0)darMedalha('torre');
+  if(J.tipo==='monstro'&&venceu)darMedalha('monstro');
+  if(J.tipo==='raio'&&J.pontos>=20)darMedalha('raio20');
+  if(venceu){
+    const k=chaveEst(J.i),e=estrelasDaFase();
+    E.estrelas[k]=Math.max(E.estrelas[k]||0,e);
+    const bonus=e*10;E.moedas+=bonus;
+    if(J.i===E.liberada&&E.liberada<ILHAS.length-1)E.liberada++;
+    salvar();SOM.vitoria();confete();
+    const msg={missao:'Você achou a pista! 🗺️',torre:'A torre chegou na bandeira! 🚩',monstro:`Você venceu o ${J.m?J.m.nome:''}! 🎉`,raio:`${J.pontos} acertos em 60 segundos! ⚡`}[J.tipo];
+    modal(`<h2>${msg}</h2><div class="estrelas">${estrelasHTML(e)}</div><p>+${bonus} 🪙 de bônus ${novas.join(' ')}</p>${medalhasNovasHTML()}
+      <div class="botoes"><button class="btn cinza" id="bDeNovo">Jogar de novo</button><button class="btn" id="bMapa">Seguir no mapa ⛵</button></div>`);
+  }else{
+    salvar();
+    const msg=J.tipo==='raio'?`Foram ${J.pontos} acertos. Precisa de 8 para passar!`:`O ${J.m.nome} venceu desta vez...`;
+    modal(`<h2>Quase lá! 💪</h2><p>${msg}<br>${novas.join(' ')}</p>${medalhasNovasHTML()}<div class="botoes"><button class="btn cinza" id="bMapa">Mapa</button><button class="btn" id="bDeNovo">Tentar de novo</button></div>`);
+  }
+  $('#bMapa').onclick=()=>{fechaModal();abrirMapa()};
+  $('#bDeNovo').onclick=()=>{fechaModal();comecar(J.i)};
+}
+
+/* ---------- baú ---------- */
+function telaBau(){
+  $('#cartao').style.display='none';
+  $('#palco').innerHTML=`<div class="arena" style="color:#fff;text-align:center;padding:16px"><div style="font-size:22px;font-weight:800">Toque no baú!</div><div class="bau" id="bau">🧰</div></div>`;
+  $('#bau').onclick=()=>{
+    if(J.aberto)return;J.aberto=true;
+    $('#bau').textContent='💰';$('#bau').style.animation='none';SOM.vitoria();
+    const r=$('#bau').getBoundingClientRect();
+    for(let k=0;k<24;k++){const m=document.createElement('div');m.className='moedaVoa';m.textContent=pick(['🪙','💎','🪙','⭐']);m.style.left=(r.left+r.width/2)+'px';m.style.top=(r.top+r.height/2)+'px';m.style.setProperty('--dx',rnd(-160,160)+'px');m.style.setProperty('--dy',rnd(-260,60)+'px');document.body.appendChild(m);setTimeout(()=>m.remove(),1500)}
+    confete();
+    const premio=100+E.mundo*50;E.moedas+=premio;E.tesouros=(E.tesouros||0)+1;
+    darMedalha('tesouro1');if(E.tesouros>=3)darMedalha('tesouro3');
+    const todas3=ILHAS.slice(0,-1).every((il,i)=>(E.estrelas[chaveEst(i)]||0)===3);if(todas3)darMedalha('perfeito');
+    E.estrelas[chaveEst(J.i)]=3;
+    salvar();
+    setTimeout(()=>{
+      modal(`<h2>TESOURO! 🏴‍☠️</h2><p>Parabéns, ${E.nome}! Você ganhou <b>${premio} 🪙</b>.<br>A Pipoca achou um mapa novo, com desafios mais difíceis...</p>${medalhasNovasHTML()}
+        <div class="botoes"><button class="btn cinza" id="bFica">Ficar aqui</button><button class="btn" id="bNovo">Mapa ${E.mundo+1} ⛵</button></div>`);
+      $('#bFica').onclick=()=>{fechaModal();abrirMapa()};
+      $('#bNovo').onclick=()=>{E.mundo++;E.liberada=0;salvar();fechaModal();abrirMapa()};
+    },1300);
+  };
+}
+function confete(){for(let k=0;k<40;k++){const c=document.createElement('div');c.className='confete';c.style.left=rnd(0,100)+'vw';c.style.background=pick(CORES);c.style.animationDuration=(1.6+Math.random()*1.6)+'s';c.style.animationDelay=(Math.random()*.4)+'s';document.body.appendChild(c);setTimeout(()=>c.remove(),3600)}}
+
+/* ============ medalhas ============ */
+const MEDALHAS=[
+  {id:'tesouro1',ic:'💰',nome:'Primeiro Tesouro',desc:'Abriu o primeiro baú'},
+  {id:'tesouro3',ic:'👑',nome:'Rainha/Rei dos Mares',desc:'Abriu 3 baús'},
+  {id:'monstro',ic:'🗡️',nome:'Domador de Monstros',desc:'Venceu um monstro'},
+  {id:'torre',ic:'🏗️',nome:'Arquiteta(o)',desc:'Torre sem nenhum erro'},
+  {id:'raio20',ic:'⚡',nome:'Raio Veloz',desc:'20 acertos no Relâmpago'},
+  {id:'seq10',ic:'🔥',nome:'Em Chamas',desc:'10 acertos seguidos'},
+  {id:'seq25',ic:'🌟',nome:'Imparável',desc:'25 acertos seguidos'},
+  {id:'perfeito',ic:'🏆',nome:'Mapa Perfeito',desc:'3 estrelas em todas as ilhas de um mapa'},
+  {id:'m_add',ic:'➕',nome:'Mestre da Soma',desc:'Chegou ao nível 4 na adição'},
+  {id:'m_sub',ic:'➖',nome:'Mestre da Subtração',desc:'Chegou ao nível 4 na subtração'},
+  {id:'m_mul',ic:'✖️',nome:'Mestre da Multiplicação',desc:'Chegou ao nível 4 na multiplicação'},
+  {id:'m_div',ic:'➗',nome:'Mestre da Divisão',desc:'Chegou ao nível 4 na divisão'},
+  {id:'rico',ic:'🪙',nome:'Bolso Cheio',desc:'Juntou 1.000 moedas'}
+];
+let novasMedalhas=[];
+function darMedalha(id){if(!E.medalhas.includes(id)){E.medalhas.push(id);novasMedalhas.push(id)}}
+function checaMedalhas(){
+  if(E.seqAtual>=10)darMedalha('seq10');if(E.seqAtual>=25)darMedalha('seq25');
+  for(const op in OPS)if(E.niveis[op]>=4)darMedalha('m_'+op);
+  if(E.moedas>=1000)darMedalha('rico');
+}
+function medalhasNovasHTML(){
+  if(!novasMedalhas.length)return'';
+  const h=novasMedalhas.map(id=>{const m=MEDALHAS.find(x=>x.id===id);return `<div style="font-size:16px;margin:4px 0">🏅 Nova medalha: <b>${m.ic} ${m.nome}</b></div>`}).join('');
+  novasMedalhas=[];return h;
+}
+$('#btMedalhas').onclick=()=>{SOM.tique();
+  $('#gMedalhas').innerHTML=MEDALHAS.map(m=>`<div class="medalha ${E.medalhas.includes(m.id)?'':'nao'}"><div class="ic">${m.ic}</div><b>${m.nome}</b><small>${m.desc}</small></div>`).join('');
+  mostrar('tMedalhas')};
+
+/* ============ loja ============ */
+function abrirLoja(){
+  $('#lMoedas').textContent=fmt(E.moedas);
+  $('#gLoja').innerHTML=AVATARES.map(a=>{const tem=E.comprados.includes(a.ic);return `<button class="av-op ${E.av===a.ic?'sel':''}" data-ic="${a.ic}"><div class="ic">${a.ic}</div><div class="preco">${E.av===a.ic?'Usando':tem?'Usar':'🪙 '+a.preco}</div></button>`}).join('');
+  $('#gLoja').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    const a=AVATARES.find(x=>x.ic===b.dataset.ic);
+    if(E.comprados.includes(a.ic)){E.av=a.ic;SOM.tique()}
+    else if(E.moedas>=a.preco){E.moedas-=a.preco;E.comprados.push(a.ic);E.av=a.ic;SOM.vitoria()}
+    else{SOM.errado();modal(`<h2>Faltam moedas</h2><p>Faltam <b>${a.preco-E.moedas} 🪙</b>. Jogue mais um pouco!</p><button class="btn" onclick="fechaModal()">Ok</button>`)}
+    salvar();abrirLoja();
+  });
+  mostrar('tLoja');
+}
+$('#btLoja').onclick=()=>{SOM.tique();abrirLoja()};
+
+/* ============ painel dos pais ============ */
+$('#btPais').onclick=()=>{
+  modal(`<h2>Área dos pais</h2><p>Segure o botão por 3 segundos.</p><button class="btn azul segurar" id="bSeg" style="width:100%">Segure aqui<i></i></button><div style="margin-top:10px"><button class="btn cinza" onclick="fechaModal()">Cancelar</button></div>`);
+  const b=$('#bSeg'),bar=b.querySelector('i');let t=null,ini=0;
+  const solta=()=>{clearInterval(t);bar.style.width='0'};
+  b.addEventListener('pointerdown',e=>{e.preventDefault();ini=Date.now();t=setInterval(()=>{const p=(Date.now()-ini)/3000;bar.style.width=Math.min(100,p*100)+'%';if(p>=1){clearInterval(t);fechaModal();abrirPais()}},50)});
+  b.addEventListener('pointerup',solta);b.addEventListener('pointerleave',solta);b.addEventListener('pointercancel',solta);
+};
+const NOMES_NIVEL={add:['','2 algarismos','3 algarismos','4 algarismos','5 algarismos','3 parcelas'],sub:['','2 algarismos','3 algarismos','4 alg. com zeros','5 algarismos','dezenas de milhar'],
+  mul:['','tabuada','2 alg. × 1','3 alg. × 1','2 alg. × 2','3 alg. × 2'],div:['','tabuada','2 alg. ÷ 1','3 alg. ÷ 1','com resto','÷ 2 algarismos']};
+function abrirPais(){
+  salvar();
+  const total=Object.values(E.stats).reduce((s,x)=>s+x.c+x.e,0);
+  let h=`<h2>Como ${E.nome||'ela'} está indo</h2>
+  <p style="margin:0 0 6px;font-size:16px">${fmt(total)} contas respondidas · ${Math.round(E.tempo/60)} min de jogo · Mapa ${E.mundo} · recorde no Relâmpago: ${E.recordeRaio} · maior sequência: ${E.seqMax}</p>
+  <h3>Acertos por operação</h3>`;
+  for(const op in OPS){const s=E.stats[op],t=s.c+s.e,pc=t?Math.round(s.c/t*100):0;
+    h+=`<div class="barraOp"><span class="nm">${OPS[op].ic} ${OPS[op].nome}</span><span class="tr"><i style="width:${pc}%;background:${pc>=80?'var(--ok)':pc>=60?'var(--ouro)':'var(--vermelho)'}"></i></span><span class="pc">${t?pc+'%':'—'}</span></div><div style="font-size:13px;color:#7d6a4a;margin:-4px 0 4px 158px">${s.c} certas · ${s.e} erradas</div>`}
+  h+=`<h3>Nível atual (ajusta sozinho)</h3><p style="font-size:14px;margin:0 0 6px;color:#7d6a4a">Sobe depois de 4 acertos de primeira e desce depois de 2 erros seguidos. Você pode ajustar na mão.</p>`;
+  for(const op in OPS)h+=`<div class="nivel"><span class="nm">${OPS[op].ic} ${OPS[op].nome}</span><button data-op="${op}" data-d="-1">−</button><b>${E.niveis[op]} · ${NOMES_NIVEL[op][E.niveis[op]]}</b><button data-op="${op}" data-d="1">+</button></div>`;
+  h+=`<h3>Últimos erros</h3>`;
+  if(!E.erros.length)h+=`<p style="font-size:16px">Nenhum erro ainda.</p>`;
+  else{h+=`<table class="erros"><tr><td><b>Conta</b></td><td><b>Certo</b></td><td><b>Respondeu</b></td></tr>`+E.erros.slice(0,15).map(e=>`<tr><td>${e.c}</td><td>${e.r}</td><td style="color:var(--vermelho)">${e.d||'—'}</td></tr>`).join('')+`</table>`;
+    const cont={};E.erros.forEach(e=>cont[e.op]=(cont[e.op]||0)+1);const pior=Object.entries(cont).sort((a,b)=>b[1]-a[1])[0];
+    if(pior)h+=`<p style="font-size:16px">Onde mais erra: <b>${OPS[pior[0]].nome}</b>.</p>`}
+  h+=`<h3>Ajustes</h3><div class="botoes" style="justify-content:flex-start"><button class="btn cinza" id="pNome">Trocar nome</button><button class="btn cinza" id="pSom">Som: ${E.som?'ligado':'desligado'}</button><button class="btn verm" id="pZerar">Apagar progresso</button></div>
+  <p style="font-size:13px;color:#7d6a4a;margin-top:14px">O progresso fica guardado neste aparelho e neste navegador.</p>`;
+  $('#pPais').innerHTML=h;
+  $('#pPais').querySelectorAll('.nivel button').forEach(b=>b.onclick=()=>{const op=b.dataset.op;E.niveis[op]=Math.max(1,Math.min(5,E.niveis[op]+(+b.dataset.d)));salvar();abrirPais()});
+  $('#pNome').onclick=()=>telaInicio();
+  $('#pSom').onclick=()=>{E.som=!E.som;salvar();abrirPais()};
+  $('#pZerar').onclick=()=>modal(`<h2>Apagar tudo?</h2><p>Moedas, medalhas, mapas e estatísticas voltam do zero.</p><div class="botoes"><button class="btn cinza" onclick="fechaModal()">Cancelar</button><button class="btn verm" id="pSim">Apagar</button></div>`)||($('#pSim').onclick=()=>{E=estadoNovo();salvar();fechaModal();telaInicio()});
+  mostrar('tPais');
+}
+
+/* ============ botões do jogo ============ */
+$('#btSair').onclick=()=>{
+  if(J&&J.tipo==='bau'){abrirMapa();return}
+  modal(`<h2>Sair da ilha?</h2><p>O progresso desta ilha vai se perder.</p><div class="botoes"><button class="btn cinza" onclick="fechaModal()">Continuar</button><button class="btn verm" id="bSairSim">Sair</button></div>`);
+  $('#bSairSim').onclick=()=>{fechaModal();salvar();abrirMapa()};
+};
+$('#btSom').onclick=()=>{E.som=!E.som;$('#btSom').textContent=E.som?'🔊':'🔇';salvar()};
+window.addEventListener('resize',()=>{if($('#tJogo').classList.contains('on')&&J&&J.tipo==='torre')desenhaPalco()});
+
+/* ============ começa ============ */
+if(E.nome)abrirMapa();else telaInicio();
+</script>
+</body>
+</html>

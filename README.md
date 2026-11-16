@@ -7,6 +7,7 @@ Publicados em https://estevaolutz.github.io
 Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<pasta>/`.
 
 - Mapas e atlas em 3D: `odisseia`, `alexandre`, `mitologia-grega`, `cabeza-de-vaca`, `generais-romanos`, `roma`, `antartida`, `amyr-klink`, `stalingrado`, `dia-d`, `asimov-universe`
+- Mapas de livros: `le-guin` — as obras de Ursula K. Le Guin num grafo (D3) com as ligações entre livros e séries; vistas Constelação e Linha do tempo. Página única.
 - Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `gotas`, `desenhos-de-luz`, `feedback-digital`
 - Política e dados: `quanto-custa-o-poder`, `para-onde-vai-o-meu-imposto`, `emendas-no-mapa`, `quem-bancou-quem`, `disse-e-votou` (o `quem-bancou-quem` lê as votações de `disse-e-votou/data/votos.json`)
 - Estudos: `katas-shotokan`, `libras`, `reproducao-humana`

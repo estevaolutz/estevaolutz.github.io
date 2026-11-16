@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mapa das Obras de Ursula K. Le Guin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root{--bg:#0f1218;--ink:#ece6d8;--mut:#9a9483;--line:#2a2f3a;--panel:#161a22ee}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:radial-gradient(ellipse at 30% 20%,#1a2030 0%,#0f1218 60%,#0a0c10 100%);color:var(--ink);font-family:Inter,system-ui,sans-serif;overflow:hidden}
+header{position:absolute;top:0;left:0;right:0;padding:12px 14px 6px;pointer-events:none;z-index:3}
+h1{margin:0;font-family:'Cormorant Garamond',serif;font-weight:700;font-size:clamp(20px,4.6vw,30px);letter-spacing:.3px}
+h1 em{font-weight:500;color:var(--mut)}
+.bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;pointer-events:auto}
+.btn{background:#1d222c;border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:6px 12px;font:500 12px Inter;cursor:pointer}
+.btn.on{background:var(--ink);color:#111}
+#svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#lt svg{display:block}
+.link{fill:none;stroke-linecap:round;transition:opacity .25s}
+.link.seq{stroke-width:2.4;opacity:.85}
+.link.mundo{stroke-width:1.6;opacity:.6}
+.link.contem{stroke-width:1.3;stroke-dasharray:1 4;opacity:.7}
+.link.tema{stroke-width:1.3;stroke-dasharray:6 5;opacity:.55;stroke:#cfc8b6}
+.node{cursor:pointer;transition:opacity .25s}
+.node .shape{stroke:#0f1218;stroke-width:2}
+.node text{font:500 10px Inter;fill:var(--ink);paint-order:stroke;stroke:#0f1218;stroke-width:3.5px;stroke-linejoin:round;pointer-events:none}
+.node.small text{display:none}
+.zoomed .node.small text{display:block}
+.node.sel .shape{stroke:#fff;stroke-width:3}
+.dim{opacity:.1!important}
+.axis text{font:500 11px Inter;fill:var(--mut)}
+.axis line{stroke:#2a2f3a}
+.band text{font:italic 500 15px 'Cormorant Garamond',serif}
+#legend{position:absolute;left:10px;bottom:10px;z-index:3;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:11.5px;max-width:min(330px,calc(100vw - 20px));backdrop-filter:blur(6px)}
+#legend summary{cursor:pointer;font-weight:600;list-style:none}
+#legend summary::after{content:' ▾';color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0}
+.chip{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:3px 9px 3px 6px;cursor:pointer;user-select:none}
+.chip i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.chip.off{opacity:.35}
+.lt{display:grid;grid-template-columns:34px 1fr;gap:3px 8px;align-items:center;color:var(--mut)}
+#panel{position:absolute;right:10px;top:84px;width:min(380px,calc(100vw - 20px));max-height:calc(100% - 100px);overflow:auto;z-index:4;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;backdrop-filter:blur(8px);transform:translateX(120%);transition:transform .3s}
+#panel.open{transform:none}
+@media (max-width:640px){#panel{top:auto;bottom:0;right:0;left:0;width:100%;max-height:52%;border-radius:16px 16px 0 0;transform:translateY(110%)}#panel.open{transform:none}}
+#panel h2{font-family:'Cormorant Garamond',serif;font-size:26px;margin:0 28px 2px 0;line-height:1.05}
+#panel .pt{font-style:italic;color:var(--mut);font-family:'Cormorant Garamond',serif;font-size:17px}
+#panel .meta{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.tag{font-size:11px;border-radius:6px;padding:2px 7px;background:#232835;color:var(--ink)}
+#panel p{font-size:13.5px;line-height:1.5;margin:8px 0}
+#panel h3{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut);margin:14px 0 6px}
+.rel{display:block;width:100%;text-align:left;background:#1d222c;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 9px;margin-bottom:5px;cursor:pointer;font:13px Inter}
+.rel b{font-weight:600}.rel small{display:block;color:var(--mut);font-size:11.5px;margin-top:2px}
+.x{position:absolute;right:10px;top:8px;background:none;border:0;color:var(--mut);font-size:22px;cursor:pointer}
+#hint{position:absolute;right:12px;bottom:12px;color:var(--mut);font-size:11px;z-index:2}
+@media (max-width:640px){#hint{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ursula K. Le Guin <em>— mapa das obras</em></h1>
+  <div class="bar">
+    <button class="btn on" data-mode="map">Constelação</button>
+    <button class="btn" data-mode="time">Linha do tempo</button>
+    <button class="btn" id="fit">Enquadrar</button>
+  </div>
+</header>
+<svg id="svg"><g id="world"><g id="bg"></g><g id="links"></g><g id="nodes"></g></g></svg>
+<details id="legend" open>
+  <summary>Séries e ligações</summary>
+  <div class="chips" id="chips"></div>
+  <div class="lt" id="lt"></div>
+</details>
+<aside id="panel"><button class="x" id="close" aria-label="Fechar">×</button><div id="pc"></div></aside>
+<div id="hint">Toque num livro para ver as ligações · arraste e use pinça/scroll para navegar</div>
+
+<script>
+const SERIES={
+ hain:{n:'Ciclo de Hain (Ekumen)',c:'#e8a85c'},
+ terramar:{n:'Terramar',c:'#5cc1bd'},
+ oeste:{n:'Anais da Costa Oeste',c:'#d784a8'},
+ orsinia:{n:'Orsínia',c:'#a493e6'},
+ avulsos:{n:'Avulsos',c:'#93c66c'},
+ catwings:{n:'Catwings (infantil)',c:'#f1d36a'},
+ colet:{n:'Coletâneas mistas',c:'#e2dccd'},
+ ensaios:{n:'Ensaios e tradução',c:'#7ea6ec'}
+};
+const KIND={romance:'Romance',novela:'Novela',conto:'Conto',coletanea:'Coletânea',ensaio:'Ensaios',traducao:'Tradução',infantil:'Infantil'};
+const R={romance:14,novela:11,coletanea:12,ensaio:10,traducao:10,conto:7,infantil:8};
+
+const N=[
+// HAIN
+{id:'semley',t:"Semley's Necklace",y:1964,s:'hain',k:'conto',d:'Uma nobre de Fomalhaut II viaja às estrelas para recuperar um colar de família — e volta décadas depois, vítima da dilatação do tempo. Reescrito como prólogo de O Mundo de Rocannon.'},
+{id:'rocannon',t:"Rocannon's World",pt:'O Mundo de Rocannon',y:1966,s:'hain',k:'romance',d:'Rocannon, etnólogo da Liga de Todos os Mundos, fica preso em Fomalhaut II depois que sua nave é destruída e atravessa o planeta para denunciar os invasores. Primeiro livro do ciclo e primeira aparição do ansible, o comunicador instantâneo que une todas as histórias de Hain.'},
+{id:'exile',t:'Planet of Exile',pt:'Planeta do Exílio',y:1966,s:'hain',k:'romance',d:'Uma colônia terrana esquecida em Werel (Gamma Draconis) e os nativos Tevar precisam se unir para sobreviver a um inverno que dura anos e à invasão dos Gaal. O amor de Jakob Agat e Rolery inicia a linhagem mista que reaparece no livro seguinte.'},
+{id:'illusions',t:'City of Illusions',pt:'Cidade das Ilusões',y:1967,s:'hain',k:'romance',d:'Falk, sem memória, vaga por uma Terra dominada pelos Shing, mestres da mentira. Descobre ser Ramarren, de Werel — descendente dos colonos e nativos de Planeta do Exílio.'},
+{id:'winterking',t:"Winter's King",y:1969,s:'hain',k:'conto',d:'Conto em Gethen sobre o rei Argaven, sequestrado e "reprogramado", que foge pela dilatação do tempo. Saiu antes do romance; depois Le Guin o republicou trocando os pronomes para "ela".'},
+{id:'lefthand',t:'The Left Hand of Darkness',pt:'A Mão Esquerda da Escuridão',y:1969,s:'hain',k:'romance',d:'Genly Ai, enviado do Ekumen, tenta convencer Gethen (Inverno) a se juntar à aliança. Os gethenianos são ambissexuais, e a amizade entre Ai e Estraven atravessa o gelo. Hugo e Nebula. O título vem de um poema da fé Handdara: "a luz é a mão esquerda da escuridão".'},
+{id:'vaster',t:'Vaster than Empires and More Slow',y:1971,s:'hain',k:'conto',d:'Uma equipe exploradora encontra um planeta inteiro coberto por uma única consciência vegetal — e o medo do grupo se reflete na floresta.'},
+{id:'forest',t:'The Word for World Is Forest',pt:'Floresta é o Nome do Mundo',y:1972,s:'hain',k:'novela',d:'Em Athshe, colonos terranos escravizam os nativos e derrubam a floresta, até Selver aprender a matar. Para os athsheanos, sonho e vigília se misturam. Na cronologia interna, o ansible acabou de chegar — logo depois de Os Despossuídos. Hugo de novela.'},
+{id:'revolution',t:'The Day Before the Revolution',y:1974,s:'hain',k:'conto',d:'O último dia de Odo, idosa, a pensadora cujas ideias fundaram a sociedade anarquista de Anarres. Nebula de conto.'},
+{id:'dispossessed',t:'The Dispossessed',pt:'Os Despossuídos',y:1974,s:'hain',k:'romance',d:'Shevek, físico do mundo anarquista de Anarres, viaja ao planeta-irmão capitalista Urras. Sua Teoria Geral do Tempo torna possível o ansible — o que o põe no início da cronologia de todo o ciclo. "Uma utopia ambígua." Hugo, Nebula e Locus.'},
+{id:'heron',t:'The Eye of the Heron',y:1978,s:'avulsos',k:'novela',d:'No planeta Victoria, a comunidade pacifista de Shantih enfrenta os descendentes dos criminosos degredados da Cidade. Le Guin admitiu que talvez pertença ao Ciclo de Hain, mas nunca o amarrou formalmente.'},
+{id:'fisherman',t:'A Fisherman of the Inland Sea',y:1994,s:'hain',k:'coletanea',d:'Coletânea cujas histórias centrais ("The Shobies\' Story", "Dancing to Ganam", "Another Story") tratam do churten — viagem instantânea que vai além do ansible — e do planeta O.'},
+{id:'fourways',t:'Four Ways to Forgiveness',y:1995,s:'hain',k:'coletanea',d:'Quatro novelas interligadas em Werel e Yeowe, sobre escravidão, revolução e libertação. Atenção: este Werel não é o de Planeta do Exílio — são planetas diferentes com o mesmo nome.'},
+{id:'telling',t:'The Telling',pt:'O Dizer',y:2000,s:'hain',k:'romance',d:'Sutty, observadora do Ekumen, chega a Aka, onde um regime corporativo proibiu a tradição de contar histórias. Ela segue os últimos guardiões do "Dizer". Locus de ficção científica.'},
+{id:'birthday',t:'The Birthday of the World',y:2002,s:'hain',k:'coletanea',d:'Coletânea tardia que volta a vários mundos: "Coming of Age in Karhide" (Gethen), "Old Music and the Slave Women" (Werel), "The Matter of Seggri", "Mountain Ways" (O) e "Paradises Lost", numa nave geracional.'},
+{id:'fiveways',t:'Five Ways to Forgiveness',y:2017,s:'hain',k:'coletanea',d:'Edição ampliada de Four Ways to Forgiveness, acrescida de "Old Music and the Slave Women".'},
+// TERRAMAR
+{id:'unbinding',t:'The Word of Unbinding',y:1964,s:'terramar',k:'conto',d:'Primeiro texto publicado ambientado no arquipélago: um mago aprisionado e a palavra que desfaz tudo. Aqui nascem as regras da magia de Terramar.'},
+{id:'names',t:'The Rule of Names',y:1964,s:'terramar',k:'conto',d:'O afável Mr. Underhill esconde seu nome verdadeiro: é Yevaud, o dragão — o mesmo que Ged enfrentará em Pendor.'},
+{id:'wizard',t:'A Wizard of Earthsea',pt:'O Feiticeiro e a Sombra',y:1968,s:'terramar',k:'romance',d:'Ged, menino de Gont, estuda em Roke e, por orgulho, liberta uma sombra que o persegue pelo arquipélago. Sobre nomes verdadeiros, equilíbrio e autoconhecimento.'},
+{id:'tombs',t:'The Tombs of Atuan',pt:'As Tumbas de Atuan',y:1971,s:'terramar',k:'romance',d:'Tenar, sacerdotisa dos Inomináveis nas terras kargas, encontra Ged roubando o anel de Erreth-Akbe. A história de uma libertação.'},
+{id:'shore',t:'The Farthest Shore',y:1972,s:'terramar',k:'romance',d:'A magia está sumindo. Ged, já Arquimago, e o jovem príncipe Arren (Lebannen) viajam até a terra dos mortos para enfrentar Cob. National Book Award.'},
+{id:'tehanu',t:'Tehanu',y:1990,s:'terramar',k:'romance',d:'Dezoito anos depois, Le Guin reabre o "último livro": Tenar, viúva em Gont, adota a menina queimada Therru, e Ged volta sem poder algum. Revisão feminista de Terramar. Nebula.'},
+{id:'tales',t:'Tales from Earthsea',y:2001,s:'terramar',k:'coletanea',d:'Cinco histórias: "The Finder" (a fundação da escola de Roke, séculos antes de Ged), "Darkrose and Diamond", "The Bones of the Earth" (o mestre de Ogion), "On the High Marsh" e "Dragonfly", que liga Tehanu a O Outro Vento.'},
+{id:'otherwind',t:'The Other Wind',y:2001,s:'terramar',k:'romance',d:'Alder sonha com os mortos pedindo libertação. Tehanu, Irian, Lebannen e os dragões desfazem o muro da Terra Seca. World Fantasy Award.'},
+{id:'odren',t:'The Daughter of Odren',y:2014,s:'terramar',k:'conto',d:'Conto tardio de vingança e luto nas ilhas.'},
+{id:'firelight',t:'Firelight',y:2018,s:'terramar',k:'conto',d:'A última história de Terramar: Ged, velho, em Gont, no fim da vida. Saiu no ano da morte da autora e fecha The Books of Earthsea.'},
+// COSTA OESTE
+{id:'gifts',t:'Gifts',y:2004,s:'oeste',k:'romance',d:'Nas Terras Altas, famílias herdam dons perigosos. Orrec, cujo dom é destruir com o olhar, cresce de olhos vendados ao lado de Gry.'},
+{id:'voices',t:'Voices',y:2006,s:'oeste',k:'romance',d:'Memer vive em Ansul, cidade ocupada pelos Alds que proibiram os livros. A chegada do poeta Orrec e de Gry muda tudo.'},
+{id:'powers',t:'Powers',y:2007,s:'oeste',k:'romance',d:'Gavir, escravo em Etra com o dom de "lembrar" o futuro, foge em busca de liberdade e acaba encontrando Orrec e Gry. Nebula.'},
+// ORSINIA
+{id:'orsinian',t:'Orsinian Tales',y:1976,s:'orsinia',k:'coletanea',d:'Contos situados em Orsínia, país imaginário da Europa Central, do século XII aos anos 1960.'},
+{id:'malafrena',t:'Malafrena',y:1979,s:'orsinia',k:'romance',d:'Itale Sorde deixa a propriedade da família para lutar pela liberdade de Orsínia nos anos 1820 — um romance oitocentista feito por Le Guin.'},
+{id:'unlocking',t:'Unlocking the Air',y:1996,s:'colet',k:'coletanea',d:'Coletânea de contos realistas e fantásticos; a história-título volta a Orsínia, na queda do comunismo.'},
+// AVULSOS
+{id:'omelas',t:'The Ones Who Walk Away from Omelas',pt:'Aqueles que se Afastam de Omelas',y:1973,s:'avulsos',k:'conto',d:'Uma cidade perfeita cuja felicidade depende do sofrimento de uma única criança. Alguns habitantes simplesmente vão embora. Hugo de conto.'},
+{id:'lathe',t:'The Lathe of Heaven',pt:'A Curva do Sonho',y:1971,s:'avulsos',k:'romance',d:'Em Portland, os sonhos de George Orr mudam a realidade, e seu psiquiatra tenta usá-los para "melhorar" o mundo. O título vem de Chuang Tzu (Zhuangzi). Locus.'},
+{id:'veryfar',t:'Very Far Away from Anywhere Else',y:1976,s:'avulsos',k:'romance',d:'Romance juvenil realista sobre Owen e Natalie, dois adolescentes que não se encaixam.'},
+{id:'beginning',t:'The Beginning Place',y:1980,s:'avulsos',k:'romance',d:'Hugh e Irena encontram um mundo de crepúsculo eterno, Tembreabrezi, atrás de um bosque suburbano.'},
+{id:'always',t:'Always Coming Home',y:1985,s:'avulsos',k:'romance',d:'"Arqueologia do futuro": a vida dos Kesh no Vale de Na, numa Califórnia muito distante. Mistura relatos, poemas, mapas, receitas e música.'},
+{id:'searoad',t:'Searoad',y:1991,s:'avulsos',k:'coletanea',d:'Contos interligados em Klatsand, cidadezinha da costa do Oregon.'},
+{id:'changing',t:'Changing Planes',y:2003,s:'avulsos',k:'coletanea',d:'Presos em aeroportos, viajantes descobrem como "trocar de plano" e visitar outras dimensões — uma etnografia satírica de mundos inventados.'},
+{id:'lavinia',t:'Lavinia',y:2008,s:'avulsos',k:'romance',d:'A Eneida contada por Lavínia, a noiva quase muda de Eneias, que conversa com o próprio Virgílio. Locus de fantasia.'},
+// CATWINGS
+{id:'cat1',t:'Catwings',y:1988,s:'catwings',k:'infantil',d:'Quatro gatinhos nascem com asas e voam para longe da cidade.'},
+{id:'cat2',t:'Catwings Return',y:1989,s:'catwings',k:'infantil',d:'James e Harriet voltam à cidade para visitar a mãe.'},
+{id:'cat3',t:'Wonderful Alexander and the Catwings',y:1994,s:'catwings',k:'infantil',d:'Alexander, um gato sem asas, ajuda a gatinha Jane.'},
+{id:'cat4',t:'Jane on Her Own',y:1999,s:'catwings',k:'infantil',d:'Jane parte sozinha para a cidade grande.'},
+// COLETÂNEAS / ENSAIOS
+{id:'wtq',t:"The Wind's Twelve Quarters",y:1975,s:'colet',k:'coletanea',d:'A grande ponte entre as séries: reúne contos de Hain ("Semley\'s Necklace", "Winter\'s King", "Vaster than Empires", "The Day Before the Revolution"), os dois contos que originaram Terramar e "Omelas". Le Guin comenta cada um.'},
+{id:'night',t:'The Language of the Night',y:1979,s:'ensaios',k:'ensaio',d:'Ensaios sobre fantasia e FC, incluindo "Is Gender Necessary?" (sobre A Mão Esquerda), "Dreams Must Explain Themselves" (sobre Terramar) e "Why Are Americans Afraid of Dragons?".'},
+{id:'dancing',t:'Dancing at the Edge of the World',y:1989,s:'ensaios',k:'ensaio',d:'Ensaios e palestras, com "Is Gender Necessary? Redux" — Le Guin revisitando A Mão Esquerda — e "The Carrier Bag Theory of Fiction".'},
+{id:'revisioned',t:'Earthsea Revisioned',y:1993,s:'ensaios',k:'ensaio',d:'Palestra em que Le Guin explica por que voltou a Terramar com Tehanu e repensou o mundo dominado por magos homens.'},
+{id:'tao',t:'Lao Tzu: Tao Te Ching',y:1997,s:'ensaios',k:'traducao',d:'Versão do Tao Te Ching que Le Guin preparou por décadas. O taoísmo — equilíbrio, não-ação, os opostos que se completam — atravessa Terramar, Gethen e A Curva do Sonho.'}
+];
+
+const L=[
+// sequências
+['rocannon','exile','seq','Ordem de publicação do ciclo'],
+['exile','illusions','seq','Falk descende dos colonos e nativos de Werel'],
+['illusions','lefthand','seq','Próximo romance do ciclo'],
+['lefthand','dispossessed','seq','Próximo grande romance do ciclo'],
+['dispossessed','fourways','seq','O Ekumen retomado 20 anos depois'],
+['fourways','telling','seq','Último romance do ciclo'],
+['wizard','tombs','seq','Livro 2 — Ged encontra Tenar'],
+['tombs','shore','seq','Livro 3'],
+['shore','tehanu','seq','Livro 4 — logo após A Praia Mais Distante'],
+['tehanu','otherwind','seq','Livro 5'],
+['gifts','voices','seq','Livro 2 — Orrec e Gry, adultos'],
+['voices','powers','seq','Livro 3'],
+['orsinian','malafrena','seq','Mesmo país imaginário'],
+['cat1','cat2','seq','Livro 2'],['cat2','cat3','seq','Livro 3'],['cat3','cat4','seq','Livro 4'],
+// mesmo mundo
+['semley','rocannon','mundo','O conto virou o prólogo do romance'],
+['dispossessed','rocannon','mundo','A teoria de Shevek gera o ansible, que aparece pela 1ª vez em Rocannon'],
+['dispossessed','forest','mundo','Cronologia interna: o ansible acaba de chegar em Athshe'],
+['revolution','dispossessed','mundo','Odo funda a sociedade de Anarres'],
+['winterking','lefthand','mundo','Gethen, antes do romance'],
+['birthday','lefthand','mundo','"Coming of Age in Karhide" volta a Gethen'],
+['birthday','fourways','mundo','"Old Music and the Slave Women": Werel e Yeowe'],
+['birthday','fisherman','mundo','"Mountain Ways" e o planeta O'],
+['fourways','fiveways','mundo','Edição ampliada'],
+['birthday','fiveways','mundo','"Old Music" incorporado'],
+['fisherman','dispossessed','mundo','O churten supera o ansible nascido da física de Shevek'],
+['fourways','exile','tema','Dois planetas diferentes chamados Werel'],
+['unbinding','wizard','mundo','Primeiro conto no arquipélago'],
+['names','wizard','mundo','Yevaud, o dragão de Pendor'],
+['tales','wizard','mundo','"The Finder": a fundação de Roke'],
+['tales','otherwind','mundo','"Dragonfly" (Irian) faz a ponte'],
+['tales','tehanu','mundo','Após Tehanu'],
+['odren','otherwind','mundo','Conto tardio do arquipélago'],
+['firelight','otherwind','mundo','A morte de Ged'],
+['gifts','powers','mundo','Gavir encontra Orrec e Gry'],
+['unlocking','orsinian','mundo','O conto-título volta a Orsínia'],
+// coletânea contém
+['wtq','semley','contem','Contém'],['wtq','winterking','contem','Contém'],['wtq','vaster','contem','Contém'],
+['wtq','revolution','contem','Contém'],['wtq','unbinding','contem','Contém'],['wtq','names','contem','Contém'],['wtq','omelas','contem','Contém'],
+// temas
+['omelas','revolution','tema','Le Guin apresenta Odo como uma das que se afastaram de Omelas'],
+['omelas','dispossessed','tema','Utopia e seu preço'],
+['always','dispossessed','tema','Utopias anarquistas e ecológicas'],
+['heron','dispossessed','tema','Pacifismo, utopia — talvez parte do Ciclo de Hain'],
+['forest','lathe','tema','Sonhos que mudam o mundo (escritos na mesma época)'],
+['vaster','forest','tema','Florestas conscientes'],
+['changing','always','tema','Etnografias de mundos inventados'],
+['night','lefthand','tema','"Is Gender Necessary?"'],
+['night','wizard','tema','"Dreams Must Explain Themselves"'],
+['dancing','lefthand','tema','"Is Gender Necessary? Redux"'],
+['revisioned','tehanu','tema','Por que Terramar foi revisto'],
+['tao','lathe','tema','Taoísmo — título tirado de Chuang Tzu'],
+['tao','wizard','tema','Equilíbrio taoísta da magia'],
+['tao','lefthand','tema','Luz e escuridão como yin-yang'],
+['telling','always','tema','Contar histórias como resistência cultural'],
+['lavinia','voices','tema','O poder do poema e da leitura'],
+['powers','fourways','tema','Escravidão e libertação']
+];
+const LT={seq:'Sequência na série',mundo:'Mesmo mundo / personagens',contem:'Coletânea contém',tema:'Afinidade temática'};
+
+const byId=Object.fromEntries(N.map(n=>[n.id,n]));
+const links=L.map(([s,t,ty,lab])=>({source:s,target:t,type:ty,label:lab}));
+N.forEach(n=>{n.r=R[n.k];n.links=[]});
+links.forEach(l=>{byId[l.source].links.push(l);byId[l.target].links.push(l)});
+
+const svg=d3.select('#svg'),world=d3.select('#world');
+const ANCH={hain:[260,340],terramar:[930,300],oeste:[1080,680],orsinia:[180,760],avulsos:[560,620],catwings:[820,900],colet:[640,140],ensaios:[700,440]};
+const bandOrder=['hain','terramar','oeste','orsinia','avulsos','catwings','colet','ensaios'];
+const xT=d3.scaleLinear().domain([1962,2019]).range([160,1900]);
+const bandY=s=>bandOrder.indexOf(s)*120;
+
+let mode='map';
+// N uses .y for year AND position — keep year separately
+N.forEach(n=>{n.year=n.y});
+const xTy=d=>xT(d.year);
+// redefine layout helpers that use year
+function computeLayouts(){
+  // map
+  N.forEach(n=>{n.x=ANCH[n.s][0]+Math.random()*60;n.y=ANCH[n.s][1]+Math.random()*60});
+  let sim=d3.forceSimulation(N).stop()
+    .force('collide',d3.forceCollide(d=>d.r+22).iterations(3))
+    .force('link',d3.forceLink(links).id(d=>d.id).distance(l=>l.type==='seq'?72:l.type==='tema'?200:100).strength(l=>l.type==='tema'?.03:.3))
+    .force('charge',d3.forceManyBody().strength(-340))
+    .force('x',d3.forceX(d=>ANCH[d.s][0]).strength(.1))
+    .force('y',d3.forceY(d=>ANCH[d.s][1]).strength(.1));
+  for(let i=0;i<500;i++)sim.tick();
+  N.forEach(n=>{n.mx=n.x;n.my=n.y});
+  // time
+  N.forEach(n=>{n.x=xTy(n);n.y=bandY(n.s)+(Math.random()-.5)*10});
+  sim=d3.forceSimulation(N).stop()
+    .force('collide',d3.forceCollide(d=>d.r+5).iterations(4))
+    .force('x',d3.forceX(xTy).strength(1))
+    .force('y',d3.forceY(d=>bandY(d.s)).strength(.3));
+  for(let i=0;i<400;i++)sim.tick();
+  N.forEach(n=>{n.tx=n.x;n.ty=n.y});
+}
+computeLayouts();
+const P=n=>mode==='map'?[n.mx,n.my]:[n.tx,n.ty];
+
+// links
+const linkSel=d3.select('#links').selectAll('path').data(links).join('path')
+  .attr('class',d=>'link '+d.type)
+  .attr('stroke',d=>d.type==='tema'?null:SERIES[d.source.s].c);
+// nodes
+const nodeSel=d3.select('#nodes').selectAll('g').data(N).join('g')
+  .attr('class',d=>'node'+(d.k==='conto'?' small':''))
+  .on('click',(e,d)=>{e.stopPropagation();select(d,false)});
+nodeSel.each(function(d){
+  const g=d3.select(this);
+  if(d.k==='coletanea'||d.k==='ensaio'||d.k==='traducao'){
+    g.append('rect').attr('class','shape').attr('x',-d.r).attr('y',-d.r).attr('width',d.r*2).attr('height',d.r*2).attr('rx',d.k==='coletanea'?4:d.r*.4).attr('transform',d.k==='coletanea'?'rotate(45)':null).attr('fill',SERIES[d.s].c);
+  }else{
+    g.append('circle').attr('class','shape').attr('r',d.r).attr('fill',SERIES[d.s].c);
+  }
+  g.append('circle').attr('r',Math.max(d.r,18)).attr('fill','transparent');
+  g.append('text').attr('text-anchor','middle').attr('dy',d.r+13).text(short(d.t));
+});
+function short(t){return t.length>26?t.slice(0,24)+'…':t}
+function arc(l){const [x1,y1]=P(l.source),[x2,y2]=P(l.target);const dx=x2-x1,dy=y2-y1,dr=Math.hypot(dx,dy)*(l.type==='tema'?1.1:2.2);return `M${x1},${y1}A${dr},${dr} 0 0,1 ${x2},${y2}`}
+function render(dur){
+  const t=d3.transition().duration(dur||0);
+  nodeSel.transition(t).attr('transform',d=>{const p=P(d);return `translate(${p[0]},${p[1]})`});
+  linkSel.transition(t).attr('d',arc).style('opacity',mode==='time'?0.25:null);
+  drawBg();
+}
+function drawBg(){
+  const bg=d3.select('#bg');bg.selectAll('*').remove();
+  if(mode==='map'){
+    // series halos labels
+    bandOrder.forEach(s=>{
+      const ns=N.filter(n=>n.s===s&&!hidden.has(s));if(!ns.length)return;
+      const cx=d3.mean(ns,n=>n.mx),miny=d3.min(ns,n=>n.my);
+      bg.append('text').attr('x',cx).attr('y',miny-34).attr('text-anchor','middle')
+        .attr('fill',SERIES[s].c).attr('opacity',.85)
+        .style('font',"italic 700 22px 'Cormorant Garamond',serif").text(SERIES[s].n);
+    });
+  }else{
+    const ax=bg.append('g').attr('class','axis');
+    d3.range(1960,2021,10).forEach(y=>{
+      ax.append('line').attr('x1',xT(y)).attr('x2',xT(y)).attr('y1',-70).attr('y2',bandY('ensaios')+70);
+      ax.append('text').attr('x',xT(y)).attr('y',-80).attr('text-anchor','middle').text(y+'s');
+    });
+    bandOrder.forEach(s=>{if(hidden.has(s))return;
+      bg.append('g').attr('class','band').append('text').attr('x',xT(1962)-20).attr('y',bandY(s)+5).attr('text-anchor','end').attr('fill',SERIES[s].c).text(SERIES[s].n)});
+  }
+}
+
+// zoom
+const zoom=d3.zoom().scaleExtent([.2,5]).on('zoom',e=>{world.attr('transform',e.transform);document.body.classList.toggle('zoomed',e.transform.k>1.25)});
+svg.call(zoom).on('dblclick.zoom',null);
+svg.on('click',()=>clearSel());
+function fit(dur){
+  const vis=N.filter(n=>!hidden.has(n.s));if(!vis.length)return;
+  const xs=vis.map(n=>P(n)[0]),ys=vis.map(n=>P(n)[1]);
+  let x0=d3.min(xs)-(mode==='time'?260:60),x1=d3.max(xs)+60,y0=d3.min(ys)-(mode==='time'?100:70),y1=d3.max(ys)+50;
+  const W=innerWidth,H=innerHeight,top=84,bot=innerWidth<640?40:20;
+  const k=Math.min(W/(x1-x0),(H-top-bot)/(y1-y0))*.95;
+  const tx=(W-k*(x1+x0))/2,ty=top+((H-top-bot)-k*(y1+y0))/2;
+  svg.transition().duration(dur||0).call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(k));
+}
+
+// selection
+let cur=null;
+function select(d,center){
+  cur=d;
+  const nb=new Set([d.id]);d.links.forEach(l=>{nb.add(l.source.id);nb.add(l.target.id)});
+  nodeSel.classed('dim',n=>!nb.has(n.id)).classed('sel',n=>n===d);
+  linkSel.classed('dim',l=>l.source!==d&&l.target!==d);
+  const s=SERIES[d.s];
+  const rels=d.links.slice().sort((a,b)=>'seq mundo contem tema'.indexOf(a.type)-'seq mundo contem tema'.indexOf(b.type)).map(l=>{
+    const o=l.source===d?l.target:l.source;
+    return `<button class="rel" data-id="${o.id}"><b style="color:${SERIES[o.s].c}">●</b> <b>${o.t}</b> <span style="color:var(--mut)">(${o.year})</span><small>${LT[l.type]} — ${l.label}</small></button>`}).join('');
+  document.getElementById('pc').innerHTML=`<h2>${d.t}</h2>${d.pt?`<div class="pt">${d.pt}</div>`:''}
+   <div class="meta"><span class="tag" style="background:${s.c};color:#111">${s.n}</span><span class="tag">${KIND[d.k]}</span><span class="tag">${d.year}</span></div>
+   <p>${d.d}</p><h3>Ligações (${d.links.length})</h3>${rels||'<p style="color:var(--mut)">Obra isolada no mapa.</p>'}`;
+  document.querySelectorAll('.rel').forEach(b=>b.onclick=()=>{const o=byId[b.dataset.id];if(hidden.has(o.s))toggleSeries(o.s);select(o,true)});
+  document.getElementById('panel').classList.add('open');
+  if(center){const t=d3.zoomTransform(svg.node());const k=Math.max(t.k,1);const [x,y]=P(d);
+    const cy=innerWidth<640?innerHeight*.28:innerHeight/2,cx=innerWidth<640?innerWidth/2:(innerWidth-390)/2;
+    svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity.translate(cx-k*x,cy-k*y).scale(k));}
+}
+function clearSel(){cur=null;nodeSel.classed('dim',false).classed('sel',false);linkSel.classed('dim',false);document.getElementById('panel').classList.remove('open')}
+document.getElementById('close').onclick=clearSel;
+
+// filters
+const hidden=new Set();
+function toggleSeries(s){hidden.has(s)?hidden.delete(s):hidden.add(s);applyFilter()}
+function applyFilter(){
+  nodeSel.style('display',n=>hidden.has(n.s)?'none':null);
+  linkSel.style('display',l=>hidden.has(l.source.s)||hidden.has(l.target.s)||hiddenT.has(l.type)?'none':null);
+  document.querySelectorAll('#chips .chip').forEach(c=>c.classList.toggle('off',hidden.has(c.dataset.s)));
+  document.querySelectorAll('#lt .chip').forEach(c=>c.classList.toggle('off',hiddenT.has(c.dataset.t)));
+  drawBg();
+}
+const hiddenT=new Set();
+document.getElementById('chips').innerHTML=bandOrder.map(s=>`<span class="chip" data-s="${s}"><i style="background:${SERIES[s].c}"></i>${SERIES[s].n}</span>`).join('');
+document.querySelectorAll('#chips .chip').forEach(c=>c.onclick=()=>toggleSeries(c.dataset.s));
+const sw={seq:'<svg width="30" height="8"><line x1="2" y1="4" x2="28" y2="4" stroke="#e8a85c" stroke-width="2.4"/></svg>',
+ mundo:'<svg width="30" height="8"><line x1="2" y1="4" x2="28" y2="4" stroke="#e8a85c" stroke-width="1.6" opacity=".7"/></svg>',
+ contem:'<svg width="30" height="8"><line x1="2" y1="4" x2="28" y2="4" stroke="#e2dccd" stroke-width="1.6" stroke-dasharray="1 4" stroke-linecap="round"/></svg>',
+ tema:'<svg width="30" height="8"><line x1="2" y1="4" x2="28" y2="4" stroke="#cfc8b6" stroke-width="1.4" stroke-dasharray="6 5"/></svg>'};
+document.getElementById('lt').innerHTML=Object.keys(LT).map(t=>`${sw[t]}<span class="chip" data-t="${t}" style="border:0;padding:2px 0">${LT[t]}</span>`).join('')+
+ `<svg width="30" height="20"><circle cx="15" cy="10" r="7" fill="#9a9483"/></svg><span>Romance · conto (menor)</span><svg width="30" height="20"><rect x="9" y="4" width="12" height="12" rx="2" transform="rotate(45 15 10)" fill="#9a9483"/></svg><span>Coletânea</span><svg width="30" height="20"><rect x="8" y="3" width="14" height="14" rx="5" fill="#9a9483"/></svg><span>Ensaio / tradução</span>`;
+document.querySelectorAll('#lt .chip').forEach(c=>c.onclick=()=>{const t=c.dataset.t;hiddenT.has(t)?hiddenT.delete(t):hiddenT.add(t);applyFilter()});
+if(innerWidth<640)document.getElementById('legend').open=false;
+
+// modes
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{
+  mode=b.dataset.mode;document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('on',x===b));
+  render(800);fit(800);
+});
+document.getElementById('fit').onclick=()=>fit(600);
+addEventListener('resize',()=>fit(0));
+render(0);fit(0);
+</script>
+</body>
+</html>

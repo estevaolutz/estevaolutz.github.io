@@ -2341,7 +2341,7 @@ const ITEMS = {
 const ITEM_TABLE = [{ banana: 45, coco: 40, acai: 15 }, { coco: 35, banana: 20, acai: 25, biscoito: 20 }, { acai: 30, biscoito: 35, coco: 20, sol: 15 }, { biscoito: 30, acai: 30, sol: 30, coco: 10 }];
 function rollItem(place, n) { const r = Math.min(3, Math.round(place / Math.max(1, n - 1) * 3)); const t = ITEM_TABLE[r]; let tot = 0; for (const k in t) tot += t[k]; let x = Math.random() * tot; for (const k in t) { x -= t[k]; if (x <= 0) return k; } return 'acai'; }
 const DIFF = [{ name: 'Fácil (50cc)', cc: 0.8, ai: 0.86 }, { name: 'Normal (100cc)', cc: 0.92, ai: 0.95 }, { name: 'Difícil (150cc)', cc: 1.03, ai: 1.02 }];
-const SETTINGS = { players: 1, diff: 1, laps: 3, track: 'lagoa' };
+const SETTINGS = { players: 1, diff: 1, laps: 3, track: 'lagoa', mode: 'single' };
 try { Object.assign(SETTINGS, JSON.parse(localStorage.getItem('lagoakart2_settings') || '{}')); } catch (e) {}
 if (!TRACK_IDS.includes(SETTINGS.track)) SETTINGS.track = 'lagoa';
 if (MOBILE) SETTINGS.players = 1;
@@ -3064,13 +3064,14 @@ const soundLabel = () => `Som: <b>◀ ${AUDIO.musicOn ? 'Música + efeitos' : AU
 // ---------------- campeonato: as 4 pistas em sequência, pontos por corrida ----------------
 let CHAMP = null;
 const CHAMP_PTS = [10, 7, 5, 3];
+function toggleMode() { SETTINGS.mode = SETTINGS.mode === 'champ' ? 'single' : 'champ'; saveSettings(); }
 async function startChamp() {
   CHAMP = { i: 0, order: TRACK_IDS.slice(), pts: {}, last: {} };
-  SETTINGS.track = CHAMP.order[0]; SETTINGS.laps = (TRACK_META[SETTINGS.track] || {}).laps || 3;
+  SETTINGS.track = CHAMP.order[0];
   await loadTrack(SETTINGS.track); openSelect();
 }
 async function nextChampRace() {
-  CHAMP.i++; clearRace(); SETTINGS.track = CHAMP.order[CHAMP.i]; SETTINGS.laps = (TRACK_META[SETTINGS.track] || {}).laps || 3;
+  CHAMP.i++; clearRace(); SETTINGS.track = CHAMP.order[CHAMP.i];
   await loadTrack(SETTINGS.track); startRace();
 }
 function champResults(ranked) {
@@ -3102,15 +3103,15 @@ const MENUS = {
   title: { items: [] },
   main: {
     items: [
-      { label: () => `Pista: <b>◀ ${trackName()} ▶</b>`, left: () => changeTrack(-1), right: () => changeTrack(1) },
+      { label: () => `Modo de jogo: <b>◀ ${SETTINGS.mode === 'champ' ? '🏆 Campeonato (4 pistas)' : '🏁 Corrida simples'} ▶</b>`, left: () => toggleMode(), right: () => toggleMode(), ok: () => toggleMode() },
+      { label: () => SETTINGS.mode === 'champ' ? `Pistas: <b>Lagoa → Copacabana → Aterro → Cristo</b>` : `Pista: <b>◀ ${trackName()} ▶</b>`, left: () => { if (SETTINGS.mode !== 'champ') changeTrack(-1); }, right: () => { if (SETTINGS.mode !== 'champ') changeTrack(1); } },
       ...(MOBILE ? [
         { label: () => `Direção: <b>◀ ${TOUCH.tilt ? 'Inclinar o celular' : 'Arrastar o dedo'} ▶</b>`, left: () => { TOUCH.tilt = !TOUCH.tilt; saveTouch(); }, right: () => { TOUCH.tilt = !TOUCH.tilt; saveTouch(); }, ok: () => { TOUCH.tilt = !TOUCH.tilt; saveTouch(); } },
         { label: () => `Acelerar sozinho: <b>◀ ${TOUCH.auto ? 'Sim' : 'Não'} ▶</b>`, left: () => { TOUCH.auto = !TOUCH.auto; saveTouch(); }, right: () => { TOUCH.auto = !TOUCH.auto; saveTouch(); }, ok: () => { TOUCH.auto = !TOUCH.auto; saveTouch(); } },
       ] : [{ label: () => `Jogadores neste computador: <b>◀ ${SETTINGS.players} ▶</b>`, left: () => SETTINGS.players = Math.max(1, SETTINGS.players - 1), right: () => SETTINGS.players = Math.min(4, SETTINGS.players + 1) }]),
       { label: () => `Dificuldade: <b>◀ ${DIFF[SETTINGS.diff].name} ▶</b>`, left: () => SETTINGS.diff = Math.max(0, SETTINGS.diff - 1), right: () => SETTINGS.diff = Math.min(2, SETTINGS.diff + 1) },
       { label: () => `Voltas: <b>◀ ${SETTINGS.laps} ▶</b>`, left: () => SETTINGS.laps = Math.max(1, SETTINGS.laps - 1), right: () => SETTINGS.laps = Math.min(6, SETTINGS.laps + 1) },
-      { label: () => '🏁 Escolher pilotos e correr', ok: () => openSelect(), cls: 'go' },
-      { label: () => '🏆 Campeonato: as 4 pistas seguidas', ok: () => startChamp(), cls: 'go' },
+      { label: () => SETTINGS.mode === 'champ' ? '🏆 Escolher pilotos e começar o campeonato' : '🏁 Escolher pilotos e correr', ok: () => SETTINGS.mode === 'champ' ? startChamp() : openSelect(), cls: 'go' },
       { label: () => '🌐 Jogar online com a família', ok: () => openOnline() },
       { label: () => `🎵 Música: <b>${MUSIC.label()}</b>`, ok: () => openMusic() },
       { label: () => '🎮 Configurar controle de PS2', ok: () => openPadCfg() },
@@ -3118,7 +3119,7 @@ const MENUS = {
       ...volItems,
       engineItem,
       assistItem,
-    ], sel: MOBILE ? 5 : 4, back: () => menuOpen('title'),
+    ], sel: MOBILE ? 6 : 5, back: () => menuOpen('title'),
   },
   pause: {
     items: [

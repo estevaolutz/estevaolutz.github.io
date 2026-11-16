@@ -220,18 +220,25 @@ const svg=d3.select('#svg'),world=d3.select('#world');
 const ANCH={hain:[260,340],terramar:[930,300],oeste:[1080,680],orsinia:[180,760],avulsos:[560,620],catwings:[820,900],colet:[640,140],ensaios:[700,440]};
 const bandOrder=['hain','terramar','oeste','orsinia','avulsos','catwings','colet','ensaios'];
 const xT=d3.scaleLinear().domain([1962,2019]).range([160,1900]);
-const bandY=s=>bandOrder.indexOf(s)*120;
+const bandY=s=>bandOrder.indexOf(s)*170;
 
 let mode='map';
 // N uses .y for year AND position — keep year separately
 N.forEach(n=>{n.year=n.y});
 const xTy=d=>xT(d.year);
 // redefine layout helpers that use year
+// ---- rótulos: quebra em linhas e medida
+const LH=11.5,FONT="500 10px Inter, system-ui, sans-serif";
+const mctx=document.createElement('canvas').getContext('2d');mctx.font=FONT;
+function wrap(t,max){const w=t.split(' ');const out=[];let cur='';
+  w.forEach(x=>{if(cur&&(cur+' '+x).length>max){out.push(cur);cur=x}else cur=cur?cur+' '+x:x});if(cur)out.push(cur);return out}
+N.forEach(n=>{n.lines=wrap(n.t,n.t.length>22?16:30);n.lw=Math.max(...n.lines.map(l=>mctx.measureText(l).width))+4;n.lh=n.lines.length*LH+2});
+let _sd=7;const rnd=()=>(_sd=(_sd*16807)%2147483647)/2147483647;
 function computeLayouts(){
   // map
-  N.forEach(n=>{n.x=ANCH[n.s][0]+Math.random()*60;n.y=ANCH[n.s][1]+Math.random()*60});
+  N.forEach(n=>{n.x=ANCH[n.s][0]+rnd()*60;n.y=ANCH[n.s][1]+rnd()*60});
   let sim=d3.forceSimulation(N).stop()
-    .force('collide',d3.forceCollide(d=>d.r+22).iterations(3))
+    .force('collide',d3.forceCollide(d=>Math.max(d.r+18,d.lw/2+8)).iterations(4))
     .force('link',d3.forceLink(links).id(d=>d.id).distance(l=>l.type==='seq'?72:l.type==='tema'?200:100).strength(l=>l.type==='tema'?.03:.3))
     .force('charge',d3.forceManyBody().strength(-340))
     .force('x',d3.forceX(d=>ANCH[d.s][0]).strength(.1))
@@ -239,13 +246,35 @@ function computeLayouts(){
   for(let i=0;i<500;i++)sim.tick();
   N.forEach(n=>{n.mx=n.x;n.my=n.y});
   // time
-  N.forEach(n=>{n.x=xTy(n);n.y=bandY(n.s)+(Math.random()-.5)*10});
+  N.forEach(n=>{n.x=xTy(n);n.y=bandY(n.s)+(rnd()-.5)*10});
   sim=d3.forceSimulation(N).stop()
-    .force('collide',d3.forceCollide(d=>d.r+5).iterations(4))
+    .force('collide',d3.forceCollide(d=>Math.max(d.r+6,Math.min(d.lw/2,34))).iterations(4))
     .force('x',d3.forceX(xTy).strength(1))
-    .force('y',d3.forceY(d=>bandY(d.s)).strength(.3));
+    .force('y',d3.forceY(d=>bandY(d.s)).strength(.12));
   for(let i=0;i<400;i++)sim.tick();
   N.forEach(n=>{n.tx=n.x;n.ty=n.y});
+  placeLabels('m',n=>[n.mx,n.my]);placeLabels('t',n=>[n.tx,n.ty]);
+}
+// posiciona cada rótulo onde não cobre outro rótulo nem outro livro
+function placeLabels(key,pos){
+  const pri={romance:0,coletanea:1,novela:1,ensaio:2,traducao:2,infantil:3,conto:4};
+  const order=N.slice().sort((a,b)=>pri[a.k]-pri[b.k]);
+  const boxes=[];
+  const ov=(a,b)=>Math.max(0,Math.min(a.x2,b.x2)-Math.max(a.x1,b.x1))*Math.max(0,Math.min(a.y2,b.y2)-Math.max(a.y1,b.y1));
+  order.forEach(n=>{
+    const [x,y]=pos(n),w=n.lw,h=n.lh,r=n.r+3;
+    const c=[[-w/2,r],[-w/2,-r-h],[r+2,-h/2],[-r-2-w,-h/2],[r*.6,r*.6],[r*.6,-r*.6-h],[-r*.6-w,r*.6],[-r*.6-w,-r*.6-h],
+             [-w/2,r+14],[-w/2,-r-h-14],[r+16,-h/2],[-r-16-w,-h/2],[-w/2,r+30],[-w/2,-r-h-30],[r+30,-h/2],[-r-30-w,-h/2],[r+4,r+14],[r+4,-r-h-14],[-r-4-w,r+14],[-r-4-w,-r-h-14],[-w/2,r+48],[-w/2,-r-h-48]];
+    let best=null,bs=1e9;
+    for(const [dx,dy] of c){
+      const b={x1:x+dx,y1:y+dy,x2:x+dx+w,y2:y+dy+h};let sc=0;
+      for(const o of boxes)sc+=ov(b,o)*(o.lab?1:2);
+      for(const m of N){if(m===n)continue;const [mx,my]=pos(m),mr=m.r+2;sc+=ov(b,{x1:mx-mr,y1:my-mr,x2:mx+mr,y2:my+mr})*2}
+      if(sc<bs){bs=sc;best=[dx,dy];if(sc===0)break}
+    }
+    n[key+'l']=best;
+    boxes.push({x1:x+best[0],y1:y+best[1],x2:x+best[0]+w,y2:y+best[1]+h,lab:1});
+  });
 }
 computeLayouts();
 const P=n=>mode==='map'?[n.mx,n.my]:[n.tx,n.ty];
@@ -266,13 +295,14 @@ nodeSel.each(function(d){
     g.append('circle').attr('class','shape').attr('r',d.r).attr('fill',SERIES[d.s].c);
   }
   g.append('circle').attr('r',Math.max(d.r,18)).attr('fill','transparent');
-  g.append('text').attr('text-anchor','middle').attr('dy',d.r+13).text(short(d.t));
+  const tx=g.append('text').attr('class','lab');
+  d.lines.forEach((l,i)=>tx.append('tspan').attr('x',2).attr('y',9+i*LH).text(l));
 });
-function short(t){return t.length>26?t.slice(0,24)+'…':t}
 function arc(l){const [x1,y1]=P(l.source),[x2,y2]=P(l.target);const dx=x2-x1,dy=y2-y1,dr=Math.hypot(dx,dy)*(l.type==='tema'?1.1:2.2);return `M${x1},${y1}A${dr},${dr} 0 0,1 ${x2},${y2}`}
 function render(dur){
   const t=d3.transition().duration(dur||0);
   nodeSel.transition(t).attr('transform',d=>{const p=P(d);return `translate(${p[0]},${p[1]})`});
+  nodeSel.select('text.lab').transition(t).attr('transform',d=>{const o=mode==='map'?d.ml:d.tl;return `translate(${o[0]},${o[1]})`});
   linkSel.transition(t).attr('d',arc).style('opacity',mode==='time'?0.25:null);
   drawBg();
 }

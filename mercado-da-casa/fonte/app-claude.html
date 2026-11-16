@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mercado da Casa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: uma coluna estreita tipo app de celular; barra fixa no topo com contadores e abas, lista agrupada por seção do mercado */
+:root{
+  --bg:#f1f4ee; --card:#ffffff; --ink:#1b2620; --muted:#66746b; --line:#dbe2d7;
+  --accent:#2c7a4b; --accent-ink:#ffffff; --have:#3b6fb6; --done:#9aa59d; --warn:#c2512f;
+  --display:"Bricolage Grotesque", system-ui, sans-serif;
+  --body:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121815; --card:#1b231f; --ink:#e7eee8; --muted:#97a69c; --line:#2c3832;
+    --accent:#4fb37a; --accent-ink:#0d1611; --have:#7aa6e8; --done:#5f6b64; --warn:#ec8462;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121815; --card:#1b231f; --ink:#e7eee8; --muted:#97a69c; --line:#2c3832;
+  --accent:#4fb37a; --accent-ink:#0d1611; --have:#7aa6e8; --done:#5f6b64; --warn:#ec8462;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.35}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px 120px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 0;border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:800;font-size:1.6rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.week{color:var(--muted);font-size:.85rem}
+.stats{display:flex;gap:14px;margin:8px 0 8px;font-size:.88rem;color:var(--muted);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.stats b{color:var(--ink)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.tabs{display:flex;gap:4px;margin-top:10px}
+.tab{flex:1;border:0;background:none;padding:10px 4px 12px;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;font-size:.92rem}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--accent)}
+.tab .n{font-variant-numeric:tabular-nums;font-weight:400;margin-left:4px}
+.note{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--line);color:var(--muted);font-size:.9rem}
+.note.err{border-color:var(--warn);color:var(--warn)}
+.sec{margin-top:20px}
+.sec h2{font-family:var(--display);font-weight:600;font-size:.95rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px;display:flex;justify-content:space-between}
+.list{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:11px 12px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.check{flex:none;width:30px;height:30px;border-radius:50%;border:2px solid var(--accent);background:none;cursor:pointer;display:grid;place-items:center;padding:0}
+.check svg{width:16px;height:16px;opacity:0}
+.row.got .check{background:var(--accent);border-color:var(--accent)}
+.row.got .check svg{opacity:1;stroke:var(--accent-ink)}
+.txt{flex:1;min-width:0}
+.name{font-weight:700;overflow-wrap:anywhere}
+.row.got .name{text-decoration:line-through;color:var(--done)}
+.meta{font-size:.82rem;color:var(--muted);overflow-wrap:anywhere}
+.qty{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:700}
+.row.got .qty{color:var(--done)}
+.mini{flex:none;border:1px solid var(--line);background:none;border-radius:999px;padding:6px 10px;font-size:.8rem;color:var(--have);cursor:pointer;white-space:nowrap}
+.seg{flex:none;display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{border:0;background:none;padding:7px 11px;font-size:.82rem;cursor:pointer;color:var(--muted);font-weight:700}
+.seg button.on-tem{background:var(--have);color:var(--card)}
+.seg button.on-falta{background:var(--accent);color:var(--accent-ink)}
+.seg button.on-comprado{background:var(--done);color:var(--card)}
+.del{flex:none;border:0;background:none;color:var(--muted);font-size:1.3rem;line-height:1;padding:4px 6px;cursor:pointer}
+.empty{text-align:center;color:var(--muted);padding:40px 12px}
+.empty b{display:block;font-family:var(--display);font-size:1.3rem;color:var(--ink);margin-bottom:4px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:12px 14px;font-weight:700;cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--warn)}
+.fab{position:fixed;right:max(16px,calc(50% - 264px));bottom:22px;z-index:6;width:58px;height:58px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-size:2rem;line-height:1;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.22)}
+dialog{border:0;border-radius:18px;padding:0;background:var(--card);color:var(--ink);width:min(440px,calc(100% - 32px))}
+dialog::backdrop{background:rgba(10,16,12,.5)}
+.dlg{padding:20px;display:grid;gap:12px}
+.dlg h3{font-family:var(--display);margin:0;font-size:1.25rem}
+.dlg label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
+.dlg input,.dlg select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:11px 12px;font-size:1rem}
+.dlg .row2{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.search{width:100%;margin-top:14px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:11px 14px;font-size:1rem}
+:focus-visible{outline:3px solid var(--have);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){.row{transition:background .15s}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding-bottom:0">
+    <div class="top"><h1>Mercado da Casa</h1><span class="week" id="week"></span></div>
+    <div class="stats" id="stats"><span>Carregando a lista…</span></div>
+    <div class="bar" id="bar" aria-hidden="true"></div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="t-falta" aria-selected="true" data-v="falta">Comprar<span class="n" id="n-falta"></span></button>
+      <button class="tab" role="tab" id="t-conferir" aria-selected="false" data-v="conferir">Conferir casa<span class="n" id="n-conf"></span></button>
+      <button class="tab" role="tab" id="t-carrinho" aria-selected="false" data-v="carrinho">No carrinho<span class="n" id="n-car"></span></button>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <div id="msg"></div>
+  <div id="view"></div>
+</main>
+<button class="fab" id="fab" aria-label="Adicionar item" title="Adicionar item">+</button>
+
+<dialog id="dAdd">
+  <form class="dlg" id="fAdd">
+    <h3>Adicionar item</h3>
+    <label for="aNome">Item<input id="aNome" required autocomplete="off" placeholder="Ex.: Abacate"></label>
+    <label for="aQtd">Quantidade<input id="aQtd" autocomplete="off" placeholder="Ex.: 2 un"></label>
+    <label for="aSec">Seção<select id="aSec"></select></label>
+    <label for="aPara">Para quê (opcional)<input id="aPara" autocomplete="off" placeholder="Ex.: Lanche da escola"></label>
+    <div class="row2"><button type="button" class="btn" id="aCancel">Cancelar</button><button class="btn primary" type="submit">Adicionar à lista</button></div>
+  </form>
+</dialog>
+<dialog id="dReset">
+  <div class="dlg">
+    <h3>Começar nova semana?</h3>
+    <p style="margin:0;color:var(--muted)">Todos os itens voltam para “Comprar”. Depois é só conferir o que já tem em casa.</p>
+    <div class="row2"><button class="btn" id="rCancel">Cancelar</button><button class="btn primary" id="rOk">Começar nova semana</button></div>
+  </div>
+</dialog>
+
+<script>
+const SECOES=["Açougue","Peixaria","Hortifruti","Frutas","Massas e grãos","Mercearia","Laticínios e frios","Padaria","Lanche da escola","Limpeza","Higiene","Outros"];
+const CHECK='<svg viewBox="0 0 24 24" fill="none" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+let db=null,user=null,myId=null,canWrite=true;
+let items=[];let view="falta";let q="";let names={};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+$("#aSec").innerHTML=SECOES.map(s=>`<option>${s}</option>`).join("");
+
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{view=b.dataset.v;document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",x===b));render();window.scrollTo(0,0)});
+
+function msg(t,err){$("#msg").innerHTML=t?`<p class="note${err?" err":""}">${t}</p>`:""}
+
+function secOrder(s){const i=SECOES.indexOf(s);return i<0?99:i}
+function grouped(list){
+  const g={};list.forEach(it=>{(g[it.secao||"Outros"] ||= []).push(it)});
+  return Object.keys(g).sort((a,b)=>secOrder(a)-secOrder(b)).map(s=>[s,g[s].sort((a,b)=>(a.ordem??999)-(b.ordem??999)||String(a.nome).localeCompare(b.nome))]);
+}
+
+async function resolveNames(){
+  if(!user||!user.profiles)return;
+  const ids=[...new Set(items.map(i=>i.por).filter(Boolean))];
+  if(!ids.length)return;
+  try{const ps=await user.profiles(ids);ids.forEach(id=>{names[id]=(ps[id]&&ps[id].name)||""});render(true)}catch(e){}
+}
+function who(it){
+  if(!it.por)return"";
+  if(it.por===myId)return"você";
+  return (names[it.por]||"").split(" ")[0]||"alguém";
+}
+
+function render(skipNames){
+  const tot=items.length;
+  const falta=items.filter(i=>i.status==="falta"),tem=items.filter(i=>i.status==="tem"),car=items.filter(i=>i.status==="comprado");
+  $("#n-falta").textContent=falta.length;$("#n-conf").textContent=tot;$("#n-car").textContent=car.length;
+  $("#stats").innerHTML=tot?`<span><b>${falta.length}</b> faltam</span><span><b>${car.length}</b> no carrinho</span><span><b>${tem.length}</b> em casa</span>`:"<span>Lista vazia</span>";
+  $("#bar").innerHTML=tot?`<i style="width:${tem.length/tot*100}%;background:var(--have)"></i><i style="width:${car.length/tot*100}%;background:var(--accent)"></i>`:"";
+  const v=$("#view");
+  const filt=l=>q?l.filter(i=>(i.nome+" "+(i.para||"")).toLowerCase().includes(q)):l;
+  let html="";
+  if(view==="falta"){
+    const l=filt(falta);
+    if(!tot) html=`<div class="empty"><b>Nada na lista ainda</b>Toque em + para adicionar o primeiro item.</div>`;
+    else if(!falta.length) html=`<div class="empty"><b>Tudo comprado 🎉</b>Nada faltando. Na semana que vem, use “Começar nova semana” na aba Conferir casa.</div>`;
+    else{
+      html+=`<input class="search" id="q" type="search" placeholder="Buscar na lista" value="${esc(q)}" aria-label="Buscar na lista">`;
+      grouped(l).forEach(([s,its])=>{
+        html+=`<section class="sec"><h2><span>${esc(s)}</span><span>${its.length}</span></h2><div class="list">`+its.map(it=>`
+          <div class="row" data-id="${esc(it.id)}">
+            <button class="check" data-act="comprado" aria-label="Marcar ${esc(it.nome)} como comprado">${CHECK}</button>
+            <div class="txt"><div class="name">${esc(it.nome)} <span class="qty">· ${esc(it.qtd)}</span></div>${it.para?`<div class="meta">${esc(it.para)}</div>`:""}</div>
+            <button class="mini" data-act="tem">tem em casa</button>
+          </div>`).join("")+`</div></section>`;
+      });
+    }
+  }else if(view==="carrinho"){
+    if(!car.length) html=`<div class="empty"><b>Carrinho vazio</b>Os itens que vocês marcarem como comprados aparecem aqui.</div>`;
+    else grouped(car).forEach(([s,its])=>{
+      html+=`<section class="sec"><h2><span>${esc(s)}</span><span>${its.length}</span></h2><div class="list">`+its.map(it=>`
+        <div class="row got" data-id="${esc(it.id)}">
+          <button class="check" data-act="falta" aria-label="Desmarcar ${esc(it.nome)}">${CHECK}</button>
+          <div class="txt"><div class="name">${esc(it.nome)} <span class="qty">· ${esc(it.qtd)}</span></div><div class="meta">${who(it)?"pego por "+esc(who(it)):""}</div></div>
+        </div>`).join("")+`</div></section>`;
+    });
+  }else{
+    html+=`<p class="note">Antes de ir ao mercado, confira a casa: marque <b>Tem</b> no que não precisa comprar. O resto fica na aba Comprar.</p>`;
+    html+=`<input class="search" id="q" type="search" placeholder="Buscar item" value="${esc(q)}" aria-label="Buscar item">`;
+    grouped(filt(items)).forEach(([s,its])=>{
+      html+=`<section class="sec"><h2><span>${esc(s)}</span><span>${its.length}</span></h2><div class="list">`+its.map(it=>`
+        <div class="row" data-id="${esc(it.id)}">
+          <div class="txt"><div class="name">${esc(it.nome)} <span class="qty">· ${esc(it.qtd)}</span></div>${it.para?`<div class="meta">${esc(it.para)}</div>`:""}</div>
+          <div class="seg" role="group" aria-label="Situação de ${esc(it.nome)}">
+            <button data-act="tem" class="${it.status==="tem"?"on-tem":""}">Tem</button>
+            <button data-act="falta" class="${it.status==="falta"?"on-falta":""}">Falta</button>
+          </div>
+          <button class="del" data-act="del" aria-label="Apagar ${esc(it.nome)}" title="Apagar item">×</button>
+        </div>`).join("")+`</div></section>`;
+    });
+    html+=`<div class="actions"><button class="btn primary" id="reset">Começar nova semana</button></div>`;
+  }
+  const hadFocus=document.activeElement&&document.activeElement.id==="q";
+  const pos=hadFocus?document.activeElement.selectionStart:0;
+  v.innerHTML=html;
+  const qi=$("#q");if(qi){qi.oninput=e=>{q=e.target.value.toLowerCase().trim();render(true)};if(hadFocus){qi.focus();try{qi.setSelectionRange(pos,pos)}catch(e){}}}
+  const r=$("#reset");if(r)r.onclick=()=>$("#dReset").showModal();
+  if(!skipNames)resolveNames();
+}
+
+$("#view").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-act]");if(!b)return;
+  const row=b.closest(".row");const id=row&&row.dataset.id;const it=items.find(i=>i.id===id);if(!it)return;
+  const act=b.dataset.act;
+  if(!db){msg("A lista compartilhada não está disponível agora.",true);return}
+  if(!canWrite){msg("Você só pode ver esta lista. Peça para quem compartilhou dar acesso de edição.",true);return}
+  try{
+    if(act==="del"){await db.collection("itens").doc(id).delete();return}
+    if(it.status===act)return;
+    await db.collection("itens").doc(id).update({status:act,por:myId||null,em:Date.now()});
+  }catch(err){handleWriteErr(err)}
+});
+
+function handleWriteErr(err){
+  if(err&&err.code==="invalid_argument"){canWrite=false;msg("Você só pode ver esta lista. Peça para quem compartilhou dar acesso de edição.",true)}
+  else if(err&&err.code==="quota_exceeded")msg("A lista atingiu o limite de itens. Apague alguns antes de adicionar mais.",true);
+  else msg("Não deu para salvar agora. Tente de novo em instantes.",true);
+}
+
+$("#fab").onclick=()=>{$("#fAdd").reset();$("#dAdd").showModal();setTimeout(()=>$("#aNome").focus(),50)};
+$("#aCancel").onclick=()=>$("#dAdd").close();
+$("#fAdd").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const nome=$("#aNome").value.trim();if(!nome)return;
+  $("#dAdd").close();
+  if(!db){msg("A lista compartilhada não está disponível agora.",true);return}
+  try{await db.collection("itens").add({nome,qtd:$("#aQtd").value.trim()||"1",secao:$("#aSec").value,para:$("#aPara").value.trim(),status:"falta",ordem:Date.now()%100000+1000,por:myId||null,em:Date.now()});
+    if(view!=="falta"&&view!=="conferir"){view="falta";document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",x.dataset.v==="falta"))}
+    render();
+  }catch(err){handleWriteErr(err)}
+});
+$("#rCancel").onclick=()=>$("#dReset").close();
+$("#rOk").onclick=async()=>{
+  $("#dReset").close();
+  if(!db)return;
+  const muda=items.filter(i=>i.status!=="falta");
+  try{
+    for(const it of muda){await db.collection("itens").doc(it.id).update({status:"falta",por:null,em:Date.now()})}
+    await db.doc("meta/semana").set({inicio:Date.now()});
+    view="conferir";render();
+  }catch(err){handleWriteErr(err)}
+};
+
+(async()=>{
+  const timer=setTimeout(()=>{if(!items.length)msg("A lista ainda não carregou. Verifique a conexão; ela aparece sozinha quando conectar.")},10000);
+  db=await claude.use("db");
+  user=await claude.use("user");
+  if(!db){clearTimeout(timer);msg("Entre na sua conta Claude para ver e editar a lista compartilhada.",true);$("#stats").innerHTML="";return}
+  if(user){try{myId=await user.id()}catch(e){}try{const c=await user.can("data.write");if(c===false)canWrite=false}catch(e){}}
+  if(!canWrite){$("#fab").hidden=true;msg("Você está vendo a lista sem permissão para editar.")}
+  db.collection("itens").onSnapshot(snap=>{
+    items=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+    if(!snap.metadata.fromCache){clearTimeout(timer);if(canWrite)msg("")}
+    render();
+  },err=>{clearTimeout(timer);msg("A lista não pôde ser carregada. Feche e abra de novo.",true)});
+  db.doc("meta/semana").onSnapshot(s=>{
+    const d=s.exists&&s.data();
+    $("#week").textContent=d&&d.inicio?"semana desde "+new Date(d.inicio).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}):"";
+  },()=>{});
+})();
+render();
+</script>
+</body>
+</html>

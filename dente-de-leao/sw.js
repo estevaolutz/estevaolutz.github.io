@@ -1,6 +1,6 @@
 // guarda a obra e as bibliotecas (three.js, MediaPipe) no celular para abrir sem internet depois da primeira vez
-const CACHE = 'dente-v2';
-const ARQS = ['./', 'index.html', 'manifest.webmanifest', 'icone-192.png', 'icone-512.png'];
+const CACHE = 'dente-v3';
+const ARQS = ['../lib/camera.js', './', 'index.html', 'manifest.webmanifest', 'icone-192.png', 'icone-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ARQS))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', (e) => {

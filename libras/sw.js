@@ -1,7 +1,7 @@
 // Libras em Movimento — service worker
 // Guarda o app e o modelo do MediaPipe no aparelho para abrir offline depois do primeiro uso.
-const VERSION = 'lem-v19';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+const VERSION = 'lem-v20';
+const SHELL = ['../lib/camera.js', './', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 const RUNTIME_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {

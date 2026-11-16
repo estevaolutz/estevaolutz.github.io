@@ -24,6 +24,12 @@ Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<past
 
 `lib/leitura.js` cria o botão **Modo leitura** nos mapas: o texto das paradas rola por cima do mapa e, quando um trecho passa pelo meio da tela, o mapa voa até o lugar. Cada mapa chama `Leitura.init({...})` no fim do seu script, informando as paradas (`itens`), como ir até elas (`ir`) e qual contêiner do mapa vira tela cheia (`mapa`). Está em: Odisseia, Alexandre, Mitologia Grega, Cabeza de Vaca, Generais Romanos, Roma, Antártida, Amyr Klink, Stalingrado, Dia D e Asimov Universe.
 
+## Câmera (Logitech)
+
+`lib/camera.js` entra em todos os apps que usam câmera (Dedalus, Gotas, Desenhos de luz, Dente de Leão, Feedback Digital, Libras, Rastro Solar). Se houver uma câmera Logitech conectada, ela é usada automaticamente; um botão discreto de câmera no canto inferior esquerdo (aparece ao mexer o mouse; atalho Shift+C) lista as câmeras e troca na hora, sem recarregar. A escolha fica guardada no navegador. Se a Logitech for plugada com o app aberto, a troca é automática.
+
+Nos projetos do TouchDesigner, `touchdesigner/camera_logitech.py` escolhe a Logitech em todos os Video Device In TOP e no parâmetro de câmera do componente MediaPipe (instruções no próprio arquivo).
+
 ## Projetos do TouchDesigner
 
 Ficam em `touchdesigner/<obra>/`: os scripts e um README com instruções e com o local do .toe no Desktop. Não são páginas web.

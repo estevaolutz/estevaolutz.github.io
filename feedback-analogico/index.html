@@ -49,7 +49,7 @@ body.calmo #gear{opacity:0}
   <div id="sec"></div>
   <div class="row"><button id="bCam">📷 Câmera invisível</button><button id="bFs">Tela cheia</button></div>
   <div class="row"><button id="bReset">Restaurar padrões</button></div>
-  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = redemoinho (X) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 (START) = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.<br>Segurando START: direcional ↑/↓ = saturação +/−, ←/→ = velocidade da imagem −/+.</p>
+  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = saturação (X, para a direita = mais) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 (START) = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.<br>Segurando START: direcional ←/→ = velocidade da imagem −/+.</p>
 </div>
 <script>
 'use strict';
@@ -109,8 +109,8 @@ const SPEC = [
     ['Joymira', 'Sensibilidade: mira (direcional)', 1, 0, 3, .01],
     ['Joybotoes', 'Sensibilidade: botões ganho/cor', 1, 0, 3, .01],
     ['Joyalcance', 'Alcance (limites; 1 = original)', 1, .25, 3, .01],
-    ['Joymandala', 'Sensibilidade: mandala (alavanca direita, L3/R3)', 1, 0, 3, .01],
-    ['Joysat', 'Sensibilidade: saturação e velocidade (START + direcional)', 1, 0, 3, .01],
+    ['Joymandala', 'Sensibilidade: alavanca direita (saturação, nitidez) e L3/R3', 1, 0, 3, .01],
+    ['Joysat', 'Sensibilidade: velocidade da imagem (START + ←/→)', 1, 0, 3, .01],
     ['Joydireita', 'Eixos da alavanca direita', 0, 0, 4, 1, 'menu', ['Automático', 'Eixos 2 e 3', 'Eixos 2 e 5', 'Eixos 3 e 4', 'Eixos 5 e 2']],
   ]],
 ];
@@ -346,7 +346,7 @@ const EIXOS = [ // eixo, parâmetro, sinal, velocidade/s, mín, máx, sensibilid
 const SEGURAR = [[2, 'Ganho', 1, .08, .85, 1.2], [3, 'Ganho', -1, .08, .85, 1.2], [4, 'Matiz', -1, 6, -8, 8], [5, 'Matiz', 1, 6, -8, 8]];
 // parâmetros da mandala (alavanca direita e botões 7 a 12)
 const EIXOS_MANDALA = [ // eixo, parâmetro, sinal, velocidade/s, mín, máx
-  ['rx', 'Autogiro', 1, 1.5, -3, 3],
+  ['rx', 'Saturacao', 1, .6, 0, 2],   // direita = mais saturado
   ['ry', 'Nitidez', -1, 1.0, 0, 4],   // cima = mais nítido
 ];
 const SEGURAR_MANDALA = [[10, 'Autodesl', -1, 1, -3, 3], [11, 'Autodesl', 1, 1, -3, 3]];
@@ -374,9 +374,9 @@ function lerJoystick(dt) {
     const i = Math.round((ax[9] + 1) / (2 / 7)); const D = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]; [hx, hy] = D[i] || [0, 0];
   }
   const par = PARES_DIREITA[P.Joydireita | 0] || (gp.mapping === 'standard' || ax.length < 6 ? [2, 3] : [2, 5]);
-  // segurando START (botão 10): direcional ↑↓ = saturação, ←→ = velocidade da imagem; a mira fica parada
-  const shift = bt(9); let sx = 0, sy = 0;
-  if (shift) { sx = hx; sy = hy; if (hx || hy) joyShiftUsou = true; hx = 0; hy = 0; }
+  // segurando START (botão 10): direcional ←→ = velocidade da imagem; a mira fica parada
+  const shift = bt(9); let sx = 0;
+  if (shift) { sx = hx; if (hx || hy) joyShiftUsou = true; hx = 0; hy = 0; }
   const v = { x: ax[0] || 0, y: ax[1] || 0, hx, hy, rx: ax[par[0]] || 0, ry: ax[par[1]] || 0 }; // y positivo = para baixo, como no TD
   joyEstado = { ax, bt: gp.buttons.map((b, i) => b.pressed ? i + 1 : 0).filter(Boolean), par };
   const passo = Math.min(.1, dt) * P.Joyvel, zona = Math.min(.9, P.Joyzona), curva = Math.max(.1, P.Joycurva), k = P.Joyalcance;
@@ -399,7 +399,6 @@ function lerJoystick(dt) {
   for (const [b, nome, d, vel, lo, hi] of SEGURAR_MANDALA) if (bt(b)) {
     P[nome] = Math.max(lo, Math.min(hi, P[nome] + d * vel * P.Joymandala * passo)); mudou = true;
   }
-  if (sy) { P.Saturacao = Math.max(0, Math.min(2, P.Saturacao - sy * .6 * P.Joysat * passo)); mudou = true; }
   if (sx) { P.Velocidade = Math.max(0, Math.min(3, P.Velocidade + sx * .8 * P.Joysat * passo)); mudou = true; }
   // START sozinho (sem mexer no direcional) = próxima receita, ao soltar
   if (shift && !joyAntes.start) joyShiftUsou = false;

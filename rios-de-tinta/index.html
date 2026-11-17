@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><script src="../lib/camera.js"></script><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<title>Rios de Tinta — feedback digital</title>
+<meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Rios de Tinta">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100vw;height:100vh}
+#gear{position:fixed;top:12px;right:12px;width:40px;height:40px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffa;font:18px/38px system-ui;text-align:center;cursor:pointer;z-index:3;backdrop-filter:blur(6px)}
+#panel{position:fixed;top:60px;right:12px;width:min(300px,calc(100vw - 24px));max-height:calc(100vh - 80px);overflow:auto;padding:14px 16px;border-radius:14px;background:#0b0b0fd9;border:1px solid #ffffff1a;color:#e8e8ee;font:13px/1.35 system-ui,sans-serif;z-index:3;transform:translateX(120%);transition:transform .25s;backdrop-filter:blur(10px)}
+#panel.open{transform:none}
+#panel h1{font-size:15px;margin:0 0 2px;letter-spacing:.04em}
+#panel p.sub{margin:0 0 12px;color:#9a9aa8;font-size:12px}
+#panel label{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:9px 0;align-items:center}
+#panel label input[type=range]{grid-column:1/3;width:100%;accent-color:#c9a2ff}
+#panel output{color:#9a9aa8;font-variant-numeric:tabular-nums}
+#panel .row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+#panel button,#panel select{flex:1 1 auto;padding:8px 10px;border-radius:9px;border:1px solid #ffffff26;background:#ffffff10;color:#eee;font:inherit;cursor:pointer}
+#panel button.on{background:#c9a2ff33;border-color:#c9a2ff}
+#panel .hint{color:#777;font-size:11px;margin-top:10px}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="gear" title="Controles (H)">⚙</div>
+<div id="panel">
+  <h1>RIOS DE TINTA</h1>
+  <p class="sub">Advecção por realimentação: a cada quadro a imagem anterior é empurrada por um campo de correntes invisível (curl noise) que muda sozinho.</p>
+  <label>Velocidade da corrente <output></output><input id="speed" type="range" min="0" max="6" step="0.01" value="2.2"></label>
+  <label>Escala dos redemoinhos <output></output><input id="scale" type="range" min="0.5" max="8" step="0.01" value="2.5"></label>
+  <label>Turbulência <output></output><input id="turb" type="range" min="0" max="1" step="0.01" value="0.45"></label>
+  <label>Memória (decaimento) <output></output><input id="decay" type="range" min="0.9" max="1" step="0.0005" value="0.994"></label>
+  <label>Nitidez (contra o borrão) <output></output><input id="sharp" type="range" min="0" max="0.6" step="0.01" value="0.18"></label>
+  <label>Tamanho do pincel <output></output><input id="brush" type="range" min="0.004" max="0.06" step="0.001" value="0.018"></label>
+  <label>Sensibilidade do som <output></output><input id="gain" type="range" min="0" max="4" step="0.01" value="1.5"></label>
+  <label>Paleta <select id="pal"><option value="0">Nanquim colorido</option><option value="1">Ouro e índigo</option><option value="2">Petróleo</option><option value="3">Monocromo</option></select></label>
+  <div class="row"><button id="bSrc" class="on">Fontes aleatórias</button><button id="bFlow">Congelar correnteza</button></div>
+  <div class="row"><button id="bMic">🎤 Microfone</button><button id="bCam">📷 Câmera</button></div>
+  <div class="row"><button id="bClear">Limpar</button><button id="bFs">Tela cheia</button></div>
+  <p class="hint">Arraste para despejar tinta. O som abre novas fontes e agita a corrente; a câmera (invisível) solta tinta onde há movimento. H = painel · F = tela cheia</p>
+</div>
+<script>
+// ===== núcleo comum: WebGL2 + ping-pong + entradas (toque, microfone, câmera) =====
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:2em;font-family:sans-serif">Este navegador não suporta WebGL2.</p>'; throw 'no webgl2'; }
+const FLOAT_OK = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+gl.getExtension('OES_texture_float_linear');
+
+const VS = `#version 300 es
+in vec2 p; out vec2 uv; void main(){ uv = p*.5+.5; gl_Position = vec4(p,0.,1.); }`;
+function compile(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(src); throw gl.getShaderInfoLog(s); }
+  return s;
+}
+function program(fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'p'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
+  p.u = {}; p.t = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const a = gl.getActiveUniform(p, i); const nm = a.name.replace('[0]', '');
+    p.u[nm] = gl.getUniformLocation(p, a.name); p.t[nm] = a.type;
+  }
+  return p;
+}
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function makeTex(w, h, opts = {}) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  const filt = opts.nearest ? gl.NEAREST : gl.LINEAR;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filt);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filt);
+  const wrap = opts.wrap || gl.CLAMP_TO_EDGE;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  if (FLOAT_OK) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.FLOAT, opts.data || null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, opts.data8 || null);
+  return t;
+}
+function makeTarget(w, h, opts) {
+  const tex = makeTex(w, h, opts); const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { tex, fbo, w, h };
+}
+// par de buffers: lê de um, escreve no outro, troca (o "Feedback TOP" do navegador)
+function pingPong(w, h, opts) {
+  const pp = { a: makeTarget(w, h, opts), b: makeTarget(w, h, opts), w, h };
+  pp.swap = () => { const t = pp.a; pp.a = pp.b; pp.b = t; };
+  return pp;
+}
+function use(p, uniforms, target) {
+  gl.useProgram(p);
+  let unit = 0;
+  for (const k in uniforms) {
+    const loc = p.u[k]; if (loc === undefined || loc === null) continue;
+    const v = uniforms[k], ty = p.t[k];
+    if (ty === gl.SAMPLER_2D) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, v); gl.uniform1i(loc, unit++); }
+    else if (ty === gl.INT) gl.uniform1i(loc, v);
+    else if (ty === gl.FLOAT) (v.length ? gl.uniform1fv(loc, v) : gl.uniform1f(loc, v));
+    else if (ty === gl.FLOAT_VEC2) gl.uniform2fv(loc, v);
+    else if (ty === gl.FLOAT_VEC3) gl.uniform3fv(loc, v);
+    else if (ty === gl.FLOAT_VEC4) gl.uniform4fv(loc, v);
+  }
+  if (target) { gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo); gl.viewport(0, 0, target.w, target.h); }
+  else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height); }
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ---- tela ----
+let DPR = Math.min(window.devicePixelRatio || 1, 2);
+function fitCanvas(scale = 1) {
+  const w = Math.round(innerWidth * DPR * scale), h = Math.round(innerHeight * DPR * scale);
+  cv.width = w; cv.height = h; return [w, h];
+}
+
+// ---- toque / mouse: até 8 dedos, cada um vira um segmento (anterior -> atual) ----
+const pointers = new Map();
+function uvOf(e) { return [e.clientX / innerWidth, 1 - e.clientY / innerHeight]; }
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); const p = uvOf(e); pointers.set(e.pointerId, { x: p[0], y: p[1], px: p[0], py: p[1], hue: Math.random() }); });
+cv.addEventListener('pointermove', e => { const q = pointers.get(e.pointerId); if (!q) return; const p = uvOf(e); q.x = p[0]; q.y = p[1]; });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => cv.addEventListener(ev, e => pointers.delete(e.pointerId)));
+// pacote para o shader: vec4(x0,y0,x1,y1) + cor
+function pointerUniforms(extra = [], hueSpeed = 0.002) {
+  const segs = new Float32Array(32), cols = new Float32Array(24); let n = 0;
+  const all = [...pointers.values(), ...extra];
+  for (const q of all) {
+    if (n >= 8) break;
+    segs.set([q.px, q.py, q.x, q.y], n * 4);
+    q.hue = (q.hue + hueSpeed) % 1;
+    cols.set(q.col || hsv(q.hue, 0.85, 1), n * 3);
+    q.px = q.x; q.py = q.y; n++;
+  }
+  return { segs, cols, n };
+}
+function hsv(h, s, v) {
+  const f = n => { const k = (n + h * 6) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return [f(5), f(3), f(1)];
+}
+
+// ---- microfone ----
+const audio = { an: null, td: null, fd: null, level: 0, low: 0, high: 0, on: false };
+async function startMic() {
+  if (audio.on) return true;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ac.createMediaStreamSource(s); audio.an = ac.createAnalyser(); audio.an.fftSize = 1024;
+    audio.an.smoothingTimeConstant = 0.6; src.connect(audio.an);
+    audio.td = new Float32Array(audio.an.fftSize); audio.fd = new Uint8Array(audio.an.frequencyBinCount);
+    audio.on = true; return true;
+  } catch (e) { alert('Microfone indisponível: ' + e.message); return false; }
+}
+function readAudio(gain = 1) {
+  if (!audio.an) return audio;
+  audio.an.getFloatTimeDomainData(audio.td); let s = 0;
+  for (const x of audio.td) s += x * x;
+  const rms = Math.min(1, Math.sqrt(s / audio.td.length) * 4 * gain);
+  audio.level += (rms - audio.level) * (rms > audio.level ? 0.5 : 0.08);
+  audio.an.getByteFrequencyData(audio.fd); let lo = 0, hi = 0;
+  for (let i = 1; i < 12; i++) lo += audio.fd[i]; for (let i = 60; i < 220; i++) hi += audio.fd[i];
+  audio.low += (Math.min(1, lo / 11 / 255 * gain) - audio.low) * 0.3;
+  audio.high += (Math.min(1, hi / 160 / 255 * gain * 1.5) - audio.high) * 0.3;
+  return audio;
+}
+
+// ---- câmera (invisível: só alimenta o laço) ----
+const cam = { video: null, tex: null, prev: null, on: false };
+async function startCam() {
+  if (cam.on) return true;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+    cam.video = document.createElement('video'); cam.video.playsInline = true; cam.video.muted = true;
+    cam.video.srcObject = s; await cam.video.play();
+    const mk = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return t; };
+    cam.tex = mk(); cam.prev = mk(); cam.on = true; return true;
+  } catch (e) { alert('Câmera indisponível: ' + e.message); return false; }
+}
+function updateCam() {
+  if (!cam.on || cam.video.readyState < 2) return;
+  const t = cam.prev; cam.prev = cam.tex; cam.tex = t; // quadro anterior guardado para detectar movimento
+  gl.bindTexture(gl.TEXTURE_2D, cam.tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cam.video);
+}
+let dummyTex = null;
+function blackTex() { if (!dummyTex) { dummyTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, dummyTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255])); } return dummyTex; }
+
+// ---- painel ----
+function panelSetup() {
+  const panel = document.getElementById('panel'), btn = document.getElementById('gear');
+  btn.onclick = () => panel.classList.toggle('open');
+  addEventListener('keydown', e => { if (e.key === 'h' || e.key === 'H') panel.classList.toggle('open'); if (e.key === 'f' || e.key === 'F') fullscreen(); });
+  document.querySelectorAll('#panel input[type=range]').forEach(r => {
+    const out = r.parentElement.querySelector('output'); const upd = () => { if (out) out.textContent = (+r.value).toFixed(r.step < 0.01 ? 4 : r.step < 1 ? 2 : 0); };
+    r.addEventListener('input', upd); upd();
+  });
+}
+function val(id) { return +document.getElementById(id).value; }
+function fullscreen() { const d = document.documentElement; if (!document.fullscreenElement) (d.requestFullscreen || d.webkitRequestFullscreen || (() => { })).call(d); else document.exitFullscreen(); }
+// ruído suave 1D para derivas aleatórias
+function smoothNoise(seed) { const r = i => { const x = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453; return x - Math.floor(x); };
+  return t => { const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f); return r(i) * (1 - u) + r(i + 1) * u; }; }
+
+
+const NOISE = `
+float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y); }
+float fbm(vec2 p, float turb){ float s=0., a=.5; for(int i=0;i<4;i++){ s += a*vnoise(p); p = p*2.03 + 17.1; a *= turb + .2; } return s; }
+`;
+const ADVECT = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D prev, cam, camPrev;
+uniform float t, speed, scale, turb, decay, sharp, asp, brush, lvl, camOn, frozen;
+uniform vec2 px;
+uniform vec4 segs[8]; uniform vec3 cols[8]; uniform int nseg;
+${NOISE}
+vec2 curl(vec2 p){
+  float e = .02, tt = t*.06*(1.-frozen);
+  vec2 q = p + vec2(tt, -tt*.7);
+  float a = fbm(q+vec2(0,e),turb) - fbm(q-vec2(0,e),turb);
+  float b = fbm(q+vec2(e,0),turb) - fbm(q-vec2(e,0),turb);
+  return vec2(a, -b)/(2.*e);
+}
+float seg(vec2 p, vec2 a, vec2 b){ vec2 pa=p-a, ba=b-a; float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-7),0.,1.); return length(pa-ba*h); }
+void main(){
+  vec2 P = uv*vec2(asp,1.);
+  vec2 v = curl(P*scale) * (1. + lvl*3.);
+  vec2 q = uv - vec2(v.x/asp, v.y) * speed * 0.0012;      // volta ao longo da corrente (semi-lagrangiano)
+  vec3 c = texture(prev, q).rgb;
+  vec3 bl = (texture(prev,q+vec2(px.x,0)).rgb + texture(prev,q-vec2(px.x,0)).rgb +
+             texture(prev,q+vec2(0,px.y)).rgb + texture(prev,q-vec2(0,px.y)).rgb) * .25;
+  c = max(c + sharp*(c-bl), 0.) * decay;                  // máscara de nitidez dentro do laço
+  for(int i=0;i<8;i++){ if(i>=nseg) break;
+    vec4 sg = segs[i]; float d = seg(P, sg.xy*vec2(asp,1.), sg.zw*vec2(asp,1.));
+    c = mix(c, cols[i], smoothstep(brush, brush*.3, d)); }
+  if(camOn > .5){
+    vec2 cu = vec2(1.-uv.x, uv.y);
+    vec3 m = abs(texture(cam,cu).rgb - texture(camPrev,cu).rgb);
+    float mv = smoothstep(.07,.25, dot(m, vec3(.333)));
+    c = mix(c, texture(cam,cu).rgb*1.4 + .1, mv*.6);
+  }
+  o = vec4(min(c, vec3(3.)), 1.);
+}`;
+const DISPLAY = `#version 300 es
+precision highp float; in vec2 uv; out vec4 o; uniform sampler2D src; uniform int pal; uniform vec2 px;
+void main(){
+  vec3 c = texture(src, uv).rgb;
+  float l = dot(c, vec3(.299,.587,.114));
+  // relevo sutil a partir do gradiente da luminância
+  float gx = dot(texture(src,uv+vec2(px.x,0)).rgb - texture(src,uv-vec2(px.x,0)).rgb, vec3(.33));
+  float gy = dot(texture(src,uv+vec2(0,px.y)).rgb - texture(src,uv-vec2(0,px.y)).rgb, vec3(.33));
+  float sh = clamp(.5 + (gx - gy)*2.5, 0., 1.);
+  vec3 r;
+  if(pal==0) r = c;
+  else if(pal==1) r = mix(vec3(.02,.03,.12), vec3(1.,.78,.35), smoothstep(0.,.8,l)) + vec3(.9,.5,.2)*pow(l,3.);
+  else if(pal==2) r = .5 + .5*cos(6.2831*(l*.9 + vec3(.0,.33,.67) + c.r*.3));
+  else r = vec3(l);
+  r *= .75 + sh*.5;
+  r = 1. - exp(-r*1.4);
+  o = vec4(r, 1.);
+}`;
+
+const pAdv = program(ADVECT), pShow = program(DISPLAY);
+let pp, W, H;
+function resize() { [W, H] = fitCanvas(0.6); pp = pingPong(W, H); }
+resize(); addEventListener('resize', resize);
+panelSetup();
+
+let sources = true, frozen = false;
+const tog = (id, f) => { const b = document.getElementById(id); b.onclick = () => b.classList.toggle('on', f()); };
+tog('bSrc', () => sources = !sources); tog('bFlow', () => frozen = !frozen);
+tog('bMic', () => { startMic(); return true; }); tog('bCam', () => { startCam(); return true; });
+document.getElementById('bClear').onclick = () => resize();
+document.getElementById('bFs').onclick = fullscreen;
+
+// fontes aleatórias: nascem, vagam e morrem; o som faz nascer mais
+const nz = smoothNoise(7); let emitters = []; let nextBirth = 0;
+function spawn(t) {
+  emitters.push({ x: Math.random(), y: Math.random(), px: 0, py: 0, hue: Math.random(), born: t, life: 3 + Math.random() * 6,
+    vx: (Math.random() - .5) * .08, vy: (Math.random() - .5) * .08, sd: Math.random() * 100 });
+  const e = emitters[emitters.length - 1]; e.px = e.x; e.py = e.y;
+}
+const t0 = performance.now();
+function frame() {
+  const t = (performance.now() - t0) / 1000;
+  const a = readAudio(val('gain')); updateCam();
+  if (sources && (t > nextBirth || (a.level > .35 && emitters.length < 6))) { spawn(t); nextBirth = t + 1 + Math.random() * 3; }
+  emitters = emitters.filter(e => t - e.born < e.life);
+  const pal = +document.getElementById('pal').value;
+  emitters.forEach(e => { e.x += e.vx / 60 + (nz(t * .5 + e.sd) - .5) * .004; e.y += e.vy / 60 + (nz(t * .5 + e.sd + 50) - .5) * .004;
+    e.col = pal === 0 ? hsv((e.hue + t * .02) % 1, .9, .9 + a.level) : [1, 1, 1].map(v => v * (.7 + a.level)); });
+  const pu = pointerUniforms(sources ? emitters : []);
+  if (pal !== 0) for (let i = 0; i < pu.n * 3; i += 3) { const l = .9 + (i % 2) * .3; pu.cols[i] = pu.cols[i + 1] = pu.cols[i + 2] = l; }
+  use(pAdv, { prev: pp.a.tex, cam: cam.tex || blackTex(), camPrev: cam.prev || blackTex(), t, speed: val('speed'), scale: val('scale'),
+    turb: val('turb'), decay: val('decay'), sharp: val('sharp'), asp: W / H, brush: val('brush'), lvl: a.level,
+    camOn: cam.on ? 1 : 0, frozen: frozen ? 1 : 0, px: [1 / W, 1 / H], segs: pu.segs, cols: pu.cols, nseg: pu.n }, pp.b);
+  pp.swap();
+  use(pShow, { src: pp.a.tex, pal, px: [1 / W, 1 / H] }, null);
+  requestAnimationFrame(frame);
+}
+frame();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script></body></html>

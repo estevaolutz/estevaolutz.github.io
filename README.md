@@ -9,6 +9,7 @@ Cada app fica numa pasta própria e abre em `https://estevaolutz.github.io/<past
 - Mapas e atlas em 3D: `odisseia`, `alexandre`, `mitologia-grega`, `cabeza-de-vaca`, `generais-romanos`, `roma`, `antartida`, `amyr-klink`, `stalingrado`, `dia-d`, `asimov-universe`
 - Mapas de livros: `le-guin` — as obras de Ursula K. Le Guin num grafo (D3) com as ligações entre livros e séries; vistas Constelação e Linha do tempo. Página única.
 - Obras audiovisuais: `dedalus`, `dente-de-leao`, `espectroscopio`, `gotas`, `desenhos-de-luz`, `feedback-digital`
+- Estudos de feedback digital (WebGL2, toque, microfone e câmera invisível): `tunel-de-espelhos` (zoom, rotação e giro de cor em laço), `rios-de-tinta` (advecção por curl noise), `reacao-difusao` (Gray-Scott). Cada um é uma página única instalável (manifest + sw.js). Os três projetos irmãos no TouchDesigner ficam em `touchdesigner/feedback-estudos`.
 - Política e dados: `quanto-custa-o-poder`, `para-onde-vai-o-meu-imposto`, `emendas-no-mapa`, `quem-bancou-quem`, `disse-e-votou` (o `quem-bancou-quem` lê as votações de `disse-e-votou/data/votos.json`)
 - Estudos: `katas-shotokan`, `libras`, `reproducao-humana`
 - Cidade: `onibus-rio/celular` — versão para telefone, gerada a partir da página principal por `onibus-rio/build/celular.py` (rodar de novo sempre que `onibus-rio/index.html` mudar).
@@ -39,3 +40,4 @@ Ficam em `touchdesigner/<obra>/`: os scripts e um README com instruções e com 
 - `touchdesigner/feedback-digital` — Feedback Digital v1 (motor do Feedback Lab com câmera, microfone e toque, modo Derreter, acaso). O .toe fica no Desktop, em `Obras audiovisuais/Feedback_Digital_TD`; aqui ficam o shader e as instruções. Versão web para iPad em `feedback-digital/`.
 
 As versões anteriores (mapas 2D, versões para iPad e cópias dos artefatos do Claude) estão na branch `backup-2026-11`.
+- `touchdesigner/feedback-estudos` — três estudos de feedback (Fractal de Vídeo, Derretimento, Bordas em Profundidade). Cada script monta a rede inteira num Base COMP em /project1 quando rodado no Textport; instruções e síntese da pesquisa no LEIA-ME.

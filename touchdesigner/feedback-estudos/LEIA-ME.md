@@ -43,3 +43,19 @@ Cada `.py` monta a rede inteira dentro de um Base COMP em `/project1`.
 | `td3_bordas_em_profundidade.py` | só operadores nativos: Edge (cor girando) → Feedback → Transform → HSV Adjust → Blur → Level → Composite máximo | sem GLSL, para estudar cada etapa |
 
 Todos têm entrada de microfone (Audio Device In → Analyze RMS → Lag → Math), parâmetro **Limpar** e controles de memória e cor. Se algum nome de parâmetro mudou na sua versão do TD, o script não para: ele lista no Textport o que não conseguiu ajustar.
+
+## Joystick (USB estilo PlayStation 2)
+`td4_joystick.py` (rodar depois dos outros três) liga o joystick às três obras. Uma janela única, `/project1/tela`, mostra a obra ativa. Os sticks e o direcional empurram os parâmetros e não os prendem, então os sliders continuam funcionando junto. O mapa fica em `/project1/joystick_mapa`, editável.
+
+| Controle | Fractal de Vídeo | Derretimento | Bordas em Profundidade |
+|---|---|---|---|
+| Stick esquerdo ↔ | Rotação | Ondulação | Rotação |
+| Stick esquerdo ↕ | Escala | Queda | Zoom |
+| Stick direito ↔ | Abertura | Matiz | Deriva horizontal |
+| Stick direito ↕ | Torção | Ordenação | Deriva vertical |
+| Direcional ↕ | Memória | Memória | Memória |
+| Direcional ↔ | Matiz | Limiar | Matiz |
+| □ | Cópias (2→6) | Injeção | Desfoque |
+
+Botões comuns: **L1/R1** obra anterior/próxima · **✕** segurar = limpar · **△** acaso (sorteia os parâmetros dos sticks) · **○** volta ao padrão · **L2/R2** sensibilidade do som −/+ · **Start** abre/fecha a tela.
+Os números dos botões seguem o adaptador Microntek; se algum estiver trocado, ajuste `BOTAO` no `joystick_mapa`. O modo analógico (LED aceso) precisa estar ligado para os sticks funcionarem.

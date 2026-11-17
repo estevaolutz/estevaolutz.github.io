@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Feedback das Mãos</title>
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FB Mãos">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script>/* Escolha de câmera — usado por todos os apps que usam câmera.
+   - Se houver uma câmera Logitech conectada, ela é usada automaticamente (modo "Automática").
+   - Um botão discreto de câmera (canto inferior esquerdo; aparece quando o mouse/dedo se mexe)
+     lista as câmeras e troca na hora, sem recarregar a página. A escolha fica guardada no aparelho.
+   - Se a Logitech for conectada com o app aberto, a troca é automática.
+   - Atalho: Shift+C abre/fecha a lista.
+   - O app pode ouvir o evento 'camera-trocada' (window) para reler a trilha de vídeo. */
+(function () {
+  if (window.CameraPref) return;
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) return;
+  const KEY = 'camera-preferida';
+  const orig = md.getUserMedia.bind(md);
+  const ehLogitech = (l) => /logi|logitech|brio|streamcam|c9[0-9]{2}|c6[0-9]{2}|c5[0-9]{2}/i.test(l || '');
+  let lista = [];
+  const streams = new Set();
+  const lado = new WeakMap();   // facingMode original pedido pelo app
+
+  const lerPref = () => { try { return JSON.parse(localStorage.getItem(KEY)) || { modo: 'auto' }; } catch (e) { return { modo: 'auto' }; } };
+  const salvarPref = (p) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) {} };
+
+  async function cameras() {
+    try { lista = (await md.enumerateDevices()).filter((d) => d.kind === 'videoinput'); } catch (e) { lista = []; }
+    return lista;
+  }
+  // deviceId que deve ser usado, ou null (= comportamento original do app)
+  function escolhida() {
+    const p = lerPref();
+    const logi = lista.find((d) => ehLogitech(d.label));
+    if (p.modo === 'padrao') return null;
+    if (p.modo === 'fixa') {
+      const d = lista.find((x) => x.deviceId && x.deviceId === p.id) || lista.find((x) => x.label && x.label === p.label);
+      if (d) return d.deviceId;
+    }
+    return logi ? logi.deviceId : null;
+  }
+  function comCamera(c, id) {
+    const v = Object.assign({}, c.video === true ? {} : c.video);
+    delete v.facingMode;
+    v.deviceId = { exact: id };
+    return Object.assign({}, c, { video: v });
+  }
+  const idDe = (s) => { const t = s.getVideoTracks()[0]; return t && t.getSettings ? t.getSettings().deviceId : null; };
+  function guardar(s, c) { if (c && c.video && c.video !== true && c.video.facingMode) lado.set(s, c.video.facingMode); if (s && s.getVideoTracks().length) { streams.add(s); setTimeout(atualizarBotao, 0); } return s; }
+
+  md.getUserMedia = async function (c) {
+    if (!c || !c.video) return orig(c);
+    if (c.video !== true && c.video.deviceId) return guardar(await orig(c), c);   // o app escolheu a câmera
+    await cameras();
+    let id = escolhida();
+    if (!id && lista.length && !lista[0].label) {
+      // sem permissão ainda o navegador esconde os nomes: abre a padrão, descobre a Logitech e troca
+      const s = await orig(c);
+      await cameras();
+      id = escolhida();
+      if (id && id !== idDe(s)) {
+        try { const s2 = await orig(comCamera(c, id)); s.getTracks().forEach((t) => t.stop()); return guardar(s2, c); } catch (e) {}
+      }
+      return guardar(s, c);
+    }
+    if (id) { try { return guardar(await orig(comCamera(c, id)), c); } catch (e) { /* cai na câmera original */ } }
+    return guardar(await orig(c), c);
+  };
+
+  // troca a câmera dos vídeos abertos sem reiniciar o app
+  async function trocar(id) {
+    for (const s of [...streams]) {
+      const velha = s.getVideoTracks()[0];
+      if (!velha || velha.readyState === 'ended') { streams.delete(s); continue; }
+      if (id && idDe(s) === id) continue;
+      const st = velha.getSettings ? velha.getSettings() : {};
+      const v = {};
+      if (st.width) v.width = { ideal: st.width };
+      if (st.height) v.height = { ideal: st.height };
+      if (st.frameRate) v.frameRate = { ideal: st.frameRate };
+      if (id) v.deviceId = { exact: id }; else v.facingMode = lado.get(s) || 'user';
+      let nova;
+      try { nova = (await orig({ video: v, audio: false })).getVideoTracks()[0]; } catch (e) { continue; }
+      s.removeTrack(velha); s.addTrack(nova); velha.stop();
+      document.querySelectorAll('video').forEach((el) => {
+        if (el.srcObject === s) { el.srcObject = null; el.srcObject = s; el.play().catch(() => {}); }
+      });
+      window.dispatchEvent(new CustomEvent('camera-trocada', { detail: { stream: s, track: nova } }));
+    }
+    atualizarBotao();
+  }
+
+  // ---------- botão ----------
+  const CSS = `
+.camsel{position:fixed;z-index:2147483000;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  font:500 13px/1.25 system-ui,-apple-system,sans-serif;color:#f2f0ea;opacity:0;pointer-events:none;transition:opacity .35s}
+.camsel.vis,.camsel.aberto{opacity:1;pointer-events:auto}
+.camsel button{all:unset;cursor:pointer;box-sizing:border-box}
+.camsel .cs-b{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:rgba(16,18,26,.82);
+  border:1px solid rgba(255,255,255,.25);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.camsel .cs-b svg{width:18px;height:18px}
+.camsel .cs-m{display:none;position:absolute;left:0;bottom:44px;min-width:250px;max-width:80vw;padding:6px;border-radius:12px;
+  background:rgba(16,18,26,.94);border:1px solid rgba(255,255,255,.18);box-shadow:0 8px 28px rgba(0,0,0,.4)}
+.camsel.aberto .cs-m{display:block}
+.camsel .cs-t{padding:6px 10px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.55}
+.camsel .cs-o{display:flex;gap:8px;align-items:center;width:100%;padding:8px 10px;border-radius:8px}
+.camsel .cs-o:hover{background:rgba(255,255,255,.08)}
+.camsel .cs-o i{font-style:normal;width:12px;flex:none;color:#7fd1ff}
+.camsel .cs-o small{opacity:.55;margin-left:auto;padding-left:8px}`;
+  let raiz = null, timer = 0;
+  function montar() {
+    if (raiz || !document.body) return;
+    const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
+    raiz = document.createElement('div'); raiz.className = 'camsel';
+    raiz.innerHTML = '<div class="cs-m"></div><button class="cs-b" title="Escolher câmera (Shift+C)" aria-label="Escolher câmera">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/></svg></button>';
+    document.body.appendChild(raiz);
+    raiz.querySelector('.cs-b').onclick = (e) => { e.stopPropagation(); alternar(); };
+    raiz.addEventListener('pointerdown', (e) => e.stopPropagation());
+    document.addEventListener('pointerdown', () => raiz.classList.remove('aberto'));
+    const mostrar = () => { if (!ativo()) return; raiz.classList.add('vis'); clearTimeout(timer); timer = setTimeout(() => raiz.classList.remove('vis'), 2500); };
+    ['mousemove', 'touchstart'].forEach((ev) => document.addEventListener(ev, mostrar, { passive: true }));
+    document.addEventListener('keydown', (e) => {
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && !/INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) { if (ativo()) alternar(); }
+    });
+  }
+  const ativo = () => lista.length > 1 && [...streams].some((s) => s.getVideoTracks().some((t) => t.readyState === 'live'));
+  async function alternar() {
+    await cameras(); desenharMenu(); raiz.classList.toggle('aberto');
+  }
+  function desenharMenu() {
+    if (!raiz) return;
+    const p = lerPref();
+    const atual = [...streams].map(idDe).find(Boolean);
+    const logi = lista.find((d) => ehLogitech(d.label));
+    const op = (marca, txt, nota, fn) => { const b = document.createElement('button'); b.className = 'cs-o'; b.innerHTML = `<i>${marca ? '●' : ''}</i><span></span>${nota ? `<small>${nota}</small>` : ''}`; b.querySelector('span').textContent = txt; b.onclick = fn; return b; };
+    const m = raiz.querySelector('.cs-m'); m.innerHTML = '<div class="cs-t">Câmera</div>';
+    m.appendChild(op(p.modo === 'auto', 'Automática', logi ? 'Logitech' : 'Logitech se conectada', () => escolher({ modo: 'auto' })));
+    lista.forEach((d, i) => {
+      const nome = d.label || 'Câmera ' + (i + 1);
+      m.appendChild(op(p.modo === 'fixa' && (p.id === d.deviceId || p.label === d.label), nome, d.deviceId === atual ? 'em uso' : '', () => escolher({ modo: 'fixa', id: d.deviceId, label: d.label })));
+    });
+  }
+  async function escolher(p) {
+    salvarPref(p); raiz.classList.remove('aberto');
+    await cameras(); await trocar(escolhida());
+  }
+  function atualizarBotao() { montar(); if (raiz && raiz.classList.contains('aberto')) desenharMenu(); }
+
+  // Logitech conectada/desconectada com o app aberto
+  if (md.addEventListener) md.addEventListener('devicechange', async () => {
+    await cameras();
+    if (!streams.size) return;
+    const id = escolhida(), atual = [...streams].map(idDe).find(Boolean);
+    if (id && id !== atual) trocar(id);
+    else if (atual && !lista.some((d) => d.deviceId === atual)) trocar(id);   // a câmera em uso saiu
+    atualizarBotao();
+  });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar); else montar();
+  window.CameraPref = { cameras, trocar, escolher, ehLogitech };
+})();
+</script>
+<style>
+:root{color-scheme:dark;--panel:#121726;--line:#2a3150;--fg:#e8ebf6;--mute:#98a1bf;--ac:#e879f9}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--fg);font:14px/1.45 system-ui,-apple-system,sans-serif;overflow:hidden;
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-text-size-adjust:100%;touch-action:none;overscroll-behavior:none}
+canvas#tela{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;background:#000}
+body.quieto,body.quieto canvas#tela{cursor:none}
+.app-ui{position:fixed;z-index:30;color:var(--fg)}
+#entrada{z-index:40;inset:0;display:grid;place-items:center;overflow-y:auto;
+  padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
+  background:radial-gradient(ellipse at 50% 35%,rgba(0,0,0,.35),rgba(0,0,0,.93) 70%)}
+#entrada[hidden],#compart[hidden],#mapa[hidden],.ic[hidden]{display:none!important}
+#entrada .c{width:min(32rem,100%);display:grid;gap:14px}
+#entrada h1{margin:0;font:200 clamp(1.6rem,6vw,3rem)/1 system-ui,-apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase}
+#entrada h1 b{font-weight:600;color:var(--ac)}
+#entrada p{margin:0;color:var(--mute);line-height:1.5}
+.big{display:block;width:100%;text-align:left;padding:15px 16px;border-radius:14px;font:500 16px/1.3 system-ui,-apple-system,sans-serif;border:1px solid #38425c;background:rgba(23,28,42,.9);color:var(--fg);cursor:pointer}
+.big small{display:block;color:var(--mute);font-size:12.5px;font-weight:400;margin-top:2px}
+.big.p{background:var(--ac);color:#1a0420;border-color:var(--ac)}.big.p small{color:rgba(0,0,0,.62)}
+#topo{top:0;right:0;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 0 0;display:flex;gap:8px;transition:opacity .35s,right .25s ease}
+body.quieto #topo,body.quieto #estado{opacity:0;pointer-events:none}
+body.inicio #topo,body.inicio #estado{display:none}
+body:not(.nopanel) #topo{right:min(340px,100vw)}
+.ic{width:48px;height:48px;border-radius:50%;border:1px solid #38425c;background:rgba(12,15,23,.72);color:var(--fg);font:19px/1 system-ui,sans-serif;padding:0;display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ic.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
+#estado{left:max(14px,env(safe-area-inset-left));top:max(14px,env(safe-area-inset-top));padding:7px 12px;border-radius:999px;background:rgba(12,15,23,.72);font-size:12.5px;color:var(--mute);transition:opacity .35s;pointer-events:none}
+#estado b{color:var(--fg);font-weight:600}
+#dica{left:50%;top:max(18px,env(safe-area-inset-top));transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(12,15,23,.85);font-size:13px;opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap;z-index:41}
+#dica.v{opacity:1}
+#compart{left:50%;bottom:max(28px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:45;width:min(22rem,90vw)}
+aside{position:fixed;z-index:35;top:0;right:0;bottom:0;width:min(340px,100vw);background:rgba(18,23,38,.96);border-left:1px solid var(--line);
+  padding:max(14px,env(safe-area-inset-top)) 14px max(30px,env(safe-area-inset-bottom));overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;transition:transform .25s ease;touch-action:pan-y}
+body.nopanel aside{transform:translateX(102%)}
+aside h2{font:600 16px system-ui;margin:4px 0 2px}aside p.sub{margin:0 0 10px;color:var(--mute);font-size:13px}
+aside h4{margin:16px 0 6px;font:600 11px system-ui;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
+#fecharPainel{float:right;width:40px;height:40px;border-radius:50%;padding:0;font-size:17px}
+aside button{font:inherit;color:var(--fg);background:#1a2036;border:1px solid #38425f;border-radius:8px;padding:8px 11px;min-height:40px;cursor:pointer}
+aside button.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.sl{display:grid;grid-template-columns:1fr auto;gap:1px 8px;margin:7px 0}.sl output{color:var(--mute);font:11px ui-monospace,monospace}
+.sl input{grid-column:1/3;width:100%;height:30px;accent-color:var(--ac)}
+.chk{display:flex;gap:10px;align-items:center;margin:8px 0}.chk input{width:22px;height:22px;accent-color:var(--ac)}
+/* mapa de controles (tela e impressão) */
+#mapa{z-index:50;inset:0;overflow:auto;background:rgba(5,7,12,.94);padding:max(24px,env(safe-area-inset-top)) 20px 30px;touch-action:pan-y}
+#mapa .folha{max-width:52rem;margin:0 auto}
+#mapa h2{font:300 28px system-ui;margin:0 0 4px;letter-spacing:.03em}#mapa h2 b{font-weight:600;color:var(--ac)}
+#mapa p{color:var(--mute);margin:0 0 16px}
+#mapa table{width:100%;border-collapse:collapse;font-size:15px}
+#mapa td{padding:9px 10px;border-bottom:1px solid #262d45;vertical-align:top}
+#mapa td:first-child{width:38%;font-weight:600;white-space:nowrap}
+#mapa .k{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 7px;border-radius:15px;border:1.5px solid #59627f;margin-right:6px;font:600 14px system-ui}
+#mapa .acoes{display:flex;gap:8px;margin-top:18px}
+#mapa .acoes button{font:inherit;color:var(--fg);background:#1a2036;border:1px solid #38425f;border-radius:8px;padding:10px 16px;cursor:pointer}
+@media print{
+  body{overflow:visible;background:#fff}
+  body>*:not(#mapa){display:none!important}
+  #mapa{position:static;background:#fff;color:#000;padding:0}
+  #mapa h2 b{color:#000}#mapa p{color:#333}#mapa td{border-color:#bbb}#mapa .k{border-color:#000}
+  #mapa .acoes{display:none}
+}
+
+:root{--ac:#fbbf24}
+</style>
+</head><body class="nopanel inicio">
+<canvas id="tela"></canvas>
+
+<div id="entrada" class="app-ui" role="dialog" aria-labelledby="entT"><div class="c">
+  <h1 id="entT">Feedback das <b>Mãos</b></h1>
+  <p>As suas mãos tocam o feedback. As pontas dos dedos soltam luz, a pinça desenha, abrir a mão expande o laço e fechar contrai. Incline para girar, suba para mudar as cores. A câmera não aparece.</p>
+  <button class="big p" id="eCamF" type="button">Câmera da frente<small>Fique de frente para a tela e mostre as mãos</small></button>
+  <button class="big" id="eCamT" type="button">Câmera de trás<small>Aponte o aparelho para as mãos de alguém</small></button>
+  <button class="big" id="eMapa" type="button">Gestos<small>Para consultar ou imprimir</small></button>
+</div></div>
+
+<div id="estado" class="app-ui"></div>
+<div id="topo" class="app-ui">
+  <button class="ic" id="tMapa" type="button" aria-label="Gestos">✋</button>
+  <button class="ic" id="tLimpa" type="button" aria-label="Limpar a tela">🗑</button>
+  <button class="ic" id="tCongela" type="button" aria-label="Congelar">❄︎</button>
+  <button class="ic" id="tSalva" type="button" aria-label="Salvar imagem">⤓</button>
+  <button class="ic" id="tFonte" type="button" aria-label="Trocar a câmera">⇄</button>
+  <button class="ic" id="tAjustes" type="button" aria-label="Todos os ajustes">⚙︎</button>
+  <button class="ic" id="tTela" type="button" aria-label="Tela cheia">⛶</button>
+</div>
+<div id="dica" class="app-ui" role="status" aria-live="polite"></div>
+<div id="compart" class="app-ui" hidden><button class="big p" type="button">Salvar ou compartilhar<small id="compartN"></small></button></div>
+
+<aside id="painel">
+  <button id="fecharPainel" type="button" aria-label="Fechar ajustes">✕</button>
+  <h2>Feedback das Mãos</h2>
+  <p class="sub">Motor do Feedback Digital com rastreamento das mãos (MediaPipe). O esqueleto das mãos é a semente; os gestos mexem no laço.</p>
+  <h4>Modo</h4>
+  <div class="row" id="modos"></div>
+  <div id="sliders"></div>
+</aside>
+
+<div id="mapa" class="app-ui" hidden><div class="folha">
+  <h2>Feedback das <b>Mãos</b> — gestos</h2>
+  <p>Até duas mãos. A câmera é invisível: só o que as mãos fazem aparece.</p>
+  <table>
+    <tr><td>✋ Pontas dos dedos</td><td>Soltam luz o tempo todo (cada mão tem a sua cor)</td></tr>
+    <tr><td>🤏 Pinça (polegar + indicador)</td><td>Desenha um traço grosso enquanto estiver fechada</td></tr>
+    <tr><td>🖐 Mão aberta</td><td>Expande o laço (o túnel cresce para fora)</td></tr>
+    <tr><td>✊ Mão fechada</td><td>Contrai o laço (o desenho afunda para dentro)</td></tr>
+    <tr><td>↻ Inclinar a mão</td><td>Gira o laço para o lado da inclinação</td></tr>
+    <tr><td>↕ Altura da mão</td><td>No alto as cores giram para um lado, embaixo para o outro</td></tr>
+    <tr><td>💨 Mão rápida</td><td>Derrete mais</td></tr>
+    <tr><td>↔ Distância entre as mãos</td><td>Separação RGB (quanto mais longe, mais separa)</td></tr>
+    <tr><td>✊✊ As duas fechadas por 1 s</td><td>Limpa a tela</td></tr>
+    <tr><td>Centro do laço</td><td>Segue a mão (ajuste "Centro segue a mão")</td></tr>
+  </table>
+  <div class="acoes"><button id="mImprimir" type="button">Imprimir</button><button id="mFechar" type="button">Fechar</button></div>
+</div></div>
+
+<video id="cam" playsinline muted style="display:none"></video>
+
+<script>
+'use strict';
+/* =====================================================================
+   MOTOR DO FEEDBACK DIGITAL (motor do Feedback Lab, 5 modos, acaso)
+   compartilhado por: Feedback Joystick, Feedback das Mãos, Silhueta de Voz
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lag = (v, alvo, sobe, desce, dt) => v + (alvo - v) * (1 - Math.exp(-dt / (alvo > v ? sobe : desce)));
+
+/* ---------------- parâmetros ---------------- */
+const MODOS = ['Túnel', 'Fluido', 'Estrias', 'Derreter', 'Pixel sort'];
+const P = { Modo: 3, Congelar: false, Automatico: false };
+const SPEC_FB = [
+  ['Feedback'],
+  ['Rastro', 'Rastro (persistência)', 0.975, 0.9, 0.9995, 0.0005],
+  ['Realce', 'Realce', 0.15, 0, 1.5, 0.01],
+  ['Zoom', 'Zoom', 0.003, -0.03, 0.03, 0.0005],
+  ['Rotacao', 'Rotação', 0, -0.05, 0.05, 0.001],
+  ['Deslocamento', 'Deslocamento (derreter/fluido)', 1, 0, 3, 0.05],
+  ['Escalaruido', 'Escala do ruído', 4, 1, 9, 0.1],
+  ['Matiz', 'Giro de matiz', 0, -0.3, 0.3, 0.005],
+  ['Rgb', 'Separação RGB', 1, 0, 4, 0.05],
+  ['Semente', 'Força da semente', 0.9, 0, 1.5, 0.05],
+  ['Respiracao', 'Respiração (LFO)', 0.004, 0, 0.02, 0.0005],
+  ['Lfo', 'Velocidade do LFO', 0.15, 0.01, 2, 0.01],
+  ['Inverter', 'Inversão', 0, 0, 1, 0.01],
+  ['Brilho', 'Brilho', 1, 0.4, 1.6, 0.01],
+];
+const SPEC_ACASO = [
+  ['Acaso'],
+  ['Acaso', 'Quantidade de acaso', 0.7, 0, 1, 0.01],
+  ['Velacaso', 'Velocidade do acaso', 0.12, 0.01, 1, 0.01],
+  ['Trocamin', 'Troca mínima (s)', 6, 1, 60, 1],
+  ['Trocamax', 'Troca máxima (s)', 20, 2, 120, 1],
+];
+let SPEC = [];
+const fmtV = (v, st) => (st >= 1 ? v.toFixed(0) : st >= 0.01 ? v.toFixed(2) : v.toFixed(4));
+function setP(k, v) { const s = SPEC.find((x) => x[0] === k && x.length > 1); if (!s) { P[k] = v; return; }
+  v = clamp(v, s[3], s[4]); P[k] = v; const el = $('s_' + k); if (el) { el.value = v; $('o_' + k).textContent = fmtV(v, s[5]); } }
+function montaPainel(specApp, padroes = {}) {
+  SPEC = [...SPEC_FB, ...specApp, ...SPEC_ACASO].map((s) => (s.length > 1 && s[0] in padroes ? [s[0], s[1], padroes[s[0]], s[3], s[4], s[5]] : s));
+  const box = $('sliders'); let html = '';
+  for (const s of SPEC) {
+    if (s.length === 1) {
+      html += `<h4>${s[0]}</h4>`;
+      if (s[0] === 'Feedback') html += `<div class="chk"><input type="checkbox" id="cCongelar"><label for="cCongelar">Congelar</label></div>`;
+      if (s[0] === 'Acaso') html += `<div class="chk"><input type="checkbox" id="cAuto"><label for="cAuto">Troca de modo automática</label></div>`;
+      continue;
+    }
+    const [k, lab, d, lo, hi, st] = s; P[k] = d;
+    html += `<div class="sl"><label for="s_${k}">${lab}</label><output id="o_${k}"></output><input type="range" id="s_${k}" min="${lo}" max="${hi}" step="${st}" value="${d}"></div>`;
+  }
+  html += `<h4>Tela</h4><div class="row"><button id="bLimpar" type="button">Limpar tela</button><button id="bPadrao" type="button">Valores padrão</button></div>`;
+  box.innerHTML = html;
+  for (const s of SPEC) {
+    if (s.length === 1) continue;
+    const [k, , , , , st] = s, el = $('s_' + k), o = $('o_' + k);
+    const up = () => { P[k] = parseFloat(el.value); o.textContent = fmtV(P[k], st); };
+    el.oninput = up; up();
+  }
+  $('cCongelar').onchange = (e) => setCongelar(e.target.checked);
+  $('cAuto').onchange = (e) => { P.Automatico = e.target.checked; };
+  $('bLimpar').onclick = () => limpar();
+  $('bPadrao').onclick = () => { for (const s of SPEC) if (s.length > 1) setP(s[0], s[2]); setModo(padroes.Modo ?? 3); };
+  const m = $('modos');
+  MODOS.forEach((nome, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = nome; b.onclick = () => setModo(i); m.appendChild(b); });
+  setModo(padroes.Modo ?? 3);
+}
+function setModo(i) { P.Modo = ((i % 5) + 5) % 5; [...$('modos').children].forEach((b, j) => b.classList.toggle('on', j === P.Modo)); }
+function setCongelar(v) { P.Congelar = v; const c = $('cCongelar'); if (c) c.checked = v; const t = $('tCongela'); if (t) t.classList.toggle('on', v); }
+
+/* ---------------- interface ---------------- */
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+const toggleFs = async () => { const el = document.documentElement;
+  try { if (fsEl()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document); else await (el.requestFullscreen || el.webkitRequestFullscreen).call(el); } catch (e) {} };
+const instalado = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+const temFs = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+let dT = 0; const dica = (t, ms = 2600) => { const d = $('dica'); d.textContent = t; d.classList.add('v'); clearTimeout(dT); dT = setTimeout(() => d.classList.remove('v'), ms); };
+let lock = null, comecou = false;
+const manterAcesa = async () => { try { if ('wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch (e) {} };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && comecou) { manterAcesa(); if (AU.ctx && AU.ctx.state !== 'running') AU.ctx.resume(); } });
+['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault()));
+let qT = 0; const acorda = () => { document.body.classList.remove('quieto'); clearTimeout(qT);
+  qT = setTimeout(() => { if ($('entrada').hidden && document.body.classList.contains('nopanel')) document.body.classList.add('quieto'); }, 3500); };
+['pointerdown', 'pointermove', 'keydown'].forEach((ev) => addEventListener(ev, acorda, true));
+const painel = (abrir) => { document.body.classList.toggle('nopanel', !abrir); acorda(); };
+const entrada = (mostrar) => { $('entrada').hidden = !mostrar; document.body.classList.toggle('inicio', mostrar); if (!mostrar) { comecou = true; manterAcesa(); acorda(); } };
+function ligaTopo() {
+  if ($('tTela')) { $('tTela').onclick = toggleFs; if (instalado || !temFs) $('tTela').hidden = true; }
+  $('tAjustes').onclick = () => painel(document.body.classList.contains('nopanel'));
+  $('fecharPainel').onclick = () => painel(false);
+  if ($('tFonte')) $('tFonte').onclick = () => entrada(true);
+  $('tLimpa').onclick = () => limpar();
+  $('tCongela').onclick = () => { setCongelar(!P.Congelar); dica(P.Congelar ? 'Congelado' : 'Descongelado', 1200); };
+  $('tSalva').onclick = () => { querSalvar = true; };
+}
+function saveBlob(b, name) {
+  let file = null; try { file = new File([b], name, { type: b.type }); } catch (e) {}
+  if (file && navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia('(pointer:coarse)').matches) {
+    const box = $('compart'); $('compartN').textContent = name; box.hidden = false;
+    box.querySelector('button').onclick = async () => { box.hidden = true; try { await navigator.share({ files: [file] }); } catch (e) {} };
+    clearTimeout(box._t); box._t = setTimeout(() => { box.hidden = true; }, 20000); return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+/* ---------------- WebGL2 ---------------- */
+const cv = $('tela');
+const gl = cv.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+if (!gl) { document.body.innerHTML = '<p style="padding:2rem;color:#fff">Este navegador não tem WebGL2. Use o Chrome atualizado.</p>'; throw new Error('sem webgl2'); }
+const temFloat = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+
+const VS = `#version 300 es
+in vec2 aP; out vec2 vUV; void main(){ vUV=aP*.5+.5; gl_Position=vec4(aP,0.,1.); }`;
+const COMUM = `#version 300 es
+precision highp float; in vec2 vUV; out vec4 fragColor;
+float hash(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z);}
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);}
+float fbm(vec2 p){ float a=.5,s=0.; for(int i=0;i<4;i++){ s+=a*vnoise(p); p=p*2.03+vec2(1.7,9.2); a*=.5;} return s;}
+vec2 curl(vec2 p){ float e=.02; return vec2(fbm(p+vec2(0,e))-fbm(p-vec2(0,e)), -(fbm(p+vec2(e,0))-fbm(p-vec2(e,0))))/(2.*e);}
+vec3 hueRot(vec3 c,float h){ vec3 k=vec3(0.57735); float co=cos(h); return c*co+cross(k,c)*sin(h)+k*dot(k,c)*(1.-co); }
+float lum(vec3 c){ return dot(c,vec3(.299,.587,.114)); }
+vec3 pal(float t){ return .5+.5*cos(6.2832*(t+vec3(0.,.33,.67))); }
+`;
+// laço de feedback: idêntico ao Feedback Digital
+const FS_FB = COMUM + `
+uniform sampler2D uPrev, uWave, uSeed;
+uniform vec4 uT, uF1, uF2, uF3, uF4, uR;
+uniform vec2 uRes;
+vec3 P(vec2 uv){ if(uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.) return vec3(0.); return texture(uPrev,uv).rgb; }
+vec2 toUV(vec2 c,float asp){ c.x/=asp; return c+.5; }
+void main(){
+  vec2 res=uRes; float asp=res.x/res.y; vec2 px=1./res;
+  vec2 uv=vUV; vec2 c=uv-.5; c.x*=asp; vec2 o=uR.xy; c-=o;
+  int mode=int(uT.w+0.5);
+  float z=1.0-uF1.z-uF4.w-uF4.z; float an=uF1.w;
+  mat2 R=mat2(cos(an),sin(an),-sin(an),cos(an));
+  vec2 src=c; vec3 col;
+  if(mode==0){ src=R*(c*z); }
+  else if(mode==1){ src=R*(c*z) - curl(c*uF2.y+vec2(0.,uT.x*.05))*uF2.x*0.004; }
+  else if(mode==2){ src=R*(c*z); }
+  else if(mode==3){
+    float gx=lum(P(uv+vec2(px.x*3.,0.)))-lum(P(uv-vec2(px.x*3.,0.)));
+    float gy=lum(P(uv+vec2(0.,px.y*3.)))-lum(P(uv-vec2(0.,px.y*3.)));
+    src=R*(c*z) + vec2(gy,-gx)*uF2.x*0.03 + vec2(0.,0.0008*(1.0+uF2.x));
+  } else {
+    float l=lum(P(uv));
+    src=R*(c*z) + vec2(0.,(l-0.35)*uF2.x*0.012);
+  }
+  src -= curl(c*uR.w+vec2(uT.x*.031,-uT.x*.023))*uR.z*0.004;
+  src += o;
+  vec2 su=toUV(src,asp);
+  float ch=uF2.w*0.004;
+  vec3 prev=vec3(P(su+vec2(ch,0.)).r, P(su).g, P(su-vec2(ch,0.)).b);
+  vec3 bl=(P(su+vec2(px.x,0.))+P(su-vec2(px.x,0.))+P(su+vec2(0.,px.y))+P(su-vec2(0.,px.y)))*.25;
+  float sh=uF1.y*(mode==2?2.2:0.6);
+  col=prev+(prev-bl)*sh;
+  if(mode==2) col+=abs(prev-bl)*uF1.y*1.5;
+  col=hueRot(col,uF2.z);
+  col*=uF1.x;
+  vec3 sd=texture(uSeed,uv).rgb;
+  col=max(col, sd*uF3.x);
+  float w=texture(uWave,vec2(uv.x,.5)).r;
+  float yy=.5+clamp(w*1.4,-1.,1.)*.4;
+  col+=vec3(.9,.95,1.)*(1.0-smoothstep(px.y*.8,px.y*2.5,abs(uv.y-yy)))*uF3.y;
+  col=clamp(col,0.,1.0);
+  if(uF3.w>0.5) col=P(uv);
+  fragColor=vec4(col,1.);
+}`;
+// semente padrão: o desenho 2D do app (pincel, mãos…)
+const FS_SEED_CANVAS = COMUM + `
+uniform sampler2D uCanvas;
+void main(){ fragColor=vec4(texture(uCanvas,vUV).rgb,1.); }`;
+// saída: brilho, inversão, máscara da silhueta e a câmera por cima
+const FS_OUT = COMUM + `
+uniform sampler2D uFb, uCam, uMask; uniform float uBright, uInv, uCamMix, uCamOn, uMirror, uMaskOn, uFora, uMaskSoft;
+uniform vec2 uCamScale;
+void main(){
+  vec3 c=texture(uFb,vUV).rgb*uBright; c=clamp(c,0.,1.); c=mix(c,vec3(1.)-c,uInv);
+  vec2 q=(vUV-.5)*uCamScale+.5; if(uMirror>.5) q.x=1.-q.x;
+  if(uMaskOn>.5){ float m=texture(uMask,vec2(q.x,1.-q.y)).r; m=smoothstep(.5-uMaskSoft,.5+uMaskSoft,m); c*=mix(uFora,1.,m); }
+  if(uCamOn>.5 && uCamMix>0.001){ vec3 k=texture(uCam,q).rgb*uCamMix; c=1.-(1.-c)*(1.-k); }
+  fragColor=vec4(c,1.);
+}`;
+
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const l = gl.getShaderInfoLog(s); console.error(l); throw new Error(l); } return s; }
+function prog(fs) { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'aP'); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name.replace(/\[0\]$/, ''); u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u }; }
+const PF = prog(FS_FB), PO = prog(FS_OUT);
+let PS = prog(FS_SEED_CANVAS);
+const usarSemente = (fsCorpo) => { PS = prog(COMUM + fsCorpo); };
+const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function tex(w, h, fmt) { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  if (fmt === 'f') gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else if (fmt === 'r8') gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; }
+function fbo(t) { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE; gl.bindFramebuffer(gl.FRAMEBUFFER, null); return ok ? f : null; }
+
+// desenho 2D da semente (o app pinta aqui; vai para a GPU a cada quadro)
+const semCanvas = document.createElement('canvas'); const sctx = semCanvas.getContext('2d');
+const semT = tex(2, 2, '8');
+let W = 0, H = 0, A = [], seedT = null, seedF = null, fmtFb = temFloat ? 'f' : '8', cur = 0;
+function alocar() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  let w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+  const k = Math.min(1, 1440 / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k);
+  if (w === W && h === H) return false; W = w; H = h; cv.width = W; cv.height = H;
+  for (const o of A) { gl.deleteTexture(o.t); gl.deleteFramebuffer(o.f); }
+  if (seedT) { gl.deleteTexture(seedT); gl.deleteFramebuffer(seedF); }
+  A = [];
+  for (let i = 0; i < 2; i++) { let t = tex(W, H, fmtFb), f = fbo(t);
+    if (!f && fmtFb === 'f') { fmtFb = '8'; gl.deleteTexture(t); t = tex(W, H, '8'); f = fbo(t); } A.push({ t, f }); }
+  seedT = tex(W, H, '8'); seedF = fbo(seedT);
+  const ks = Math.min(1, 960 / Math.max(W, H)); semCanvas.width = Math.round(W * ks); semCanvas.height = Math.round(H * ks);
+  limpar(); return true;
+}
+function limpar() { for (const o of A) { gl.bindFramebuffer(gl.FRAMEBUFFER, o.f); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); } gl.bindFramebuffer(gl.FRAMEBUFFER, null); }
+function subirCanvas() { gl.bindTexture(gl.TEXTURE_2D, semT); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, semCanvas); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); }
+
+/* ---------------- câmera (invisível por padrão) ---------------- */
+const video = $('cam'); const CAM = { on: false, facing: 'user', stream: null, last: -1, novo: false };
+const camT = tex(2, 2, '8');
+function subirCamera() {
+  CAM.novo = false;
+  if (!CAM.on || video.readyState < 2) return;
+  const t = video.currentTime; if (t === CAM.last) return; CAM.last = t; CAM.novo = true;
+  if (!(P.Camera > 0.001) && !CAM.precisaTextura) return;
+  gl.bindTexture(gl.TEXTURE_2D, camT); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, video); } catch (e) {}
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+}
+function camEscala() { const vw = video.videoWidth || 640, vh = video.videoHeight || 480, va = vw / vh, a = (W || innerWidth) / (H || innerHeight);
+  return va > a ? [a / va, 1] : [1, va / a]; }
+const espelho = () => (CAM.facing === 'user' ? 1 : 0);
+// ponto da câmera (0–1, y para baixo) → ponto da tela (0–1, y para baixo)
+function camParaTela(x, y) { const e = camEscala(); if (espelho()) x = 1 - x; return [(x - 0.5) / e[0] + 0.5, (y - 0.5) / e[1] + 0.5]; }
+async function ligarCamera(facing, w = 640, h = 480) {
+  pararCamera(); CAM.facing = facing;
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: 30 } }, audio: false });
+    video.srcObject = CAM.stream; await video.play(); CAM.on = true; return true;
+  } catch (e) { console.warn(e); CAM.on = false; return false; }
+}
+function pararCamera() { if (CAM.stream) CAM.stream.getTracks().forEach((t) => t.stop()); CAM.stream = null; CAM.on = false; }
+addEventListener('camera-trocada', () => { if (video.srcObject) video.play().catch(() => {}); });
+
+/* ---------------- microfone: onda, volume, grave, agudo, altura ---------------- */
+const AU = { ctx: null, an: null, onda: new Float32Array(1024), bruto: new Float32Array(2048), freq: null, vol: 0, grave: 0, agudo: 0, hz: 0, clareza: 0, ataque: 0, _v0: 0, _par: 0 };
+const waveT = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, waveT);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, 1024, 1, 0, gl.RED, gl.FLOAT, new Float32Array(1024));
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+async function ligarMicrofone() {
+  if (AU.an) return true;
+  try {
+    AU.ctx = AU.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    if (AU.ctx.state !== 'running') await AU.ctx.resume();
+    const src = AU.ctx.createMediaStreamSource(st); AU.an = AU.ctx.createAnalyser(); AU.an.fftSize = 2048; AU.an.smoothingTimeConstant = 0.5;
+    src.connect(AU.an); AU.freq = new Uint8Array(AU.an.frequencyBinCount); return true;
+  } catch (e) { return false; }
+}
+// altura da voz por autocorrelação normalizada (60–1000 Hz)
+function alturaVoz(buf, sr) {
+  const N = 1024, mn = Math.floor(sr / 1000), mx = Math.min(N - 1, Math.floor(sr / 60));
+  let e0 = 0; for (let i = 0; i < N; i++) e0 += buf[i] * buf[i];
+  if (e0 < 1e-4) return [0, 0];
+  let best = -1, bl = 0; const r = new Float32Array(mx + 2);
+  for (let l = mn; l <= mx + 1; l++) { let s = 0, e1 = 0; for (let i = 0; i < N - l; i++) { s += buf[i] * buf[i + l]; e1 += buf[i + l] * buf[i + l]; } r[l] = s / Math.sqrt(e0 * e1 + 1e-9); }
+  for (let l = mn + 1; l <= mx; l++) if (r[l] > r[l - 1] && r[l] >= r[l + 1] && r[l] > best) { best = r[l]; bl = l; }
+  if (bl === 0 || best < 0.55) return [0, Math.max(0, best)];
+  const a = r[bl - 1], b = r[bl], c = r[bl + 1], d = a - 2 * b + c, sh = d ? 0.5 * (a - c) / d : 0;
+  return [sr / (bl + sh), best];
+}
+function lerAudio(dt, ganho, comAltura = false) {
+  const g = ganho;
+  if (!AU.an) { AU.vol = lag(AU.vol, 0, .02, .25, dt); AU.grave = lag(AU.grave, 0, .01, .3, dt); AU.agudo = lag(AU.agudo, 0, .01, .2, dt); AU.onda.fill(0); }
+  else {
+    AU.an.getFloatTimeDomainData(AU.bruto); AU.an.getByteFrequencyData(AU.freq);
+    for (let i = 0; i < 1024; i++) AU.onda[i] = AU.bruto[i];
+    let s = 0; for (let i = 0; i < AU.bruto.length; i++) s += AU.bruto[i] * AU.bruto[i];
+    const rms = Math.sqrt(s / AU.bruto.length);
+    const hz = AU.ctx.sampleRate / AU.an.fftSize, bin = (f) => Math.max(1, Math.round(f / hz));
+    let b = 0, nb = bin(150); for (let i = 1; i <= nb; i++) b += AU.freq[i]; b /= nb * 255;
+    let t = 0, i0 = bin(3000), i1 = Math.min(AU.freq.length - 1, bin(12000)); for (let i = i0; i <= i1; i++) t += AU.freq[i]; t /= (i1 - i0 + 1) * 255;
+    AU.vol = lag(AU.vol, clamp(rms * g, 0, 1), .02, .25, dt);
+    AU.grave = lag(AU.grave, clamp(Math.max(0, b - 0.25) * g * 0.12, 0, 1), .01, .3, dt);
+    AU.agudo = lag(AU.agudo, clamp(Math.max(0, t - 0.05) * g * 0.25, 0, 1), .01, .2, dt);
+    if (comAltura && (AU._par ^= 1)) { const [f, cl] = alturaVoz(AU.bruto, AU.ctx.sampleRate); AU.clareza = cl; if (f > 0 && AU.vol > 0.04) AU.hz = AU.hz ? AU.hz + (f - AU.hz) * 0.35 : f; }
+    const k = g * 0.25; for (let i = 0; i < 1024; i++) AU.onda[i] *= k;
+  }
+  AU.ataque = Math.max(0, AU.vol - AU._v0) / Math.max(dt, 1e-3); AU._v0 = AU.vol;
+  gl.bindTexture(gl.TEXTURE_2D, waveT); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 1, gl.RED, gl.FLOAT, AU.onda);
+}
+
+/* ---------------- máscara (silhueta) ---------------- */
+const maskT = tex(2, 2, 'r8'); const MASK = { on: false, w: 0, h: 0, fora: 0, suave: 0.12 };
+function subirMascara(u8, w, h) { gl.bindTexture(gl.TEXTURE_2D, maskT); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  if (w !== MASK.w || h !== MASK.h) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, u8); MASK.w = w; MASK.h = h; }
+  else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RED, gl.UNSIGNED_BYTE, u8);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4); }
+
+/* ---------------- acaso: cada canal caminha até alvos sorteados ---------------- */
+const NOMES = ['cx', 'cy', 'zm', 'rt', 'hu', 'wp'];
+const AC = { v: {}, alvo: {}, quando: {}, prox: 0 }; NOMES.forEach((n) => { AC.v[n] = 0; AC.alvo[n] = 0; AC.quando[n] = 0; });
+function sacudirAcaso() { for (const n of NOMES) AC.quando[n] = 0; }
+function acaso(now, dt) {
+  const vel = P.Velacaso;
+  for (const n of NOMES) {
+    if (now >= AC.quando[n]) { AC.alvo[n] = Math.random() * 2 - 1; AC.quando[n] = now + (1 + Math.random() * 5) / Math.max(vel * 8, 0.05); }
+    const k = 1 - Math.pow(1 - Math.min(1, vel * 0.08), dt * 60);
+    AC.v[n] += (AC.alvo[n] - AC.v[n]) * k;
+  }
+  if (P.Automatico && now >= AC.prox) {
+    const op = [0, 1, 2, 3, 4].filter((m) => m !== P.Modo); setModo(op[Math.floor(Math.random() * op.length)]);
+    const lo = P.Trocamin, hi = Math.max(lo + 0.5, P.Trocamax); AC.prox = now + lo + Math.random() * (hi - lo);
+  }
+}
+
+/* ---------------- um quadro do motor ----------------
+   mod: modulações do app somadas aos parâmetros
+   { zoom, rot, hue, rgb, desl (multiplica), pulso, linha, cx, cy, semente (multiplica), inv }
+   semUniforms(u, unidade): o app liga as texturas/uniforms da sua semente  */
+let querSalvar = false, nomeArquivo = 'feedback';
+function desenharQuadro(now, dt, mod = {}, semUniforms = null) {
+  acaso(now, dt);
+  const Rv = AC.v, ac = P.Acaso, esc = camEscala(), mir = espelho();
+  gl.viewport(0, 0, W, H);
+  // 1 semente
+  gl.bindFramebuffer(gl.FRAMEBUFFER, seedF); gl.useProgram(PS.p);
+  if (PS.u.uCanvas) { gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, semT); gl.uniform1i(PS.u.uCanvas, 0); }
+  if (PS.u.uRes) gl.uniform2f(PS.u.uRes, W, H);
+  if (PS.u.uTime) gl.uniform1f(PS.u.uTime, now);
+  if (PS.u.uMirror) gl.uniform1f(PS.u.uMirror, mir);
+  if (PS.u.uCamScale) gl.uniform2f(PS.u.uCamScale, esc[0], esc[1]);
+  if (semUniforms) semUniforms(PS.u, 1);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // 2 feedback (pingue-pongue)
+  const src = A[cur], dst = A[cur ^ 1];
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.useProgram(PF.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(PF.u.uPrev, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, waveT); gl.uniform1i(PF.u.uWave, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, seedT); gl.uniform1i(PF.u.uSeed, 2);
+  gl.uniform2f(PF.u.uRes, W, H);
+  const lfo = Math.sin(now * P.Lfo * 6.2832);
+  gl.uniform4f(PF.u.uT, now, dt, W / H, P.Modo);
+  gl.uniform4f(PF.u.uF1, P.Congelar ? 1 : clamp(P.Rastro + (mod.rastro || 0), 0.85, 0.9995), P.Realce, P.Zoom + Rv.zm * 0.012 * ac + (mod.zoom || 0), P.Rotacao + Rv.rt * 0.025 * ac + (mod.rot || 0));
+  gl.uniform4f(PF.u.uF2, P.Deslocamento * (mod.desl ?? 1), P.Escalaruido, P.Matiz + Rv.hu * 0.06 * ac + (mod.hue || 0), Math.max(0, P.Rgb + (mod.rgb || 0)));
+  gl.uniform4f(PF.u.uF3, P.Semente * (mod.semente ?? 1), mod.linha || 0, 0, P.Congelar ? 1 : 0);
+  gl.uniform4f(PF.u.uF4, 0, 1, mod.pulso || 0, lfo * P.Respiracao);
+  gl.uniform4f(PF.u.uR, Rv.cx * 0.45 * ac + (mod.cx || 0), Rv.cy * 0.3 * ac + (mod.cy || 0), (0.5 + Math.abs(Rv.wp)) * 1.6 * ac, 2 + Math.abs(Rv.wp) * 5);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  cur ^= 1;
+  // 3 saída
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.useProgram(PO.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dst.t); gl.uniform1i(PO.u.uFb, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, camT); gl.uniform1i(PO.u.uCam, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, maskT); gl.uniform1i(PO.u.uMask, 2);
+  gl.uniform1f(PO.u.uBright, P.Brilho); gl.uniform1f(PO.u.uInv, clamp(P.Inverter + (mod.inv || 0), 0, 1)); gl.uniform1f(PO.u.uCamMix, P.Camera || 0);
+  gl.uniform1f(PO.u.uCamOn, CAM.on ? 1 : 0); gl.uniform1f(PO.u.uMirror, mir); gl.uniform2f(PO.u.uCamScale, esc[0], esc[1]);
+  gl.uniform1f(PO.u.uMaskOn, MASK.on ? 1 : 0); gl.uniform1f(PO.u.uFora, MASK.fora); gl.uniform1f(PO.u.uMaskSoft, MASK.suave);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (querSalvar) { querSalvar = false; const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    cv.toBlob((b) => b && saveBlob(b, `${nomeArquivo}-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}.png`), 'image/png'); }
+}
+function registrarSW() { if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {}); }
+
+
+/* =================== FEEDBACK DAS MÃOS =================== */
+nomeArquivo = 'feedback-maos';
+montaPainel([
+  ['Mãos'],
+  ['Pontas', 'Luz das pontas dos dedos', 0.012, 0, 0.04, 0.001],
+  ['Esqueleto', 'Luz do esqueleto', 0.35, 0, 1, 0.01],
+  ['Pinca', 'Espessura da pinça', 0.022, 0.005, 0.08, 0.001],
+  ['Zoommao', 'Abrir/fechar → zoom', 0.014, 0, 0.04, 0.0005],
+  ['Rotmao', 'Inclinação → giro', 0.03, 0, 0.1, 0.001],
+  ['Matizmao', 'Altura → cor', 0.08, 0, 0.3, 0.005],
+  ['Velmao', 'Velocidade → derreter', 1.5, 0, 5, 0.05],
+  ['Rgbmao', 'Distância entre mãos → RGB', 3, 0, 8, 0.1],
+  ['Centromao', 'Centro segue a mão', 0.5, 0, 1, 0.01],
+  ['Suave', 'Suavização do rastreamento', 0.45, 0, 0.9, 0.01],
+  ['Entradas'],
+  ['Camera', 'Imagem da câmera (0 = transparente)', 0, 0, 1, 0.01],
+], { Modo: 3, Zoom: 0.001, Acaso: 0.45, Rastro: 0.978 });
+ligaTopo();
+const mapa = (v) => { $('mapa').hidden = !v; };
+$('tMapa').onclick = () => mapa(true); $('eMapa').onclick = () => mapa(true);
+$('mFechar').onclick = () => mapa(false); $('mImprimir').onclick = () => print();
+addEventListener('keydown', (e) => { const k = e.key.toLowerCase(); if (k === 'c') limpar(); if (k === ' ') setCongelar(!P.Congelar); if (k === 'escape') mapa(false); });
+
+/* ---------------- MediaPipe ---------------- */
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15';
+const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const LIG = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const PONTAS = [4, 8, 12, 16, 20];
+let det = null, carregando = null;
+async function carregarMaos() {
+  if (det) return det; if (carregando) return carregando;
+  carregando = (async () => {
+    const mod = await import(MP + '/vision_bundle.mjs');
+    const vision = await mod.FilesetResolver.forVisionTasks(MP + '/wasm');
+    const o = (d) => ({ baseOptions: { modelAssetPath: HAND_MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
+    try { det = await mod.HandLandmarker.createFromOptions(vision, o('GPU')); } catch (e) { det = await mod.HandLandmarker.createFromOptions(vision, o('CPU')); }
+    return det;
+  })();
+  return carregando;
+}
+
+// mãos rastreadas (coordenadas de tela 0–1, y para baixo)
+const MAOS = [];   // { pts:[[x,y]...21], vista, ab, roll, pinca, cx, cy, vel, cor, pcx, pcy, traco:[x,y]|null }
+let ultimoTs = -1, fechadas = 0;
+function rastrear(now, dt) {
+  if (!det || !CAM.on || !CAM.novo) { if (!CAM.on) MAOS.length = 0; return; }
+  let ts = performance.now(); if (ts <= ultimoTs) ts = ultimoTs + 1; ultimoTs = ts;
+  let r; try { r = det.detectForVideo(video, ts); } catch (e) { return; }
+  const vistas = r.landmarks || [], lados = r.handednesses || r.handedness || [];
+  const novas = vistas.map((lm, i) => ({ lm, lado: (lados[i] && lados[i][0] && lados[i][0].categoryName) || '' }));
+  // associa por proximidade às mãos já conhecidas
+  const usadas = new Set();
+  for (const m of MAOS) m.vista = false;
+  for (const nv of novas) {
+    const p9 = camParaTela(nv.lm[9].x, nv.lm[9].y);
+    let melhor = null, dm = 0.35;
+    for (const m of MAOS) { if (usadas.has(m)) continue; const d = Math.hypot(m.cx - p9[0], m.cy - p9[1]); if (d < dm) { dm = d; melhor = m; } }
+    if (!melhor) { melhor = { pts: nv.lm.map((p) => camParaTela(p.x, p.y)), cx: p9[0], cy: p9[1], ab: 0.5, roll: 0, vel: 0, cor: MAOS.length ? 0.1 : 0.58, traco: null, perdida: 0 }; MAOS.push(melhor); }
+    usadas.add(melhor); melhor.vista = true; melhor.perdida = 0;
+    const k = 1 - P.Suave;
+    nv.lm.forEach((p, j) => { const s = camParaTela(p.x, p.y); melhor.pts[j][0] += (s[0] - melhor.pts[j][0]) * k; melhor.pts[j][1] += (s[1] - melhor.pts[j][1]) * k; });
+    const q = melhor.pts, asp = W / H, d = (a, b) => Math.hypot((q[a][0] - q[b][0]) * asp, q[a][1] - q[b][1]);
+    const palma = Math.max(1e-3, d(0, 9));
+    const pontas = PONTAS.slice(1).reduce((s, t) => s + d(t, 0), 0) / 4 / palma;
+    melhor.ab = clamp((pontas - 1.05) / 0.85, 0, 1);
+    melhor.pinca = d(4, 8) / palma < 0.32 && melhor.ab > 0.15;
+    const ang = Math.atan2(-(q[9][1] - q[0][1]), (q[9][0] - q[0][0]) * asp);   // 90° = mão de pé
+    let roll = ang - Math.PI / 2; if (roll > Math.PI) roll -= 2 * Math.PI; if (roll < -Math.PI) roll += 2 * Math.PI;
+    melhor.roll = Math.abs(roll) < 0.18 ? 0 : roll - Math.sign(roll) * 0.18;
+    const ncx = q[9][0], ncy = q[9][1];
+    melhor.vel = lag(melhor.vel, Math.hypot((ncx - melhor.cx) * asp, ncy - melhor.cy) / Math.max(dt, 1 / 60), 0.05, 0.3, dt);
+    melhor.pcx = melhor.cx; melhor.pcy = melhor.cy; melhor.cx = ncx; melhor.cy = ncy;
+  }
+  for (let i = MAOS.length - 1; i >= 0; i--) if (!MAOS[i].vista && ++MAOS[i].perdida > 8) MAOS.splice(i, 1);
+}
+
+// gestos → modulações (com inércia, para não tremer)
+const G = { zoom: 0, rot: 0, hue: 0, desl: 1, rgb: 0, cx: 0, cy: 0 };
+function gestos(now, dt) {
+  const vis = MAOS.filter((m) => m.vista);
+  let zoom = 0, rot = 0, hue = 0, vel = 0, rgb = 0, cx = 0, cy = 0;
+  if (vis.length) {
+    for (const m of vis) { zoom += (m.ab - 0.5) * 2; rot += m.roll; hue += (0.5 - m.cy) * 2; vel = Math.max(vel, m.vel); cx += m.cx; cy += m.cy; }
+    zoom /= vis.length; rot /= vis.length; hue /= vis.length; cx /= vis.length; cy /= vis.length;
+    if (vis.length === 2) rgb = Math.hypot((vis[0].cx - vis[1].cx) * W / H, vis[0].cy - vis[1].cy);
+    const todasFechadas = vis.length === 2 && vis.every((m) => m.ab < 0.12);
+    fechadas = todasFechadas ? fechadas + dt : 0;
+    if (fechadas > 1) { fechadas = -2; limpar(); dica('Tela limpa', 900); }
+  }
+  const a = vis.length ? 1 : 0, asp = W / H;
+  G.zoom = lag(G.zoom, zoom * P.Zoommao * a, 0.12, 0.4, dt);
+  G.rot = lag(G.rot, -rot * P.Rotmao * a, 0.12, 0.4, dt);
+  G.hue = lag(G.hue, hue * P.Matizmao * a, 0.2, 0.6, dt);
+  G.desl = lag(G.desl, 1 + Math.min(vel, 3) * P.Velmao * a, 0.05, 0.5, dt);
+  G.rgb = lag(G.rgb, rgb * P.Rgbmao * a, 0.1, 0.4, dt);
+  G.cx = lag(G.cx, a ? (cx - 0.5) * asp * P.Centromao : 0, 0.25, 1.2, dt);
+  G.cy = lag(G.cy, a ? (0.5 - cy) * P.Centromao : 0, 0.25, 1.2, dt);
+  return G;
+}
+
+// semente: esqueleto, pontas e pinça
+const hsl = (t, l = 60, a = 1) => `hsla(${(((t % 1) + 1) % 1) * 360},95%,${l}%,${a})`;
+function desenharSemente(now) {
+  const w = semCanvas.width, h = semCanvas.height;
+  sctx.globalCompositeOperation = 'source-over'; sctx.fillStyle = '#000'; sctx.fillRect(0, 0, w, h);
+  sctx.globalCompositeOperation = 'lighter'; sctx.lineCap = 'round';
+  for (const m of MAOS) {
+    if (!m.vista) { m.traco = null; continue; }
+    const q = m.pts, cor = m.cor + now * 0.05;
+    if (P.Esqueleto > 0) {
+      sctx.strokeStyle = hsl(cor + 0.08, 55, P.Esqueleto); sctx.lineWidth = Math.max(1, h * 0.0035);
+      sctx.beginPath(); for (const [a, b] of LIG) { sctx.moveTo(q[a][0] * w, q[a][1] * h); sctx.lineTo(q[b][0] * w, q[b][1] * h); } sctx.stroke();
+    }
+    if (P.Pontas > 0) {
+      const r = P.Pontas * h * (0.6 + m.ab * 0.8);
+      PONTAS.forEach((t, i) => { sctx.fillStyle = hsl(cor + i * 0.06, 62); sctx.beginPath(); sctx.arc(q[t][0] * w, q[t][1] * h, r, 0, 6.2832); sctx.fill(); });
+    }
+    if (m.pinca) {
+      const x = (q[4][0] + q[8][0]) / 2, y = (q[4][1] + q[8][1]) / 2;
+      const [x0, y0] = m.traco || [x, y];
+      sctx.strokeStyle = hsl(cor + 0.5, 64); sctx.lineWidth = Math.max(2, P.Pinca * h * 2);
+      sctx.beginPath(); sctx.moveTo(x0 * w, y0 * h); sctx.lineTo(x * w + 0.01, y * h); sctx.stroke();
+      m.traco = [x, y];
+    } else m.traco = null;
+  }
+  subirCanvas();
+}
+
+function estado() {
+  const vis = MAOS.filter((m) => m.vista);
+  const txt = !CAM.on ? 'sem câmera' : !det ? 'carregando o rastreamento…' : !vis.length ? 'mostre as mãos' :
+    vis.map((m) => (m.pinca ? '🤏 pinça' : m.ab > 0.65 ? '🖐 aberta' : m.ab < 0.2 ? '✊ fechada' : '✋')).join(' · ');
+  $('estado').innerHTML = `<b>${MODOS[P.Modo]}</b> · ${txt}`;
+}
+
+/* ---------------- laço ---------------- */
+let tAnt = performance.now(), tEst = 0;
+CAM.precisaTextura = false;
+function quadro(ms) {
+  requestAnimationFrame(quadro);
+  const now = ms / 1000, dt = clamp((ms - tAnt) / 1000, 1 / 240, 0.1); tAnt = ms;
+  alocar(); subirCamera(); lerAudio(dt, 0);
+  rastrear(now, dt);
+  const g = gestos(now, dt);
+  desenharSemente(now);
+  desenharQuadro(now, dt, { zoom: g.zoom, rot: g.rot, hue: g.hue, desl: g.desl, rgb: g.rgb, cx: g.cx, cy: g.cy });
+  if (now - tEst > 0.25) { tEst = now; estado(); }
+}
+async function comecar(qual) {
+  entrada(false); mapa(false); dica('Ligando a câmera…', 1500);
+  const ok = await ligarCamera(qual === 'tras' ? 'environment' : 'user', 640, 480);
+  if (!ok) { dica('Câmera bloqueada: libere o acesso à câmera no navegador.', 5000); return; }
+  dica('Carregando o rastreamento das mãos…', 4000);
+  try { await carregarMaos(); dica('Mostre as mãos para a câmera', 3000); }
+  catch (e) { console.error(e); dica('Não foi possível carregar o rastreamento (precisa de internet na 1ª vez).', 6000); }
+}
+$('eCamF').onclick = () => comecar('frente');
+$('eCamT').onclick = () => comecar('tras');
+cv.addEventListener('pointerdown', () => { if (!document.body.classList.contains('nopanel') && matchMedia('(max-width:999px)').matches) painel(false); });
+alocar(); requestAnimationFrame(quadro); registrarSW();
+window.__fb = { P, MAOS, G, gl };
+</script>
+</body></html>

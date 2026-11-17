@@ -59,6 +59,8 @@ input:focus{border-color:var(--gold)}
 .cell.preview{background:rgba(255,201,74,.55)}
 .cell.preview.bad{background:rgba(255,90,60,.55)}
 .cell.miss::after{content:"";width:28%;height:28%;border-radius:50%;background:var(--miss);opacity:.9}
+.cell.auto{background:#0f2f4a;cursor:default}
+.cell.auto::after{opacity:.35}
 .cell.hit{background:#4a1b14}
 .cell.hit.ship{background:#6b2a20}
 .cell.hit::after{content:"✕";color:var(--hit);font-weight:900;font-size:clamp(12px,4vw,20px);line-height:1}
@@ -117,7 +119,7 @@ input:focus{border-color:var(--gold)}
     </div>
     <div class="card">
       <h2>Regras rápidas</h2>
-      <p style="margin:0">Tabuleiro 10×10 com 5 navios: porta-aviões (5), encouraçado (4), cruzador (3), submarino (3) e destróier (2). Cada um dá um tiro por vez; <b>se acertar, atira de novo</b>. Vence quem afundar a frota inteira do outro.</p>
+      <p style="margin:0">Tabuleiro 10×10 com 5 navios: porta-aviões (5), encouraçado (4), cruzador (3), submarino (3) e destróier (2). Cada jogador dá <b>3 tiros por rodada</b>, acertando ou não. <b>Nenhum navio pode encostar em outro, nem na diagonal</b> — por isso, quando um navio afunda, a água em volta dele já aparece marcada. Vence quem afundar a frota inteira do outro.</p>
     </div>
   </section>
 
@@ -206,7 +208,7 @@ const S = {
   shots:{},             // meus tiros        "r,c" -> 'hit'|'miss'|'sunk'
   enemySunk:[],         // nomes afundados do inimigo
   myReady:false, opReady:false,
-  myTurn:false, started:false, over:false, waiting:false,
+  myTurn:false, shotsLeft:0, oppShotsLeft:0, started:false, over:false, waiting:false,
   wins:0, losses:0, rematchMe:false, rematchOp:false, firstNext:null,
 };
 
@@ -278,17 +280,19 @@ function occupied(exceptIdx){
 }
 function canPlace(idx,r,c,h){
   const s=S.ships[idx].s, occ=occupied(idx);
-  for(let i=0;i<s;i++){ const rr=h?r:r+i, cc=h?c+i:c; if(rr<0||cc<0||rr>=N||cc>=N) return false; if(occ[key(rr,cc)]!=null) return false; }
+  for(let i=0;i<s;i++){ const rr=h?r:r+i, cc=h?c+i:c; if(rr<0||cc<0||rr>=N||cc>=N) return false;
+    for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) if(occ[key(rr+dr,cc+dc)]!=null) return false; }
   return true;
 }
 function resetFleet(){ S.ships=FLEET.map((f,i)=>({id:i,n:f.n,s:f.s,r:null,c:null,h:true,hits:0})); S.sel=0; }
-function randomFleet(){
+function randomFleet(attempt=0){
   resetFleet();
   for(let i=0;i<S.ships.length;i++){
     let ok=false, guard=0;
     while(!ok && guard++<1000){ const h=Math.random()<.5, r=Math.floor(Math.random()*N), c=Math.floor(Math.random()*N);
       if(canPlace(i,r,c,h)){ Object.assign(S.ships[i],{r,c,h}); ok=true; } }
   }
+  if(S.ships.some(s=>s.r==null) && attempt<50) return randomFleet(attempt+1);
   S.sel=-1;
 }
 function nextUnplaced(){ const i=S.ships.findIndex(s=>s.r==null); return i; }
@@ -324,7 +328,7 @@ function onPlaceCell(r,c){
   if(canPlace(S.sel,rr,cc,S.horiz)){
     Object.assign(S.ships[S.sel],{r:rr,c:cc,h:S.horiz}); sfx("ping"); vib(15);
     S.sel=nextUnplaced();
-  } else { toast("Não cabe aí"); vib([30,40,30]); }
+  } else { toast("Não cabe aí — navios não podem encostar"); vib([30,40,30]); }
   renderPlace();
 }
 
@@ -334,7 +338,7 @@ function renderBattle(lastEnemy, lastMine){
   const ec=$("enemy-board")._cells;
   for(let r=0;r<N;r++) for(let c=0;c<N;c++){
     const v=S.shots[key(r,c)], d=ec[r][c];
-    d.className="cell"+(v==="miss"?" miss":"")+(v==="hit"?" hit":"")+(v==="sunk"?" hit sunk":"");
+    d.className="cell"+(v==="miss"?" miss":"")+(v==="auto"?" miss auto":"")+(v==="hit"?" hit":"")+(v==="sunk"?" hit sunk":"");
   }
   if(lastEnemy){ const d=ec[lastEnemy[0]][lastEnemy[1]]; d.classList.add("last", S.shots[key(...lastEnemy)]==="miss"?"splash":"boom"); }
   // mine
@@ -353,11 +357,11 @@ function renderBattle(lastEnemy, lastMine){
   // banner
   const tb=$("turn-banner");
   if(S.over){ tb.textContent="Fim de jogo"; tb.className="banner"; }
-  else if(S.myTurn){ tb.textContent="🎯 Sua vez — escolha um alvo"; tb.className="banner mine"; }
-  else { tb.textContent=`⏳ Vez de ${S.opName}`; tb.className="banner wait"; }
+  else if(S.myTurn){ tb.textContent=`🎯 Sua vez — tiro ${4-S.shotsLeft} de 3`; tb.className="banner mine"; }
+  else { tb.textContent=`⏳ Vez de ${S.opName} — tiro ${Math.min(3,4-S.oppShotsLeft)} de 3`; tb.className="banner wait"; }
   $("enemy-board").classList.toggle("locked", !S.myTurn||S.over);
   $("enemy-title").textContent="Mar de "+S.opName;
-  const myShots=Object.keys(S.shots).length, myHits=Object.values(S.shots).filter(v=>v!=="miss").length;
+  const myShots=Object.values(S.shots).filter(v=>v!=="auto").length, myHits=Object.values(S.shots).filter(v=>v==="hit"||v==="sunk").length;
   const opShots=Object.keys(S.received).length, opHits=Object.values(S.received).filter(v=>v==="hit").length;
   $("stat-me").textContent=`Você: ${myHits}/${myShots} acertos`;
   $("stat-op").textContent=`${S.opName}: ${opHits}/${opShots} · Placar ${S.wins}×${S.losses}`;
@@ -365,7 +369,7 @@ function renderBattle(lastEnemy, lastMine){
 
 function onFire(r,c){
   if(!S.myTurn||S.over||S.waiting) return;
-  if(S.shots[key(r,c)]) { toast("Já atirou aí"); return; }
+  if(S.shots[key(r,c)]) { toast(S.shots[key(r,c)]==="auto"?"Água — encosta num navio afundado":"Já atirou aí"); return; }
   S.waiting=true; ac();
   send({t:"shot", r, c});
 }
@@ -461,6 +465,7 @@ function maybeStart(){
   S.started=true;
   // primeira partida: quem criou a sala começa; depois alterna (perdedor começa)
   S.myTurn = S.firstNext==null ? S.host : S.firstNext;
+  S.shotsLeft = S.myTurn?3:0; S.oppShotsLeft = S.myTurn?0:3;
   buildBoard($("enemy-board"), onFire); buildBoard($("my-board"), null);
   show("s-battle"); renderBattle();
   toast(S.myTurn?"Você começa!":S.opName+" começa");
@@ -478,7 +483,8 @@ function receiveShot(r,c){
   send({t:"result",r,c,res,sunk,cells,over});
   if(res==="hit"){ sfx(sunk?"sunk":"boom"); vib(sunk?[80,60,160]:60); } else sfx("splash");
   // se errou, passa a vez para mim; se acertou, ele joga de novo
-  S.myTurn = res==="miss";
+  S.oppShotsLeft--;
+  if(S.oppShotsLeft<=0 && !over){ S.myTurn=true; S.shotsLeft=3; setTimeout(()=>{ if(S.myTurn&&!S.over&&S.shotsLeft===3){ toast("🎯 Sua vez: 3 tiros"); sfx("ping"); } },700); }
   if(over){ S.over=true; S.losses++; S.firstNext=true; }
   renderBattle(null,[r,c]);
   if(sunk) toast(`${S.opName} afundou seu ${sunk}!`,2200);
@@ -489,21 +495,25 @@ function applyResult(m){
   if(m.dup) return;
   const k=key(m.r,m.c);
   S.shots[k]= m.res==="hit"?"hit":"miss";
-  if(m.sunk){ S.enemySunk.push(m.sunk); m.cells.forEach(([r,c])=>S.shots[key(r,c)]="sunk"); }
+  if(m.sunk){ S.enemySunk.push(m.sunk);
+    m.cells.forEach(([r,c])=>{ for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ const rr=r+dr, cc=c+dc;
+      if(rr>=0&&cc>=0&&rr<N&&cc<N&&!S.shots[key(rr,cc)]) S.shots[key(rr,cc)]="auto"; } });
+    m.cells.forEach(([r,c])=>S.shots[key(r,c)]="sunk"); }
   if(m.res==="hit"){ sfx(m.sunk?"sunk":"boom"); vib(m.sunk?[80,60,160]:40); } else sfx("splash");
-  S.myTurn = m.res==="hit";
+  S.shotsLeft--;
+  if(S.shotsLeft<=0 && !m.over){ S.myTurn=false; S.oppShotsLeft=3; }
   if(m.over){ S.over=true; S.wins++; S.firstNext=false; }
   renderBattle([m.r,m.c],null);
   if(m.sunk) toast(`💥 Você afundou o ${m.sunk}!`,2200);
-  else if(m.res==="hit") toast(`Fogo! ${coord(m.r,m.c)} — atire de novo`,1200);
-  else toast(`Água em ${coord(m.r,m.c)}`,1000);
+  else if(m.res==="hit") toast(`Fogo em ${coord(m.r,m.c)}!`+(S.myTurn?` Faltam ${S.shotsLeft}`:""),1200);
+  else toast(`Água em ${coord(m.r,m.c)}`+(S.myTurn?` · faltam ${S.shotsLeft}`:` · vez de ${S.opName}`),1200);
   if(m.over) setTimeout(()=>endGame(true),900);
 }
 function endGame(won){
   sfx(won?"win":"lose"); vib(won?[100,50,100,50,200]:300);
   $("end-emoji").textContent=won?"🏆":"🌊";
   $("end-title").textContent=won?"Vitória!":"Sua frota afundou";
-  const myShots=Object.keys(S.shots).length, myHits=Object.values(S.shots).filter(v=>v!=="miss").length;
+  const myShots=Object.values(S.shots).filter(v=>v!=="auto").length, myHits=Object.values(S.shots).filter(v=>v==="hit"||v==="sunk").length;
   $("end-msg").textContent=(won?`Você afundou a frota de ${S.opName} `:`${S.opName} venceu esta. `)+
     `Seus tiros: ${myShots}, acertos: ${myHits} (${myShots?Math.round(myHits/myShots*100):0}%). Placar: ${S.wins} × ${S.losses}.`;
   $("btn-rematch").disabled=false; $("btn-rematch").textContent="Jogar de novo";

@@ -91,13 +91,13 @@ if pai.op(NOME): pai.op(NOME).destroy()
 c = pai.create(baseCOMP, NOME)
 controles(c, [
     ('Copias',   'Cópias (2–6)',        3.0, 2, 6),
-    ('Escala',   'Escala de cada cópia', 0.52, 0.3, 0.8),
-    ('Abertura', 'Distância entre cópias', 0.42, 0.0, 0.8),
+    ('Escala',   'Escala de cada cópia', 0.6, 0.3, 0.8),
+    ('Abertura', 'Distância entre cópias', 0.22, 0.0, 0.45),
     ('Rotacao',  'Rotação',             0.35, -3.1416, 3.1416),
     ('Torcao',   'Torção ao longo do tempo', 0.6, 0.0, 3.0),
-    ('Memoria',  'Memória (decaimento)', 0.93, 0.5, 1.0),
+    ('Memoria',  'Memória (decaimento)', 0.975, 0.5, 1.0),
     ('Matiz',    'Deriva de cor',        0.03, -0.3, 0.3),
-    ('Semente',  'Quantidade de semente', 0.25, 0.0, 1.0),
+    ('Semente',  'Quantidade de semente', 0.7, 0.0, 1.0),
     ('Deriva',   'Deriva aleatória',     0.5, 0.0, 1.0),
     ('Somganho', 'Sensibilidade do som', 1.0, 0.0, 5.0),
     ('Limpar',   'Limpar (segure)',      False, 0, 1),
@@ -136,8 +136,8 @@ void main(){
     acc = hueRot(acc, uB.x * 6.28318) * uA.w;
     // semente: o ruído entra no centro e alimenta o atrator
     vec3 seed = texture(sTD2DInputs[1], uv).rgb;
-    float mask = smoothstep(.10 + lvl*.25, 0., length(p));
-    acc += seed * mask * (uB.w + lvl*2.);
+    float mask = smoothstep(.16 + lvl*.25, 0., length(p));
+    acc += pow(seed, vec3(2.)) * mask * (uB.w + lvl*2.) * 2.5;
     fragColor = TDOutputSwizzle(vec4(min(acc, vec3(4.)), 1.));
 }
 '''
@@ -170,7 +170,9 @@ uniforms(fr, [
 saida = novo(c, nullTOP, 'saida', 600, 0, [fr])
 setp(laco, 'top', saida.name)
 
+final = novo(c, levelTOP, 'final', 800, -150, [saida])
+setp(final, 'brightness1', 1.6); setp(final, 'gamma1', 0.8)
 audio(c, 0, 300)
-janela(c, saida, 800, 0)
-saida.viewer = True
+janela(c, final, 1000, 0)
+final.viewer = True
 fim(c)

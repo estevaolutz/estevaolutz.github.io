@@ -85,12 +85,15 @@ def fim(comp):
 #  As camadas antigas ficam "atrás" das novas: um túnel pseudo-3D feito de contornos.
 #  O som empurra o zoom e alonga a memória. A câmera em si nunca aparece — só as bordas.
 #  Rede:
-#    camera ─► espelho ─► bordas (Edge) ─► nivel_bordas ─┬───────────────► soma (Composite add) ─► saida
+#    camera ─► espelho ─► bordas (Edge) ─► nivel_bordas ─┬───────────────► soma (Composite máximo) ─► saida
 #                                                        └► laco (Feedback) ─► zoom ─► cor ─► memoria ─┘
 NOME = 'bordas_em_profundidade'
 pai = op('/project1') or root
 if pai.op(NOME): pai.op(NOME).destroy()
 c = pai.create(baseCOMP, NOME)
+# câmera compartilhada: no Mac só um Video Device In pode abrir a câmera por vez
+camera_global = pai.op('camera') or pai.create(videodeviceinTOP, 'camera')
+camera_global.nodeX, camera_global.nodeY = -300, -300
 controles(c, [
     ('Zoom',      'Zoom por quadro',        1.012, 0.97, 1.06),
     ('Rotacao',   'Rotação por quadro (graus)', 0.25, -5.0, 5.0),
@@ -98,17 +101,25 @@ controles(c, [
     ('Deslocy',   'Deriva vertical',        0.0, -0.01, 0.01),
     ('Matiz',     'Giro de cor por quadro (graus)', 4.0, -30.0, 30.0),
     ('Memoria',   'Memória (opacidade no laço)', 0.94, 0.5, 0.995),
-    ('Bordas',    'Força das bordas',       4.0, 0.0, 20.0),
+    ('Bordas',    'Força das bordas',       2.0, 0.0, 20.0),
     ('Desfoque',  'Desfoque no laço',       0.0, 0.0, 6.0),
     ('Somganho',  'Sensibilidade do som',   1.0, 0.0, 5.0),
     ('Limpar',    'Limpar (segure)',        False, 0, 1),
 ])
 
-camera = novo(c, videodeviceinTOP, 'camera', 0, 0)
+camera = novo(c, selectTOP, 'camera', 0, 0)
+setp(camera, 'top', camera_global.path)
 esp = novo(c, flipTOP, 'espelho', 150, 0, [camera]); setp(esp, 'flipx', True)
 bordas = novo(c, edgeTOP, 'bordas', 300, 0, [esp])
 setx(bordas, 'strength', 'parent().par.Bordas')
-nb = novo(c, levelTOP, 'nivel_bordas', 450, 0, [bordas])
+setp(bordas, 'blacklevel', 0.18)                     # corta o ruído da câmera
+for ch, fase in (('r', 0), ('g', 2.094), ('b', 4.188)):   # cor das bordas gira devagar
+    setx(bordas, 'edgecolor' + ch, '0.55+0.45*math.sin(absTime.seconds*0.35+%s)' % fase)
+preto = novo(c, constantTOP, 'preto', 300, -120)
+setp(preto, 'outputresolution', 'custom'); setp(preto, 'resolutionw', 1280); setp(preto, 'resolutionh', 720)
+setp(preto, 'colorr', 0); setp(preto, 'colorg', 0); setp(preto, 'colorb', 0); setp(preto, 'alpha', 1)
+sobre = novo(c, compositeTOP, 'sobre_preto', 375, 0, [bordas, preto]); setp(sobre, 'operand', 'over')
+nb = novo(c, levelTOP, 'nivel_bordas', 450, 0, [sobre])
 setp(nb, 'format', 'rgba16float')
 
 laco = novo(c, feedbackTOP, 'laco', 450, -200, [nb])
@@ -128,7 +139,7 @@ mem = novo(c, levelTOP, 'memoria', 1050, -200, [desf])
 setx(mem, 'opacity', 'min(0.999, parent().par.Memoria + %s * 0.04)' % NIVEL)
 
 soma = novo(c, compositeTOP, 'soma', 1200, 0, [nb, mem])
-setp(soma, 'operand', 'add')
+setp(soma, 'operand', 'maximum')   # 'add' satura; máximo mantém o túnel limpo
 saida = novo(c, nullTOP, 'saida', 1350, 0, [soma])
 setp(laco, 'top', saida.name)
 

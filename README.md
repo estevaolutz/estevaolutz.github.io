@@ -40,4 +40,4 @@ Ficam em `touchdesigner/<obra>/`: os scripts e um README com instruções e com 
 - `touchdesigner/feedback-digital` — Feedback Digital v1 (motor do Feedback Lab com câmera, microfone e toque, modo Derreter, acaso). O .toe fica no Desktop, em `Obras audiovisuais/Feedback_Digital_TD`; aqui ficam o shader e as instruções. Versão web para iPad em `feedback-digital/`.
 
 As versões anteriores (mapas 2D, versões para iPad e cópias dos artefatos do Claude) estão na branch `backup-2026-11`.
-- `touchdesigner/feedback-estudos` — três estudos de feedback (Fractal de Vídeo, Derretimento, Bordas em Profundidade). Cada script monta a rede inteira num Base COMP em /project1 quando rodado no Textport; instruções e síntese da pesquisa no LEIA-ME.
+- `touchdesigner/feedback-estudos` — três estudos de feedback (Fractal de Vídeo, Derretimento, Bordas em Profundidade). Cada script monta a rede inteira num Base COMP em /project1 quando rodado no Textport; instruções e síntese da pesquisa no LEIA-ME. O .toe fica no Desktop, em `Obras audiovisuais/Feedback_Estudos_TD`.

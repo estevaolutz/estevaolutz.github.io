@@ -27,6 +27,8 @@ Feedback é a versão digital de apontar a câmera para o monitor que mostra a p
 Os três têm deriva aleatória (o laço nunca se repete), painel ⚙ (tecla H) e tela cheia (F).
 
 ## Projetos TouchDesigner
+Já montados e testados no projeto `Desktop/Obras audiovisuais/Feedback_Estudos_TD/feedback_estudos.toe` (TD 2025.33230). Os três usam uma câmera única em `/project1/camera` (no Mac só um Video Device In abre a câmera por vez).
+
 Cada `.py` monta a rede inteira dentro de um Base COMP em `/project1`.
 
 1. Abra o TD → **Alt+T** (Textport)
@@ -38,6 +40,6 @@ Cada `.py` monta a rede inteira dentro de um Base COMP em `/project1`.
 |---|---|---|
 | `td1_fractal_de_video.py` | IFS por feedback: N cópias reduzidas e giradas do quadro anterior unidas por máximo; ruído semeia o centro | Constant → Feedback → GLSL (+ Noise) → Null |
 | `td2_derretimento.py` | pixel sorting por feedback: pixels claros caem mais rápido; só o movimento da câmera injeta cor | Video In → Null → Feedback (quadro anterior); Constant → Feedback → GLSL → Null |
-| `td3_bordas_em_profundidade.py` | só operadores nativos: Edge → Feedback → Transform → HSV Adjust → Blur → Level → Composite add | sem GLSL, para estudar cada etapa |
+| `td3_bordas_em_profundidade.py` | só operadores nativos: Edge (cor girando) → Feedback → Transform → HSV Adjust → Blur → Level → Composite máximo | sem GLSL, para estudar cada etapa |
 
 Todos têm entrada de microfone (Audio Device In → Analyze RMS → Lag → Math), parâmetro **Limpar** e controles de memória e cor. Se algum nome de parâmetro mudou na sua versão do TD, o script não para: ele lista no Textport o que não conseguiu ajustar.

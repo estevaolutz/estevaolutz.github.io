@@ -92,13 +92,16 @@ NOME = 'derretimento'
 pai = op('/project1') or root
 if pai.op(NOME): pai.op(NOME).destroy()
 c = pai.create(baseCOMP, NOME)
+# câmera compartilhada: no Mac só um Video Device In pode abrir a câmera por vez
+camera_global = pai.op('camera') or pai.create(videodeviceinTOP, 'camera')
+camera_global.nodeX, camera_global.nodeY = -300, -300
 controles(c, [
     ('Queda',     'Velocidade da queda',     1.2, 0.0, 6.0),
     ('Ordenacao', 'Força da ordenação (brilho→velocidade)', 2.0, 0.0, 6.0),
     ('Ondulacao', 'Ondulação lateral',       0.6, 0.0, 4.0),
     ('Memoria',   'Memória (decaimento)',    0.992, 0.9, 1.0),
     ('Matiz',     'Deriva de cor',           0.004, -0.05, 0.05),
-    ('Limiar',    'Limiar de movimento',     0.06, 0.0, 0.4),
+    ('Limiar',    'Limiar de movimento',     0.1, 0.0, 0.4),
     ('Injecao',   'Força da injeção',        0.85, 0.0, 1.0),
     ('Somganho',  'Sensibilidade do som',    1.0, 0.0, 5.0),
     ('Limpar',    'Limpar (segure)',         False, 0, 1),
@@ -137,7 +140,8 @@ void main(){
 }
 '''
 
-camera = novo(c, videodeviceinTOP, 'camera', 0, 150)
+camera = novo(c, selectTOP, 'camera', 0, 150)
+setp(camera, 'top', camera_global.path)
 cam = novo(c, nullTOP, 'cam', 200, 150, [camera])
 cam_ant = novo(c, feedbackTOP, 'cam_anterior', 400, 150, [cam])
 setp(cam_ant, 'top', cam.name)

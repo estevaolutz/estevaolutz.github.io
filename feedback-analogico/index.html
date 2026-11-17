@@ -49,7 +49,7 @@ body.calmo #gear{opacity:0}
   <div id="sec"></div>
   <div class="row"><button id="bCam">📷 Câmera invisível</button><button id="bFs">Tela cheia</button></div>
   <div class="row"><button id="bReset">Restaurar padrões</button></div>
-  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = redemoinho (X) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.</p>
+  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = redemoinho (X) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 (START) = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.<br>Segurando START: direcional ↑/↓ = saturação +/−, ←/→ = velocidade da imagem −/+.</p>
 </div>
 <script>
 'use strict';
@@ -85,6 +85,7 @@ const SPEC = [
     ['Sala', 'Luz da sala (fora da tela)', 0, 0, .3, .001],
     ['Moldura', 'Moldura do monitor (luz)', 0, 0, 1, .01],
     ['Saidanivel', 'Brilho da saída', 1, 0, 1.5, .01],
+    ['Velocidade', 'Velocidade da imagem (1 = normal, 0 = congela)', 1, 0, 3, .01],
   ]],
   ['Entrada', [
     ['Camdeform', 'Câmera deforma o fluxo', .4, 0, 1, .01],
@@ -109,6 +110,7 @@ const SPEC = [
     ['Joybotoes', 'Sensibilidade: botões ganho/cor', 1, 0, 3, .01],
     ['Joyalcance', 'Alcance (limites; 1 = original)', 1, .25, 3, .01],
     ['Joymandala', 'Sensibilidade: mandala (alavanca direita, L3/R3)', 1, 0, 3, .01],
+    ['Joysat', 'Sensibilidade: saturação e velocidade (START + direcional)', 1, 0, 3, .01],
     ['Joydireita', 'Eixos da alavanca direita', 0, 0, 4, 1, 'menu', ['Automático', 'Eixos 2 e 3', 'Eixos 2 e 5', 'Eixos 3 e 4', 'Eixos 5 e 2']],
   ]],
 ];
@@ -280,8 +282,8 @@ void main(){
   fragColor = vec4(col, 1.0);
 }`;
 const SHOW = `#version 300 es
-precision highp float; in vec2 vUV; out vec4 o; uniform sampler2D src; uniform float nivel;
-void main(){ o = vec4(clamp(texture(src, vUV).rgb * nivel, 0., 1.), 1.); }`;
+precision highp float; in vec2 vUV; out vec4 o; uniform sampler2D src, ant; uniform float nivel, mistura;
+void main(){ vec3 c = mix(texture(ant, vUV).rgb, texture(src, vUV).rgb, mistura); o = vec4(clamp(c * nivel, 0., 1.), 1.); }`;
 
 const pBlur = program(BLUR), pMon = program(MONITOR), pShow = program(SHOW);
 
@@ -360,7 +362,7 @@ function alcance(lo, hi, k, nome) {
   if (k > 1) { a = Math.max(a, INFO[nome][3]); b = Math.min(b, INFO[nome][4]); }
   return [a, b];
 }
-let joyAntes = {}, joyNome = '', joyEstado = null;
+let joyAntes = {}, joyNome = '', joyEstado = null, joyShiftUsou = false;
 function lerJoystick(dt) {
   const gps = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   const gp = gps[0]; joyNome = gp ? gp.id : '';
@@ -372,6 +374,9 @@ function lerJoystick(dt) {
     const i = Math.round((ax[9] + 1) / (2 / 7)); const D = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]; [hx, hy] = D[i] || [0, 0];
   }
   const par = PARES_DIREITA[P.Joydireita | 0] || (gp.mapping === 'standard' || ax.length < 6 ? [2, 3] : [2, 5]);
+  // segurando START (botão 10): direcional ↑↓ = saturação, ←→ = velocidade da imagem; a mira fica parada
+  const shift = bt(9); let sx = 0, sy = 0;
+  if (shift) { sx = hx; sy = hy; if (hx || hy) joyShiftUsou = true; hx = 0; hy = 0; }
   const v = { x: ax[0] || 0, y: ax[1] || 0, hx, hy, rx: ax[par[0]] || 0, ry: ax[par[1]] || 0 }; // y positivo = para baixo, como no TD
   joyEstado = { ax, bt: gp.buttons.map((b, i) => b.pressed ? i + 1 : 0).filter(Boolean), par };
   const passo = Math.min(.1, dt) * P.Joyvel, zona = Math.min(.9, P.Joyzona), curva = Math.max(.1, P.Joycurva), k = P.Joyalcance;
@@ -394,8 +399,14 @@ function lerJoystick(dt) {
   for (const [b, nome, d, vel, lo, hi] of SEGURAR_MANDALA) if (bt(b)) {
     P[nome] = Math.max(lo, Math.min(hi, P[nome] + d * vel * P.Joymandala * passo)); mudou = true;
   }
+  if (sy) { P.Saturacao = Math.max(0, Math.min(2, P.Saturacao - sy * .6 * P.Joysat * passo)); mudou = true; }
+  if (sx) { P.Velocidade = Math.max(0, Math.min(3, P.Velocidade + sx * .8 * P.Joysat * passo)); mudou = true; }
+  // START sozinho (sem mexer no direcional) = próxima receita, ao soltar
+  if (shift && !joyAntes.start) joyShiftUsou = false;
+  if (!shift && joyAntes.start && !joyShiftUsou) proximaReceita();
+  joyAntes.start = shift;
   for (const [b, f] of [[0, flash], [1, limpar], [6, () => { simetria(-1); syncPanel(); save(); }], [7, () => { simetria(1); syncPanel(); save(); }],
-                        [8, () => { P.Dobra = P.Dobra > .5 ? 0 : 1; syncPanel(); save(); }], [9, proximaReceita]]) { const agora = bt(b); if (agora && !joyAntes[b]) f(); joyAntes[b] = agora; }
+                        [8, () => { P.Dobra = P.Dobra > .5 ? 0 : 1; syncPanel(); save(); }]]) { const agora = bt(b); if (agora && !joyAntes[b]) f(); joyAntes[b] = agora; }
   if (mudou) { syncPanel(); save(); }
 }
 
@@ -515,7 +526,7 @@ addEventListener('keydown', e => {
 });
 
 // ===== laço =====
-const t0 = performance.now(); let tAnt = t0, joyT = 0;
+const t0 = performance.now(); let tAnt = t0, joyT = 0, acum = 0, tSim = 0;
 function frame(now) {
   const t = (now - t0) / 1000, dt = Math.min(.1, (now - tAnt) / 1000); tAnt = now;
   lerJoystick(dt);
@@ -523,8 +534,14 @@ function frame(now) {
     if (j) j.innerHTML = !joyNome ? 'Nenhum joystick (aperte um botão dele para conectar).' : 'Conectado: ' + joyNome + (joyEstado ?
       '<br>Eixos: ' + joyEstado.ax.map((a, i) => i + ' ' + (Math.abs(a) > 1.01 ? '–' : a.toFixed(2))).join(' · ') +
       '<br>Alavanca direita lendo eixos ' + joyEstado.par.join(' e ') + ' · Botões apertados: ' + (joyEstado.bt.join(', ') || 'nenhum') : ''); }
-  for (let n = 0; n < TURBO; n++) passo(t + n / 60, n ? 1 / 60 : dt);
-  use(pShow, { src: loopA.tex, nivel: P.Saidanivel }, null);
+  // velocidade: quantos passos do laço por quadro (60 por segundo = 1). Abaixo de 1, a tela
+  // mistura o passo anterior com o atual para a imagem andar devagar sem engasgar.
+  acum += Math.max(0, P.Velocidade) * dt * 60 * TURBO;
+  let n = 0;
+  while (acum >= 1 && n < 4 * TURBO) { tSim += 1 / 60; passo(tSim, 1 / 60); acum -= 1; n++; }
+  if (n >= 4 * TURBO) acum = Math.min(acum, 1);
+  const lento = P.Velocidade < .999;
+  use(pShow, { src: loopA.tex, ant: lento ? loopB.tex : loopA.tex, nivel: P.Saidanivel, mistura: lento ? Math.min(1, acum) : 1 }, null);
   window.__frames++;
   requestAnimationFrame(frame);
 }

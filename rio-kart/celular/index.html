@@ -254,6 +254,7 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 //  RIO KART — núcleo: pistas reais, relevo real, consultas
 // ============================================================
 const MOBILE = !!window.LK_MOBILE;
+const SEG = (n) => MOBILE && n > 8 ? Math.max(8, Math.round(n * 0.45)) : n;   // celular: menos polígonos nos pilotos e karts
 const S = 0.22;                 // unidades do jogo por metro real (horizontal e vertical)
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -888,7 +889,9 @@ function buildRoad(GR) {
       const lat = sd * (HW + 1.45 + r * (edge - HW - 1.75)), p = trackPos(s + hash(s) * step, lat);
       (r < (TR.style === 'cristo' ? 0.15 : 0.3) ? flowers : tufts).push([p.x, p.y + 0.06, p.z, r]);
     }
-    const mk = (geo, list, mat, cols) => { if (!list.length) return; const im = new THREE.InstancedMesh(geo, mat, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
+    const mk = (geo, list, mat, cols) => { if (!list.length) return;
+      if (MOBILE && !list.chunk) { const cm = new Map(); for (const t of list) { const key = Math.floor(t[0] / 160) + ',' + Math.floor(t[2] / 160); if (!cm.has(key)) { const a = []; a.chunk = true; cm.set(key, a); } cm.get(key).push(t); } for (const l of cm.values()) mk(geo, l, mat, cols); return; }
+      const im = new THREE.InstancedMesh(geo, mat, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
       list.forEach((t, i) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t[3] * 40); const sc = 0.8 + hash(i * 1.7) * 0.7; m4.compose(new THREE.Vector3(t[0], t[1], t[2]), q, new THREE.Vector3(sc, sc, sc)); im.setMatrixAt(i, m4); im.setColorAt(i, c.set(cols[Math.floor(hash(i * 5.3) * cols.length)])); });
       GR.add(im); };
     mk(tuftGeo, tufts, windy(new THREE.MeshStandardMaterial({ roughness: 0.9 }), 0.12, 2.2), TR.style === 'cristo' ? ['#6f8a3a', '#7d9a45', '#5f7a35'] : ['#5aa83f', '#6fbb4a', '#4c9a38', '#7cc552']);
@@ -1013,7 +1016,7 @@ function buildVegetation(GR) {
     }
   }
   // geometria: copa em 3 bolhas
-  const canopyGeo = mergeGeos([new THREE.IcosahedronGeometry(1, 1), new THREE.IcosahedronGeometry(0.72, 1).translate(0.55, -0.25, 0.2), new THREE.IcosahedronGeometry(0.68, 1).translate(-0.45, -0.2, -0.35)]);
+  const CD = MOBILE ? 0 : 1, canopyGeo = mergeGeos([new THREE.IcosahedronGeometry(1, CD), new THREE.IcosahedronGeometry(0.72, CD).translate(0.55, -0.25, 0.2), new THREE.IcosahedronGeometry(0.68, CD).translate(-0.45, -0.2, -0.35)]);
   const farGeo = new THREE.IcosahedronGeometry(1, 0);
   const trunkGeo = new THREE.CylinderGeometry(0.1, 0.17, 1, 5);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), col = new THREE.Color(), up = new THREE.Vector3(0, 1, 0);
@@ -1021,7 +1024,9 @@ function buildVegetation(GR) {
   const nearT = [], farT = [];
   for (const t of trees) (nearestTrack(t[0], t[1], 6)[0] < 200 ? nearT : farT).push(t);
   const canopyMat = windy(new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), 0.08, 1.1);
-  for (const [list, geo, withTrunk] of [[nearT, canopyGeo, true], [farT, farGeo, false]]) {
+  const treeSets = [];
+  for (const [list, geo, wt] of [[nearT, canopyGeo, true], [farT, farGeo, false]]) { if (!MOBILE) { treeSets.push([list, geo, wt]); continue; } const cm = new Map(); for (const t of list) { const key = Math.floor(t[0] / 220) + ',' + Math.floor(t[1] / 220); if (!cm.has(key)) cm.set(key, []); cm.get(key).push(t); } for (const l of cm.values()) treeSets.push([l, geo, wt]); }
+  for (const [list, geo, withTrunk] of treeSets) {
     const canopy = new THREE.InstancedMesh(geo, canopyMat, list.length);
     const trunk = withTrunk ? new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 }), list.length) : null;
     list.forEach((t, k) => {
@@ -1176,6 +1181,7 @@ function buildLandmarks(GR) {
   }
   if (TR.style === 'cristo') { scene.fog.near = 260; scene.fog.far = 2600; scene.fog.color.set(0xdfe9ee); }
   else { scene.fog.near = 500; scene.fog.far = 4200; scene.fog.color.set(0xd8eaf6); }
+  scene.fog.userData = { near: scene.fog.near, far: scene.fog.far };
 }
 function kiosk(x, y, z) {
   const g = new THREE.Group();
@@ -1392,14 +1398,14 @@ function makeKart(cfg) {
   const seat = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 0.3), darkMetal); seat.position.set(0, 1.25, 0.95); seat.rotation.x = -0.25; seat.castShadow = true; body.add(seat);
   const cock = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.25, 1.6), darkMetal); cock.position.set(0, 0.92, 0.2); body.add(cock);
   // laterais
-  for (const s of [-1, 1]) { const pod = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.5, 6, 12), acc); pod.rotation.x = Math.PI / 2; pod.position.set(s * 0.95, 0.55, 0.15); pod.castShadow = true; body.add(pod); }
+  for (const s of [-1, 1]) { const pod = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.5, SEG(6), SEG(12)), acc); pod.rotation.x = Math.PI / 2; pod.position.set(s * 0.95, 0.55, 0.15); pod.castShadow = true; body.add(pod); }
   // asa dianteira e para-choque
   const wing = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.12, 0.55), acc); wing.position.set(0, 0.32, -2.2); wing.castShadow = true; body.add(wing);
   for (const s of [-1, 1]) { const ep = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.6), main); ep.position.set(s * 1.15, 0.4, -2.2); body.add(ep); }
-  for (const s of [-1, 1]) { const hl = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffffaa, emissiveIntensity: 1.2 })); hl.position.set(s * 0.5, 0.7, -2.15); body.add(hl); }
+  for (const s of [-1, 1]) { const hl = new THREE.Mesh(new THREE.SphereGeometry(0.13, SEG(12), SEG(10)), new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffffaa, emissiveIntensity: 1.2 })); hl.position.set(s * 0.5, 0.7, -2.15); body.add(hl); }
   // número no bico (bolacha redonda)
   { const nt = textCanvas(cfg.number, { w: 128, h: 128, bg: '#ffffff', fg: '#222', border: cfg.kart2, radius: 64, font: 'bold 84px Fredoka, sans-serif' });
-    const ro = new THREE.Mesh(new THREE.CircleGeometry(0.3, 24), new THREE.MeshStandardMaterial({ map: nt, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 })); ro.position.set(0, 0.86, -1.55); ro.rotation.x = -Math.PI / 2 + 0.22; body.add(ro); }
+    const ro = new THREE.Mesh(new THREE.CircleGeometry(0.3, SEG(24)), new THREE.MeshStandardMaterial({ map: nt, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 })); ro.position.set(0, 0.86, -1.55); ro.rotation.x = -Math.PI / 2 + 0.22; body.add(ro); }
   // aerofólio traseiro com número
   const spoilerT = textCanvas(cfg.rear || cfg.number, { w: 400, h: 104, bg: cfg.kart2, fg: '#222', border: '#fff', font: 'bold 72px Fredoka, sans-serif' });   // apelido atrás do kart
   const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 0.1), [acc, acc, acc, acc, new THREE.MeshStandardMaterial({ map: spoilerT, roughness: 0.4 }), acc]); spoiler.position.set(0, 1.7, 1.95); spoiler.castShadow = true; body.add(spoiler);
@@ -1411,19 +1417,19 @@ function makeKart(cfg) {
   const eng = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.6), darkMetal); eng.position.set(0, 0.85, 1.55); body.add(eng);
   const exhausts = [];
   for (const s of [-1, 1]) {
-    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.7, 12), chrome); ex.rotation.x = Math.PI / 2 - 0.25; ex.position.set(s * 0.32, 0.95, 2.05); body.add(ex);
-    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.17, 1.0, 10), new THREE.MeshBasicMaterial({ color: 0xff9a2a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); fl.rotation.x = Math.PI / 2; fl.position.set(s * 0.32, 1.05, 2.75); fl.visible = false; body.add(fl); exhausts.push(fl);
+    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.7, SEG(12)), chrome); ex.rotation.x = Math.PI / 2 - 0.25; ex.position.set(s * 0.32, 0.95, 2.05); body.add(ex);
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.17, 1.0, SEG(10)), new THREE.MeshBasicMaterial({ color: 0xff9a2a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); fl.rotation.x = Math.PI / 2; fl.position.set(s * 0.32, 1.05, 2.75); fl.visible = false; body.add(fl); exhausts.push(fl);
   }
   // volante
   const sw = new THREE.Group(); sw.position.set(0, 1.38, -0.62); sw.rotation.x = -0.95; body.add(sw);
-  sw.add(new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, 8, 18), rubber)); const sp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.05), darkMetal); sw.add(sp);
+  sw.add(new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, SEG(8), SEG(18)), rubber)); const sp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.05), darkMetal); sw.add(sp);
   const col = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6), darkMetal); col.position.set(0, 1.12, -0.85); col.rotation.x = -0.95; body.add(col);
   // rodas: pneu gordo + aro com raios
   const wheels = [];
-  const tireG = new THREE.TorusGeometry(0.32, 0.17, 14, 28); tireG.rotateY(Math.PI / 2);
-  const discG = new THREE.CylinderGeometry(0.2, 0.2, 0.04, 16); discG.rotateZ(Math.PI / 2);
-  const capG = new THREE.SphereGeometry(0.1, 12, 8); capG.scale(0.5, 1, 1);
-  const rimG = new THREE.CylinderGeometry(0.24, 0.24, 0.3, 16); rimG.rotateZ(Math.PI / 2);
+  const tireG = new THREE.TorusGeometry(0.32, 0.17, SEG(14), SEG(28)); tireG.rotateY(Math.PI / 2);
+  const discG = new THREE.CylinderGeometry(0.2, 0.2, 0.04, SEG(16)); discG.rotateZ(Math.PI / 2);
+  const capG = new THREE.SphereGeometry(0.1, SEG(12), SEG(8)); capG.scale(0.5, 1, 1);
+  const rimG = new THREE.CylinderGeometry(0.24, 0.24, 0.3, SEG(16)); rimG.rotateZ(Math.PI / 2);
   const spokeG = new THREE.BoxGeometry(0.31, 0.42, 0.06);
   for (const [x, z, f] of [[-1.05, -1.35, 1], [1.05, -1.35, 1], [-1.1, 1.2, 0], [1.1, 1.2, 0]]) {
     const w = new THREE.Group(); w.position.set(x, 0.48, z);
@@ -1432,27 +1438,29 @@ function makeKart(cfg) {
     spin.add(new THREE.Mesh(rimG, chrome));
     for (const sx of [-1, 1]) { const cap = new THREE.Mesh(capG, acc); cap.position.x = sx * 0.16; spin.add(cap); }
     const disc = new THREE.Mesh(discG, darkMetal); disc.position.x = (x < 0 ? 1 : -1) * 0.2; w.add(disc);
-    if (f) { const fender = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.07, 6, 16, Math.PI * 0.8), main); fender.rotation.y = Math.PI / 2; fender.rotation.x = Math.PI * 0.1; fender.position.y = 0.02; fender.castShadow = true; w.add(fender); }
+    if (f) { const fender = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.07, SEG(6), SEG(16), Math.PI * 0.8), main); fender.rotation.y = Math.PI / 2; fender.rotation.x = Math.PI * 0.1; fender.position.y = 0.02; fender.castShadow = true; w.add(fender); }
     for (let i = 0; i < 3; i++) { const s2 = new THREE.Mesh(spokeG, acc); s2.rotation.x = i * Math.PI / 3; spin.add(s2); }
     if (!f) w.scale.set(1.2, 1.12, 1.12);
     body.add(w); wheels.push({ g: w, spin, front: f });
   }
+  if (MOBILE) for (const w of wheels) { mergeStatic(w.spin, new Set()); mergeStatic(w.g, new Set([w.spin])); }   // celular: menos peças por roda
   // piloto em desenho animado, mãos nas pegadas do volante
   const TP_ = TOON[cfg.id] || ANIMAL[cfg.id]; const seatP = new THREE.Vector3(0, TP_ ? 0.76 : 0.62, 0.4 + ((TP_ && TP_.seatZ) || 0));
   const grips = [-1, 1].map(s => new THREE.Vector3(s * 0.25, 0.12, 0).applyEuler(sw.rotation).add(sw.position).sub(seatP));
   const ch = ANIMAL[cfg.id] ? makeAnimal(cfg, { grips }) : TOON[cfg.id] ? makeToon(cfg, { grips }) : makeCharacter(cfg); ch.position.copy(seatP); body.add(ch);
   // sombra de contato
-  const shd = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
+  const shd = new THREE.Mesh(new THREE.CircleGeometry(1.7, SEG(24)), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
   shd.rotation.x = -Math.PI / 2; shd.scale.set(0.85, 1.25, 1); shd.position.y = 0.03; k.add(shd);
   const sparks = [];
   for (const s of [-1, 1]) { const spk = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTex, color: 0x66ccff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); spk.position.set(s * 1.1, 0.3, 1.6); spk.visible = false; body.add(spk); sparks.push(spk); }
-  const aura = new THREE.Mesh(new THREE.SphereGeometry(2.4, 18, 12), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const aura = new THREE.Mesh(new THREE.SphereGeometry(2.4, SEG(18), SEG(12)), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }));
   aura.position.y = 1.2; aura.visible = false; k.add(aura);
   const tag = labelSprite(cfg.name, 0.2, { fg: cfg.kart }); tag.position.y = 4.3; tag.visible = false; k.add(tag);
   // suspensão: tudo menos as rodas e as faíscas fica num grupo que balança sobre as rodas
   const sus = new THREE.Group(); const wheelGroups = new Set(wheels.map(w => w.g)), keep = new Set([...wheelGroups, ...sparks]);
   for (const c of [...body.children]) if (!keep.has(c)) sus.add(c);
   body.add(sus);
+  if (MOBILE) mergeStatic(sus, new Set([sw, ch, ...exhausts]));
   k.userData = { body, sus, wheels, exhausts, sparks, aura, tag, char: ch, shadow: shd, steering: sw };
   return k;
 }
@@ -1520,7 +1528,7 @@ function maskMat(m) {
   m.customProgramCacheKey = () => 'hmask'; return m;
 }
 function headShell(H, off, field, mat, segW = 128, segH = 96, bulge = null, olColor = null, olK = 0.03) {
-  const g = new THREE.SphereGeometry(1, segW, segH); const p = g.attributes.position, hm = new Float32Array(p.count);
+  const g = new THREE.SphereGeometry(1, SEG(segW), SEG(segH)); const p = g.attributes.position, hm = new Float32Array(p.count);
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i); hm[i] = field(x, y, z);
     const b = bulge ? bulge(x, y, z) : 1;
@@ -1534,7 +1542,7 @@ function headShell(H, off, field, mat, segW = 128, segH = 96, bulge = null, olCo
   return m;
 }
 function capsuleBetween(a, b, r, mat) {
-  const L = a.distanceTo(b); const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.001, L), 6, 14), mat);
+  const L = a.distanceTo(b); const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.001, L), SEG(6), SEG(14)), mat);
   m.position.copy(a).lerp(b, 0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); return m;
 }
 function roundRectShape(w, h, r) { const s = new THREE.Shape(), x = -w / 2, y = -h / 2; s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r); s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h); s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r); s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y); return s; }
@@ -1591,15 +1599,15 @@ function makeToon(cfg, opts = {}) {
   const OL = 0x3a2418;
   // ----- corpo -----
   const tr = 0.25 * s, tl = 0.32 * s, tcy = tr + tl / 2 + 0.02;
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(tr, tl, 8, 20), topM); torso.scale.set(1.0, 1, 0.78); torso.position.set(0, tcy, 0.02); outline(torso, OL, 0.04); root.add(torso);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(tr, tl, SEG(8), SEG(20)), topM); torso.scale.set(1.0, 1, 0.78); torso.position.set(0, tcy, 0.02); outline(torso, OL, 0.04); root.add(torso);
   const topY = tcy + tl / 2 + tr * 0.85, shX = tr * 1.0, shY = topY - 0.1 * s;
-  if (P.sleeve === 'tank') for (const sd of [-1, 1]) { const st = new THREE.Mesh(new THREE.TorusGeometry(0.06 * s, 0.022 * s, 8, 16, Math.PI), topM); st.position.set(sd * shX * 0.62, topY - 0.06 * s, 0.02); st.rotation.y = Math.PI / 2; root.add(st); }
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * s, 0.09 * s, 0.14, 14), skinM); neck.position.set(0, topY + 0.02, 0.02); root.add(neck);
+  if (P.sleeve === 'tank') for (const sd of [-1, 1]) { const st = new THREE.Mesh(new THREE.TorusGeometry(0.06 * s, 0.022 * s, SEG(8), SEG(16), Math.PI), topM); st.position.set(sd * shX * 0.62, topY - 0.06 * s, 0.02); st.rotation.y = Math.PI / 2; root.add(st); }
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * s, 0.09 * s, 0.14, SEG(14)), skinM); neck.position.set(0, topY + 0.02, 0.02); root.add(neck);
   // pernas (sentado, pés nos pedais)
   for (const sd of [-1, 1]) {
     const hip = new THREE.Vector3(sd * 0.12 * s, 0.1, -0.02), knee = new THREE.Vector3(sd * 0.15 * s, 0.32 * s + 0.05, -0.55 * s - 0.05), foot = new THREE.Vector3(sd * 0.16 * s, 0.06, -0.95);
     root.add(outline(capsuleBetween(hip, knee, 0.1 * s, pantsM), OL, 0.04)); root.add(outline(capsuleBetween(knee, foot, 0.085 * s, pantsM), OL, 0.04));
-    const sh = new THREE.Mesh(new THREE.SphereGeometry(0.1 * s, 16, 12), shoeM); sh.scale.set(0.9, 0.7, 1.4); sh.position.copy(foot).add(new THREE.Vector3(0, 0, -0.06)); outline(sh, OL, 0.05); root.add(sh);
+    const sh = new THREE.Mesh(new THREE.SphereGeometry(0.1 * s, SEG(16), SEG(12)), shoeM); sh.scale.set(0.9, 0.7, 1.4); sh.position.copy(foot).add(new THREE.Vector3(0, 0, -0.06)); outline(sh, OL, 0.05); root.add(sh);
   }
   // braços com IK de dois ossos até o volante
   const grips = opts.grips || [new THREE.Vector3(-0.25, 0.85, -0.95), new THREE.Vector3(0.25, 0.85, -0.95)];
@@ -1616,14 +1624,14 @@ function makeToon(cfg, opts = {}) {
     arm.add(outline(capsuleBetween(S0, E, armR, upperM), OL, 0.05)); arm.add(outline(capsuleBetween(E, T, armR * 0.9, lowerM), OL, 0.05));
     if (P.sleeve === 'tee') { const sl = capsuleBetween(S0, S0.clone().lerp(E, 0.55), armR * 1.25, topM); arm.add(sl); arm.children[0].material = skinM; }
     if (P.sleeve === 'long') { const cuff = capsuleBetween(E.clone().lerp(T, 0.62), E.clone().lerp(T, 0.72), armR * 1.0, topM); arm.add(cuff); arm.children[1].material = skinM; const fm = capsuleBetween(E, E.clone().lerp(T, 0.7), armR * 0.95, topM); arm.add(fm); }
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075 * s + 0.01, 16, 12), skinM); hand.position.copy(T); hand.scale.set(1, 0.85, 1.1); outline(hand, OL, 0.06); arm.add(hand);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075 * s + 0.01, SEG(16), SEG(12)), skinM); hand.position.copy(T); hand.scale.set(1, 0.85, 1.1); outline(hand, OL, 0.06); arm.add(hand);
   }
   // ----- cabeça -----
   const head = new THREE.Group(); head.position.set(0, topY + 0.08 + R * 0.9, 0.0); root.add(head); Ud.head = head;
   const H = { R, sx: P.head.sx, sy: P.head.sy, sz: P.head.sz, jaw: P.head.jaw };
-  const hg = new THREE.SphereGeometry(1, 64, 48); { const p = hg.attributes.position; for (let i = 0; i < p.count; i++) { const q = headDef(H, p.getX(i), p.getY(i), p.getZ(i), 1); p.setXYZ(i, q.x, q.y, q.z); } hg.computeVertexNormals(); }
+  const hg = new THREE.SphereGeometry(1, SEG(64), SEG(48)); { const p = hg.attributes.position; for (let i = 0; i < p.count; i++) { const q = headDef(H, p.getX(i), p.getY(i), p.getZ(i), 1); p.setXYZ(i, q.x, q.y, q.z); } hg.computeVertexNormals(); }
   const skull = new THREE.Mesh(hg, skinM); outline(skull, OL, 0.03); head.add(skull);
-  for (const sd of [-1, 1]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, 16, 12), skinM); ear.scale.set(0.5, 1, 0.75); ear.position.set(sd * R * H.sx * 0.98, -R * 0.06, R * 0.05); outline(ear, OL, 0.08); head.add(ear); }
+  for (const sd of [-1, 1]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, SEG(16), SEG(12)), skinM); ear.scale.set(0.5, 1, 0.75); ear.position.set(sd * R * H.sx * 0.98, -R * 0.06, R * 0.05); outline(ear, OL, 0.08); head.add(ear); }
   // olhos
   const eyes = new THREE.Group(); head.add(eyes); Ud.eyes = [];
   const whiteM = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: toonGrad(), emissive: 0x404040 }), irisM = new THREE.MeshBasicMaterial({ map: irisTex(P.iris), transparent: true });
@@ -1633,20 +1641,20 @@ function makeToon(cfg, opts = {}) {
     const ax = sd * 0.36, ay = 0.0;
     const sp = headPoint(H, ax, ay, 1.0), n = headNormal(H, sp);
     const eg = new THREE.Group(); eg.position.copy(sp).addScaledVector(n, -ew * 0.25); eg.lookAt(eg.position.clone().add(n)); eyes.add(eg);
-    const wh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), whiteM); wh.scale.set(ew, eh, ew * 0.55); eg.add(wh);
-    const ir = new THREE.Mesh(new THREE.CircleGeometry(ew * 0.78, 32), irisM); ir.position.set(-sd * ew * 0.05, -eh * 0.08, ew * 0.56); ir.rotation.y = 0; eg.add(ir);
+    const wh = new THREE.Mesh(new THREE.SphereGeometry(1, SEG(32), SEG(20)), whiteM); wh.scale.set(ew, eh, ew * 0.55); eg.add(wh);
+    const ir = new THREE.Mesh(new THREE.CircleGeometry(ew * 0.78, SEG(32)), irisM); ir.position.set(-sd * ew * 0.05, -eh * 0.08, ew * 0.56); ir.rotation.y = 0; eg.add(ir);
     // pálpebra superior / cílios
-    const lid = new THREE.Mesh(new THREE.TorusGeometry(1, P.lashes ? 0.13 : 0.1, 8, 28, Math.PI * 0.95), lashM); lid.scale.set(ew * 1.02, eh * 1.0, ew); lid.rotation.z = Math.PI * 0.025; lid.position.z = ew * 0.12; eg.add(lid);
-    if (P.lashes) { for (const k of [0]) { const l = new THREE.Mesh(new THREE.CapsuleGeometry(ew * 0.07, ew * 0.25, 4, 8), lashM); const a = 0.35 + k * 0.28; l.position.set(-sd * Math.cos(a) * ew * 1.08, Math.sin(a) * eh * 1.0, ew * 0.2); l.rotation.z = sd * (0.9 + k * 0.5) * -1 + (sd < 0 ? 0 : 0); l.rotation.z = -sd * (Math.PI / 2 - a) * 1.2; eg.add(l); } }
+    const lid = new THREE.Mesh(new THREE.TorusGeometry(1, P.lashes ? 0.13 : 0.1, SEG(8), SEG(28), Math.PI * 0.95), lashM); lid.scale.set(ew * 1.02, eh * 1.0, ew); lid.rotation.z = Math.PI * 0.025; lid.position.z = ew * 0.12; eg.add(lid);
+    if (P.lashes) { for (const k of [0]) { const l = new THREE.Mesh(new THREE.CapsuleGeometry(ew * 0.07, ew * 0.25, SEG(4), SEG(8)), lashM); const a = 0.35 + k * 0.28; l.position.set(-sd * Math.cos(a) * ew * 1.08, Math.sin(a) * eh * 1.0, ew * 0.2); l.rotation.z = sd * (0.9 + k * 0.5) * -1 + (sd < 0 ? 0 : 0); l.rotation.z = -sd * (Math.PI / 2 - a) * 1.2; eg.add(l); } }
     eg.userData.base = eg.scale.clone(); Ud.eyes.push(eg);
     // sobrancelha
     const bp = headPoint(H, sd * 0.36, 0.33, 1.02), bn = headNormal(H, bp);
-    const br = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.035, R * 0.2, 4, 10), toonM(P.brow)); const bg = new THREE.Group(); bg.position.copy(bp); bg.lookAt(bp.clone().add(bn)); br.rotation.z = Math.PI / 2 + sd * 0.12; bg.add(br); head.add(bg);
+    const br = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.035, R * 0.2, SEG(4), SEG(10)), toonM(P.brow)); const bg = new THREE.Group(); bg.position.copy(bp); bg.lookAt(bp.clone().add(bn)); br.rotation.z = Math.PI / 2 + sd * 0.12; bg.add(br); head.add(bg);
     // bochecha
     const ck = headDecal(H, ellipseShape(0.13, 0.085), sd * 0.62, -0.28, 1.003, new THREE.MeshBasicMaterial({ color: P.cheek, transparent: true, opacity: 0.5, depthWrite: false })); head.add(ck);
   }
   // nariz
-  { const np = headPoint(H, 0, -0.17, 0.97); const nose = new THREE.Mesh(new THREE.SphereGeometry(R * 0.085 * P.nose, 16, 12), toonM(new THREE.Color(P.skin).multiplyScalar(0.96))); nose.scale.set(1.15, 0.9, 1); nose.position.copy(np); outline(nose, OL, 0.06); head.add(nose); }
+  { const np = headPoint(H, 0, -0.17, 0.97); const nose = new THREE.Mesh(new THREE.SphereGeometry(R * 0.085 * P.nose, SEG(16), SEG(12)), toonM(new THREE.Color(P.skin).multiplyScalar(0.96))); nose.scale.set(1.15, 0.9, 1); nose.position.copy(np); outline(nose, OL, 0.06); head.add(nose); }
   // boca (variações)
   const mouthG = new THREE.Group(); head.add(mouthG); const MV = {};
   const dark = new THREE.MeshBasicMaterial({ color: 0x5a1414 }), tongue = new THREE.MeshBasicMaterial({ color: 0xe8707a }), teeth = new THREE.MeshBasicMaterial({ color: 0xffffff }), lipLine = new THREE.MeshBasicMaterial({ color: new THREE.Color(P.lips).multiplyScalar(0.7) });
@@ -1675,7 +1683,7 @@ function makeToon(cfg, opts = {}) {
       (x, y, z) => 1 + 0.07 * smooth(0.2, 0.9, y) * (0.6 + 0.4 * front(z)), OL);
     head.add(cap);
     // topete
-    const tuft = new THREE.Mesh(new THREE.SphereGeometry(R * 0.5, 24, 16), hairM); tuft.scale.set(1.45, 0.55, 1.0); tuft.position.set(R * 0.05, R * 0.82, -R * 0.38); tuft.rotation.set(-0.35, 0, -0.08); outline(tuft, OL, 0.04); head.add(tuft);
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(R * 0.5, SEG(24), SEG(16)), hairM); tuft.scale.set(1.45, 0.55, 1.0); tuft.position.set(R * 0.05, R * 0.82, -R * 0.38); tuft.rotation.set(-0.35, 0, -0.08); outline(tuft, OL, 0.04); head.add(tuft);
     // costeletas
 
   } else {
@@ -1688,20 +1696,20 @@ function makeToon(cfg, opts = {}) {
   if (P.hairStyle === 'braid') {
     // coque baixo na nuca + trança sobre o ombro esquerdo (-x), caindo na frente do peito
     const nape = new THREE.Vector3(-R * 0.35, -R * 0.55, R * 0.62);
-    const knot = new THREE.Mesh(new THREE.SphereGeometry(R * 0.32, 20, 16), hairM); knot.position.copy(nape); outline(knot, OL, 0.05); head.add(knot);
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(R * 0.32, SEG(20), SEG(16)), hairM); knot.position.copy(nape); outline(knot, OL, 0.05); head.add(knot);
     const hy = head.position.y;
     const path = new THREE.CatmullRomCurve3([nape.clone(), new THREE.Vector3(-R * 0.75, -R * 1.0, R * 0.4), new THREE.Vector3(-shX * 0.85, shY - hy + 0.12, -0.05), new THREE.Vector3(-shX * 0.7, shY - hy - 0.12, -tr * 0.85), new THREE.Vector3(-shX * 0.55, shY - hy - 0.42 * s, -tr * 0.95)]);
     const N = 9; for (let i = 0; i < N; i++) { const t = (i + 0.5) / N, p = path.getPointAt(t), tan = path.getTangentAt(t); const r = R * (0.27 - 0.1 * t);
-      const b = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), i % 2 ? hairM : hairDM); b.position.copy(p).add(new THREE.Vector3((i % 2 ? 1 : -1) * r * 0.25, 0, 0)); b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tan); b.scale.set(1, 1.35, 0.9); outline(b, OL, 0.05); head.add(b); }
-    const end = path.getPointAt(1); const tie = new THREE.Mesh(new THREE.TorusGeometry(R * 0.11, R * 0.04, 8, 16), toonM('#e04a5a')); tie.position.copy(end); tie.rotation.x = Math.PI / 2; head.add(tie);
-    const tuft = new THREE.Mesh(new THREE.ConeGeometry(R * 0.14, R * 0.35, 14), hairM); tuft.position.copy(end).add(new THREE.Vector3(0, -R * 0.2, 0)); tuft.rotation.x = Math.PI; outline(tuft, OL, 0.05); head.add(tuft);
+      const b = new THREE.Mesh(new THREE.SphereGeometry(r, SEG(18), SEG(14)), i % 2 ? hairM : hairDM); b.position.copy(p).add(new THREE.Vector3((i % 2 ? 1 : -1) * r * 0.25, 0, 0)); b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tan); b.scale.set(1, 1.35, 0.9); outline(b, OL, 0.05); head.add(b); }
+    const end = path.getPointAt(1); const tie = new THREE.Mesh(new THREE.TorusGeometry(R * 0.11, R * 0.04, SEG(8), SEG(16)), toonM('#e04a5a')); tie.position.copy(end); tie.rotation.x = Math.PI / 2; head.add(tie);
+    const tuft = new THREE.Mesh(new THREE.ConeGeometry(R * 0.14, R * 0.35, SEG(14)), hairM); tuft.position.copy(end).add(new THREE.Vector3(0, -R * 0.2, 0)); tuft.rotation.x = Math.PI; outline(tuft, OL, 0.05); head.add(tuft);
     // franjinha lateral
-    const sw = new THREE.Mesh(new THREE.SphereGeometry(R * 0.5, 24, 16), hairM); sw.scale.set(1.1, 0.42, 0.55); const sp = headPoint(H, 0.3, 0.62, 1.0); sw.position.copy(sp); sw.rotation.set(-0.5, 0.25, 0.35); outline(sw, OL, 0.04); head.add(sw);
+    const sw = new THREE.Mesh(new THREE.SphereGeometry(R * 0.5, SEG(24), SEG(16)), hairM); sw.scale.set(1.1, 0.42, 0.55); const sp = headPoint(H, 0.3, 0.62, 1.0); sw.position.copy(sp); sw.rotation.set(-0.5, 0.25, 0.35); outline(sw, OL, 0.04); head.add(sw);
   }
   if (P.hairStyle === 'long' || P.hairStyle === 'longKid') {
     // cortina de cabelo: cilindro aberto na frente, ondulado na ponta
     const kid = P.hairStyle === 'longKid', L = kid ? R * 2.1 : R * 2.5, gap = kid ? 1.75 : 1.85;
-    const cg = new THREE.CylinderGeometry(R * 1.04, R * 1.2, L, 64, 12, true, Math.PI + gap / 2, Math.PI * 2 - gap);
+    const cg = new THREE.CylinderGeometry(R * 1.04, R * 1.2, L, SEG(64), 12, true, Math.PI + gap / 2, Math.PI * 2 - gap);
     { const p = cg.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i), t = (L / 2 - y) / L; const x = p.getX(i), z = p.getZ(i); const th = Math.atan2(x, z);
         const wave = kid ? 0 : Math.sin(th * 7 + t * 4) * 0.035 * R * t; const r = Math.hypot(x, z) + wave + R * 0.12 * Math.sin(t * Math.PI) * (z > 0 ? 1 : 0.4);
         let yy = y; if (t > 0.95) yy -= (Math.cos(th * 9) * 0.5 + 0.5) * R * 0.1;
@@ -1711,20 +1719,20 @@ function makeToon(cfg, opts = {}) {
     // mechas da frente emoldurando o rosto
     for (const sd of [-1, 1]) {
       const pts = [headPoint(H, sd * 0.55, 0.62, 1.07), headPoint(H, sd * 0.95, 0.2, 1.1), headPoint(H, sd * 1.15, -0.35, 1.15), new THREE.Vector3(sd * R * 1.12, -R * 1.25, -R * 0.45), new THREE.Vector3(sd * R * 1.1, -L + R * 0.4, -R * 0.55)];
-      const crv = new THREE.CatmullRomCurve3(pts); const tg = new THREE.TubeGeometry(crv, 40, R * 0.17, 12, false);
+      const crv = new THREE.CatmullRomCurve3(pts); const tg = new THREE.TubeGeometry(crv, SEG(40), R * 0.17, SEG(12), false);
       { const p = tg.attributes.position; const n = 41; for (let i = 0; i < p.count; i++) { const seg = Math.floor(i / 13), t = seg / 40; const c = crv.getPointAt(Math.min(1, t)); const k = 0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, t * 1.1 + 0.05)); p.setXYZ(i, c.x + (p.getX(i) - c.x) * k, c.y + (p.getY(i) - c.y) * k, c.z + (p.getZ(i) - c.z) * k * 0.7); } tg.computeVertexNormals(); }
       const lock = new THREE.Mesh(tg, hairM); outline(lock, OL, 0.04); head.add(lock);
     }
     if (kid) { // franja varrida de lado + laço rosa
-      const fr = new THREE.Mesh(new THREE.SphereGeometry(R * 0.55, 28, 18), hairM); fr.scale.set(1.25, 0.4, 0.55); fr.position.copy(headPoint(H, -0.12, 0.6, 0.98)); fr.rotation.set(-0.55, -0.1, -0.32); outline(fr, OL, 0.04); head.add(fr);
-      const bow = new THREE.Group(), bm = toonM(P.bow); for (const sd of [-1, 1]) { const w = new THREE.Mesh(new THREE.ConeGeometry(R * 0.16, R * 0.3, 16), bm); w.rotation.z = sd * Math.PI / 2; w.position.x = sd * R * 0.15; w.scale.z = 0.5; outline(w, OL, 0.06); bow.add(w); }
-      const kn = new THREE.Mesh(new THREE.SphereGeometry(R * 0.075, 12, 10), bm); bow.add(kn); const bp = headPoint(H, 0.62, 0.62, 1.1); bow.position.copy(bp); bow.lookAt(bp.clone().multiplyScalar(2)); bow.rotateZ(-0.5); head.add(bow);
+      const fr = new THREE.Mesh(new THREE.SphereGeometry(R * 0.55, SEG(28), SEG(18)), hairM); fr.scale.set(1.25, 0.4, 0.55); fr.position.copy(headPoint(H, -0.12, 0.6, 0.98)); fr.rotation.set(-0.55, -0.1, -0.32); outline(fr, OL, 0.04); head.add(fr);
+      const bow = new THREE.Group(), bm = toonM(P.bow); for (const sd of [-1, 1]) { const w = new THREE.Mesh(new THREE.ConeGeometry(R * 0.16, R * 0.3, SEG(16)), bm); w.rotation.z = sd * Math.PI / 2; w.position.x = sd * R * 0.15; w.scale.z = 0.5; outline(w, OL, 0.06); bow.add(w); }
+      const kn = new THREE.Mesh(new THREE.SphereGeometry(R * 0.075, SEG(12), SEG(10)), bm); bow.add(kn); const bp = headPoint(H, 0.62, 0.62, 1.1); bow.position.copy(bp); bow.lookAt(bp.clone().multiplyScalar(2)); bow.rotateZ(-0.5); head.add(bow);
     }
   }
   if (P.sunglasses) { // óculos escuros no alto da cabeça
     const sg = new THREE.Group(), fm = toonM('#2b1d14'), lm = new THREE.MeshStandardMaterial({ color: 0x1d2a33, roughness: 0.1, metalness: 0.5 });
-    for (const sd of [-1, 1]) { const l = new THREE.Mesh(new THREE.CircleGeometry(R * 0.23, 24), lm); l.position.set(sd * R * 0.29, 0, 0); l.rotation.y = Math.PI; sg.add(l); const r = new THREE.Mesh(new THREE.TorusGeometry(R * 0.23, R * 0.045, 8, 24), fm); r.position.set(sd * R * 0.29, 0, 0); sg.add(r); }
-    const br = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.03, R * 0.1, 4, 8), fm); br.rotation.z = Math.PI / 2; br.position.y = R * 0.05; sg.add(br);
+    for (const sd of [-1, 1]) { const l = new THREE.Mesh(new THREE.CircleGeometry(R * 0.23, SEG(24)), lm); l.position.set(sd * R * 0.29, 0, 0); l.rotation.y = Math.PI; sg.add(l); const r = new THREE.Mesh(new THREE.TorusGeometry(R * 0.23, R * 0.045, SEG(8), SEG(24)), fm); r.position.set(sd * R * 0.29, 0, 0); sg.add(r); }
+    const br = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.03, R * 0.1, SEG(4), SEG(8)), fm); br.rotation.z = Math.PI / 2; br.position.y = R * 0.05; sg.add(br);
     const p = headPoint(H, 0, 0.98, 1.1); sg.position.copy(p); sg.rotation.x = -1.15; head.add(sg);
   }
   if (P.beard) {
@@ -1832,14 +1840,14 @@ function makeAnimal(cfg, opts = {}) {
   const bellyM = toonM(P.belly), pawM = P.paw === 'fur' ? furM : toonM(P.paw);
   // ----- corpo (sentado no banco) -----
   const tr = 0.27 * s, tl = 0.3 * s, tcy = tr + tl / 2 + 0.02;
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(tr, tl, 8, 20), furM); torso.scale.set(sp === 'dog' ? 1.12 : 1.0, 1, 0.85); torso.position.set(0, tcy, 0.02); outline(torso, OL, 0.04); root.add(torso);
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(tr * 0.9, 20, 16), bellyM); belly.scale.set(0.85, 1.25, 0.5); belly.position.set(0, tcy + 0.02, 0.02 - tr * 0.5); root.add(belly);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(tr, tl, SEG(8), SEG(20)), furM); torso.scale.set(sp === 'dog' ? 1.12 : 1.0, 1, 0.85); torso.position.set(0, tcy, 0.02); outline(torso, OL, 0.04); root.add(torso);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(tr * 0.9, SEG(20), SEG(16)), bellyM); belly.scale.set(0.85, 1.25, 0.5); belly.position.set(0, tcy + 0.02, 0.02 - tr * 0.5); root.add(belly);
   const topY = tcy + tl / 2 + tr * 0.85, shX = tr * 1.0, shY = topY - 0.12 * s;
   // patas de trás (para a frente, nos pedais)
   for (const sd of [-1, 1]) {
     const hip = new THREE.Vector3(sd * 0.13 * s, 0.12, -0.02), knee = new THREE.Vector3(sd * 0.16 * s, 0.26 * s + 0.05, -0.5 * s - 0.05), foot = new THREE.Vector3(sd * 0.17 * s, 0.07, -0.9);
     root.add(outline(capsuleBetween(hip, knee, 0.12 * s, furM), OL, 0.04)); root.add(outline(capsuleBetween(knee, foot, 0.095 * s, furM), OL, 0.04));
-    const pw = new THREE.Mesh(new THREE.SphereGeometry(0.12 * s, 16, 12), pawM); pw.scale.set(0.95, 0.7, 1.35); pw.position.copy(foot).add(new THREE.Vector3(0, 0, -0.05)); outline(pw, OL, 0.05); root.add(pw);
+    const pw = new THREE.Mesh(new THREE.SphereGeometry(0.12 * s, SEG(16), SEG(12)), pawM); pw.scale.set(0.95, 0.7, 1.35); pw.position.copy(foot).add(new THREE.Vector3(0, 0, -0.05)); outline(pw, OL, 0.05); root.add(pw);
   }
   // patas da frente com IK até o volante
   const grips = opts.grips || [new THREE.Vector3(-0.25, 0.85, -0.95), new THREE.Vector3(0.25, 0.85, -0.95)];
@@ -1854,16 +1862,16 @@ function makeAnimal(cfg, opts = {}) {
     const E = S0.clone().addScaledVector(dir, Math.cos(ang) * a).addScaledVector(bend, Math.sin(ang) * a);
     arm.add(outline(capsuleBetween(S0, E, armR, furM), OL, 0.05)); arm.add(outline(capsuleBetween(E, T, armR * 0.92, furM), OL, 0.05));
     if (sp === 'raccoon') arm.add(capsuleBetween(E.clone().lerp(T, 0.7), T, armR * 1.0, pawM));       // luvinhas pretas
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.085 * s + 0.01, 16, 12), sp === 'raccoon' ? pawM : sp === 'dog' ? pawM : furM); hand.position.copy(T); hand.scale.set(1.05, 0.85, 1.15); outline(hand, OL, 0.06); arm.add(hand);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.085 * s + 0.01, SEG(16), SEG(12)), sp === 'raccoon' ? pawM : sp === 'dog' ? pawM : furM); hand.position.copy(T); hand.scale.set(1.05, 0.85, 1.15); outline(hand, OL, 0.06); arm.add(hand);
   }
   // rabo (balança)
   const tail = new THREE.Group(); tail.position.set(0, 0.16, tr * 0.75); root.add(tail); Ud.tail = tail;
   if (sp === 'dog') {
-    const t = new THREE.Mesh(new THREE.CapsuleGeometry(0.07 * s, 0.22 * s, 6, 12), furM); t.position.set(0, 0.14 * s, 0.06); t.rotation.x = -0.5; outline(t, OL, 0.05); tail.add(t);
+    const t = new THREE.Mesh(new THREE.CapsuleGeometry(0.07 * s, 0.22 * s, SEG(6), SEG(12)), furM); t.position.set(0, 0.14 * s, 0.06); t.rotation.x = -0.5; outline(t, OL, 0.05); tail.add(t);
   } else {
     const pts = sp === 'cat' ? [[0, 0, 0], [0.12, 0.2, 0.18], [0.24, 0.55, 0.22], [0.22, 0.85, 0.1], [0.1, 0.98, 0.0]] : [[0, 0, 0], [0.14, 0.12, 0.2], [0.3, 0.42, 0.26], [0.34, 0.72, 0.18]];
     const crv = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0] * s * 1.2, p[1] * s * 1.2, p[2] * s * 1.2)));
-    if (sp === 'cat') { const tm = new THREE.Mesh(new THREE.TubeGeometry(crv, 30, 0.055 * s, 10, false), furM); outline(tm, OL, 0.05); tail.add(tm); const tip = new THREE.Mesh(new THREE.SphereGeometry(0.055 * s, 10, 8), furM); tip.position.copy(crv.getPointAt(1)); tail.add(tip); }
+    if (sp === 'cat') { const tm = new THREE.Mesh(new THREE.TubeGeometry(crv, SEG(30), 0.055 * s, SEG(10), false), furM); outline(tm, OL, 0.05); tail.add(tm); const tip = new THREE.Mesh(new THREE.SphereGeometry(0.055 * s, SEG(10), SEG(8)), furM); tip.position.copy(crv.getPointAt(1)); tail.add(tip); }
     else { // guaxinim: rabo gordo com anéis pretos
       const N = 7; for (let i = 0; i < N; i++) { const t0 = i / N, t1 = (i + 1) / N; const seg = capsuleBetween(crv.getPointAt(t0), crv.getPointAt(t1), (0.13 - 0.03 * t0) * s, i % 2 ? toonM('#1a1817') : furM); outline(seg, OL, 0.04); tail.add(seg); }
     }
@@ -1871,23 +1879,23 @@ function makeAnimal(cfg, opts = {}) {
   // ----- cabeça -----
   const head = new THREE.Group(); head.position.set(0, topY + R * 0.78, 0.0); root.add(head); Ud.head = head;
   const H = { R, sx: P.head.sx, sy: P.head.sy, sz: P.head.sz, jaw: P.head.jaw };
-  const hg = new THREE.SphereGeometry(1, 64, 48); { const p = hg.attributes.position; for (let i = 0; i < p.count; i++) { const q = headDef(H, p.getX(i), p.getY(i), p.getZ(i), 1); p.setXYZ(i, q.x, q.y, q.z); } hg.computeVertexNormals(); }
+  const hg = new THREE.SphereGeometry(1, SEG(64), SEG(48)); { const p = hg.attributes.position; for (let i = 0; i < p.count; i++) { const q = headDef(H, p.getX(i), p.getY(i), p.getZ(i), 1); p.setXYZ(i, q.x, q.y, q.z); } hg.computeVertexNormals(); }
   const skull = new THREE.Mesh(hg, furM); outline(skull, OL, 0.03); head.add(skull);
   // orelhas
   Ud.ears = [];
   for (const sd of [-1, 1]) {
     const eg = new THREE.Group(); eg.position.copy(headPoint(H, sd * 0.62, 0.62, 0.92)); head.add(eg); Ud.ears.push(eg); eg.userData.sd = sd;
     if (sp === 'cat') {
-      const e = new THREE.Mesh(new THREE.ConeGeometry(R * 0.33, R * 0.62, 4, 1), furM); e.rotation.y = Math.PI / 4; e.scale.set(1, 1, 0.45); e.position.y = R * 0.22; outline(e, OL, 0.05);
-      const inn = new THREE.Mesh(new THREE.ConeGeometry(R * 0.2, R * 0.42, 4, 1), toonM(P.inEar)); inn.rotation.y = Math.PI / 4; inn.scale.set(1, 1, 0.3); inn.position.set(0, R * 0.17, -R * 0.06);
+      const e = new THREE.Mesh(new THREE.ConeGeometry(R * 0.33, R * 0.62, SEG(4), 1), furM); e.rotation.y = Math.PI / 4; e.scale.set(1, 1, 0.45); e.position.y = R * 0.22; outline(e, OL, 0.05);
+      const inn = new THREE.Mesh(new THREE.ConeGeometry(R * 0.2, R * 0.42, SEG(4), 1), toonM(P.inEar)); inn.rotation.y = Math.PI / 4; inn.scale.set(1, 1, 0.3); inn.position.set(0, R * 0.17, -R * 0.06);
       const pv = new THREE.Group(); pv.add(e, inn); pv.rotation.z = -sd * 0.32; pv.rotation.x = -0.1; eg.add(pv);
     } else if (sp === 'raccoon') {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(R * 0.25, 16, 12), furM); e.scale.set(1, 1, 0.45); e.position.y = R * 0.12; outline(e, OL, 0.06);
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(R * 0.22, R * 0.045, 6, 18), toonM('#141212')); rim.position.y = R * 0.12; rim.position.z = -R * 0.02;
-      const inn = new THREE.Mesh(new THREE.CircleGeometry(R * 0.17, 16), toonM(P.inEar)); inn.position.set(0, R * 0.12, -R * 0.12); inn.rotation.y = Math.PI;
+      const e = new THREE.Mesh(new THREE.SphereGeometry(R * 0.25, SEG(16), SEG(12)), furM); e.scale.set(1, 1, 0.45); e.position.y = R * 0.12; outline(e, OL, 0.06);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(R * 0.22, R * 0.045, SEG(6), SEG(18)), toonM('#141212')); rim.position.y = R * 0.12; rim.position.z = -R * 0.02;
+      const inn = new THREE.Mesh(new THREE.CircleGeometry(R * 0.17, SEG(16)), toonM(P.inEar)); inn.position.set(0, R * 0.12, -R * 0.12); inn.rotation.y = Math.PI;
       const pv = new THREE.Group(); pv.add(e, rim, inn); pv.rotation.z = -sd * 0.35; eg.add(pv);
     } else { // Bolinho: orelhas molengas — uma em pé, outra caída
-      const e = new THREE.Mesh(new THREE.SphereGeometry(R * 0.36, 18, 14), furM); e.scale.set(0.62, 1, 0.32); outline(e, OL, 0.05);
+      const e = new THREE.Mesh(new THREE.SphereGeometry(R * 0.36, SEG(18), SEG(14)), furM); e.scale.set(0.62, 1, 0.32); outline(e, OL, 0.05);
       const pv = new THREE.Group(); pv.add(e);
       if (sd < 0) { e.position.y = R * 0.28; pv.rotation.z = 0.55; } else { e.position.y = R * 0.3; pv.rotation.z = -2.1; pv.rotation.x = 0.2; }
       eg.add(pv); eg.userData.base = pv.rotation.z; eg.userData.pv = pv;
@@ -1907,10 +1915,10 @@ function makeAnimal(cfg, opts = {}) {
   // focinho (guaxinim) e bochechas (gata)
   let mouthHost = null;
   if (sp === 'raccoon') {
-    const mz = new THREE.Mesh(new THREE.SphereGeometry(R * 0.46, 24, 18), toonM(P.muzzle, { emissive: 0x2a2620 })); mz.scale.set(1.05, 0.8, 1.0); mz.position.copy(headPoint(H, 0, -0.3, 0.74)); outline(mz, OL, 0.04); head.add(mz);
+    const mz = new THREE.Mesh(new THREE.SphereGeometry(R * 0.46, SEG(24), SEG(18)), toonM(P.muzzle, { emissive: 0x2a2620 })); mz.scale.set(1.05, 0.8, 1.0); mz.position.copy(headPoint(H, 0, -0.3, 0.74)); outline(mz, OL, 0.04); head.add(mz);
     mouthHost = { pos: mz.position.clone().add(new THREE.Vector3(0, -R * 0.1, -R * 0.45)), k: R * 0.55 };
   }
-  if (sp === 'cat') for (const sd of [-1, 1]) { const wp = new THREE.Mesh(new THREE.SphereGeometry(R * 0.17, 16, 12), furM); wp.scale.set(1.1, 0.85, 0.7); wp.position.copy(headPoint(H, sd * 0.17, -0.33, 0.93)); head.add(wp); }
+  if (sp === 'cat') for (const sd of [-1, 1]) { const wp = new THREE.Mesh(new THREE.SphereGeometry(R * 0.17, SEG(16), SEG(12)), furM); wp.scale.set(1.1, 0.85, 0.7); wp.position.copy(headPoint(H, sd * 0.17, -0.33, 0.93)); head.add(wp); }
   // olhos
   const eyes = new THREE.Group(); head.add(eyes); Ud.eyes = [];
   for (const sd of [-1, 1]) {
@@ -1920,21 +1928,21 @@ function makeAnimal(cfg, opts = {}) {
     if (sp === 'cat') {
       const ew = R * 0.2, eh = ew * 0.92;
       eg.position.copy(spn).addScaledVector(n, -ew * 0.2); eg.lookAt(eg.position.clone().add(n));
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: 0x0c0806 })); ball.scale.set(ew * 1.08, eh * 1.08, ew * 0.5); eg.add(ball);
-      const ir = new THREE.Mesh(new THREE.CircleGeometry(1, 32), new THREE.MeshBasicMaterial({ map: catIrisTex(P.iris) })); ir.scale.set(ew, eh, 1); ir.position.z = ew * 0.52; eg.add(ir);
-      const lid = new THREE.Mesh(new THREE.TorusGeometry(1, 0.14, 8, 28, Math.PI * 0.9), new THREE.MeshBasicMaterial({ color: 0x0c0806 })); lid.scale.set(ew * 1.05, eh * 1.05, ew); lid.rotation.z = Math.PI * 0.05 + sd * 0.15; lid.position.z = ew * 0.3; eg.add(lid);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(1, SEG(28), SEG(18)), new THREE.MeshBasicMaterial({ color: 0x0c0806 })); ball.scale.set(ew * 1.08, eh * 1.08, ew * 0.5); eg.add(ball);
+      const ir = new THREE.Mesh(new THREE.CircleGeometry(1, SEG(32)), new THREE.MeshBasicMaterial({ map: catIrisTex(P.iris) })); ir.scale.set(ew, eh, 1); ir.position.z = ew * 0.52; eg.add(ir);
+      const lid = new THREE.Mesh(new THREE.TorusGeometry(1, 0.14, SEG(8), SEG(28), Math.PI * 0.9), new THREE.MeshBasicMaterial({ color: 0x0c0806 })); lid.scale.set(ew * 1.05, eh * 1.05, ew); lid.rotation.z = Math.PI * 0.05 + sd * 0.15; lid.position.z = ew * 0.3; eg.add(lid);
       eg.rotation.z += sd * 0.18;   // olho amendoado, levemente inclinado
     } else { // olhos de botão (pelúcia)
       const ew = R * (sp === 'dog' ? 0.1 : 0.085);
       eg.position.copy(spn); eg.lookAt(eg.position.clone().add(n));
-      const b = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshToonMaterial({ color: P.eyeCol, gradientMap: toonGrad() })); b.scale.set(ew, ew * 1.12, ew * 0.55); eg.add(b);
-      const hl = new THREE.Mesh(new THREE.CircleGeometry(ew * 0.3, 12), new THREE.MeshBasicMaterial({ color: 0xffffff })); hl.position.set(-ew * 0.3, ew * 0.35, ew * 0.56); eg.add(hl);
+      const b = new THREE.Mesh(new THREE.SphereGeometry(1, SEG(20), SEG(14)), new THREE.MeshToonMaterial({ color: P.eyeCol, gradientMap: toonGrad() })); b.scale.set(ew, ew * 1.12, ew * 0.55); eg.add(b);
+      const hl = new THREE.Mesh(new THREE.CircleGeometry(ew * 0.3, SEG(12)), new THREE.MeshBasicMaterial({ color: 0xffffff })); hl.position.set(-ew * 0.3, ew * 0.35, ew * 0.56); eg.add(hl);
     }
     eg.userData.base = eg.scale.clone(); Ud.eyes.push(eg);
   }
   // nariz
-  if (sp === 'raccoon') { const nz = new THREE.Mesh(new THREE.SphereGeometry(R * 0.15, 18, 12), toonM(P.nose, { emissive: 0x111111 })); nz.scale.set(1.25, 0.95, 0.9); nz.position.copy(headPoint(H, 0, -0.3, 0.74)).add(new THREE.Vector3(0, R * 0.1, -R * 0.44)); outline(nz, OL, 0.05); head.add(nz); }
-  else { const nz = new THREE.Mesh(new THREE.SphereGeometry(R * (sp === 'dog' ? 0.1 : 0.07), 16, 12), toonM(P.nose)); nz.scale.set(1.35, 0.85, 0.8); nz.position.copy(headPoint(H, 0, sp === 'cat' ? -0.2 : -0.16, 0.99)); outline(nz, OL, 0.06); head.add(nz); }
+  if (sp === 'raccoon') { const nz = new THREE.Mesh(new THREE.SphereGeometry(R * 0.15, SEG(18), SEG(12)), toonM(P.nose, { emissive: 0x111111 })); nz.scale.set(1.25, 0.95, 0.9); nz.position.copy(headPoint(H, 0, -0.3, 0.74)).add(new THREE.Vector3(0, R * 0.1, -R * 0.44)); outline(nz, OL, 0.05); head.add(nz); }
+  else { const nz = new THREE.Mesh(new THREE.SphereGeometry(R * (sp === 'dog' ? 0.1 : 0.07), SEG(16), SEG(12)), toonM(P.nose)); nz.scale.set(1.35, 0.85, 0.8); nz.position.copy(headPoint(H, 0, sp === 'cat' ? -0.2 : -0.16, 0.99)); outline(nz, OL, 0.06); head.add(nz); }
   if (sp === 'cat') { // bigodes
     const wm = new THREE.MeshBasicMaterial({ color: 0xf4efe6 });
     for (const sd of [-1, 1]) for (let k = 0; k < 3; k++) { const a = headPoint(H, sd * 0.25, -0.32 - k * 0.04, 1.0); const b = a.clone().add(new THREE.Vector3(sd * R * 0.75, R * (0.12 - k * 0.12), -R * 0.05)); head.add(capsuleBetween(a, b, R * 0.012, wm)); }
@@ -2521,7 +2529,7 @@ const NET = {
 // ============================================================
 const $ = (id) => document.getElementById(id);
 const renderer = new THREE.WebGLRenderer({ antialias: !MOBILE, powerPreference: 'high-performance' });
-renderer.setPixelRatio(/lite=1/.test(location.search) ? 0.5 : MOBILE ? Math.min(devicePixelRatio, 1.35) : Math.min(devicePixelRatio, 1.5));
+renderer.setPixelRatio(/lite=1/.test(location.search) ? 0.5 : MOBILE ? Math.min(devicePixelRatio, 1.15) : Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.8;
@@ -3106,7 +3114,7 @@ function renderViews(list) {
   renderer.setScissorTest(true); renderer.setScissor(0, 0, W, H); renderer.setViewport(0, 0, W, H); renderer.setClearColor(0x111111); renderer.clear();
   for (const v of list) {
     const y = H - v.y - v.h; renderer.setViewport(v.x, y, v.w, v.h); renderer.setScissor(v.x, y, v.w, v.h);
-    v.cam.aspect = v.w / v.h; v.cam.updateProjectionMatrix(); sky.position.copy(v.cam.position);
+    v.cam.aspect = v.w / v.h; v.cam.updateProjectionMatrix(); sky.position.copy(v.cam.position); sky.scale.setScalar(Math.min(1, v.cam.far * 0.9 / 5000));
     placeSun(v.focus || v.cam.position);
     renderer.clear(); renderer.render(scene, v.cam);
   }
@@ -3152,7 +3160,7 @@ function startRace(roster) {
     k.mesh.userData.tag.layers.set(10 + i); k.engine = AUDIO.makeEngine(k.cfg, false); makeHud(k);
   });
   for (const k of G.karts) { k.mesh.userData.tag.visible = true; if (!(k.human >= 0 && !k.remote)) { k.mesh.userData.tag.layers.set(0); if (G.humans.length === 1) k.engine = AUDIO.makeEngine(k.cfg, true); } }
-  G.raceT = 0; G.countdown = 3.9; G.lastBeep = 4; G.endTimer = -1; AUDIO.tempo = 1; G.acc = 0; TOUCH.tiltZero = null;
+  applyFar(); G.raceT = 0; G.countdown = 3.9; G.lastBeep = 4; G.endTimer = -1; AUDIO.tempo = 1; G.acc = 0; TOUCH.tiltZero = null;
   $('minimap').style.display = 'block'; layoutMinimap();
   showScreen(null); STATE = 'race'; MENU = null; AUDIO.unmuteEngines(); AUDIO.startMusic(TR.style || TR.id); MUSIC.apply(); if (CHAMP) G.humans.forEach(k => hudMsg(k, `🏆 Campeonato — corrida ${CHAMP.i + 1} de ${CHAMP.order.length}`, 3000)); $('musicDock').classList.remove('big');
 }
@@ -3639,7 +3647,13 @@ function frame(now) {
   renderViews([{ cam: titleCam, focus: c, x: 0, y: 0, w: innerWidth, h: innerHeight }]);
 }
 // qualidade automática: se o computador não aguentar, tira sombras e reduz resolução
-const QUAL = { acc: 0, n: 0, level: 0 };
+const QUAL = { acc: 0, n: 0, level: 0, fogK: MOBILE ? 0.75 : 1 };
+// distância de visão: neblina mais perto e câmera corta o que está além dela (menos coisa para desenhar)
+function applyFar() {
+  const b = scene.fog.userData || { near: scene.fog.near, far: scene.fog.far }; scene.fog.userData = b;
+  scene.fog.far = b.far * QUAL.fogK; scene.fog.near = Math.min(b.near, scene.fog.far * 0.35);
+  for (const k of G.humans) if (k.cam) { k.cam.far = QUAL.fogK < 1 ? scene.fog.far + 150 : 9000; k.cam.updateProjectionMatrix(); }
+}
 function autoQuality(dt) {
   QUAL.acc += dt; QUAL.n++;
   if (QUAL.acc < 3) return;
@@ -3648,7 +3662,8 @@ function autoQuality(dt) {
   if (PFX.bloom && PFX.bloom.enabled && fps < 34) { PFX.bloom.enabled = false; }
   if (fps < 38 && QUAL.level === 0) { QUAL.level = 1; renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); }); }
   else if (fps < 30 && QUAL.level === 1) { QUAL.level = 2; renderer.setPixelRatio(Math.min(1, devicePixelRatio)); renderer.setSize(innerWidth, innerHeight); fxResize(); }
-  else if (fps < 26 && QUAL.level === 2) { QUAL.level = 3; renderer.setPixelRatio(0.75); renderer.setSize(innerWidth, innerHeight); fxResize(); scene.fog.far *= 0.6; }
+  else if (fps < 26 && QUAL.level === 2) { QUAL.level = 3; renderer.setPixelRatio(0.75); renderer.setSize(innerWidth, innerHeight); fxResize(); QUAL.fogK *= 0.6; applyFar(); }
+  else if (MOBILE && fps < 24 && QUAL.level === 3) { QUAL.level = 4; renderer.setPixelRatio(0.6); renderer.setSize(innerWidth, innerHeight); QUAL.fogK *= 0.7; applyFar(); }
 }
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); fxResize(); if (STATE === 'race') layoutMinimap(); });
 addEventListener('pointerdown', () => AUDIO.init());

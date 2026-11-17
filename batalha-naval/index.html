@@ -98,7 +98,7 @@ input:focus{border-color:var(--gold)}
 <body>
 <header>
   <h1>⚓ Batalha <span>Naval</span></h1>
-  <div id="status-dot"><i></i><span id="status-txt">offline</span></div>
+  <div style="display:flex;align-items:center;gap:10px"><div id="status-dot"><i></i><span id="status-txt">offline</span></div><button id="btn-mute" class="ghost" style="padding:6px 10px;font-size:16px" aria-label="Som">🔊</button></div>
 </header>
 <main>
   <!-- HOME -->
@@ -224,36 +224,91 @@ function genCode(){ const a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s=""; for(le
 function coord(r,c){ return COLS[c]+(r+1); }
 
 /* ---------- sound ---------- */
-let AC=null;
-function ac(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } if(AC&&AC.state==="suspended") AC.resume(); return AC; }
-function sfx(type){
-  const a=ac(); if(!a) return; const t=a.currentTime;
-  if(type==="splash"){
-    const b=a.createBuffer(1,a.sampleRate*.4,a.sampleRate), d=b.getChannelData(0);
-    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
-    const s=a.createBufferSource(); s.buffer=b; const f=a.createBiquadFilter(); f.type="lowpass"; f.frequency.value=1200;
-    const g=a.createGain(); g.gain.value=.35; s.connect(f).connect(g).connect(a.destination); s.start(t);
-  } else if(type==="boom"||type==="sunk"){
-    const len = type==="sunk"?1.1:.6;
-    const b=a.createBuffer(1,a.sampleRate*len,a.sampleRate), d=b.getChannelData(0);
-    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.5);
-    const s=a.createBufferSource(); s.buffer=b; const f=a.createBiquadFilter(); f.type="lowpass"; f.frequency.setValueAtTime(900,t); f.frequency.exponentialRampToValueAtTime(80,t+len);
-    const g=a.createGain(); g.gain.value=.8; s.connect(f).connect(g).connect(a.destination); s.start(t);
-    const o=a.createOscillator(), og=a.createGain(); o.frequency.setValueAtTime(90,t); o.frequency.exponentialRampToValueAtTime(30,t+len);
-    og.gain.setValueAtTime(.6,t); og.gain.exponentialRampToValueAtTime(.001,t+len); o.connect(og).connect(a.destination); o.start(t); o.stop(t+len);
-  } else if(type==="ping"){
-    const o=a.createOscillator(), g=a.createGain(); o.frequency.value=880; g.gain.setValueAtTime(.2,t); g.gain.exponentialRampToValueAtTime(.001,t+.3);
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t+.3);
-  } else if(type==="win"){
-    [523,659,784,1047].forEach((f,i)=>{ const o=a.createOscillator(), g=a.createGain(); o.type="triangle"; o.frequency.value=f;
-      g.gain.setValueAtTime(.0001,t+i*.15); g.gain.exponentialRampToValueAtTime(.25,t+i*.15+.02); g.gain.exponentialRampToValueAtTime(.001,t+i*.15+.4);
-      o.connect(g).connect(a.destination); o.start(t+i*.15); o.stop(t+i*.15+.45); });
-  } else if(type==="lose"){
-    [392,330,262].forEach((f,i)=>{ const o=a.createOscillator(), g=a.createGain(); o.type="sawtooth"; o.frequency.value=f;
-      g.gain.setValueAtTime(.12,t+i*.25); g.gain.exponentialRampToValueAtTime(.001,t+i*.25+.35);
-      o.connect(g).connect(a.destination); o.start(t+i*.25); o.stop(t+i*.25+.4); });
-  }
+const FLIGHT=650;               // tempo do projétil no ar (ms)
+let AC=null, MASTER=null, MUTED=false;
+try{ MUTED=localStorage.getItem("bn-mute")==="1"; }catch(e){}
+function ac(){
+  if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)();
+    const comp=AC.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=4;
+    MASTER=AC.createGain(); MASTER.gain.value=MUTED?0:.9; MASTER.connect(comp).connect(AC.destination);
+  }catch(e){} }
+  if(AC&&AC.state==="suspended") AC.resume(); return AC;
 }
+function noiseBuf(a,sec,shape=1){
+  const b=a.createBuffer(1,Math.floor(a.sampleRate*sec),a.sampleRate), d=b.getChannelData(0);
+  let last=0;
+  for(let i=0;i<d.length;i++){ const w=Math.random()*2-1; last=last*.6+w*.4; d[i]=last*Math.pow(1-i/d.length,shape); }
+  return b;
+}
+function noise(a,t,sec,{type="lowpass",f0=1000,f1=null,q=.7,gain=.5,shape=1,pan=0}={}){
+  const s=a.createBufferSource(); s.buffer=noiseBuf(a,sec,shape);
+  const f=a.createBiquadFilter(); f.type=type; f.Q.value=q; f.frequency.setValueAtTime(f0,t);
+  if(f1) f.frequency.exponentialRampToValueAtTime(f1,t+sec);
+  const g=a.createGain(); g.gain.value=gain;
+  let node=s.connect(f).connect(g);
+  if(a.createStereoPanner&&pan){ const p=a.createStereoPanner(); p.pan.value=pan; node=node.connect(p); }
+  node.connect(MASTER); s.start(t); return s;
+}
+function tone(a,t,{type="sine",f0=440,f1=null,dur=.3,gain=.3,attack=.005}={}){
+  const o=a.createOscillator(), g=a.createGain(); o.type=type; o.frequency.setValueAtTime(f0,t);
+  if(f1) o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(gain,t+attack); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g).connect(MASTER); o.start(t); o.stop(t+dur+.05);
+}
+function bubbles(a,t,n,spread,gain=.12){
+  for(let i=0;i<n;i++){ const tt=t+Math.random()*spread, f=300+Math.random()*900;
+    tone(a,tt,{f0:f,f1:f*(1.6+Math.random()),dur:.04+Math.random()*.08,gain:gain*(.4+Math.random()*.6),attack:.003}); }
+}
+// disparo do canhão + assobio do projétil
+function sndFire(a,t,far){
+  const g=far?.35:1;
+  noise(a,t,.35,{f0:2500,f1:120,gain:.9*g,shape:3});
+  tone(a,t,{f0:120,f1:35,dur:.35,gain:.8*g});
+  tone(a,t+.08,{f0:2600,f1:900,dur:FLIGHT/1000-.08,gain:.07,attack:.08});
+  noise(a,t+.08,FLIGHT/1000-.08,{type:"bandpass",f0:3000,f1:900,q:6,gain:.12,shape:.3});
+}
+// tiro na água: impacto + jorro + gotas caindo + bolhas
+function sndSplash(a,t){
+  tone(a,t,{f0:180,f1:60,dur:.18,gain:.35});
+  noise(a,t,.9,{type:"bandpass",f0:2500,f1:500,q:.8,gain:.9,shape:2.2});
+  noise(a,t+.05,.6,{type:"highpass",f0:4000,gain:.18,shape:1.5});
+  for(let i=0;i<10;i++){ const tt=t+.25+Math.random()*.6; noise(a,tt,.06,{type:"bandpass",f0:1500+Math.random()*2500,q:4,gain:.25,shape:2}); }
+  bubbles(a,t+.2,14,.8,.08);
+}
+// tiro no navio: explosão + estalo metálico + estilhaços
+function sndHit(a,t){
+  noise(a,t,1.1,{f0:3500,f1:90,gain:1.1,shape:2});
+  tone(a,t,{f0:95,f1:28,dur:.9,gain:.9,attack:.003});
+  [523,1187,1741,2459].forEach((f,i)=>tone(a,t+.01,{type:"triangle",f0:f,f1:f*.97,dur:.6-i*.1,gain:.08,attack:.002}));
+  for(let i=0;i<14;i++){ const tt=t+.08+Math.random()*.7; noise(a,tt,.03,{type:"highpass",f0:3000,gain:.3*Math.random(),shape:2}); }
+}
+// navio afundando: explosão grande, rangido do casco, água invadindo, bolhas
+function sndSink(a,t){
+  sndHit(a,t);
+  noise(a,t+.15,1.4,{f0:600,f1:50,gain:.9,shape:1.2});
+  const o=a.createOscillator(), f=a.createBiquadFilter(), g=a.createGain();
+  o.type="sawtooth"; o.frequency.setValueAtTime(70,t+.6); o.frequency.exponentialRampToValueAtTime(38,t+2.6);
+  const lfo=a.createOscillator(), lg=a.createGain(); lfo.frequency.value=7; lg.gain.value=9; lfo.connect(lg).connect(o.frequency);
+  f.type="bandpass"; f.frequency.value=320; f.Q.value=3;
+  g.gain.setValueAtTime(.0001,t+.6); g.gain.exponentialRampToValueAtTime(.35,t+1.0); g.gain.exponentialRampToValueAtTime(.0001,t+2.8);
+  o.connect(f).connect(g).connect(MASTER); o.start(t+.6); lfo.start(t+.6); o.stop(t+2.9); lfo.stop(t+2.9);
+  noise(a,t+.9,2.2,{type:"lowpass",f0:900,f1:200,gain:.45,shape:.8});
+  bubbles(a,t+1.0,45,2.2,.14);
+  tone(a,t+.4,{f0:55,f1:30,dur:2.4,gain:.5,attack:.3});
+}
+function sfx(type, delay=0){
+  const a=ac(); if(!a||MUTED) return; const t=a.currentTime+.02+delay/1000;
+  if(type==="fire") sndFire(a,t,false);
+  else if(type==="incoming") sndFire(a,t,true);
+  else if(type==="splash") sndSplash(a,t);
+  else if(type==="boom") sndHit(a,t);
+  else if(type==="sunk") sndSink(a,t);
+  else if(type==="ping"){ tone(a,t,{f0:880,dur:.3,gain:.2}); tone(a,t,{f0:1320,dur:.2,gain:.06}); }
+  else if(type==="win") [523,659,784,1047].forEach((f,i)=>tone(a,t+i*.15,{type:"triangle",f0:f,dur:.42,gain:.25,attack:.02}));
+  else if(type==="lose") [392,330,262].forEach((f,i)=>tone(a,t+i*.25,{type:"sawtooth",f0:f,dur:.35,gain:.12}));
+}
+function setMute(m){ MUTED=m; try{ localStorage.setItem("bn-mute",m?"1":"0"); }catch(e){}
+  if(MASTER) MASTER.gain.value=m?0:.9; $("btn-mute").textContent=m?"🔇":"🔊"; }
 
 /* ---------- board building ---------- */
 function buildBoard(el, onCell){
@@ -370,7 +425,7 @@ function renderBattle(lastEnemy, lastMine){
 function onFire(r,c){
   if(!S.myTurn||S.over||S.waiting) return;
   if(S.shots[key(r,c)]) { toast(S.shots[key(r,c)]==="auto"?"Água — encosta num navio afundado":"Já atirou aí"); return; }
-  S.waiting=true; ac();
+  S.waiting=true; ac(); S.fireAt=performance.now(); sfx("fire"); vib(20);
   send({t:"shot", r, c});
 }
 
@@ -481,25 +536,34 @@ function receiveShot(r,c){
     over=S.ships.every(s=>s.hits>=s.s);
   } else S.received[k]="miss";
   send({t:"result",r,c,res,sunk,cells,over});
-  if(res==="hit"){ sfx(sunk?"sunk":"boom"); vib(sunk?[80,60,160]:60); } else sfx("splash");
+  sfx("incoming");
   // se errou, passa a vez para mim; se acertou, ele joga de novo
   S.oppShotsLeft--;
   if(S.oppShotsLeft<=0 && !over){ S.myTurn=true; S.shotsLeft=3; setTimeout(()=>{ if(S.myTurn&&!S.over&&S.shotsLeft===3){ toast("🎯 Sua vez: 3 tiros"); sfx("ping"); } },700); }
   if(over){ S.over=true; S.losses++; S.firstNext=true; }
-  renderBattle(null,[r,c]);
-  if(sunk) toast(`${S.opName} afundou seu ${sunk}!`,2200);
-  if(over) setTimeout(()=>endGame(false),900);
+  S.waiting=true;
+  setTimeout(()=>{   // espera o projétil cair
+    S.waiting=false;
+    if(res==="hit"){ sfx(sunk?"sunk":"boom"); vib(sunk?[80,60,300]:[60]); } else sfx("splash");
+    renderBattle(null,[r,c]);
+    if(sunk) toast(`${S.opName} afundou seu ${sunk}!`,2200);
+    if(over) setTimeout(()=>endGame(false),sunk?1800:900);
+  },FLIGHT);
 }
 function applyResult(m){
+  if(m.dup){ S.waiting=false; return; }
+  const wait=Math.max(0,FLIGHT-(performance.now()-(S.fireAt||0)));
+  setTimeout(()=>applyResultNow(m),wait);
+}
+function applyResultNow(m){
   S.waiting=false;
-  if(m.dup) return;
   const k=key(m.r,m.c);
   S.shots[k]= m.res==="hit"?"hit":"miss";
   if(m.sunk){ S.enemySunk.push(m.sunk);
     m.cells.forEach(([r,c])=>{ for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ const rr=r+dr, cc=c+dc;
       if(rr>=0&&cc>=0&&rr<N&&cc<N&&!S.shots[key(rr,cc)]) S.shots[key(rr,cc)]="auto"; } });
     m.cells.forEach(([r,c])=>S.shots[key(r,c)]="sunk"); }
-  if(m.res==="hit"){ sfx(m.sunk?"sunk":"boom"); vib(m.sunk?[80,60,160]:40); } else sfx("splash");
+  if(m.res==="hit"){ sfx(m.sunk?"sunk":"boom"); vib(m.sunk?[80,60,300]:40); } else sfx("splash");
   S.shotsLeft--;
   if(S.shotsLeft<=0 && !m.over){ S.myTurn=false; S.oppShotsLeft=3; }
   if(m.over){ S.over=true; S.wins++; S.firstNext=false; }
@@ -507,7 +571,7 @@ function applyResult(m){
   if(m.sunk) toast(`💥 Você afundou o ${m.sunk}!`,2200);
   else if(m.res==="hit") toast(`Fogo em ${coord(m.r,m.c)}!`+(S.myTurn?` Faltam ${S.shotsLeft}`:""),1200);
   else toast(`Água em ${coord(m.r,m.c)}`+(S.myTurn?` · faltam ${S.shotsLeft}`:` · vez de ${S.opName}`),1200);
-  if(m.over) setTimeout(()=>endGame(true),900);
+  if(m.over) setTimeout(()=>endGame(true),m.sunk?1800:900);
 }
 function endGame(won){
   sfx(won?"win":"lose"); vib(won?[100,50,100,50,200]:300);
@@ -551,6 +615,8 @@ $("btn-random").onclick=()=>{ if(S.myReady) return; randomFleet(); sfx("ping"); 
 $("btn-ready").onclick=()=>{ S.myReady=true; send({t:"ready"}); renderPlace(); maybeStart(); };
 $("btn-rematch").onclick=()=>{ S.rematchMe=true; send({t:"rematch"}); $("btn-rematch").disabled=true; $("btn-rematch").textContent=`Esperando ${S.opName}…`; if(S.rematchOp) doRematch(); };
 $("btn-home").onclick=goHome;
+$("btn-mute").onclick=()=>{ ac(); setMute(!MUTED); if(!MUTED) sfx("ping"); };
+setMute(MUTED);
 
 // entrar direto pelo link ?sala=XXXX
 const qs=new URLSearchParams(location.search).get("sala");

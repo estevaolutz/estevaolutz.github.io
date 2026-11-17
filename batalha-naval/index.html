@@ -113,10 +113,21 @@ body.wide header, body.wide main{max-width:1100px}
   <!-- HOME -->
   <section class="screen active" id="s-home">
     <div class="card">
-      <h2>Jogar com outro aparelho</h2>
-      <p>Um jogador cria a sala e passa o código (ou o link) para o outro. Os dois precisam estar com internet.</p>
       <label style="font-size:13px;color:var(--muted)">Seu nome</label>
-      <input id="name" maxlength="12" placeholder="Capitão" style="font-size:18px;letter-spacing:.05em;text-transform:none;margin:6px 0 14px">
+      <input id="name" maxlength="12" placeholder="Capitão" style="font-size:18px;letter-spacing:.05em;text-transform:none;margin-top:6px">
+    </div>
+    <div class="card">
+      <h2>🤖 Jogar sozinho</h2>
+      <p>Contra o computador. Ele não vê a sua frota: só sabe o que descobre com os próprios tiros.</p>
+      <div class="row">
+        <button class="solo-btn" data-lvl="facil">Fácil</button>
+        <button class="solo-btn" data-lvl="normal">Normal</button>
+        <button class="solo-btn" data-lvl="dificil">Difícil</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📱 Jogar com outro aparelho</h2>
+      <p>Um jogador cria a sala e passa o código (ou o link) para o outro. Os dois precisam estar com internet.</p>
       <button class="primary" id="btn-create" style="width:100%">Criar sala</button>
     </div>
     <div class="card">
@@ -175,9 +186,10 @@ body.wide header, body.wide main{max-width:1100px}
       </div>
     </div>
     <div class="score"><span id="stat-me"></span><span id="stat-op"></span></div>
+    <button class="ghost" id="btn-quit">Sair da partida</button>
   </section>
 
-  <div class="foot">Conexão direta entre os aparelhos (WebRTC)</div>
+  <div class="foot" id="foot">Conexão direta entre os aparelhos (WebRTC)</div>
 </main>
 
 <div class="overlay" id="ov-end">
@@ -472,7 +484,7 @@ function onFire(r,c){
 }
 
 /* ---------- networking ---------- */
-function send(m){ if(S.conn && S.conn.open) S.conn.send(m); }
+function send(m){ if(S.solo){ BOT.receive(m); return; } if(S.conn && S.conn.open) S.conn.send(m); }
 
 function newPeer(id){
   return new Peer(id, {debug:0, config:{iceServers:[
@@ -549,6 +561,103 @@ function onData(m){
   }
 }
 
+
+/* ---------- modo solo: computador ---------- */
+const BOT_NAMES={facil:"Marujo",normal:"Capitão Robô",dificil:"Almirante Robô"};
+const BOT={
+  lvl:"normal", ships:[], know:{}, sunkT:[], pending:false, timer:null, lastShot:0,
+  newGame(){
+    const saved=S.ships, sel=S.sel; randomFleet(); this.ships=S.ships.map(x=>({...x,hits:0})); S.ships=saved; S.sel=sel;
+    this.know={}; this.sunkT=[]; this.pending=false; this.lastShot=0;
+  },
+  occ(){ const m={}; this.ships.forEach((sh,i)=>shipCells(sh).forEach(([r,c])=>m[key(r,c)]=i)); return m; },
+  // mensagens que o jogador "envia" ao computador
+  receive(m){
+    if(m.t==="shot"){
+      const k=key(m.r,m.c), i=this.occ()[k]; let res="miss", sunk=null, sunkT=null, cells=null, over=false;
+      if(i!=null){ res="hit"; const sh=this.ships[i]; sh.hits++;
+        if(sh.hits>=sh.s){ sunk=sh.n; sunkT=sh.t; cells=shipCells(sh); }
+        over=this.ships.every(x=>x.hits>=x.s); }
+      setTimeout(()=>onData({t:"result",r:m.r,c:m.c,res,sunk,sunkT,cells,over}),80);
+    } else if(m.t==="result"){
+      this.pending=false;
+      if(m.dup) return;
+      const k=key(m.r,m.c); this.know[k]= m.res==="hit"?"hit":"miss";
+      if(m.sunk){ this.sunkT.push(m.sunkT);
+        m.cells.forEach(([r,c])=>{ for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ const rr=r+dr, cc=c+dc;
+          if(rr>=0&&cc>=0&&rr<ROWS&&cc<NC&&!this.know[key(rr,cc)]) this.know[key(rr,cc)]="water"; } });
+        m.cells.forEach(([r,c])=>this.know[key(r,c)]="sunk"); }
+    } else if(m.t==="rematch"){
+      setTimeout(()=>onData({t:"rematch"}),400);
+    }
+  },
+  tick(){
+    if(!S.solo||!S.started||S.myTurn||S.over||S.waiting||this.pending) return;
+    if(performance.now()-this.lastShot < 1000) return;
+    const [r,c]=this.choose(); this.pending=true; this.lastShot=performance.now();
+    onData({t:"shot",r,c});
+  },
+  unknown(){ const u=[]; for(let r=0;r<ROWS;r++) for(let c=0;c<NC;c++) if(!this.know[key(r,c)]) u.push([r,c]); return u; },
+  openHits(){ const h=[]; for(const k in this.know) if(this.know[k]==="hit") h.push(k.split(",").map(Number)); return h; },
+  around(cells,diag){ const out=[], seen=new Set();
+    cells.forEach(([r,c])=>{ for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ if(!dr&&!dc) continue; if(!diag&&dr&&dc) continue;
+      const rr=r+dr, cc=c+dc, k=key(rr,cc); if(rr<0||cc<0||rr>=ROWS||cc>=NC||this.know[k]||seen.has(k)) continue; seen.add(k); out.push([rr,cc]); } });
+    return out; },
+  pick(a){ return a[Math.floor(Math.random()*a.length)]; },
+  choose(){
+    const hits=this.openHits(), unk=this.unknown();
+    if(this.lvl==="facil"){
+      // marujo distraído: às vezes persegue um acerto, e nem sempre lembra da água em volta dos navios afundados
+      if(hits.length && Math.random()<.35){ const n=this.around(hits,true); if(n.length) return this.pick(n); }
+      const notShot=[]; for(let r=0;r<ROWS;r++) for(let c=0;c<NC;c++){ const v=this.know[key(r,c)]; if(!v||(v==="water"&&Math.random()<.5)) notShot.push([r,c]); }
+      return this.pick(notShot.length?notShot:unk);
+    }
+    if(this.lvl==="normal"){
+      // capitão: persegue o navio depois de acertar; no resto, tiros em xadrez
+      if(hits.length){ const o=this.around(hits,false); if(o.length && Math.random()<.75) return this.pick(o);
+        const d=this.around(hits,true); if(d.length) return this.pick(d); }
+      const par=unk.filter(([r,c])=>(r+c)%2===0); return this.pick(par.length?par:unk);
+    }
+    return this.density(hits,unk,1);
+  },
+  // difícil: conta em quantas posições possíveis cada navio restante cobriria cada casa
+  density(hits,unk,sharp){
+    const left={}; TYPES.forEach(T=>left[T.t]=T.q); this.sunkT.forEach(t=>left[t]--);
+    const hitSet=new Set(hits.map(x=>x+"")), score={};
+    TYPES.forEach(T=>{ if(left[T.t]<=0) return;
+      const rots = T.k==="y"?[0,1,2,3]:(T.s===1?[0]:[0,1]);
+      rots.forEach(rot=>{ const o=shapeOffsets(T.k,T.s,rot), [h,w]=bbox(o);
+        for(let r=0;r<=ROWS-h;r++) for(let c=0;c<=NC-w;c++){
+          const cells=o.map(([a,b])=>[r+a,c+b]); let ok=true, cover=0;
+          for(const [a,b] of cells){ const v=this.know[key(a,b)]; if(v&&v!=="hit"){ ok=false; break; } if(v==="hit") cover++; }
+          if(!ok) continue;
+          if(hits.length){ // não pode encostar num acerto que ele não cobre
+            const mine=new Set(cells.map(x=>x+""));
+            let touch=false;
+            for(const [a,b] of cells){ for(let dr=-1;dr<=1&&!touch;dr++) for(let dc=-1;dc<=1;dc++){ const kk=(a+dr)+","+(b+dc); if(hitSet.has(kk)&&!mine.has(kk)){ touch=true; break; } } if(touch) break; }
+            if(touch) continue;
+          }
+          const wgt = left[T.t] * (cover? Math.pow(30,cover) : 1);
+          if(hits.length && !cover) continue;
+          cells.forEach(([a,b])=>{ const k=key(a,b); if(!this.know[k]) score[k]=(score[k]||0)+wgt; });
+        } });
+    });
+    let best=-1, bestCells=[];
+    for(const k in score) best=Math.max(best,score[k]);
+    // normal: sorteia entre as casas boas; difícil: só as melhores
+    for(const k in score) if(score[k]>=best*sharp) bestCells.push(k);
+    if(!bestCells.length){ const n=this.around(hits,true); return this.pick(n.length?n:unk); }
+    return this.pick(bestCells).split(",").map(Number);
+  },
+};
+function startSolo(lvl){
+  S.solo=true; S.host=true; BOT.lvl=lvl; S.opName=BOT_NAMES[lvl];
+  setStatus(true,"solo · "+({facil:"fácil",normal:"normal",dificil:"difícil"})[lvl]);
+  $("foot").textContent="Modo solo contra o computador";
+  clearInterval(BOT.timer); BOT.timer=setInterval(()=>BOT.tick(),200);
+  startPlacement();
+}
+
 /* ---------- game flow ---------- */
 function startPlacement(){
   S.received={}; S.shots={}; S.enemySunk=[]; S.myReady=false; S.opReady=false; S.over=false; S.started=false; S.waiting=false;
@@ -556,6 +665,7 @@ function startPlacement(){
   resetFleet(); S.rot=0;
   buildBoard($("place-board"), onPlaceCell);
   show("s-place"); renderPlace();
+  if(S.solo){ BOT.newGame(); setTimeout(()=>onData({t:"ready"}),900); }
 }
 function maybeStart(){
   if(!(S.myReady&&S.opReady)||S.started) return;
@@ -629,6 +739,7 @@ function doRematch(){ $("ov-end").classList.remove("show"); startPlacement(); }
 
 function goHome(){
   S.leaving=true;
+  if(S.solo){ S.solo=false; clearInterval(BOT.timer); $("foot").textContent="Conexão direta entre os aparelhos (WebRTC)"; }
   try{ S.conn&&S.conn.close(); }catch(e){} try{ S.peer&&S.peer.destroy(); }catch(e){}
   S.conn=null; S.peer=null; S.wins=0; S.losses=0; S.firstNext=null; S.opName="Adversário";
   $("ov-end").classList.remove("show");
@@ -642,6 +753,8 @@ function readName(){ S.myName=($("name").value.trim()||"Capitão").slice(0,12); 
 try{ $("name").value=localStorage.getItem("bn-name")||""; }catch(e){}
 
 $("btn-create").onclick=()=>{ ac(); readName(); createRoom(); };
+document.querySelectorAll(".solo-btn").forEach(b=>b.onclick=()=>{ ac(); readName(); startSolo(b.dataset.lvl); });
+$("btn-quit").onclick=()=>{ $("ov-msg").classList.remove("show"); goHome(); };
 $("btn-join").onclick=()=>{ ac(); readName(); joinRoom($("join-code").value); };
 $("join-code").addEventListener("keydown",e=>{ if(e.key==="Enter") $("btn-join").click(); });
 $("btn-cancel").onclick=goHome;

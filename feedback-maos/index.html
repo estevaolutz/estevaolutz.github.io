@@ -337,6 +337,7 @@ function montaPainel(specApp, padroes = {}) {
     html += `<div class="sl"><label for="s_${k}">${lab}</label><output id="o_${k}"></output><input type="range" id="s_${k}" min="${lo}" max="${hi}" step="${st}" value="${d}"></div>`;
   }
   html += `<h4>Tela</h4><div class="row"><button id="bLimpar" type="button">Limpar tela</button><button id="bPadrao" type="button">Valores padrão</button></div>`;
+  html += `<h4>Ajustes</h4><p class="sub" style="margin:0 0 6px">Os ajustes ficam guardados neste navegador e voltam quando a página abre de novo.</p><div class="row"><button id="bBaixarAj" type="button">Baixar ajustes</button><button id="bAbrirAj" type="button">Abrir ajustes…</button></div><input type="file" id="fAj" accept=".json,application/json" hidden>`;
   box.innerHTML = html;
   for (const s of SPEC) {
     if (s.length === 1) continue;
@@ -351,6 +352,26 @@ function montaPainel(specApp, padroes = {}) {
   const m = $('modos');
   MODOS.forEach((nome, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = nome; b.onclick = () => setModo(i); m.appendChild(b); });
   setModo(padroes.Modo ?? 3);
+  ligaAjustes();
+}
+/* ---------------- guardar / restaurar ajustes ---------------- */
+const chaveAj = () => 'ajustes-' + nomeArquivo;
+function lerAjustes() { const o = { app: nomeArquivo, salvo: new Date().toISOString(), Modo: P.Modo, ModoNome: MODOS[P.Modo], Automatico: P.Automatico };
+  for (const s of SPEC) if (s.length > 1) o[s[0]] = P[s[0]]; return o; }
+function aplicarAjustes(o) { if (!o || typeof o !== 'object') return false;
+  for (const s of SPEC) if (s.length > 1 && typeof o[s[0]] === 'number') setP(s[0], o[s[0]]);
+  if (typeof o.Modo === 'number') setModo(o.Modo);
+  if (typeof o.Automatico === 'boolean') { P.Automatico = o.Automatico; const c = $('cAuto'); if (c) c.checked = o.Automatico; }
+  return true; }
+function ligaAjustes() {
+  try { const t = localStorage.getItem(chaveAj()); if (t) aplicarAjustes(JSON.parse(t)); } catch (e) {}
+  let ult = '';
+  setInterval(() => { const o = lerAjustes(); delete o.salvo; const t = JSON.stringify(o); if (t !== ult) { ult = t; try { localStorage.setItem(chaveAj(), t); } catch (e) {} } }, 1500);
+  $('bBaixarAj').onclick = () => { const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    saveBlob(new Blob([JSON.stringify(lerAjustes(), null, 2)], { type: 'application/json' }), `${nomeArquivo}-ajustes-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.json`); };
+  $('bAbrirAj').onclick = () => $('fAj').click();
+  $('fAj').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; try { aplicarAjustes(JSON.parse(await f.text())); dica('Ajustes carregados', 1500); } catch (er) { dica('Arquivo de ajustes inválido', 2500); } e.target.value = ''; };
+  window.__ajustes = { ler: lerAjustes, aplicar: aplicarAjustes };
 }
 function setModo(i) { P.Modo = ((i % 5) + 5) % 5; [...$('modos').children].forEach((b, j) => b.classList.toggle('on', j === P.Modo)); }
 function setCongelar(v) { P.Congelar = v; const c = $('cCongelar'); if (c) c.checked = v; const t = $('tCongela'); if (t) t.classList.toggle('on', v); }

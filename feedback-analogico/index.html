@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><script src="../lib/camera.js"></script><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<title>Feedback Analógico — mandala de realimentação</title>
+<meta name="theme-color" content="#000000"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Feedback">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100vw;height:100vh}
+#gear{position:fixed;top:12px;right:12px;width:40px;height:40px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffa;font:18px/38px system-ui;text-align:center;cursor:pointer;z-index:3;backdrop-filter:blur(6px);transition:opacity .4s}
+body.calmo #gear{opacity:0}
+#panel{position:fixed;top:60px;right:12px;width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 80px);overflow:auto;padding:14px 16px;border-radius:14px;background:#0b0b0fe0;border:1px solid #ffffff1a;color:#e8e8ee;font:13px/1.35 system-ui,sans-serif;z-index:3;transform:translateX(120%);transition:transform .25s;backdrop-filter:blur(10px)}
+#panel.open{transform:none}
+#panel h1{font-size:15px;margin:0 0 2px;letter-spacing:.04em}
+#panel p.sub{margin:0 0 10px;color:#9a9aa8;font-size:12px}
+#panel details{border-top:1px solid #ffffff14;padding:6px 0}
+#panel summary{cursor:pointer;font-weight:600;letter-spacing:.06em;font-size:11px;text-transform:uppercase;color:#d9b8ff;padding:4px 0}
+#panel label{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:8px 0;align-items:center}
+#panel label input[type=range]{grid-column:1/3;width:100%;accent-color:#c9a2ff}
+#panel label.tg{grid-template-columns:auto 1fr}
+#panel output{color:#9a9aa8;font-variant-numeric:tabular-nums}
+#panel .row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+#panel button,#panel select{flex:1 1 auto;padding:8px 10px;border-radius:9px;border:1px solid #ffffff26;background:#ffffff10;color:#eee;font:inherit;cursor:pointer}
+#panel select option{background:#111}
+#panel button.on{background:#c9a2ff33;border-color:#c9a2ff}
+#panel .hint{color:#777;font-size:11px;margin-top:10px}
+#joy{font-size:11px;color:#9a9aa8;margin:4px 0}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="gear" title="Controles (H)">⚙</div>
+<div id="panel">
+  <h1>FEEDBACK ANALÓGICO</h1>
+  <p class="sub">Uma câmera virtual apontada para o próprio monitor. Só a realimentação desenha: cada quadro é o anterior visto pela câmera, dobrado em simetria e realçado.</p>
+  <div class="row"><select id="receita"></select><button id="bAplicar">Aplicar receita</button></div>
+  <div class="row"><button id="bFlash">Flash</button><button id="bLimpar">Limpar</button></div>
+  <div id="sec"></div>
+  <div class="row"><button id="bCam">📷 Câmera invisível</button><button id="bFs">Tela cheia</button></div>
+  <div class="row"><button id="bReset">Restaurar padrões</button></div>
+  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · H = painel · F = tela cheia.<br>Joystick USB: alavanca X = rotação, alavanca Y = zoom, direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.</p>
+</div>
+<script>
+'use strict';
+// ===== parâmetros (os mesmos do componente "controles" do .toe) =====
+const SPEC = [
+  ['Realimentação', [
+    ['Nitidez', 'Nitidez no loop (padrões)', 1.2, 0, 6, .01],
+    ['Simetria', 'Simetria (0 = desligada, 2 a 12 dobras)', 6, 0, 12, 1],
+    ['Dobra', 'Dobra (em vez de saturar)', 1, 0, 1, .01],
+    ['Autodesl', 'Autodeslocamento (empurra pelo brilho)', 0, -3, 3, .01],
+    ['Autogiro', 'Autogiro (redemoinho pelo brilho)', 0, -3, 3, .01],
+  ]],
+  ['Câmera virtual', [
+    ['Zoom', 'Distância / zoom', 1.18, .5, 2, .001],
+    ['Rotacao', 'Rotação (graus)', -19, -180, 180, .1],
+    ['Desviox', 'Mira X', .167, -.5, .5, .001],
+    ['Desvioy', 'Mira Y', .003, -.5, .5, .001],
+    ['Inclinax', 'Inclinação X', 0, -1, 1, .01],
+    ['Inclinay', 'Inclinação Y', 0, -1, 1, .01],
+    ['Lente', 'Lente (barril)', 0, -1, 1, .01],
+    ['Foco', 'Desfoque', 4, 0, 20, .1],
+    ['Cromatica', 'Aberração cromática', .003, 0, .05, .0005],
+  ]],
+  ['Imagem', [
+    ['Ganho', 'Ganho / brilho', 1.2, 0, 2, .001],
+    ['Contraste', 'Contraste', 1, 0, 3, .01],
+    ['Preto', 'Nível de preto', 0, 0, .5, .001],
+    ['Matiz', 'Giro de cor (graus/quadro)', .3, -20, 20, .05],
+    ['Saturacao', 'Saturação', .95, 0, 2, .01],
+    ['Ruido', 'Ruído do sensor', .012, 0, .2, .001],
+    ['Linhas', 'Linhas do monitor (intensidade)', .1, 0, 1, .01],
+    ['Numlinhas', 'Número de linhas', 360, 60, 1080, 1],
+    ['Sala', 'Luz da sala (fora da tela)', 0, 0, .3, .001],
+    ['Moldura', 'Moldura do monitor (luz)', 0, 0, 1, .01],
+    ['Saidanivel', 'Brilho da saída', 1, 0, 1.5, .01],
+  ]],
+  ['Entrada', [
+    ['Camdeform', 'Câmera deforma o fluxo', .4, 0, 1, .01],
+    ['Camenergia', 'Movimento dá energia', .5, 0, 1, .01],
+    ['Luz', 'Luz na frente da tela (lanterna)', 0, 0, 1, .01],
+  ]],
+  ['Modulação', [
+    ['Oscvel', 'Velocidade da oscilação (Hz)', .1, 0, 2, .01],
+    ['Oscrot', 'Oscilação da rotação (graus)', 0, 0, 30, .1],
+    ['Osczoom', 'Oscilação do zoom', 0, 0, .1, .001],
+    ['Tremor', 'Tremor da mão', 0, 0, .03, .0005],
+    ['Deriva', 'Deriva aleatória da câmera', .2, 0, 1, .01],
+  ]],
+  ['Joystick', [
+    ['Joyativo', 'Joystick ligado', 1, 0, 1, 1, 'toggle'],
+    ['Joyvel', 'Velocidade do joystick (geral)', 1, .2, 3, .01],
+    ['Joyzona', 'Zona morta (folga no centro)', .15, 0, .5, .01],
+    ['Joycurva', 'Curva (1 = linear, mais alto = mais fino no centro)', 1, .5, 4, .01],
+    ['Joyrot', 'Sensibilidade: rotação', 1, 0, 3, .01],
+    ['Joyzoom', 'Sensibilidade: zoom', 1, 0, 3, .01],
+    ['Joymira', 'Sensibilidade: mira (direcional)', 1, 0, 3, .01],
+    ['Joybotoes', 'Sensibilidade: botões ganho/cor', 1, 0, 3, .01],
+    ['Joyalcance', 'Alcance (limites; 1 = original)', 1, .25, 3, .01],
+  ]],
+];
+const DEF = {}, INFO = {};
+SPEC.forEach(([, ps]) => ps.forEach(p => { DEF[p[0]] = p[2]; INFO[p[0]] = p; }));
+const KEY = 'feedback-analogico-v1';
+let P = Object.assign({}, DEF);
+if (!location.search.includes('limpo')) try { Object.assign(P, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
+let saveT = 0; function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(P)); } catch (e) {} }, 300); }
+
+// receitas: pontos de partida (a realimentação faz o resto)
+const RECEITAS = {
+  'Mandala': { Simetria: 6, Nitidez: 1.2, Dobra: 1, Autodesl: 0, Autogiro: 0, Zoom: 1.18, Rotacao: -19, Desviox: .167, Desvioy: .003, Foco: 4, Ganho: 1.2, Contraste: 1, Matiz: .3, Saturacao: .95, Moldura: 0 },
+  'Mandala de 8': { Simetria: 8, Nitidez: 1.4, Dobra: 1, Autodesl: 0, Autogiro: 0, Zoom: 1.1, Rotacao: 12, Desviox: .12, Desvioy: 0, Foco: 3.5, Ganho: 1.18, Contraste: 1, Matiz: -.6, Saturacao: 1, Moldura: 0 },
+  'Rosácea de 12': { Simetria: 12, Nitidez: 1.6, Dobra: 1, Autodesl: 0, Autogiro: .4, Zoom: 1.06, Rotacao: 4, Desviox: .2, Desvioy: .02, Foco: 3, Ganho: 1.15, Contraste: 1.1, Matiz: 1.2, Saturacao: 1.1, Moldura: 0 },
+  'Estrela de 3': { Simetria: 3, Nitidez: 1, Dobra: 1, Autodesl: .6, Autogiro: 0, Zoom: 1.25, Rotacao: -30, Desviox: .1, Desvioy: .05, Foco: 5, Ganho: 1.2, Contraste: 1, Matiz: .3, Saturacao: .9, Moldura: 0 },
+  'Redemoinho': { Simetria: 0, Nitidez: 1.2, Dobra: 1, Autodesl: 0, Autogiro: 1.5, Zoom: 1.04, Rotacao: 8, Desviox: 0, Desvioy: 0, Foco: 4, Ganho: 1.15, Contraste: 1, Matiz: .8, Saturacao: 1, Moldura: 0 },
+  'Túnel do monitor': { Simetria: 0, Nitidez: .6, Dobra: .4, Autodesl: 0, Autogiro: 0, Zoom: .86, Rotacao: 5, Desviox: 0, Desvioy: 0, Foco: 1.5, Ganho: 1.05, Contraste: 1, Matiz: 2, Saturacao: 1, Moldura: .8 },
+};
+
+// ===== WebGL2 =====
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:2em;font-family:sans-serif">Este navegador não suporta WebGL2.</p>'; throw 'no webgl2'; }
+const FLOAT_OK = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+gl.getExtension('OES_texture_float_linear');
+const VS = `#version 300 es
+in vec2 p; out vec2 vUV; void main(){ vUV = p*.5+.5; gl_Position = vec4(p,0.,1.); }`;
+function compile(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); throw gl.getShaderInfoLog(s); }
+  return s;
+}
+function program(fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, VS)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'p'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
+  p.u = {}; p.t = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); const nm = a.name.replace('[0]', ''); p.u[nm] = gl.getUniformLocation(p, a.name); p.t[nm] = a.type; }
+  return p;
+}
+const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+function makeTex(w, h) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  if (FLOAT_OK) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  return t;
+}
+function makeTarget(w, h) {
+  const tex = makeTex(w, h), fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); return { tex, fbo, w, h };
+}
+function use(p, uniforms, target) {
+  gl.useProgram(p); let unit = 0;
+  for (const k in uniforms) {
+    const loc = p.u[k]; if (loc === undefined || loc === null) continue;
+    const v = uniforms[k], ty = p.t[k];
+    if (ty === gl.SAMPLER_2D) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, v); gl.uniform1i(loc, unit++); }
+    else if (ty === gl.FLOAT) gl.uniform1f(loc, v);
+    else if (ty === gl.FLOAT_VEC2) gl.uniform2fv(loc, v);
+    else if (ty === gl.FLOAT_VEC3) gl.uniform3fv(loc, v);
+  }
+  if (target) { gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo); gl.viewport(0, 0, target.w, target.h); }
+  else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height); }
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ---- desfoque separável (os Blur TOP "foco" e "foco_fino") ----
+const BLUR = `#version 300 es
+precision highp float; in vec2 vUV; out vec4 o;
+uniform sampler2D src; uniform vec2 dir; uniform float sigma;
+void main(){
+  if (sigma < 0.05) { o = texture(src, vUV); return; }
+  float step = max(1.0, sigma / 4.0);            // até ~13 amostras por lado
+  vec3 acc = vec3(0.); float wsum = 0.;
+  for (int i = -13; i <= 13; i++) {
+    float x = float(i) * step;
+    if (abs(x) > sigma * 3.0 + 0.5) continue;
+    float w = exp(-x*x / (2.0*sigma*sigma));
+    acc += texture(src, vUV + dir * x).rgb * w; wsum += w;
+  }
+  o = vec4(acc / wsum, 1.);
+}`;
+
+// ---- o shader do TouchDesigner (camera_monitor), portado ----
+const MONITOR = `#version 300 es
+precision highp float; in vec2 vUV; out vec4 fragColor;
+uniform sampler2D sFoco, sCam, sFino;
+uniform float uZoom; uniform float uRot; uniform vec2 uOffset; uniform vec2 uTilt;
+uniform float uBarrel; uniform float uChroma; uniform float uGain; uniform float uContrast;
+uniform float uBlack; uniform float uHue; uniform float uSat; uniform float uNoise;
+uniform float uScan; uniform float uLines; uniform float uRoom;
+uniform float uFlash; uniform vec3 uFlashColor; uniform float uLuz; uniform vec2 uLuzPos; uniform float uCamDeform; uniform float uMoldura;
+uniform float uNitidez; uniform float uAutoDesl; uniform float uSimetria; uniform float uAutoGiro; uniform float uDobra; uniform float uTime; uniform float uAspect;
+uniform vec2 uTexel;
+vec3 hueRot(vec3 c, float a){ const vec3 k = vec3(0.57735); float ca = cos(a); return c*ca + cross(k,c)*sin(a) + k*dot(k,c)*(1.0-ca); }
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+vec2 camUV(vec2 uv, float k){
+  vec2 p = uv - 0.5; p.x *= uAspect;
+  float r2 = dot(p,p);
+  p *= (1.0 + uBarrel * r2) * k;
+  p /= max(0.2, 1.0 + dot(p, uTilt));
+  float c = cos(uRot), s = sin(uRot);
+  p = mat2(c,-s,s,c) * p;
+  p /= uZoom;
+  p += uOffset;
+  p.x /= uAspect;
+  return p + 0.5;
+}
+float screenMask(vec2 q){ vec2 e = smoothstep(vec2(0.0), vec2(0.004), q) * smoothstep(vec2(0.0), vec2(0.004), 1.0-q); return e.x*e.y; }
+void main(){
+  vec2 uv = vUV;
+  // câmera invisível: o que ela vê vira um campo que empurra o fluxo
+  vec2 px = vec2(1.0/320.0, 1.0/180.0) * 2.0;
+  float cl = texture(sCam, uv - vec2(px.x,0)).r, cr = texture(sCam, uv + vec2(px.x,0)).r;
+  float cd = texture(sCam, uv - vec2(0,px.y)).r, cu = texture(sCam, uv + vec2(0,px.y)).r;
+  vec2 uvd = uv + vec2(cr-cl, cu-cd) * uCamDeform * 0.08;
+  // 1: simetria
+  if (uSimetria >= 2.0) {
+    vec2 q0 = (uvd - 0.5) * vec2(uAspect, 1.0);
+    float ang = atan(q0.y, q0.x), rad = length(q0);
+    float seg = 6.2831853 / floor(uSimetria);
+    ang = mod(ang, seg); ang = min(ang, seg - ang);
+    uvd = vec2(cos(ang), sin(ang)) * rad / vec2(uAspect, 1.0) + 0.5;
+  }
+  // 2: a imagem empurra a si mesma pelo próprio relevo de brilho
+  vec2 fpx = uTexel * 3.0;
+  float fl = dot(texture(sFoco, uvd - vec2(fpx.x,0)).rgb, vec3(0.333));
+  float fr = dot(texture(sFoco, uvd + vec2(fpx.x,0)).rgb, vec3(0.333));
+  float fd = dot(texture(sFoco, uvd - vec2(0,fpx.y)).rgb, vec3(0.333));
+  float fu = dot(texture(sFoco, uvd + vec2(0,fpx.y)).rgb, vec3(0.333));
+  vec2 fg = vec2(fr-fl, fu-fd);
+  uvd += fg * uAutoDesl * 0.02 + vec2(-fg.y, fg.x) * uAutoGiro * 0.02;
+  vec2 uvR = camUV(uvd, 1.0 + uChroma), uvG = camUV(uvd, 1.0), uvB = camUV(uvd, 1.0 - uChroma);
+  vec3 col;
+  col.r = texture(sFoco, uvR).r; col.g = texture(sFoco, uvG).g; col.b = texture(sFoco, uvB).b;
+  // 3: nitidez dentro do loop
+  vec3 cru = texture(sFino, uvG).rgb;
+  col += (cru - col) * uNitidez;
+  // o monitor: linhas e borda
+  float scan = 0.5 + 0.5*cos(uvG.y * uLines * 6.2831853);
+  col *= mix(1.0, (0.35 + 0.65*scan)/0.675, uScan);
+  float m = screenMask(uvG);
+  float dOut = max(max(-uvG.x, uvG.x-1.0), max(-uvG.y, uvG.y-1.0));
+  float band = smoothstep(0.0, 0.004, dOut) * (1.0 - smoothstep(0.034, 0.042, dOut));
+  vec3 fora = vec3(0.86, 0.85, 0.80)*uMoldura*band + vec3(uRoom)*(1.0-band);
+  col = col*m + fora*(1.0-m);
+  // flash e lanterna
+  col += uFlashColor * uFlash;
+  vec2 q = (uv-0.5-uLuzPos)*vec2(uAspect,1.0);
+  col += uFlashColor * uLuz * 0.6 * exp(-dot(q,q)*60.0);
+  // eletrônica da câmera
+  col = hueRot(col, radians(uHue));
+  float l = dot(col, vec3(0.299,0.587,0.114));
+  col = mix(vec3(l), col, uSat);
+  col = (col - 0.5)*uContrast + 0.5;
+  col = col*uGain - uBlack;
+  col += (hash(uv*vec2(1931.0,1171.0) + fract(uTime)*91.7) - 0.5) * uNoise;
+  // 4: dobra
+  vec3 dob = 1.0 - abs(1.0 - mod(max(col, 0.0), 2.0));
+  col = mix(clamp(col, 0.0, 1.0), dob, uDobra);
+  fragColor = vec4(col, 1.0);
+}`;
+const SHOW = `#version 300 es
+precision highp float; in vec2 vUV; out vec4 o; uniform sampler2D src; uniform float nivel;
+void main(){ o = vec4(clamp(texture(src, vUV).rgb * nivel, 0., 1.), 1.); }`;
+
+const pBlur = program(BLUR), pMon = program(MONITOR), pShow = program(SHOW);
+
+// ---- buffers: o laço roda numa resolução fixa de 16:9 como no .toe (1280×720), menor em telas pequenas ----
+let W, H, loopA, loopB, tmp, foco, fino;
+function build() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
+  const asp = cv.width / cv.height;
+  const maxW = Math.min(1280, Math.max(640, cv.width));
+  W = Math.round(Math.min(maxW, 720 * asp)); H = Math.round(W / asp);
+  loopA = makeTarget(W, H); loopB = makeTarget(W, H); tmp = makeTarget(W, H); foco = makeTarget(W, H); fino = makeTarget(W, H);
+}
+build();
+let rsT; addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { build(); flash(); }, 200); });
+function limpar() { [loopA, loopB, foco, fino].forEach(t => { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }); }
+
+// ---- flash (flash_gatilho + lag) ----
+let flashEnv = 0, flashCol = [1, 1, 1];
+function hsv(h, s, v) { const f = n => { const k = (n + h * 6) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)]; }
+function flash() { flashEnv = 1; flashCol = Math.random() < .35 ? [1, 1, 1] : hsv(Math.random(), .55 + Math.random() * .4, 1); }
+
+// ---- câmera invisível (cam_luma -> cam_mapa_deform, cam_movimento) ----
+const cam = { on: false, video: null, tex: null, cvs: null, ctx: null, prev: null, mov: 0 };
+async function startCam() {
+  if (cam.on) return true;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 360, facingMode: 'user' } });
+    cam.video = document.createElement('video'); cam.video.playsInline = true; cam.video.muted = true; cam.video.srcObject = s; await cam.video.play();
+    cam.cvs = document.createElement('canvas'); cam.cvs.width = 160; cam.cvs.height = 90; cam.ctx = cam.cvs.getContext('2d', { willReadFrequently: true });
+    cam.on = true; return true;
+  } catch (e) { alert('Câmera indisponível: ' + e.message); return false; }
+}
+let camTex = null;
+function camTexture() {
+  if (!camTex) { camTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, camTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255])); }
+  if (cam.on && cam.video.readyState >= 2) {
+    const c = cam.ctx; c.save(); c.filter = 'grayscale(1) blur(1.5px)'; c.translate(160, 0); c.scale(-1, 1); // espelho, luma, desfoque
+    c.drawImage(cam.video, 0, 0, 160, 90); c.restore();
+    const d = c.getImageData(0, 0, 160, 90).data;
+    if (cam.prev) { let s = 0; for (let i = 0; i < d.length; i += 16) s += Math.abs(d[i] - cam.prev[i]); const mv = s / (d.length / 16) / 255;
+      cam.mov += (mv - cam.mov) * (mv > cam.mov ? .4 : .05); }
+    cam.prev = d.slice();
+    gl.bindTexture(gl.TEXTURE_2D, camTex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cam.cvs); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  }
+  return camTex;
+}
+
+// ---- joystick USB (joystick_controle, com a sensibilidade ajustável) ----
+const EIXOS = [ // eixo, parâmetro, sinal, velocidade/s, mín, máx, sensibilidade
+  ['x', 'Rotacao', 1, 40, -30, 30, 'Joyrot'],
+  ['y', 'Zoom', -1, .15, .85, 1.2, 'Joyzoom'],
+  ['hx', 'Desviox', 1, .2, -.3, .3, 'Joymira'],
+  ['hy', 'Desvioy', -1, .2, -.3, .3, 'Joymira'],
+];
+const SEGURAR = [[2, 'Ganho', 1, .08, .85, 1.2], [3, 'Ganho', -1, .08, .85, 1.2], [4, 'Matiz', -1, 6, -8, 8], [5, 'Matiz', 1, 6, -8, 8]];
+function alcance(lo, hi, k, nome) {
+  const meio = (lo + hi) / 2, meia = (hi - lo) / 2 * k; let a = meio - meia, b = meio + meia;
+  if (k > 1) { a = Math.max(a, INFO[nome][3]); b = Math.min(b, INFO[nome][4]); }
+  return [a, b];
+}
+let joyAntes = {}, joyNome = '';
+function lerJoystick(dt) {
+  const gps = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const gp = gps[0]; joyNome = gp ? gp.id : '';
+  if (!gp || !P.Joyativo) return;
+  const ax = gp.axes, bt = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+  let hx = 0, hy = 0;
+  if (gp.mapping === 'standard') { hx = (bt(15) ? 1 : 0) - (bt(14) ? 1 : 0); hy = (bt(13) ? 1 : 0) - (bt(12) ? 1 : 0); }
+  else if (ax.length > 9 && Math.abs(ax[9]) <= 1.01) { // direcional como "hat" (adaptadores de PS2 no Chrome)
+    const i = Math.round((ax[9] + 1) / (2 / 7)); const D = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]; [hx, hy] = D[i] || [0, 0];
+  }
+  const v = { x: ax[0] || 0, y: ax[1] || 0, hx, hy }; // y positivo = para baixo, como no TD
+  const passo = Math.min(.1, dt) * P.Joyvel, zona = Math.min(.9, P.Joyzona), curva = Math.max(.1, P.Joycurva), k = P.Joyalcance;
+  let mudou = false;
+  for (const [e, nome, sinal, vel, lo, hi, sens] of EIXOS) {
+    let a = Math.abs(v[e]); if (a < zona) continue;
+    a = Math.pow(Math.min(1, (a - zona) / (1 - zona)), curva); const s = v[e] > 0 ? a : -a;
+    const [l2, h2] = alcance(lo, hi, k, nome);
+    P[nome] = Math.max(l2, Math.min(h2, P[nome] + sinal * s * vel * P[sens] * passo)); mudou = true;
+  }
+  for (const [b, nome, d, vel, lo, hi] of SEGURAR) if (bt(b)) {
+    const [l2, h2] = alcance(lo, hi, k, nome);
+    P[nome] = Math.max(l2, Math.min(h2, P[nome] + d * vel * P.Joybotoes * passo)); mudou = true;
+  }
+  for (const [b, f] of [[0, flash], [1, limpar]]) { const agora = bt(b); if (agora && !joyAntes[b]) f(); joyAntes[b] = agora; }
+  if (mudou) { syncPanel(); save(); }
+}
+
+// ---- toque / mouse: toque = flash, arrastar = gira e aproxima ----
+let arr = null;
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); arr = { x: e.clientX, y: e.clientY, moveu: false }; acordar(); });
+cv.addEventListener('pointermove', e => {
+  acordar(); if (!arr) return;
+  const dx = e.clientX - arr.x, dy = e.clientY - arr.y; if (Math.abs(dx) + Math.abs(dy) > 4) arr.moveu = true;
+  if (!arr.moveu) return;
+  P.Rotacao = Math.max(-180, Math.min(180, P.Rotacao + dx * .15));
+  P.Zoom = Math.max(.5, Math.min(2, P.Zoom - dy * .0015));
+  arr.x = e.clientX; arr.y = e.clientY; syncPanel(); save();
+});
+['pointerup', 'pointercancel'].forEach(ev => cv.addEventListener(ev, () => { if (arr && !arr.moveu) flash(); arr = null; }));
+let calmoT; function acordar() { document.body.classList.remove('calmo'); clearTimeout(calmoT); calmoT = setTimeout(() => document.body.classList.add('calmo'), 3000); }
+acordar();
+
+// ---- painel ----
+const panel = document.getElementById('panel');
+document.getElementById('gear').onclick = () => panel.classList.toggle('open');
+const sec = document.getElementById('sec'), ctrls = {};
+SPEC.forEach(([titulo, ps], i) => {
+  const d = document.createElement('details'); if (i === 0) d.open = true;
+  d.innerHTML = `<summary>${titulo}</summary>`;
+  if (titulo === 'Joystick') { const j = document.createElement('div'); j.id = 'joy'; d.appendChild(j); }
+  ps.forEach(([k, label, , min, max, step, tipo]) => {
+    const l = document.createElement('label');
+    if (tipo === 'toggle') { l.className = 'tg'; l.innerHTML = `<input type="checkbox"><span>${label}</span>`; const c = l.querySelector('input');
+      c.onchange = () => { P[k] = c.checked ? 1 : 0; save(); }; ctrls[k] = { set: v => c.checked = !!v }; }
+    else { l.innerHTML = `${label} <output></output><input type="range" min="${min}" max="${max}" step="${step}">`;
+      const r = l.querySelector('input'), o = l.querySelector('output'); const dec = step >= 1 ? 0 : step >= .1 ? 1 : step >= .01 ? 2 : 3;
+      r.oninput = () => { P[k] = +r.value; o.textContent = (+r.value).toFixed(dec); save(); };
+      ctrls[k] = { set: v => { r.value = v; o.textContent = (+v).toFixed(dec); } }; }
+    d.appendChild(l);
+  });
+  sec.appendChild(d);
+});
+function syncPanel() { for (const k in ctrls) ctrls[k].set(P[k]); }
+syncPanel();
+const sel = document.getElementById('receita');
+Object.keys(RECEITAS).forEach(n => { const o = document.createElement('option'); o.textContent = n; sel.appendChild(o); });
+function aplicar() { Object.assign(P, RECEITAS[sel.value]); syncPanel(); save(); limpar(); flash(); }
+document.getElementById('bAplicar').onclick = aplicar;
+document.getElementById('bFlash').onclick = flash;
+document.getElementById('bLimpar').onclick = limpar;
+document.getElementById('bReset').onclick = () => { P = Object.assign({}, DEF); syncPanel(); save(); limpar(); flash(); };
+document.getElementById('bCam').onclick = async e => { if (await startCam()) e.target.classList.add('on'); };
+function fullscreen() { const d = document.documentElement; if (!document.fullscreenElement) (d.requestFullscreen || d.webkitRequestFullscreen || (() => {})).call(d); else document.exitFullscreen(); }
+document.getElementById('bFs').onclick = fullscreen;
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'h') panel.classList.toggle('open'); else if (k === 'f') fullscreen(); else if (k === 'c') limpar();
+  else if (e.key === ' ') { e.preventDefault(); flash(); }
+});
+
+// ===== laço =====
+const t0 = performance.now(); let tAnt = t0, joyT = 0;
+function frame(now) {
+  const t = (now - t0) / 1000, dt = Math.min(.1, (now - tAnt) / 1000); tAnt = now;
+  lerJoystick(dt);
+  if (now - joyT > 1000) { joyT = now; const j = document.getElementById('joy'); if (j) j.textContent = joyNome ? 'Conectado: ' + joyNome : 'Nenhum joystick (aperte um botão dele para conectar).'; }
+  for (let n = 0; n < TURBO; n++) passo(t + n / 60, n ? 1 / 60 : dt);
+  use(pShow, { src: loopA.tex, nivel: P.Saidanivel }, null);
+  window.__frames++;
+  requestAnimationFrame(frame);
+}
+const QS = new URLSearchParams(location.search), TURBO = Math.max(1, Math.min(60, +QS.get('turbo') || 1));
+function passo(t, dt) {
+  flashEnv *= Math.exp(-dt / .12);
+  const camT = camTexture();
+  const esc = W / 1280; // os tamanhos de desfoque do .toe são em pixels de 1280×720
+  // foco: desfoque do quadro anterior; foco_fino: desfoque leve
+  use(pBlur, { src: loopA.tex, dir: [1 / W, 0], sigma: P.Foco * esc }, tmp);
+  use(pBlur, { src: tmp.tex, dir: [0, 1 / H], sigma: P.Foco * esc }, foco);
+  use(pBlur, { src: loopA.tex, dir: [1 / W, 0], sigma: .8 * esc }, tmp);
+  use(pBlur, { src: tmp.tex, dir: [0, 1 / H], sigma: .8 * esc }, fino);
+  const s = Math.sin, D = P.Deriva;
+  const zoom = P.Zoom + P.Osczoom * s(6.2832 * P.Oscvel * t) + D * .025 * (s(t * .071) + s(t * .023 + 2));
+  const rot = (P.Rotacao + P.Oscrot * s(6.2832 * P.Oscvel * .73 * t + 1.3) + D * 9 * (s(t * .113) + s(t * .041 + 1))) * Math.PI / 180;
+  const off = [P.Desviox + P.Tremor * (s(t * 13.1) + s(t * 5.7 + 2)) + D * .05 * (s(t * .089) + s(t * .031 + 4)),
+               P.Desvioy + P.Tremor * (s(t * 11.3 + 1) + s(t * 6.1)) + D * .04 * (s(t * .067 + 3) + s(t * .027))];
+  const ganho = P.Ganho + (cam.on ? Math.min(.12, cam.mov * P.Camenergia * 2.5) : 0);
+  use(pMon, {
+    sFoco: foco.tex, sCam: camT, sFino: fino.tex,
+    uZoom: zoom, uRot: rot, uOffset: off, uTilt: [P.Inclinax, P.Inclinay], uBarrel: P.Lente, uChroma: P.Cromatica,
+    uGain: ganho, uContrast: P.Contraste, uBlack: P.Preto, uHue: P.Matiz, uSat: P.Saturacao, uNoise: P.Ruido,
+    uScan: P.Linhas, uLines: P.Numlinhas, uRoom: P.Sala, uFlash: flashEnv, uFlashColor: flashCol, uLuz: P.Luz,
+    uLuzPos: [.12 * s(t * .21) + .06 * s(t * .53 + 1), .10 * s(t * .17 + 2) + .05 * s(t * .61)],
+    uCamDeform: cam.on ? P.Camdeform : 0, uMoldura: P.Moldura, uNitidez: P.Nitidez, uAutoDesl: P.Autodesl,
+    uSimetria: P.Simetria, uAutoGiro: P.Autogiro, uDobra: P.Dobra, uTime: t, uAspect: W / H, uTexel: [1 / W, 1 / H],
+  }, loopB);
+  const tt = loopA; loopA = loopB; loopB = tt;
+}
+window.__frames = 0;
+for (const [k, v] of new URLSearchParams(location.search)) if (k in P) P[k] = +v;
+syncPanel();
+requestAnimationFrame(frame);
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script></body></html>

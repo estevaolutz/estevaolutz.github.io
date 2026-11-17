@@ -9,6 +9,12 @@
 canvas{display:block;width:100vw;height:100vh}
 #gear{position:fixed;top:12px;right:12px;width:40px;height:40px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffa;font:18px/38px system-ui;text-align:center;cursor:pointer;z-index:3;backdrop-filter:blur(6px);transition:opacity .4s}
 body.calmo #gear{opacity:0}
+#rec{position:fixed;top:14px;left:14px;display:none;align-items:center;gap:8px;padding:6px 12px 6px 10px;border-radius:20px;background:#000a;color:#fff;font:600 13px system-ui;z-index:3;cursor:pointer;font-variant-numeric:tabular-nums}
+#rec i{width:11px;height:11px;border-radius:50%;background:#ff3b3b;animation:pisca 1s steps(2) infinite}
+body.gravando #rec{display:flex}
+body.gravando.calmo #rec{opacity:.45}
+@keyframes pisca{50%{opacity:.2}}
+#bGravar.on{background:#ff3b3b33;border-color:#ff3b3b}
 #panel{position:fixed;top:60px;right:12px;width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 80px);overflow:auto;padding:14px 16px;border-radius:14px;background:#0b0b0fe0;border:1px solid #ffffff1a;color:#e8e8ee;font:13px/1.35 system-ui,sans-serif;z-index:3;transform:translateX(120%);transition:transform .25s;backdrop-filter:blur(10px)}
 #panel.open{transform:none}
 #panel h1{font-size:15px;margin:0 0 2px;letter-spacing:.04em}
@@ -35,6 +41,7 @@ body.calmo #gear{opacity:0}
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="gear" title="Controles (H)">⚙</div>
+<div id="rec" title="Parar e salvar (R)"><i></i><span id="recT">0:00</span></div>
 <div id="panel">
   <h1>FEEDBACK ANALÓGICO</h1>
   <p class="sub">Uma câmera virtual apontada para o próprio monitor. Só a realimentação desenha: cada quadro é o anterior visto pela câmera, dobrado em simetria e realçado.</p>
@@ -47,9 +54,16 @@ body.calmo #gear{opacity:0}
     <p class="hint" style="margin-top:4px">Guarda todos os ajustes da imagem (menos os do joystick) neste aparelho. Toque no nome para carregar; ↻ regrava com os ajustes atuais; ✕ apaga. Teclas 1 a 9 carregam as nove primeiras. Para levar a outro aparelho, exporte o arquivo e importe lá. As configurações salvas também entram no menu de receitas e no botão 10 do joystick.</p>
   </details>
   <div id="sec"></div>
+  <details id="gravacao"><summary>Gravação</summary>
+    <label>Formato<select id="gFormato" style="grid-column:1/3"></select></label>
+    <label>Qualidade<select id="gQual" style="grid-column:1/3"><option value="8">Leve (8 Mbps)</option><option value="20" selected>Alta (20 Mbps)</option><option value="50">Máxima (50 Mbps)</option></select></label>
+    <label>Quadros por segundo<select id="gFps" style="grid-column:1/3"><option>30</option><option selected>60</option></select></label>
+    <div class="row"><button id="bGravar">● Gravar</button></div>
+    <p class="hint" style="margin-top:4px">Grava só a imagem, sem o painel e sem os botões, na resolução da janela (use Tela cheia para gravar na resolução da tela). Ao parar, o vídeo é baixado para o aparelho. Atalhos: tecla R, ou START + ↑ no joystick.</p>
+  </details>
   <div class="row"><button id="bCam">📷 Câmera invisível</button><button id="bFs">Tela cheia</button></div>
   <div class="row"><button id="bReset">Restaurar padrões</button></div>
-  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = saturação (X, para a direita = mais) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 (START) = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.<br>Segurando START: direcional ←/→ = velocidade da imagem −/+.</p>
+  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · R = gravar · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = saturação (X, para a direita = mais) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 (START) = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.<br>Segurando START: direcional ←/→ = velocidade da imagem −/+, ↑ = começa/para a gravação.</p>
 </div>
 <script>
 'use strict';
@@ -376,7 +390,8 @@ function lerJoystick(dt) {
   const par = PARES_DIREITA[P.Joydireita | 0] || (gp.mapping === 'standard' || ax.length < 6 ? [2, 3] : [2, 5]);
   // segurando START (botão 10): direcional ←→ = velocidade da imagem; a mira fica parada
   const shift = bt(9); let sx = 0;
-  if (shift) { sx = hx; if (hx || hy) joyShiftUsou = true; hx = 0; hy = 0; }
+  if (shift) { sx = hx; if (hx || hy) joyShiftUsou = true; if (hy < 0 && !joyAntes.recUp) gravar(); hx = 0; hy = 0; }
+  joyAntes.recUp = shift && hy < 0;
   const v = { x: ax[0] || 0, y: ax[1] || 0, hx, hy, rx: ax[par[0]] || 0, ry: ax[par[1]] || 0 }; // y positivo = para baixo, como no TD
   joyEstado = { ax, bt: gp.buttons.map((b, i) => b.pressed ? i + 1 : 0).filter(Boolean), par };
   const passo = Math.min(.1, dt) * P.Joyvel, zona = Math.min(.9, P.Joyzona), curva = Math.max(.1, P.Joycurva), k = P.Joyalcance;
@@ -516,10 +531,54 @@ document.getElementById('bReset').onclick = () => { P = Object.assign({}, DEF); 
 document.getElementById('bCam').onclick = async e => { if (await startCam()) e.target.classList.add('on'); };
 function fullscreen() { const d = document.documentElement; if (!document.fullscreenElement) (d.requestFullscreen || d.webkitRequestFullscreen || (() => {})).call(d); else document.exitFullscreen(); }
 document.getElementById('bFs').onclick = fullscreen;
+
+// ---- gravação de tela (só o canvas: o painel e os botões não aparecem no vídeo) ----
+const FORMATOS = [
+  ['video/mp4;codecs=avc1.640033', 'MP4 (H.264)', 'mp4'], ['video/mp4;codecs=avc1', 'MP4 (H.264)', 'mp4'], ['video/mp4', 'MP4', 'mp4'],
+  ['video/webm;codecs=vp9', 'WebM (VP9)', 'webm'], ['video/webm;codecs=vp8', 'WebM (VP8)', 'webm'], ['video/webm', 'WebM', 'webm'],
+].filter(([m]) => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m))
+ .filter((f, i, a) => a.findIndex(g => g[1] === f[1]) === i);
+const gFormato = document.getElementById('gFormato'), bGravar = document.getElementById('bGravar');
+if (!FORMATOS.length || !cv.captureStream) { bGravar.disabled = true; bGravar.textContent = 'Gravação indisponível neste navegador'; }
+FORMATOS.forEach(([m, nome], i) => { const o = document.createElement('option'); o.value = i; o.textContent = nome; gFormato.appendChild(o); });
+let rec = null, recPartes = [], recInicio = 0, recFmt = null, recTimer = 0;
+function gravar() {
+  if (rec) { rec.stop(); return; }
+  if (!FORMATOS.length || !cv.captureStream) { alert('Este navegador não consegue gravar a tela.'); return; }
+  recFmt = FORMATOS[+gFormato.value || 0];
+  const fps = +document.getElementById('gFps').value || 60;
+  const stream = cv.captureStream(fps);
+  try { rec = new MediaRecorder(stream, { mimeType: recFmt[0], videoBitsPerSecond: (+document.getElementById('gQual').value || 20) * 1e6 }); }
+  catch (e) { alert('Não consegui começar a gravação: ' + e.message); rec = null; return; }
+  recPartes = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) recPartes.push(e.data); };
+  rec.onstop = () => {
+    stream.getTracks().forEach(t => t.stop()); clearInterval(recTimer);
+    document.body.classList.remove('gravando'); bGravar.classList.remove('on'); bGravar.textContent = '● Gravar';
+    const blob = new Blob(recPartes, { type: recFmt[0].split(';')[0] }); rec = null; recPartes = [];
+    if (!blob.size) { alert('A gravação ficou vazia.'); return; }
+    const d = new Date(), z = n => String(n).padStart(2, '0');
+    const nome = `feedback-analogico-${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.${recFmt[2]}`;
+    const arq = new File([blob], nome, { type: blob.type });
+    // iPad/iPhone não baixam direto: usam a folha de compartilhar (Salvar vídeo)
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+      if (navigator.canShare && navigator.canShare({ files: [arq] })) { navigator.share({ files: [arq] }).catch(() => baixar(arq)); return; }
+    }
+    baixar(arq);
+  };
+  rec.start(1000); recInicio = performance.now();
+  document.body.classList.add('gravando'); bGravar.classList.add('on'); bGravar.textContent = '■ Parar e salvar';
+  const T = document.getElementById('recT');
+  recTimer = setInterval(() => { const s = Math.floor((performance.now() - recInicio) / 1000); T.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }, 250);
+  T.textContent = '0:00';
+}
+function baixar(arq) { const a = document.createElement('a'); a.href = URL.createObjectURL(arq); a.download = arq.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); }
+bGravar.onclick = gravar;
+document.getElementById('rec').onclick = gravar;
 addEventListener('keydown', e => {
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' && e.target.type === 'text') return;
   const k = e.key.toLowerCase();
-  if (k === 'h') panel.classList.toggle('open'); else if (k === 'f') fullscreen(); else if (k === 'c') limpar();
+  if (k === 'h') panel.classList.toggle('open'); else if (k === 'f') fullscreen(); else if (k === 'c') limpar(); else if (k === 'r') gravar();
   else if (e.key === ' ') { e.preventDefault(); flash(); }
   else if (/^[1-9]$/.test(e.key) && BANCO[+e.key - 1]) { carregarConfig(BANCO[+e.key - 1]); sel.value = 'b:' + (+e.key - 1); }
 });

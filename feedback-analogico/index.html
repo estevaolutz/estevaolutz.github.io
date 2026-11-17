@@ -25,6 +25,13 @@ body.calmo #gear{opacity:0}
 #panel button.on{background:#c9a2ff33;border-color:#c9a2ff}
 #panel .hint{color:#777;font-size:11px;margin-top:10px}
 #joy{font-size:11px;color:#9a9aa8;margin:4px 0}
+#panel input[type=text]{flex:1 1 120px;min-width:0;padding:8px 10px;border-radius:9px;border:1px solid #ffffff26;background:#ffffff08;color:#eee;font:inherit}
+#lista{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+#lista .it{display:flex;gap:4px;align-items:center}
+#lista .it button{flex:0 0 auto;padding:6px 9px}
+#lista .it button.nome{flex:1 1 auto;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lista .it button.nome small{color:#888;margin-left:6px}
+#lista .vazio{color:#777;font-size:12px}
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="gear" title="Controles (H)">⚙</div>
@@ -33,10 +40,16 @@ body.calmo #gear{opacity:0}
   <p class="sub">Uma câmera virtual apontada para o próprio monitor. Só a realimentação desenha: cada quadro é o anterior visto pela câmera, dobrado em simetria e realçado.</p>
   <div class="row"><select id="receita"></select><button id="bAplicar">Aplicar receita</button></div>
   <div class="row"><button id="bFlash">Flash</button><button id="bLimpar">Limpar</button></div>
+  <details id="banco" open><summary>Banco de configurações</summary>
+    <div class="row"><input id="bNome" type="text" placeholder="Nome da configuração" maxlength="40"><button id="bSalvar">Salvar atual</button></div>
+    <div id="lista"></div>
+    <div class="row"><button id="bExportar">Exportar arquivo</button><button id="bImportar">Importar arquivo</button><input id="fImport" type="file" accept=".json,application/json" hidden></div>
+    <p class="hint" style="margin-top:4px">Guarda todos os ajustes da imagem (menos os do joystick) neste aparelho. Toque no nome para carregar; ↻ regrava com os ajustes atuais; ✕ apaga. Teclas 1 a 9 carregam as nove primeiras. Para levar a outro aparelho, exporte o arquivo e importe lá. As configurações salvas também entram no menu de receitas e no botão 10 do joystick.</p>
+  </details>
   <div id="sec"></div>
   <div class="row"><button id="bCam">📷 Câmera invisível</button><button id="bFs">Tela cheia</button></div>
   <div class="row"><button id="bReset">Restaurar padrões</button></div>
-  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = redemoinho (X) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.</p>
+  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = redemoinho (X) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.</p>
 </div>
 <script>
 'use strict';
@@ -341,7 +354,7 @@ function simetria(d) {
   if (d > 0 && v < 2) v = 2; if (d < 0 && v < 2) v = 0;
   P.Simetria = Math.max(0, Math.min(12, v));
 }
-function proximaReceita() { const ns = Object.keys(RECEITAS); sel.value = ns[(ns.indexOf(sel.value) + 1) % ns.length]; aplicar(); }
+function proximaReceita() { const os = [...sel.options]; if (!os.length) return; sel.selectedIndex = (sel.selectedIndex + 1) % os.length; aplicar(); }
 function alcance(lo, hi, k, nome) {
   const meio = (lo + hi) / 2, meia = (hi - lo) / 2 * k; let a = meio - meia, b = meio + meia;
   if (k > 1) { a = Math.max(a, INFO[nome][3]); b = Math.min(b, INFO[nome][4]); }
@@ -426,8 +439,66 @@ SPEC.forEach(([titulo, ps], i) => {
 function syncPanel() { for (const k in ctrls) ctrls[k].set(P[k]); }
 syncPanel();
 const sel = document.getElementById('receita');
-Object.keys(RECEITAS).forEach(n => { const o = document.createElement('option'); o.textContent = n; sel.appendChild(o); });
-function aplicar() { Object.assign(P, RECEITAS[sel.value]); syncPanel(); save(); limpar(); flash(); }
+// ---- banco de configurações (fica no aparelho; exporta/importa em arquivo) ----
+const BKEY = 'feedback-analogico-banco';
+let BANCO = [];
+try { BANCO = JSON.parse(localStorage.getItem(BKEY) || '[]').filter(c => c && c.nome && c.p); } catch (e) { BANCO = []; }
+function gravarBanco() { try { localStorage.setItem(BKEY, JSON.stringify(BANCO)); } catch (e) { alert('Não consegui gravar no aparelho: ' + e.message); } }
+function retrato() { const o = {}; for (const k in DEF) if (!k.startsWith('Joy')) o[k] = +(+P[k]).toFixed(5); return o; }
+function carregarConfig(c) { for (const k in c.p) if (k in DEF && !k.startsWith('Joy')) P[k] = +c.p[k]; syncPanel(); save(); flash(); }
+function montarMenu() {
+  const atual = sel.value; sel.innerHTML = '';
+  const g1 = document.createElement('optgroup'); g1.label = 'Receitas';
+  Object.keys(RECEITAS).forEach(n => { const o = document.createElement('option'); o.value = 'r:' + n; o.textContent = n; g1.appendChild(o); });
+  sel.appendChild(g1);
+  if (BANCO.length) { const g2 = document.createElement('optgroup'); g2.label = 'Meu banco';
+    BANCO.forEach((c, i) => { const o = document.createElement('option'); o.value = 'b:' + i; o.textContent = c.nome; g2.appendChild(o); }); sel.appendChild(g2); }
+  if ([...sel.options].some(o => o.value === atual)) sel.value = atual;
+}
+const esc = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function montarLista() {
+  const L = document.getElementById('lista');
+  if (!BANCO.length) { L.innerHTML = '<div class="vazio">Nada salvo ainda.</div>'; montarMenu(); return; }
+  L.innerHTML = BANCO.map((c, i) => `<div class="it"><button class="nome" data-a="c" data-i="${i}" title="Carregar">${i < 9 ? (i + 1) + ' · ' : ''}${esc(c.nome)}<small>${c.data ? new Date(c.data).toLocaleDateString('pt-BR') : ''}</small></button>` +
+    `<button data-a="g" data-i="${i}" title="Regravar com os ajustes atuais">↻</button><button data-a="x" data-i="${i}" title="Apagar">✕</button></div>`).join('');
+  montarMenu();
+}
+document.getElementById('lista').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return; const i = +b.dataset.i, c = BANCO[i]; if (!c) return;
+  if (b.dataset.a === 'c') { carregarConfig(c); sel.value = 'b:' + i; }
+  else if (b.dataset.a === 'g') { if (confirm('Regravar "' + c.nome + '" com os ajustes atuais?')) { c.p = retrato(); c.data = Date.now(); gravarBanco(); montarLista(); } }
+  else if (b.dataset.a === 'x') { if (confirm('Apagar "' + c.nome + '"?')) { BANCO.splice(i, 1); gravarBanco(); montarLista(); } }
+};
+document.getElementById('bSalvar').onclick = () => {
+  const inp = document.getElementById('bNome'); let nome = inp.value.trim() || 'Configuração ' + (BANCO.length + 1);
+  const j = BANCO.findIndex(c => c.nome.toLowerCase() === nome.toLowerCase());
+  if (j >= 0) { if (!confirm('Já existe "' + BANCO[j].nome + '". Regravar?')) return; BANCO[j] = { nome, data: Date.now(), p: retrato() }; }
+  else BANCO.push({ nome, data: Date.now(), p: retrato() });
+  inp.value = ''; inp.blur(); gravarBanco(); montarLista();
+};
+document.getElementById('bNome').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') document.getElementById('bSalvar').click(); });
+document.getElementById('bExportar').onclick = () => {
+  const blob = new Blob([JSON.stringify({ app: 'feedback-analogico', versao: 1, banco: BANCO }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'feedback-analogico-banco-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+const fImp = document.getElementById('fImport');
+document.getElementById('bImportar').onclick = () => fImp.click();
+fImp.onchange = async () => {
+  const f = fImp.files[0]; fImp.value = ''; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text()); const lista = (Array.isArray(d) ? d : d.banco || []).filter(c => c && c.nome && c.p);
+    if (!lista.length) throw new Error('nenhuma configuração no arquivo');
+    let n = 0; for (const c of lista) { const j = BANCO.findIndex(x => x.nome === c.nome); if (j >= 0) BANCO[j] = c; else BANCO.push(c); n++; }
+    gravarBanco(); montarLista(); alert(n + ' configuração(ões) importada(s).');
+  } catch (e) { alert('Arquivo inválido: ' + e.message); }
+};
+montarLista();
+function aplicar() {
+  const v = sel.value;
+  if (v.startsWith('b:')) { const c = BANCO[+v.slice(2)]; if (c) carregarConfig(c); return; }
+  Object.assign(P, RECEITAS[v.slice(2)]); syncPanel(); save(); limpar(); flash();
+}
 document.getElementById('bAplicar').onclick = aplicar;
 document.getElementById('bFlash').onclick = flash;
 document.getElementById('bLimpar').onclick = limpar;
@@ -436,10 +507,11 @@ document.getElementById('bCam').onclick = async e => { if (await startCam()) e.t
 function fullscreen() { const d = document.documentElement; if (!document.fullscreenElement) (d.requestFullscreen || d.webkitRequestFullscreen || (() => {})).call(d); else document.exitFullscreen(); }
 document.getElementById('bFs').onclick = fullscreen;
 addEventListener('keydown', e => {
-  if (e.target.tagName === 'SELECT') return;
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' && e.target.type === 'text') return;
   const k = e.key.toLowerCase();
   if (k === 'h') panel.classList.toggle('open'); else if (k === 'f') fullscreen(); else if (k === 'c') limpar();
   else if (e.key === ' ') { e.preventDefault(); flash(); }
+  else if (/^[1-9]$/.test(e.key) && BANCO[+e.key - 1]) { carregarConfig(BANCO[+e.key - 1]); sel.value = 'b:' + (+e.key - 1); }
 });
 
 // ===== laço =====

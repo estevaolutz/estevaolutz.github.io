@@ -74,6 +74,7 @@
   <div class="row"><label>Passos/batida</label>
     <select id="spb"><option value="1">1</option><option value="4">4</option><option value="13" selected>13 (rodovia = 8 batidas)</option><option value="26">26</option><option value="52">52</option><option value="104">104 (rodovia = 1 batida)</option></select></div>
   <div class="row"><label>Rodovia (voltas)</label><input type="range" id="laps" min="4" max="120" step="1" value="28"></div>
+  <div class="row"><label>Nunca parar</label><input type="checkbox" id="never"></div>
   <h2>Som</h2>
   <div class="row"><label>Modo</label>
     <select id="scale">
@@ -125,7 +126,7 @@
   <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.4" max="3" step="0.01" value="1"></div>
   <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
   <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
-  <div class="hint">Cada batida reúne alguns passos: as viradas à esquerda escolhem a nota, a direção da formiga escolhe a voz. No caos a melodia não se repete; quando a rodovia aparece (período de 104 passos) a música vira um laço.<br>Efeitos: o delay acompanha o andamento (em batidas); a varredura do filtro dura 8 batidas, o compasso da rodovia; “Abre na rodovia” deixa o filtro fechado no caos e abre quando a rodovia aparece.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · ↑/↓ velocidade.</div>
+  <div class="hint">Cada batida reúne alguns passos: as viradas à esquerda escolhem a nota, a direção da formiga escolhe a voz. No caos a melodia não se repete; quando a rodovia aparece (período de 104 passos) a música vira um laço.<br>“Nunca parar”: a grade dá a volta nas bordas (a formiga sai de um lado e entra do outro) e a contagem de voltas é ignorada; quando a rodovia bate no rastro antigo, volta o caos e a obra procura a próxima rodovia.<br>Efeitos: o delay acompanha o andamento (em batidas); a varredura do filtro dura 8 batidas, o compasso da rodovia; “Abre na rodovia” deixa o filtro fechado no caos e abre quando a rodovia aparece.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · ↑/↓ velocidade.</div>
 </div>
 
 <script>
@@ -382,14 +383,14 @@ let dirty = null;
 const markDirty = (x, y) => { if (!dirty) dirty = [x, y, x, y]; else { if (x < dirty[0]) dirty[0] = x; if (y < dirty[1]) dirty[1] = y; if (x > dirty[2]) dirty[2] = x; if (y > dirty[3]) dirty[3] = y; } };
 
 // ---------- formiga ----------
-let rule = 'RL', ax, ay, dir, steps, bb, turns, hw, trail, ended, endT;
+let rule = 'RL', ax, ay, dir, steps, bb, turns, hw, trail, ended, endT, wrapped = false, hwN = 0;
 const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];   // 0 = norte, 1 = leste, 2 = sul, 3 = oeste
 const HIST = 1 << 16;
 function reset(){
   rule = P.rule; grid.fill(0);
   ax = G/2; ay = G/2; dir = 0; steps = 0; ended = false;
   bb = [ax, ay, ax, ay];
-  turns = new Uint8Array(HIST); hw = null; trail = [];
+  turns = new Uint8Array(HIST); hw = null; trail = []; wrapped = false; hwN = 0;
   const n = rule.length;
   if (P.init === 'acaso'){ const k = 6 + Math.floor(Math.random()*14); for (let i = 0; i < k; i++){ const x = ax + Math.floor(Math.random()*11) - 5, y = ay + Math.floor(Math.random()*11) - 5; grid[y*G + x] = 1 + Math.floor(Math.random()*(n-1)); } }
   else if (P.init === 'quadrado'){ for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) grid[(ay+y)*G + ax + x] = 1; }
@@ -405,9 +406,18 @@ function step(){
   const nc = (c + 1) % n; grid[i] = nc; px[i] = pal[nc]; markDirty(ax, ay);
   turns[steps & (HIST-1)] = L ? 1 : 0;
   ax += DX[dir]; ay += DY[dir]; steps++;
+  if (P.never){
+    // nunca parar: a grade é um toro (sai de um lado, entra do outro)
+    if (ax < 0 || ay < 0 || ax >= G || ay >= G){ ax = (ax + G) & (G-1); ay = (ay + G) & (G-1); wrapped = true; }
+  } else if (ax < 3 || ay < 3 || ax > G-4 || ay > G-4) ended = true;
   if (ax < bb[0]) bb[0] = ax; if (ay < bb[1]) bb[1] = ay; if (ax > bb[2]) bb[2] = ax; if (ay > bb[3]) bb[3] = ay;
-  if (ax < 3 || ay < 3 || ax > G-4 || ay > G-4) ended = true;
   return L ? 1 : 0;
+}
+// a rodovia continua? (no modo sem fim ela pode bater no rastro antigo e voltar ao caos)
+function holds(p){
+  if (steps < 2*p) return false;
+  for (let i = 1; i <= p; i++){ if (turns[(steps - i) & (HIST-1)] !== turns[(steps - i - p) & (HIST-1)]) return false; }
+  return true;
 }
 // procura um período p em que as últimas viradas se repetem 3 vezes (a rodovia)
 function findPeriod(){
@@ -458,10 +468,15 @@ function beatNow(t){
   let nL = 0, flips = 0;
   for (let s = 0; s < spb && !ended; s++){ const c0 = grid[ay*G + ax]; const l = step(); nL += l; if (c0 === 0) flips++; Ls.push(l); }
   trail.push([ax, ay, t]); if (trail.length > 600) trail.shift();
+  if (wrapped){ wrapped = false; if (hw){ hw.lx = ax; hw.ly = ay; } }
+  if (hw && P.never && !holds(hw.p)){
+    // a rodovia bateu em alguma coisa: volta o caos e a obra procura a próxima rodovia
+    hw = null; chordDeg = 0; O.setDrone(O.semi(0), 7, 3, 220 + Math.min(500, steps/40));
+  }
   // rodovia?
   if (!hw && steps > 1000 && beat % 4 === 0){
     const p = findPeriod();
-    if (p){ hw = { p, at: steps, t, lx: ax, ly: ay };
+    if (p){ hw = { p, at: steps, t, lx: ax, ly: ay }; hwN++;
       chordDeg = 3;
       O.chord(chordDeg).forEach((s, i) => O.pad(O.ROOT*2*Math.pow(2, s/12), t + i*0.08, 1, (i-2)*0.3, 9, 2));
       O.setDrone(O.semi(chordDeg), 7, 3, 900); }
@@ -471,7 +486,7 @@ function beatNow(t){
   pulses.push({ t, strong: !!hw && (beat % 8 === 0 || beat % 8 === 5) }); if (pulses.length > 32) pulses.shift();
   if (spb > 1) texture(t, spb, Ls);
   beat++;
-  if (hw && (steps - hw.at) / hw.p >= P.laps && !ended){ ended = true; }
+  if (hw && !P.never && (steps - hw.at) / hw.p >= P.laps && !ended){ ended = true; }
   if (ended && endT == null){ endT = t; }
 }
 
@@ -503,7 +518,7 @@ function filterNow(t){
   if (P.sweep > 0) u *= 1 - P.sweep*0.6*(0.5 - 0.5*Math.cos(2*Math.PI*((t - nextBeatT)*P.bps + beat)/8));
   O.fx.filter(120*Math.pow(20000/120, Math.max(0, Math.min(1, u))), P.res);
 }
-O.bind(['rule','init','bps','spb','laps','tex','perc','color','trail','zoom'].concat(FXIDS), (k) => {
+O.bind(['rule','init','bps','spb','laps','never','tex','perc','color','trail','zoom'].concat(FXIDS), (k) => {
   if (k === 'rule' || k === 'init') reset();
   if (k === 'color') makePal();
   applyFx();
@@ -572,6 +587,7 @@ function frame(){
     const n = trail.length, from = Math.max(1, n - Math.floor(600*P.trail));
     for (let i = from; i < n; i++){
       const a = trail[i-1], b = trail[i], u = (i - from)/(n - from);
+      if (Math.abs(a[0] - b[0]) > 64 || Math.abs(a[1] - b[1]) > 64) continue;
       ctx.strokeStyle = `rgba(230,240,255,${0.35*u*u*fade})`;
       ctx.beginPath(); ctx.moveTo((a[0]+0.5)*cam.s + sx, (a[1]+0.5)*cam.s + sy); ctx.lineTo((b[0]+0.5)*cam.s + sx, (b[1]+0.5)*cam.s + sy); ctx.stroke();
     }
@@ -584,7 +600,7 @@ function frame(){
   cam.s = s0;
   // texto
   $('num').textContent = `passo ${O.fmt(steps)}`;
-  $('op').innerHTML = hw ? `<span class="rod">rodovia · período ${hw.p} passos · desde o passo ${O.fmt(hw.at - 3*hw.p)}</span> · volta ${Math.floor((steps - hw.at)/hw.p) + 1}`
+  $('op').innerHTML = hw ? `<span class="rod">${P.never && hwN > 1 ? hwN + 'ª ' : ''}rodovia · período ${hw.p} passos · desde o passo ${O.fmt(hw.at - 3*hw.p)}</span> · volta ${Math.floor((steps - hw.at)/hw.p) + 1}`
                          : `<span class="cao">${steps < 50 ? 'começo' : 'caos'}</span> · ${O.fmt(bb[2]-bb[0]+1)} × ${O.fmt(bb[3]-bb[1]+1)} casas`;
   const legend = [...rule].map((c, i) => `cor ${i} → vira à ${c === 'L' ? 'esquerda' : 'direita'}`).join(' · ');
   $('seq').innerHTML = `<span class="o">regra ${rule}</span><span class="o">${legend}</span><span class="o">acorde de ${O.chordName(chordDeg)}</span>`;

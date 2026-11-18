@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Recamán</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/*CORE_CSS*/
+  #op .tras{color:#8fb3cc}
+  #op .frente{color:#e2f2ff}
+  #seq .tras{color:#9fbdd4}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>RECAMÁN</h1><p>toque para começar</p>
+  <p class="sub">A cada passo n, volte n casas se puder (sem cair abaixo de zero nem num número já visitado); se não puder, avance n. Ninguém sabe se todos os números acabam aparecendo.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Sequência</h2>
+  <div class="row"><label>Notas/s</label><input type="range" id="speed" min="0.5" max="24" step="0.1" value="3.5"></div>
+  <div class="row"><label>Termos por ciclo</label>
+    <select id="maxN"><option value="130">130 (até aparecer o 4)</option><option value="300">300</option><option value="600" selected>600</option><option value="1500">1.500</option><option value="4000">4.000</option><option value="0">sem fim</option></select></div>
+  <div class="row"><label>Pausa no fim</label><input type="range" id="gap" min="1" max="20" step="0.5" value="6"></div>
+<!--SOM-->
+  <div class="row"><label>Extensão</label>
+    <select id="span"><option value="2">2 oitavas</option><option value="3" selected>3 oitavas</option><option value="4">4 oitavas</option><option value="cromatico">Cromático (88 teclas)</option></select></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Arcos</label>
+    <select id="shape"><option value="semi" selected>Semicírculos</option><option value="baixo">Achatados</option><option value="alto">Altos</option></select></div>
+  <div class="row"><label>Cor</label>
+    <select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Memória</label><input type="range" id="mem" min="0" max="1" step="0.01" value="0.8"></div>
+  <div class="row"><label>Reta dos números</label><input type="checkbox" id="line" checked></div>
+  <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
+  <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
+  <div class="hint">Para trás = nota macia e arco embaixo; para a frente = sino e arco em cima. O drone fica preso no menor número que ainda falta (o 4 só aparece no passo 131): quando ele finalmente aparece, a harmonia se resolve.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+//CORE_JS
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', resize); resize();
+const P = O.P;
+
+// ---------- sequência ----------
+let mexSince = 0, a = [0], seen = new Uint8Array(1 << 16), mex = 1, maxV = 0, t0 = 0, next = 1, fills = [], cycleEnd = null;
+function grow(v){ if (v >= seen.length){ let n = seen.length; while (n <= v) n *= 2; const s = new Uint8Array(n); s.set(seen); seen = s; } }
+function reset(){
+  a = [0]; seen = new Uint8Array(1 << 16); seen[0] = 1; mex = 1; mexSince = 0; maxV = 0; next = 1; fills = []; cycleEnd = null;
+  t0 = O.now() + 0.6; mexDeg = 1; scaleX = 0;
+  if (O.AC) O.setDrone(O.semi(mexDeg), 7, 2);
+}
+function nextTerm(n){
+  const prev = a[n-1], back = prev - n;
+  let v, kind;
+  if (back > 0 && !seen[back]) { v = back; kind = 'tras'; }
+  else { v = prev + n; kind = back <= 0 ? 'frente0' : 'frente'; }
+  grow(v);
+  const rep = seen[v] === 1;
+  seen[v] = 1; a.push(v);
+  if (v > maxV) maxV = v;
+  let filled = false, waited = 0;
+  if (v === mex){ waited = n - mexSince; filled = waited >= 8; while (seen[mex]) { mex++; grow(mex); } mexSince = n; }
+  return { v, kind, rep, filled, waited };
+}
+
+// ---------- som ----------
+let mexDeg = 1;
+function degOf(v){
+  if (P.span === 'cromatico') return null;
+  const k = O.scale().length, sp = (+P.span)*k;
+  return v % sp;
+}
+function freqOf(v){
+  if (P.span === 'cromatico') return 27.5*Math.pow(2, (v % 88)/12);
+  return O.freq(degOf(v), O.ROOT*2);
+}
+function play(n, info, t){
+  const x = maxV ? info.v / maxV : 0.5, pan = (x - 0.5)*1.4;
+  const f = freqOf(info.v), len = Math.min(3.2, 0.7 + 4/P.speed);
+  if (info.kind === 'tras') O.soft(f, t, 0.85, pan, len);
+  else O.bell(f, t, info.rep ? 0.95 : 0.7, pan, len*1.2);
+  if (info.rep) O.sine(f*2, t + 0.03, 0.4, -pan, 2.5);
+  if (n % 16 === 0) O.sine(O.ROOT*Math.pow(2, O.semi(mexDeg)/12), t, 0.6, 0, 4);
+  if (info.filled){
+    const d = mex % 7;
+    fills.push({ v: info.v, t, n });
+    O.chord(d).forEach((s, i) => O.pad(O.ROOT*2*Math.pow(2, s/12), t + i*0.07, 1, (i-2)*0.3, 7, 1.2));
+    mexDeg = d; O.setDrone(O.semi(d), O.semi(d+4) - O.semi(d), 2.5, 260 + Math.min(600, maxV));
+  }
+}
+
+// ---------- câmera ----------
+let scaleX = 0;
+function arcPath(g, u0, u1, above, frac, sx, ox, oy){
+  const x0 = u0*sx + ox, x1 = u1*sx + ox, cx = (x0 + x1)/2, r = Math.abs(x1 - x0)/2;
+  const fy = P.shape === 'baixo' ? 0.45 : P.shape === 'alto' ? 1.6 : 1;
+  // anda do ponto de partida até o de chegada
+  const startA = u1 >= u0 ? Math.PI : 0, endA = u1 >= u0 ? 0 : Math.PI;
+  const N = Math.max(6, Math.min(64, r/3 | 0)), sgn = above ? -1 : 1;
+  for (let q = 0; q <= N*frac; q++){
+    const th = startA + (endA - startA)*(q/N);
+    const x = cx + Math.cos(th)*r, y = oy + sgn*Math.abs(Math.sin(th))*r*fy;
+    q ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  if (frac < 1){ const th = startA + (endA - startA)*frac; g.lineTo(cx + Math.cos(th)*r, oy + sgn*Math.abs(Math.sin(th))*r*fy); }
+}
+function col(n, alpha, kind){
+  const u = n / Math.max(60, a.length);
+  switch (P.color){
+    case 'arco': return `hsla(${(n*2.3 + 190) % 360},70%,64%,${alpha})`;
+    case 'brasa': return `hsla(${kind === 'tras' ? 8 : 38},${80}%,${kind === 'tras' ? 50 : 66}%,${alpha})`;
+    case 'branco': return `hsla(0,0%,${kind === 'tras' ? 70 : 92}%,${alpha})`;
+    default: return kind === 'tras' ? `hsla(212,45%,62%,${alpha})` : `hsla(195,60%,80%,${alpha})`;
+  }
+}
+let kinds = [null];
+
+O.bind(['speed','maxN','gap','span','shape','color','mem','line'], (k, old) => {
+  if (k === 'speed' && O.running){ const t = O.now(), p = (t - t0)*old.speed; t0 = t - p/P.speed; }
+});
+reset();
+
+const LOOK = 0.25;
+let shown = -1;
+function frame(){
+  const t = O.now();
+  if (O.running){
+    if (cycleEnd != null){
+      if (t > cycleEnd + P.gap){ reset(); kinds = [null]; }
+    } else {
+      while (t0 + next/P.speed < t + LOOK){
+        const info = nextTerm(next); kinds.push(info.kind);
+        play(next, info, Math.max(t, t0 + next/P.speed));
+        next++;
+        const lim = +P.maxN;
+        if (lim && next > lim){ cycleEnd = t0 + next/P.speed; break; }
+      }
+    }
+  }
+  const n = a.length - 1;
+  // termo que está soando agora
+  const pnow = O.running ? Math.min(n, Math.max(0, (t - t0)*P.speed)) : 0;
+  const cur = Math.floor(pnow), frac = pnow - cur;
+
+  // escala: o maior número visível cabe na largura
+  let vis = 1; for (let i = 0; i <= Math.min(n, cur + 1); i++) if (a[i] > vis) vis = a[i];
+  const target = (W - 70) / vis;
+  scaleX = scaleX ? scaleX + (target - scaleX)*0.05 : target;
+  const ox = 35, oy = (H + 70)/2;
+  const life = cycleEnd != null ? Math.max(0, 1 - (t - cycleEnd)/P.gap) : 1;
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  // reta dos números
+  if (P.line){
+    ctx.strokeStyle = `rgba(255,255,255,${0.1*life})`; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + vis*scaleX, oy); ctx.stroke();
+    // números visitados como pontinhos; o que falta, como anel
+    const step = Math.max(1, Math.floor(1.5/scaleX));
+    ctx.fillStyle = `rgba(210,230,250,${0.35*life})`;
+    for (let v = 0; v <= vis; v += step) if (seen[v]) ctx.fillRect(ox + v*scaleX - 0.5, oy - 1.5, 1, 3);
+    if (mex <= vis){
+      const x = ox + mex*scaleX, pulse = 0.5 + 0.5*Math.sin(t*2);
+      ctx.strokeStyle = `rgba(255,220,170,${(0.45 + 0.35*pulse)*life})`; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(x, oy, 5 + pulse*2, 0, Math.PI*2); ctx.stroke();
+    }
+  }
+  // arcos antigos
+  const mem = P.mem;
+  const from = Math.max(1, mem >= 0.999 ? 1 : cur - Math.floor(20 + mem*mem*4000));
+  ctx.lineWidth = scaleX < 0.5 ? 0.8 : 1.1;
+  for (let i = from; i < cur; i += 24){
+    const end = Math.min(cur - 1, i + 23);
+    const age = (cur - end) / Math.max(1, cur - from);
+    ctx.strokeStyle = col(i, (0.12 + 0.4*(1 - age)*(mem < 0.999 ? 1 : 0.6))*life, kinds[i] === 'tras' ? 'tras' : 'f');
+    ctx.beginPath();
+    for (let j = i; j <= end; j++) arcPath(ctx, a[j-1], a[j], j % 2 === 1, 1, scaleX, ox, oy);
+    ctx.stroke();
+  }
+  // arcos recentes com brilho, e o arco atual sendo traçado
+  for (let j = Math.max(1, cur - 6); j <= Math.min(n, cur + 1); j++){
+    const isCur = j === cur + 1, fr = isCur ? frac : 1;
+    if (j > n || (isCur && !O.running)) continue;
+    const age = isCur ? 0 : cur + 1 - j;
+    ctx.strokeStyle = col(j, (0.95 - age*0.12)*life, kinds[j]);
+    ctx.lineWidth = 2.4 - age*0.25;
+    ctx.beginPath(); arcPath(ctx, a[j-1], a[j], j % 2 === 1, fr, scaleX, ox, oy); ctx.stroke();
+  }
+  // cabeça
+  if (O.running && cur + 1 <= n && cycleEnd == null || (cycleEnd != null && life > 0)){
+    const j = Math.min(n, cur + 1), u0 = a[j-1], u1 = a[j];
+    const x0 = u0*scaleX + ox, x1 = u1*scaleX + ox, cx = (x0 + x1)/2, r = Math.abs(x1 - x0)/2;
+    const fy = P.shape === 'baixo' ? 0.45 : P.shape === 'alto' ? 1.6 : 1, sgn = j % 2 === 1 ? -1 : 1;
+    const startA = u1 >= u0 ? Math.PI : 0, endA = u1 >= u0 ? 0 : Math.PI, th = startA + (endA - startA)*(cycleEnd != null ? 1 : frac);
+    const hx = cx + Math.cos(th)*r, hy = oy + sgn*Math.abs(Math.sin(th))*r*fy;
+    const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 16);
+    g.addColorStop(0, `rgba(255,255,255,${0.9*life})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, 16, 0, Math.PI*2); ctx.fill();
+  }
+  // um número que faltava apareceu: onda na reta
+  fills = fills.filter(f => t - f.t < 5);
+  for (const f of fills){ if (t < f.t) continue; const k = (t - f.t)/5, x = ox + f.v*scaleX;
+    ctx.strokeStyle = `rgba(255,225,180,${0.5*(1-k)*(1-k)*life})`; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, oy, 4 + k*Math.min(W, H)*0.12, 0, Math.PI*2); ctx.stroke(); }
+
+  // texto
+  if (cur !== shown){
+    shown = cur;
+    const j = cur, v = a[j];
+    $('num').textContent = O.fmt(v);
+    if (j === 0) $('op').innerHTML = 'a(0) = 0';
+    else {
+      const pv = a[j-1];
+      $('op').innerHTML = kinds[j] === 'tras'
+        ? `passo ${O.fmt(j)}: <span class="tras">${O.fmt(pv)} − ${O.fmt(j)} = ${O.fmt(v)}</span> (para trás)`
+        : `passo ${O.fmt(j)}: <span class="frente">${O.fmt(pv)} + ${O.fmt(j)} = ${O.fmt(v)}</span> (${pv - j <= 0 ? 'não dá para voltar abaixo de 1' : O.fmt(pv - j) + ' já apareceu'})`;
+    }
+    const recent = []; for (let q = Math.max(0, j - 40); q <= j; q++) recent.push(q === j ? `<b>${O.fmt(a[q])}</b>` : kinds[q] === 'tras' ? `<span class="tras">${O.fmt(a[q])}</span>` : O.fmt(a[q]));
+    const mexNow = mex;
+    $('seq').innerHTML = `<span class="o">menor número que ainda falta: <b>${O.fmt(mexNow)}</b> · drone em ${O.NOTAS[((O.semi(mexDeg)%12)+12)%12]}</span><br>${recent.join(', ')}`;
+  }
+  requestAnimationFrame(frame);
+}
+O.setup(() => { reset(); kinds = [null]; O.setDrone(O.semi(1), 7, 0.1); }, { r: () => { reset(); kinds = [null]; } });
+$('bRe').addEventListener('click', () => { reset(); kinds = [null]; });
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

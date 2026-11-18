@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Formiga de Langton</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/*CORE_CSS*/
+  #op .rod{color:#e9f6ff}
+  #op .cao{color:#8fb3cc}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>FORMIGA DE LANGTON</h1><p>toque para começar</p>
+  <p class="sub">Na casa clara a formiga vira à direita, na escura vira à esquerda, e troca a cor da casa. Depois de uns dez mil passos de caos ela sempre começa a construir uma rodovia. Ninguém conseguiu provar que isso acontece sempre.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Formiga</h2>
+  <div class="row"><label>Regra</label>
+    <select id="rule">
+      <option value="RL" selected>RL — Langton</option>
+      <option value="LLRR">LLRR — simétrica</option>
+      <option value="RLR">RLR — caos sem fim</option>
+      <option value="LRRRRRLLR">LRRRRRLLR — quadrado</option>
+      <option value="RRLLLRLLLRRR">RRLLLRLLLRRR — triângulo</option>
+      <option value="LLRRRL">LLRRRL — rodovia ou não</option>
+      <option value="LLRLRLL">LLRLRLL — rodovia ou não</option>
+    </select></div>
+  <div class="row"><label>Começo</label>
+    <select id="init">
+      <option value="vazio" selected>Grade vazia</option>
+      <option value="acaso">Algumas casas ao acaso</option>
+      <option value="quadrado">Quadrado escuro</option>
+      <option value="linha">Linha escura</option>
+    </select></div>
+  <div class="row"><label>Batidas/s</label><input type="range" id="bps" min="1" max="24" step="0.5" value="6"></div>
+  <div class="row"><label>Passos/batida</label>
+    <select id="spb"><option value="1">1</option><option value="4">4</option><option value="13" selected>13 (rodovia = 8 batidas)</option><option value="26">26</option><option value="52">52</option><option value="104">104 (rodovia = 1 batida)</option></select></div>
+  <div class="row"><label>Rodovia (voltas)</label><input type="range" id="laps" min="4" max="120" step="1" value="28"></div>
+<!--SOM-->
+  <div class="row"><label>Textura dos passos</label><input type="range" id="tex" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Batida</label><input type="range" id="perc" min="0" max="1" step="0.01" value="0.6"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label>
+    <select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Rastro da formiga</label><input type="range" id="trail" min="0" max="1" step="0.01" value="0.6"></div>
+  <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.4" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
+  <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
+  <div class="hint">Cada batida reúne alguns passos: as viradas à esquerda escolhem a nota, a direção da formiga escolhe a voz. No caos a melodia não se repete; quando a rodovia aparece (período de 104 passos) a música vira um laço.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · ↑/↓ velocidade.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+//CORE_JS
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', resize); resize();
+const P = O.P;
+
+// ---------- grade ----------
+const G = 1024;
+const grid = new Uint8Array(G*G);
+const off = document.createElement('canvas'); off.width = G; off.height = G;
+const octx = off.getContext('2d');
+const img = octx.createImageData(G, G), px = new Uint32Array(img.data.buffer);
+let pal = new Uint32Array(16);
+function rgba(r, g, b){ return (255 << 24) | (b << 16) | (g << 8) | r; }
+function hsl(h, s, l){ s /= 100; l /= 100; const k = n => (n + h/30) % 12, a = s*Math.min(l, 1-l);
+  const f = n => l - a*Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n), 1))); return [f(0)*255|0, f(8)*255|0, f(4)*255|0]; }
+function makePal(){
+  const n = rule.length;
+  pal[0] = rgba(0,0,0);
+  for (let c = 1; c < 16; c++){
+    const u = n > 2 ? (c-1)/(n-2) : 0;
+    let col;
+    switch (P.color){
+      case 'arco': col = hsl((200 + u*280) % 360, 60, 55); break;
+      case 'brasa': col = hsl(10 + u*40, 80, 40 + u*20); break;
+      case 'branco': col = hsl(0, 0, 70 + u*20); break;
+      default: col = hsl(212 - u*40, 40 + u*20, 52 + u*18);
+    }
+    pal[c] = rgba(col[0], col[1], col[2]);
+  }
+  for (let i = 0; i < G*G; i++) px[i] = pal[grid[i]];
+  dirty = [0, 0, G-1, G-1];
+}
+let dirty = null;
+const markDirty = (x, y) => { if (!dirty) dirty = [x, y, x, y]; else { if (x < dirty[0]) dirty[0] = x; if (y < dirty[1]) dirty[1] = y; if (x > dirty[2]) dirty[2] = x; if (y > dirty[3]) dirty[3] = y; } };
+
+// ---------- formiga ----------
+let rule = 'RL', ax, ay, dir, steps, bb, turns, hw, trail, ended, endT;
+const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];   // 0 = norte, 1 = leste, 2 = sul, 3 = oeste
+const HIST = 1 << 16;
+function reset(){
+  rule = P.rule; grid.fill(0);
+  ax = G/2; ay = G/2; dir = 0; steps = 0; ended = false;
+  bb = [ax, ay, ax, ay];
+  turns = new Uint8Array(HIST); hw = null; trail = [];
+  const n = rule.length;
+  if (P.init === 'acaso'){ const k = 6 + Math.floor(Math.random()*14); for (let i = 0; i < k; i++){ const x = ax + Math.floor(Math.random()*11) - 5, y = ay + Math.floor(Math.random()*11) - 5; grid[y*G + x] = 1 + Math.floor(Math.random()*(n-1)); } }
+  else if (P.init === 'quadrado'){ for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) grid[(ay+y)*G + ax + x] = 1; }
+  else if (P.init === 'linha'){ for (let x = -8; x <= 8; x++) grid[(ay+3)*G + ax + x] = 1; }
+  makePal();
+  beat = 0; nextBeatT = O.now() + 0.4;
+  bbCam = null;
+}
+function step(){
+  const i = ay*G + ax, c = grid[i], n = rule.length;
+  const L = rule.charCodeAt(c) === 76;   // 'L'
+  dir = (dir + (L ? 3 : 1)) & 3;
+  const nc = (c + 1) % n; grid[i] = nc; px[i] = pal[nc]; markDirty(ax, ay);
+  turns[steps & (HIST-1)] = L ? 1 : 0;
+  ax += DX[dir]; ay += DY[dir]; steps++;
+  if (ax < bb[0]) bb[0] = ax; if (ay < bb[1]) bb[1] = ay; if (ax > bb[2]) bb[2] = ax; if (ay > bb[3]) bb[3] = ay;
+  if (ax < 3 || ay < 3 || ax > G-4 || ay > G-4) ended = true;
+  return L ? 1 : 0;
+}
+// procura um período p em que as últimas viradas se repetem 3 vezes (a rodovia)
+function findPeriod(){
+  const maxP = Math.min(2500, Math.floor(steps/3));
+  for (let p = 2; p <= maxP; p++){
+    let ok = true;
+    for (let i = 1; i <= 2*p; i++){ if (turns[(steps - i) & (HIST-1)] !== turns[(steps - i - p) & (HIST-1)]){ ok = false; break; } }
+    if (ok) return p;
+  }
+  return 0;
+}
+
+// ---------- som ----------
+let beat = 0, nextBeatT = 0;
+const LOOK = 0.12;
+function playBeat(t, nL, flips, spb){
+  const d0 = dir, pan = Math.max(-0.8, Math.min(0.8, (ax - (bb[0]+bb[2])/2) / Math.max(20, (bb[2]-bb[0])/2)));
+  const inHw = !!hw;
+  // nota: viradas à esquerda escolhem o grau; a direção escolhe o registro
+  const deg = ((nL*3 + flips) % 9) + [0, 2, 4, 7][d0];
+  const f = O.freq(deg + chordDeg, O.ROOT*2);
+  if (spb === 1){ (nL ? O.pluck : O.soft)(f, t, 0.6, pan, 0.5); }
+  else if (d0 % 2 === 0) O.pluck(f, t, inHw ? 0.9 : 0.7, pan, inHw ? 0.7 : 0.9);
+  else O.bell(f, t, inHw ? 0.6 : 0.5, pan, inHw ? 1.4 : 2.2);
+  // batida
+  if (P.perc > 0){
+    const pos = beat % 8;
+    if (inHw){
+      if (pos === 0 || pos === 5) O.kick(t, P.perc*0.9);
+      O.tick(t, P.perc*(0.25 + 0.5*(flips % 2)), pan, 7000 + (nL % 4)*900, 0.05);
+      if (nL*2 > spb) O.tick(t + 0.5/P.bps, P.perc*0.35, -pan, 3200, 0.09);
+    } else if (nL*2 > spb + 2) O.tick(t, P.perc*0.3, pan, 2500 + flips*300, 0.07);
+  }
+  // baixo a cada 8 batidas
+  if (beat % 8 === 0) O.sine(O.ROOT*Math.pow(2, O.semi(chordDeg)/12)*(inHw ? 2 : 1), t, inHw ? 0.9 : 0.5, 0, inHw ? 3 : 5);
+}
+function texture(t, stepsInBeat, Ls){
+  if (P.tex <= 0) return;
+  const k = Math.min(stepsInBeat, 13), dt = 1/(P.bps*k);
+  for (let i = 0; i < k; i++) O.tick(t + i*dt, P.tex*0.35*(Ls[i] ? 1 : 0.6), (Ls[i] ? 0.4 : -0.4), Ls[i] ? 9000 : 5200, 0.025);
+}
+let chordDeg = 0;
+function beatNow(t){
+  const spb = +P.spb, Ls = [];
+  let nL = 0, flips = 0;
+  for (let s = 0; s < spb && !ended; s++){ const c0 = grid[ay*G + ax]; const l = step(); nL += l; if (c0 === 0) flips++; Ls.push(l); }
+  trail.push([ax, ay, t]); if (trail.length > 600) trail.shift();
+  // rodovia?
+  if (!hw && steps > 1000 && beat % 4 === 0){
+    const p = findPeriod();
+    if (p){ hw = { p, at: steps, t, lx: ax, ly: ay };
+      chordDeg = 3;
+      O.chord(chordDeg).forEach((s, i) => O.pad(O.ROOT*2*Math.pow(2, s/12), t + i*0.08, 1, (i-2)*0.3, 9, 2));
+      O.setDrone(O.semi(chordDeg), 7, 3, 900); }
+  }
+  if (!hw && beat % 64 === 0){ chordDeg = [0, 0, 5, 3][(beat/64|0) % 4]; O.setDrone(O.semi(chordDeg), 7, 4, 220 + Math.min(500, steps/40)); }
+  playBeat(t, nL, flips, spb);
+  if (spb > 1) texture(t, spb, Ls);
+  beat++;
+  if (hw && (steps - hw.at) / hw.p >= P.laps && !ended){ ended = true; }
+  if (ended && endT == null){ endT = t; }
+}
+
+// ---------- câmera ----------
+let bbCam = null, cam = { s: 8, x: G/2, y: G/2 };
+function camUpdate(){
+  const m = 14;
+  const tg = [bb[0] - m, bb[1] - m, bb[2] + m, bb[3] + m];
+  if (!bbCam) bbCam = tg.slice();
+  for (let i = 0; i < 4; i++) bbCam[i] += (tg[i] - bbCam[i])*0.04;
+  const bw = bbCam[2] - bbCam[0], bh = bbCam[3] - bbCam[1];
+  const top = 110, sTarget = Math.min(W*0.92/bw, (H - top - 20)*0.95/bh, 26) * P.zoom;
+  cam.s += (sTarget - cam.s)*0.06;
+  cam.x = (bbCam[0] + bbCam[2])/2; cam.y = (bbCam[1] + bbCam[3])/2;
+  cam.cy = top/2 + H/2;
+}
+
+O.bind(['rule','init','bps','spb','laps','tex','perc','color','trail','zoom'], (k) => {
+  if (k === 'rule' || k === 'init') reset();
+  if (k === 'color') makePal();
+});
+reset();
+
+// ---------- desenho ----------
+function frame(){
+  const t = O.now();
+  if (O.running){
+    let guard = 0;
+    while (nextBeatT < t + LOOK && guard++ < 64){
+      if (!ended) beatNow(Math.max(t, nextBeatT));
+      nextBeatT += 1/P.bps;
+      if (nextBeatT < t - 1) nextBeatT = t;
+    }
+    if (ended && endT != null && t - endT > 6){ endT = null; if (P.init === 'vazio' && P.rule === 'RL') { $('init').value = 'acaso'; O.readP(); } reset(); }
+  }
+  if (dirty){
+    const [x0, y0, x1, y1] = dirty;
+    octx.putImageData(img, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1); dirty = null;
+  }
+  camUpdate();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const sx = W/2 - cam.x*cam.s, sy = cam.cy - cam.y*cam.s;
+  ctx.imageSmoothingEnabled = cam.s < 1;
+  const fade = ended && endT != null ? Math.max(0, 1 - (t - endT)/6) : 1;
+  ctx.globalAlpha = fade;
+  ctx.drawImage(off, sx, sy, G*cam.s, G*cam.s);
+  ctx.globalAlpha = 1;
+  // rodovia: brilho ao longo da diagonal
+  ctx.globalCompositeOperation = 'lighter';
+  if (hw){
+    const k = Math.min(1, (t - hw.t)/3)*fade;
+    const g = ctx.createLinearGradient(hw.lx*cam.s + sx, hw.ly*cam.s + sy, ax*cam.s + sx, ay*cam.s + sy);
+    g.addColorStop(0, 'rgba(160,210,255,0)'); g.addColorStop(1, `rgba(190,225,255,${0.25*k})`);
+    ctx.strokeStyle = g; ctx.lineWidth = Math.max(6, cam.s*8); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(hw.lx*cam.s + sx, hw.ly*cam.s + sy); ctx.lineTo(ax*cam.s + sx, ay*cam.s + sy); ctx.stroke();
+  }
+  // rastro e formiga
+  if (P.trail > 0 && trail.length > 1){
+    ctx.lineWidth = Math.max(1, cam.s*0.6); ctx.lineJoin = 'round';
+    const n = trail.length, from = Math.max(1, n - Math.floor(600*P.trail));
+    for (let i = from; i < n; i++){
+      const a = trail[i-1], b = trail[i], u = (i - from)/(n - from);
+      ctx.strokeStyle = `rgba(230,240,255,${0.35*u*u*fade})`;
+      ctx.beginPath(); ctx.moveTo((a[0]+0.5)*cam.s + sx, (a[1]+0.5)*cam.s + sy); ctx.lineTo((b[0]+0.5)*cam.s + sx, (b[1]+0.5)*cam.s + sy); ctx.stroke();
+    }
+  }
+  const hx = (ax + 0.5)*cam.s + sx, hy = (ay + 0.5)*cam.s + sy, r = Math.max(8, cam.s*2.4);
+  const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, r);
+  g.addColorStop(0, `rgba(255,255,255,${0.95*fade})`); g.addColorStop(0.3, `rgba(200,225,255,${0.4*fade})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, r, 0, Math.PI*2); ctx.fill();
+
+  // texto
+  $('num').textContent = `passo ${O.fmt(steps)}`;
+  $('op').innerHTML = hw ? `<span class="rod">rodovia · período ${hw.p} passos · desde o passo ${O.fmt(hw.at - 3*hw.p)}</span> · volta ${Math.floor((steps - hw.at)/hw.p) + 1}`
+                         : `<span class="cao">${steps < 50 ? 'começo' : 'caos'}</span> · ${O.fmt(bb[2]-bb[0]+1)} × ${O.fmt(bb[3]-bb[1]+1)} casas`;
+  const legend = [...rule].map((c, i) => `cor ${i} → vira à ${c === 'L' ? 'esquerda' : 'direita'}`).join(' · ');
+  $('seq').innerHTML = `<span class="o">regra ${rule}</span><span class="o">${legend}</span><span class="o">acorde de ${O.chordName(chordDeg)}</span>`;
+  requestAnimationFrame(frame);
+}
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1, 220); }, {
+  r: () => reset(),
+  arrowup: () => { $('bps').value = Math.min(24, P.bps + 1); O.readP(); },
+  arrowdown: () => { $('bps').value = Math.max(1, P.bps - 1); O.readP(); }
+});
+$('bRe').addEventListener('click', reset);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

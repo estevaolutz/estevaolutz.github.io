@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Corredor Solitário</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/*CORE_CSS*/
+  #seq .so{color:#e9f6ff}
+  #seq .ok{color:#9fd8b8}
+  #op{white-space:normal;right:60px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>CORREDOR SOLITÁRIO</h1><p>toque para começar</p>
+  <p class="sub">Corredores com velocidades diferentes giram na mesma pista. A conjectura diz que cada um, em algum momento, fica sozinho: longe de todos os outros pelo menos 1/n da volta.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Corredores</h2>
+  <div class="row"><label>Quantos</label><input type="range" id="n" min="3" max="10" step="1" value="6"></div>
+  <div class="row"><label>Velocidades</label>
+    <select id="vmode">
+      <option value="cons" selected>Consecutivas (0, 1, 2…)</option>
+      <option value="rand">Acaso</option>
+      <option value="prim">Primos (0, 2, 3, 5…)</option>
+      <option value="fib">Fibonacci (1, 2, 3, 5…)</option>
+      <option value="pers">Personalizadas</option>
+    </select></div>
+  <div class="row"><label>Personalizadas</label><input type="text" id="vtxt" value="0, 1, 3, 4, 7, 9"></div>
+  <div class="row"><label>Volta (s)</label><input type="range" id="lap" min="3" max="40" step="0.5" value="12"></div>
+  <div class="row"><label>Batidas por volta</label>
+    <select id="sub"><option value="1" selected>1 (largada)</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
+<!--SOM-->
+  <div class="row"><label>Timbre</label>
+    <select id="timbre"><option value="sino" selected>Sino</option><option value="corda">Corda</option><option value="macio">Macio</option></select></div>
+  <div class="row"><label>Solidão</label><input type="range" id="solo" min="0" max="1" step="0.01" value="0.7"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Rastro</label><input type="range" id="trail" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Leque da solidão</label><input type="checkbox" id="fan" checked></div>
+  <div class="row"><label>Pista comum</label><input type="checkbox" id="track" checked></div>
+  <div class="row"><label>Cor</label>
+    <select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
+  <div class="btns"><button id="bNew">Novas velocidades</button><button id="bFull">Tela cheia</button></div>
+  <div class="hint">Cada corredor toca sua nota ao passar pela largada; os ritmos se cruzam em polirritmia. Quando um corredor fica sozinho (ninguém a menos de 1/n da volta) ele acende e canta. A cada volta completa todos se reencontram na largada e o acorde muda.<br>Provada até 10 corredores (2025); em geral, ainda aberta.<br>Teclas: M controles · F tela cheia · T texto · N novas velocidades.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+//CORE_JS
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', resize); resize();
+const P = O.P;
+
+// ---------- corredores ----------
+let runners = [];   // {v, deg, hue, lonely, best, onT, next}
+const PRIMOS = [0,2,3,5,7,11,13,17,19,23];
+const FIB = [1,2,3,5,8,13,21,34,55,89];
+function speeds(){
+  const n = P.n|0;
+  if (P.vmode === 'cons') return Array.from({length:n}, (_, i) => i);
+  if (P.vmode === 'prim') return PRIMOS.slice(0, n);
+  if (P.vmode === 'fib') return FIB.slice(0, n);
+  if (P.vmode === 'pers'){
+    const v = [...new Set(String(P.vtxt).split(/[^0-9]+/).filter(s => s !== '').map(Number))].slice(0, 12);
+    if (v.length >= 2) return v.sort((a,b) => a-b);
+  }
+  const s = new Set(); while (s.size < n) s.add(Math.floor(Math.random()*16));
+  return [...s].sort((a,b) => a-b);
+}
+// distância circular (fração de volta) entre dois pontos
+function cd(x){ x = x - Math.floor(x); return Math.min(x, 1 - x); }
+// clock: τ conta voltas da velocidade 1
+let tau0 = 0, tA = 0;
+const tau = t => tau0 + (t - tA)/P.lap;
+const CHORD_TONES = [0,2,4,6,7,9,11,13,14,16,18,20];
+function build(){
+  const t = O.now(), tt = tau(t);
+  const vs = speeds();
+  runners = vs.map((v, i) => ({ v, deg: CHORD_TONES[i % CHORD_TONES.length], lonely: false, best: 0, onT: -9, next: 0, hue: 0, i }));
+  runners.forEach(r => r.next = Math.floor(tt*r.v*P.sub) + 1);
+  // maior distância que cada um consegue (o movimento se repete a cada volta: basta varrer τ de 0 a 1)
+  const L = 27720, n = runners.length;
+  runners.forEach((r, i) => { let best = 0, bt = 0;
+    for (let m = 0; m < L; m++){ const x = m/L; let d = 1;
+      for (let j = 0; j < n && d > best; j++) if (j !== i) d = Math.min(d, cd((runners[j].v - r.v)*x));
+      if (d > best){ best = d; bt = x; } }
+    r.best = best; r.bestT = bt; });
+  lapIdx = Math.floor(tt);
+  showList();
+}
+function reanchor(){ const t = O.now(); tau0 = tau(t); tA = t; }
+let lapIdx = 0, prog = 0;
+const PROG = [0, 5, 3, 4, 1, 5, 2, 6];   // graus da progressão, um por volta completa
+
+O.bind(['n','vmode','vtxt','lap','sub','timbre','solo','trail','fan','track','color'], (k, old) => {
+  if (k === 'lap'){ const t = O.now(); tau0 = tau0 + (t - tA)/old.lap; tA = t; runners.forEach(r => r.next = Math.floor(tau(t)*r.v*P.sub) + 1); }
+  if (k === 'sub') runners.forEach(r => r.next = Math.floor(tau(O.now())*r.v*P.sub) + 1);
+  if (['n','vmode','vtxt'].includes(k)) build();
+  if (k === 'scale') O.setDrone(O.semi(PROG[prog % PROG.length]));
+});
+build();
+
+
+// ---------- cor ----------
+function colorOf(r, a, l = 66){
+  const n = runners.length, u = r.i / Math.max(1, n-1);
+  switch (P.color){
+    case 'arco': return `hsla(${(u*300 + 190) % 360},70%,${l}%,${a})`;
+    case 'brasa': return `hsla(${8 + u*42},85%,${l - 6 + u*10}%,${a})`;
+    case 'branco': return `hsla(0,0%,${Math.min(96, l + 22)}%,${a})`;
+    default: return `hsla(${215 - u*35},${40 + u*35}%,${l + u*8}%,${a})`;
+  }
+}
+
+// ---------- som ----------
+const LOOK = 0.5;
+function note(r, t, vel, beat){
+  const fx = O.freq(r.deg + PROG[prog % PROG.length], O.ROOT*2);
+  const pan = Math.sin(2*Math.PI*(beat/P.sub)) * 0.6;
+  const v = vel * (beat % P.sub === 0 ? 1 : 0.55);
+  if (P.timbre === 'sino') O.bell(fx, t, v, pan, 2.6);
+  else if (P.timbre === 'corda') O.pluck(fx, t, v*1.2, pan, 1.1);
+  else O.soft(fx, t, v, pan, 2);
+}
+function schedule(t){
+  const until = t + LOOK;
+  for (const r of runners){
+    if (r.v === 0) continue;
+    for (;;){
+      const tc = tA + (r.next/(r.v*P.sub) - tau0)*P.lap;
+      if (tc > until) break;
+      if (tc >= t - 0.05) note(r, Math.max(t, tc), 0.75, r.next);
+      r.next++;
+    }
+  }
+  // volta completa: todos na largada
+  const tl = tA + (lapIdx + 1 - tau0)*P.lap;
+  if (tl <= until){
+    lapIdx++; prog++;
+    const d = PROG[prog % PROG.length], tt = Math.max(t, tl);
+    O.chord(d).forEach((s, i) => O.pad(O.ROOT*2*Math.pow(2, s/12), tt + i*0.05, 0.9, (i-2)*0.3, Math.min(10, P.lap*0.9), 1.4));
+    O.sine(O.ROOT*Math.pow(2, O.semi(d)/12), tt, 0.9, 0, 5);
+    setTimeout(() => { O.setDrone(O.semi(d), O.semi(d+4) - O.semi(d), 2.5); flash = 1; }, Math.max(0, (tt - O.now())*1000));
+  }
+}
+function soloNote(r, t){
+  if (P.solo <= 0) return;
+  const d = PROG[prog % PROG.length], f = O.freq(r.deg + d + 7, O.ROOT*2);
+  O.sine(f, t, P.solo*0.9, (r.i/(runners.length-1) - 0.5), 3.5, 0.08);
+  O.pad(f/2, t, P.solo*0.7, 0, 3, 0.4);
+}
+
+// ---------- texto ----------
+function showList(){
+  const n = runners.length, lim = 1/n;
+  $('op').innerHTML = `${n} corredores · velocidades ${runners.map(r => r.v).join(', ')} · solidão = ${fmtFrac(n)}`;
+  const parts = runners.map(r => {
+    const okk = r.best >= lim - 1e-9, bs = r.best.toFixed(3).replace('.', ',');
+    return `<span class="o${r.lonely ? ' so' : okk ? ' ok' : ''}">v=${r.v}: ${r.lonely ? '<b>sozinho agora</b>' : 'chega a ficar'} ${bs} longe ${okk ? '✓' : '✗ (contraexemplo!)'}</span>`;
+  });
+  $('seq').innerHTML = parts.join('');
+}
+function fmtFrac(n){ return `1/${n} da volta (${(1/n).toFixed(3).replace('.', ',')})`; }
+
+// ---------- desenho ----------
+let flash = 0, lastList = 0;
+function frame(){
+  const t = O.now();
+  if (O.running) schedule(t);
+  const tt = tau(t), n = runners.length, lim = 1/n;
+  // posições e solidão
+  const pos = runners.map(r => r.v*tt - Math.floor(r.v*tt));
+  let changed = false;
+  runners.forEach((r, i) => {
+    let m = 1;
+    for (let j = 0; j < n; j++) if (j !== i) m = Math.min(m, cd(pos[j] - pos[i]));
+    r.dist = m;
+    const lon = m >= lim - 0.006;
+    if (lon && !r.lonely){ r.lonely = true; r.onT = t; changed = true; if (O.running) soloNote(r, t + 0.02); }
+    else if (!lon && r.lonely){ r.lonely = false; r.offT = t; changed = true; }
+  });
+  if (changed || t - lastList > 0.5){ lastList = t; showList(); }
+  $('num').textContent = `volta ${O.fmt(Math.floor(tt) + 1)}`;
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  const cx = W/2, cy = H/2 + (W > H ? 10 : 40), R = Math.min(W, H)*0.42;
+  const r0 = R*0.22, dr = (R*0.86 - r0)/Math.max(1, n-1);
+  const ang = p => -Math.PI/2 + p*2*Math.PI;
+  flash *= 0.96;
+
+  // largada
+  ctx.strokeStyle = `rgba(255,255,255,${0.12 + flash*0.5})`; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, cy - r0*0.6); ctx.lineTo(cx, cy - R*1.02); ctx.stroke();
+  if (flash > 0.02){
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+    g.addColorStop(0, `rgba(200,220,255,${flash*0.08})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  // leques de solidão
+  if (P.fan) runners.forEach((r, i) => {
+    const k = r.lonely ? Math.min(1, (t - r.onT)*4) : Math.max(0, 1 - (t - (r.offT || -9))*2.5);
+    if (k <= 0.01) return;
+    const a = ang(pos[i]), w = lim*2*Math.PI;
+    const g = ctx.createRadialGradient(cx, cy, r0*0.5, cx, cy, R);
+    g.addColorStop(0, colorOf(r, 0)); g.addColorStop(1, colorOf(r, 0.1*k));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, a - w, a + w); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = colorOf(r, 0.22*k); ctx.lineWidth = 1;
+    for (const s of [-1, 1]){ ctx.beginPath(); ctx.moveTo(cx + Math.cos(a + s*w)*r0*0.5, cy + Math.sin(a + s*w)*r0*0.5); ctx.lineTo(cx + Math.cos(a + s*w)*R, cy + Math.sin(a + s*w)*R); ctx.stroke(); }
+  });
+  // anéis, rastros e corredores
+  runners.forEach((r, i) => {
+    const rad = r0 + i*dr, a = ang(pos[i]);
+    ctx.strokeStyle = colorOf(r, 0.09); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI*2); ctx.stroke();
+    if (r.v > 0 && P.trail > 0){
+      const len = Math.min(Math.PI*1.8, (0.25 + r.v*0.06)*P.trail*Math.PI*1.4), N = 24;
+      for (let q = 0; q < N; q++){
+        const a0 = a - len*(q/N), a1 = a - len*((q+1)/N);
+        ctx.strokeStyle = colorOf(r, 0.55*(1 - q/N)**1.6); ctx.lineWidth = 2.4*(1 - q/N) + 0.4;
+        ctx.beginPath(); ctx.arc(cx, cy, rad, a1, a0); ctx.stroke();
+      }
+    }
+    const x = cx + Math.cos(a)*rad, y = cy + Math.sin(a)*rad;
+    const k = r.lonely ? Math.min(1, (t - r.onT)*3) : 0;
+    const rr = 8 + k*18 + (r.v === 0 ? 4 : 0);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rr*2.2);
+    g.addColorStop(0, colorOf(r, 0.95, 70 + k*20)); g.addColorStop(0.22, colorOf(r, 0.4 + k*0.3)); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rr*2.2, 0, Math.PI*2); ctx.fill();
+    if (k > 0){ ctx.strokeStyle = colorOf(r, 0.5*k, 80); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 14 + (t - r.onT)*30 % 40, 0, Math.PI*2); ctx.stroke(); }
+    // linha ligando o corredor à pista comum
+    if (P.track){ ctx.strokeStyle = colorOf(r, 0.06 + k*0.2); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(cx + Math.cos(a)*R*1.04, cy + Math.sin(a)*R*1.04); ctx.stroke(); }
+  });
+  // pista comum: todos no mesmo círculo
+  if (P.track){
+    const RT = R*1.06;
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, RT, 0, Math.PI*2); ctx.stroke();
+    runners.forEach((r, i) => {
+      const a = ang(pos[i]), x = cx + Math.cos(a)*RT, y = cy + Math.sin(a)*RT;
+      ctx.fillStyle = colorOf(r, r.lonely ? 1 : 0.75, 72);
+      ctx.beginPath(); ctx.arc(x, y, r.lonely ? 4.5 : 3, 0, Math.PI*2); ctx.fill();
+    });
+  }
+  // velocidade escrita ao lado de cada anel
+  if (!document.body.classList.contains('semtexto')){
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    runners.forEach((r, i) => { ctx.fillStyle = colorOf(r, r.lonely ? 0.85 : 0.4, 75); ctx.fillText(String(r.v), cx + 6, cy - (r0 + i*dr) + 1); });
+  }
+  requestAnimationFrame(frame);
+}
+O.setup(() => { tau0 = 0; tA = O.now() + 0.6; build(); O.setDrone(O.semi(PROG[0]), 7, 0.1); }, {
+  n: () => { if (P.vmode !== 'rand') { $('vmode').value = 'rand'; O.readP(); } build(); }
+});
+$('bNew').addEventListener('click', () => { if (P.vmode !== 'rand') { $('vmode').value = 'rand'; O.readP(); } build(); });
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

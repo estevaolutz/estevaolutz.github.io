@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Cometa de Goldbach</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s;text-align:center;padding:0 24px}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start p.sub{letter-spacing:.06em;opacity:.32;max-width:420px;line-height:1.6;font-size:11.5px}
+  #start.hide{opacity:0;pointer-events:none}
+  .hud{position:fixed;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums;transition:opacity .6s}
+  #num{left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:.55}
+  #op{left:30px;top:62px;right:60px;font-weight:300;font-size:16px;letter-spacing:.05em;opacity:.75;line-height:1.35}
+  #seq{left:30px;top:94px;right:60px;max-height:34%;font-weight:300;font-size:12.5px;line-height:1.75;letter-spacing:.03em;opacity:.42;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq b{font-weight:500}
+  body.semtexto .hud{opacity:0!important}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 96px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0;min-width:0}
+  .row select,.row input[type=number],.row input[type=text]{flex:1;min-width:0;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.55;margin-top:10px}
+  @media (max-width:640px){ #op{font-size:13.5px} #seq{top:112px;font-size:11.5px} #num{font-size:24px} }
+
+  #seq span.o{white-space:normal;display:inline}
+  #seq .p{color:#dff1ff}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>COMETA DE GOLDBACH</h1><p>toque para começar</p>
+  <p class="sub">Todo número par maior que 2 é a soma de dois primos — conjectura de 1742, conferida por computador até números enormes e nunca provada. Cada par de primos vira um anel e uma nota; cada número par, um acorde. Os pontos de todos os números formam o cometa.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Números</h2>
+  <div class="row"><label>Origem</label>
+    <select id="mode"><option value="seq" selected>Contagem (4, 6, 8…)</option><option value="salto">Saltos ao acaso</option></select></div>
+  <div class="row"><label>Começar em</label><input type="number" id="from" min="4" step="2" placeholder="ex.: 100"></div>
+  <div class="row"><label>Números/s</label><input type="range" id="speed" min="0.2" max="12" step="0.1" value="1.2"></div>
+  <div class="row"><label>Acelerar</label><input type="checkbox" id="accel" checked></div>
+  <div class="row"><label>Até</label>
+    <select id="maxE"><option value="2000">2.000</option><option value="10000" selected>10.000</option><option value="100000">100.000</option><option value="0">sem fim</option></select></div>
+  <h2>Som</h2>
+  <div class="row"><label>Modo</label>
+    <select id="scale">
+      <option value="jonico">Jônico (maior)</option>
+      <option value="dorico" selected>Dórico</option>
+      <option value="frigio">Frígio</option>
+      <option value="lidio">Lídio</option>
+      <option value="mixolidio">Mixolídio</option>
+      <option value="eolio">Eólio (menor)</option>
+      <option value="menorHarm">Menor harmônica</option>
+      <option value="menorMel">Menor melódica</option>
+      <option value="frigioDom">Frígio dominante</option>
+      <option value="hungara">Húngara menor</option>
+      <option value="penta">Pentatônica menor</option>
+      <option value="pentaMaior">Pentatônica maior</option>
+      <option value="hirajoshi">Hirajoshi</option>
+      <option value="tons">Tons inteiros</option>
+    </select></div>
+  <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75"></div>
+  <div class="row"><label>Drone</label><input type="range" id="drone" min="0" max="1" step="0.01" value="0.45"></div>
+  <div class="row"><label>Reverb</label><input type="range" id="verb" min="0" max="1" step="0.01" value="0.55"></div>
+
+  <div class="row"><label>Vozes por acorde</label><input type="range" id="voices" min="1" max="16" step="1" value="8"></div>
+  <div class="row"><label>Dedilhado</label><input type="range" id="strum" min="0" max="1" step="0.01" value="0.4"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Anéis</label>
+    <select id="shape"><option value="aneis" selected>Anéis</option><option value="arcos">Arcos sobre a reta</option></select></div>
+  <div class="row"><label>Cometa</label><input type="checkbox" id="comet" checked></div>
+  <div class="row"><label>Cor</label>
+    <select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
+  <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
+  <div class="hint">Cada par p + q mora a uma distância do meio do número: quanto mais perto do meio, menor o anel e mais grave a nota. O baixo muda com o resto da divisão por 6 (as três faixas do cometa). Se algum dia um número par não tiver nenhum par de primos, o acorde ficaria mudo e a conjectura cairia.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · Espaço próximo.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- núcleo comum das obras de conjecturas (som, painel, tela inicial) ----------
+const $ = id => document.getElementById(id);
+const O = (() => {
+  const P = {};
+  let ids = [];
+  function readP(){
+    for (const k of ids){ const el = $(k); if (!el) continue;
+      P[k] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' || el.type === 'text') ? el.value : parseFloat(el.value); }
+  }
+  function bind(list, onChange){
+    ids = list.concat(['scale','vol','drone','verb']);
+    readP();
+    for (const k of ids){ const el = $(k); if (!el) continue;
+      el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => { const old = Object.assign({}, P); readP(); applyMix(); onChange && onChange(k, old); }); }
+  }
+
+  // ---------- áudio ----------
+  let AC = null, master, comp, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  const SCALES = {
+    jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+    mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+    menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+    penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+  };
+  const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+  const ROOT = 73.416; // Ré2
+  const now = () => AC ? AC.currentTime : performance.now()/1000;
+  let voices = 0;
+  const MAXV = 56;
+
+  function initAudio(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+    master = AC.createGain();
+    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    master.connect(comp); comp.connect(AC.destination);
+    dryBus = AC.createGain(); dryBus.connect(master);
+    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 3200;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220;
+    verbIn.connect(hp); hp.connect(pre);
+    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373].forEach((dt, i) => {
+      const d = AC.createDelay(0.3); d.delayTime.value = dt;
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+      const fb = AC.createGain(); fb.gain.value = 0.7;
+      const o = AC.createGain(); o.gain.value = 0.2;
+      pre.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+    });
+    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+    const fb = AC.createGain(); fb.gain.value = 0.3;
+    const dLp = AC.createBiquadFilter(); dLp.type = 'lowpass'; dLp.frequency.value = 2200;
+    delay.connect(dLp); dLp.connect(fb); fb.connect(delay); dLp.connect(verbIn); dLp.connect(dryBus);
+    droneG = AC.createGain(); droneG.gain.value = 0;
+    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
+    droneF.connect(droneG); droneG.connect(dryBus); droneG.connect(verbIn);
+    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f,type,g]) => {
+      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    });
+    applyMix();
+  }
+  function applyMix(){
+    if (!AC) return;
+    const t = AC.currentTime;
+    master.gain.setTargetAtTime(P.vol, t, 0.1);
+    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
+  }
+  // drone: fundamental e quinta em semitons acima do Ré
+  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
+    if (!AC) return;
+    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
+    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
+    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
+  }
+  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
+  function semi(d){ const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
+  // acorde de cinco vozes (terças empilhadas) a partir do grau d
+  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chordName(d){
+    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
+    let name = NOTAS[root];
+    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+      if (q) name += ' ' + q; }
+    return name;
+  }
+
+  function out(node, pan, send, dly, t, end){
+    let last = node;
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); node.connect(p); last = p; }
+    last.connect(dryBus);
+    const s = AC.createGain(); s.gain.value = send; last.connect(s); s.connect(verbIn);
+    if (dly > 0){ const d = AC.createGain(); d.gain.value = dly; last.connect(d); d.connect(delay); }
+    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  }
+  const ok = () => AC && voices < MAXV;
+  function bell(f, t, vel = 0.8, pan = 0, dur = 3){
+    if (!ok()) return;
+    const c = AC.createOscillator(), m = AC.createOscillator(), mg = AC.createGain(), g = AC.createGain();
+    c.frequency.value = f; m.frequency.value = f*2.76;
+    mg.gain.setValueAtTime(f*0.5, t); mg.gain.exponentialRampToValueAtTime(0.01, t+Math.min(0.9, dur));
+    m.connect(mg); mg.connect(c.frequency);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    c.connect(g); out(g, pan, 0.6, 0.3, t, t+dur);
+    c.start(t); m.start(t); c.stop(t+dur+0.05); m.stop(t+dur+0.05);
+  }
+  function soft(f, t, vel = 0.8, pan = 0, dur = 1.6){
+    if (!ok()) return;
+    const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    lp.type = 'lowpass'; lp.frequency.setValueAtTime(Math.min(16000, f*6), t); lp.frequency.exponentialRampToValueAtTime(f*1.2, t+Math.min(0.9, dur));
+    o.connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+0.025); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    out(g, pan, 0.45, 0.15, t, t+dur);
+    o.start(t); o.stop(t+dur+0.05);
+  }
+  function pluck(f, t, vel = 0.8, pan = 0, dur = 0.9){
+    if (!ok()) return;
+    const o = AC.createOscillator(), o2 = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = 'sawtooth'; o.frequency.value = f; o2.type = 'square'; o2.frequency.value = f*1.003;
+    lp.type = 'lowpass'; lp.Q.value = 2; lp.frequency.setValueAtTime(Math.min(14000, f*10), t); lp.frequency.exponentialRampToValueAtTime(f*1.1, t+dur*0.6);
+    const g2 = AC.createGain(); g2.gain.value = 0.4; o2.connect(g2); g2.connect(lp);
+    o.connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    out(g, pan, 0.35, 0.2, t, t+dur);
+    o.start(t); o2.start(t); o.stop(t+dur+0.05); o2.stop(t+dur+0.05);
+  }
+  function pad(f, t, vel = 0.6, pan = 0, dur = 6, att = 1.2){
+    if (!ok()) return;
+    const g = AC.createGain(), lp = AC.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = Math.min(9000, f*4);
+    [-7, 7].forEach(dt => { const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = dt; o.connect(lp); o.start(t); o.stop(t+dur+0.1); });
+    lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.035*vel, t+att); g.gain.setTargetAtTime(0.0001, t+Math.max(att, dur-att*1.5), att*0.5);
+    out(g, pan, 0.9, 0, t, t+dur);
+  }
+  function sine(f, t, vel = 0.6, pan = 0, dur = 4, att = 0.02){
+    if (!ok()) return;
+    const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+att); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); out(g, pan, 0.7, 0.1, t, t+dur); o.start(t); o.stop(t+dur+0.05);
+  }
+  function kick(t, vel = 0.8, f0 = 120){
+    if (!ok()) return;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
+    o.connect(g); out(g, 0, 0.1, 0, t, t+0.5); o.start(t); o.stop(t+0.5);
+  }
+  let noiseBuf = null;
+  function tick(t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
+    if (!ok()) return;
+    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = 1.4;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(bp); bp.connect(g); out(g, pan, 0.25, 0.1, t, t+dur); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
+  }
+
+  // ---------- tela, painel, teclas ----------
+  function toggleFull(){
+    const d = document;
+    try {
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+      else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } catch (e) {}
+  }
+  let running = false;
+  function setup(onStart, keys = {}){
+    $('start').addEventListener('pointerdown', e => { e.stopPropagation(); go(); });
+    function go(){ if (running) return; initAudio(); running = true; $('start').classList.add('hide'); onStart && onStart(); }
+    $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+    const bf = $('bFull'); if (bf) bf.addEventListener('click', toggleFull);
+    const st = $('showTxt'); if (st) st.addEventListener('input', () => document.body.classList.toggle('semtexto', !st.checked));
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+      if (e.target.tagName === 'SELECT') return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') $('panel').classList.toggle('on');
+      else if (k === 'f') toggleFull();
+      else if (k === 't' && st){ st.checked = !st.checked; document.body.classList.toggle('semtexto', !st.checked); }
+      else if (k === ' ' && !running){ e.preventDefault(); go(); }
+      else if (keys[k]){ e.preventDefault(); if (running) keys[k](); }
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const fmt = v => v.toLocaleString('pt-BR');
+  return { P, bind, readP, now, initAudio, applyMix, setDrone, freq, semi, chord, chordName, scale, SCALES, NOTAS, ROOT,
+    bell, soft, pluck, pad, sine, kick, tick, setup, toggleFull, fmt,
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; } };
+})();
+
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+const comet = document.createElement('canvas'), kctx = comet.getContext('2d');
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); comet.width = W*DPR; comet.height = H*DPR; redrawComet(); }
+const P = O.P;
+
+// ---------- primos ----------
+const NMAX = 2000000;
+const comp = new Uint8Array(NMAX + 1); comp[0] = comp[1] = 1;
+for (let i = 2; i*i <= NMAX; i++) if (!comp[i]) for (let j = i*i; j <= NMAX; j += i) comp[j] = 1;
+const primes = []; for (let i = 2; i <= NMAX; i++) if (!comp[i]) primes.push(i);
+function pairs(E){ const out = []; for (const p of primes){ if (p > E/2) break; if (!comp[E - p]) out.push(p); } return out; }
+
+// ---------- estado ----------
+let E = 2, cur = null, prev = null, nextT = 0, pts = [], gMax = 4, eMaxSeen = 4, curT = 0;
+function reset(){
+  E = 2; cur = prev = null; pts = []; gMax = 4; eMaxSeen = 4;
+  const f = Math.floor(+$('from').value || 0);
+  if (f >= 4) E = (f % 2 ? f + 1 : f) - 2;
+  nextT = O.now() + 0.6; redrawComet();
+}
+function nextE(){
+  if (P.mode === 'salto') return 2*Math.floor(2 + Math.pow(10, 1 + Math.random()*(Math.log10(P.maxE > 0 ? P.maxE : NMAX) - 1))/2);
+  E += 2;
+  if (P.maxE > 0 && E > P.maxE) E = 4, pts = [], gMax = 4, eMaxSeen = 4, redrawComet();
+  return E;
+}
+function speedNow(){ return P.speed * (P.accel && P.mode === 'seq' ? Math.min(25, 1 + Math.max(0, (cur ? cur.E : 4) - 4)/260) : 1); }
+
+// ---------- som ----------
+const ROOTS = { 0: 0, 2: 3, 4: 4 };   // resto por 6 → grau do baixo
+function chordFor(c, t){
+  const dur = Math.max(0.35, Math.min(5, 2.6/speedNow())), n = c.ps.length;
+  const half = c.E/2, deg0 = ROOTS[c.E % 6];
+  O.setDrone(O.semi(deg0), O.semi(deg0 + 4) - O.semi(deg0), Math.min(1.5, dur*0.5));
+  O.sine(O.ROOT*Math.pow(2, O.semi(deg0)/12), t, 0.7, 0, dur*1.4);
+  if (!n) return;
+  // escolhe até V pares espalhados
+  const V = Math.min(P.voices, n), pick = [];
+  for (let i = 0; i < V; i++) pick.push(c.ps[Math.round(i*(n - 1)/Math.max(1, V - 1))]);
+  const span = O.scale().length*3;
+  pick.sort((a, b) => b - a);   // do meio para fora: grave → agudo
+  pick.forEach((p, i) => {
+    const dist = (half - p)/half, deg = deg0 + Math.round(dist*span);
+    const f = O.freq(deg, O.ROOT*2), ti = t + i*P.strum*Math.min(0.12, dur/(V*1.5));
+    const pan = (i % 2 ? 1 : -1)*Math.min(0.8, dist);
+    if (i === 0 && p === half) O.bell(f, ti, 0.9, 0, dur*1.5);
+    else if (dur < 0.8) O.pluck(f, ti, 0.75, pan, dur*1.2);
+    else (i % 2 ? O.bell : O.soft)(f, ti, i % 2 ? 0.55 : 0.8, pan, dur*1.3);
+  });
+}
+
+// ---------- cometa ----------
+function cometBox(){ const h = Math.min(220, H*0.27); return { x0: 34, x1: W - 34, y0: H - h, y1: H - 20 }; }
+function colorFor(E, a, l = 66){
+  const m = E % 6;
+  switch (P.color){
+    case 'arco': return `hsla(${(E*0.37 + 190) % 360},70%,${l}%,${a})`;
+    case 'brasa': return `hsla(${[38, 8, 22][m/2]},85%,${l - 4}%,${a})`;
+    case 'branco': return `hsla(0,0%,${l + 14}%,${a})`;
+    default: return `hsla(${[192, 215, 230][m/2]},${[60, 42, 34][m/2]}%,${[l + 10, l, l - 8][m/2]}%,${a})`;
+  }
+}
+function redrawComet(){
+  kctx.setTransform(DPR,0,0,DPR,0,0); kctx.clearRect(0, 0, W, H);
+  for (const p of pts) plot(p[0], p[1]);
+}
+function plot(e, g){
+  const b = cometBox(), x = b.x0 + (b.x1 - b.x0)*e/eMaxSeen, y = b.y1 - (b.y1 - b.y0)*g/gMax;
+  kctx.fillStyle = colorFor(e, 0.75); kctx.fillRect(x - 0.8, y - 0.8, 1.6, 1.6);
+}
+function addPoint(e, g){
+  pts.push([e, g]);
+  let re = false;
+  if (g > gMax){ gMax = Math.ceil(g*1.25); re = true; }
+  if (e > eMaxSeen){ eMaxSeen = Math.max(e, eMaxSeen*1.25|0, 40); re = true; }
+  if (re) redrawComet(); else plot(e, g);
+}
+
+O.bind(['mode','speed','accel','maxE','voices','strum','shape','comet','color'], (k) => {
+  if (k === 'color') redrawComet();
+  if (k === 'maxE' || k === 'mode') reset();
+});
+$('from').addEventListener('change', () => { if (O.running) reset(); });
+addEventListener('resize', resize); resize();
+
+// ---------- desenho ----------
+const LOOK = 0.15;
+let ringR = [];   // raios animados
+function frame(){
+  const t = O.now();
+  if (O.running && t + LOOK >= nextT){
+    const e = nextE(), ps = pairs(e);
+    prev = cur; cur = { E: e, ps, t: Math.max(t, nextT) }; curT = cur.t;
+    chordFor(cur, cur.t);
+    addPoint(e, ps.length);
+    nextT = Math.max(t, nextT) + 1/speedNow();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  const b = cometBox();
+  const showComet = P.comet;
+  const areaB = showComet ? b.y0 - 16 : H - 20;
+  const cx = W/2, cy = (areaB + 120)/2 + 20, Rm = Math.min(W*0.46, (areaB - 120)/2 - 6);
+  if (cur){
+    const c = cur, half = c.E/2, age = t - c.t, k = Math.min(1, age*3);
+    const dur = 1/speedNow();
+    if (P.shape === 'aneis'){
+      // um anel para cada par: raio = distância de p até o meio
+      ctx.lineWidth = c.ps.length > 400 ? 0.6 : c.ps.length > 80 ? 0.9 : 1.4;
+      const many = c.ps.length;
+      for (let i = 0; i < many; i++){
+        const p = c.ps[i], r = Math.max(2.5, (half - p)/half*Rm)*(0.92 + 0.08*k);
+        const a = Math.max(0.12, Math.min(0.9, 7/Math.sqrt(many + 1))) * (1 - 0.45*Math.min(1, age/Math.max(0.4, dur*1.5)));
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+        if (many < 120){ const lw = ctx.lineWidth; ctx.lineWidth = lw*5; ctx.strokeStyle = colorFor(c.E, a*0.12, 70); ctx.stroke(); ctx.lineWidth = lw; }
+        ctx.strokeStyle = colorFor(c.E, a, 70); ctx.stroke();
+      }
+      // o centro: o meio do número
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 16);
+      g.addColorStop(0, colorFor(c.E, 0.8, 85)); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI*2); ctx.fill();
+      // anel externo = o próprio número
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, Rm, 0, Math.PI*2); ctx.stroke();
+    } else {
+      // arcos sobre a reta 0 … E, todos centrados no meio
+      const x0 = cx - Rm*1.05, x1 = cx + Rm*1.05, yL = cy + Rm*0.55, sc = (x1 - x0)/c.E;
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, yL); ctx.lineTo(x1, yL); ctx.stroke();
+      const many = c.ps.length;
+      ctx.lineWidth = many > 200 ? 0.7 : 1.2;
+      for (const p of c.ps){
+        const a = Math.max(0.15, Math.min(0.9, 7/Math.sqrt(many + 1)));
+        const xa = x0 + p*sc, xb = x0 + (c.E - p)*sc, r = (xb - xa)/2;
+        ctx.strokeStyle = colorFor(c.E, a, 70);
+        ctx.beginPath(); ctx.arc((xa + xb)/2, yL, Math.max(1, r*k), Math.PI, 0); ctx.stroke();
+      }
+      // primos na reta
+      ctx.fillStyle = 'rgba(210,230,250,0.4)';
+      for (const p of primes){ if (p > c.E) break; ctx.fillRect(x0 + p*sc - 0.5, yL - 2, 1, 4); }
+    }
+  }
+  // cometa
+  if (showComet){
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(b.x0, b.y1 + 0.5); ctx.lineTo(b.x1, b.y1 + 0.5); ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(comet, 0, 0, W, H);
+    if (cur){
+      const x = b.x0 + (b.x1 - b.x0)*cur.E/eMaxSeen, y = b.y1 - (b.y1 - b.y0)*cur.ps.length/gMax;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 10);
+      g.addColorStop(0, colorFor(cur.E, 0.95, 85)); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
+    }
+    if (!document.body.classList.contains('semtexto')){
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)';
+      ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+      ctx.fillText(`maneiras de escrever cada par como soma de dois primos (até ${O.fmt(eMaxSeen)})`, b.x0, b.y0 - 4);
+    }
+  }
+  // texto
+  if (cur && cur.shown !== true){
+    cur.shown = true;
+    const c = cur;
+    $('num').textContent = O.fmt(c.E);
+    $('op').textContent = c.ps.length ? `${c.ps.length} ${c.ps.length === 1 ? 'maneira' : 'maneiras'} · resto ${c.E % 6} na divisão por 6 · acorde de ${O.chordName(ROOTS[c.E % 6])}` : 'nenhuma maneira — contraexemplo!';
+    const show = c.ps.slice(0, 40).map(p => `<span class="p">${O.fmt(p)}</span> + ${O.fmt(c.E - p)}`);
+    $('seq').innerHTML = `<span class="o">${O.fmt(c.E)} = ${show.join(' = ')}${c.ps.length > 40 ? ` = … (mais ${O.fmt(c.ps.length - 40)})` : ''}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset, ' ': () => { nextT = O.now(); } });
+$('bRe').addEventListener('click', reset);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

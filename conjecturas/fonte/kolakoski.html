@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Kolakoski</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/*CORE_CSS*/
+  #op{letter-spacing:.12em;white-space:nowrap;overflow:hidden}
+  #op b{font-weight:500;color:#eaf6ff}
+  #op i{font-style:normal;opacity:.35;margin:0 .25em}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>KOLAKOSKI</h1><p>toque para começar</p>
+  <p class="sub">1 2 2 1 1 2 1 2 2 1 2 2 1 1 2… A sequência é feita de blocos de 1 e de 2, e o tamanho de cada bloco é a própria sequência. Cada faixa da tela é a mesma sequência, mais lenta: um cânone que nunca se repete. Ninguém provou que metade dos termos é 1.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Cânone</h2>
+  <div class="row"><label>Andamento</label><input type="range" id="bpm" min="40" max="240" step="1" value="112"></div>
+  <div class="row"><label>Vozes</label><input type="range" id="layers" min="1" max="7" step="1" value="6"></div>
+  <div class="row"><label>Percussão</label><input type="range" id="perc" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Alfabeto</label>
+    <select id="alpha"><option value="12" selected>1 e 2 (clássica)</option><option value="13">1 e 3</option><option value="23">2 e 3</option></select></div>
+<!--SOM-->
+  <h2>Imagem</h2>
+  <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.3" max="4" step="0.01" value="1"></div>
+  <div class="row"><label>Ligações</label><input type="checkbox" id="links" checked></div>
+  <div class="row"><label>Gráfico 1 − 2</label><input type="checkbox" id="graph" checked></div>
+  <div class="row"><label>Cor</label>
+    <select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
+  <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
+  <div class="hint">Na faixa de baixo cada termo dura o seu valor (1 = curto, 2 = longo). Em cada faixa de cima, um termo dura um bloco inteiro da faixa de baixo. A faixa mais lenta escolhe o acorde. O gráfico mostra a diferença entre a quantidade de 1 e de 2: se a conjectura de Keane for verdadeira, ela cresce bem mais devagar que a sequência.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+//CORE_JS
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', resize); resize();
+const P = O.P;
+const NL = 7;
+
+// ---------- a sequência ----------
+const N = 400000;
+let k, R, D, A = [1, 2];
+function generate(){
+  A = P.alpha === '13' ? [1, 3] : P.alpha === '23' ? [2, 3] : [1, 2];
+  k = new Uint8Array(N);
+  // auto-descrição: o bloco j tem tamanho k[j] e os blocos alternam entre A[0] e A[1]
+  let i = 0;
+  for (let j = 0; i < N; j++){
+    const val = A[j % 2], len = j < i ? k[j] : val;
+    for (let q = 0; q < len && i < N; q++) k[i++] = val;
+  }
+  R = new Int32Array(N + 1);
+  for (let q = 0; q < N; q++) R[q+1] = R[q] + k[q];
+  D = new Int32Array(N + 1);
+  for (let q = 0; q < N; q++) D[q+1] = D[q] + (k[q] === A[0] ? 1 : -1);
+}
+// início de um termo da faixa d (em unidades de tempo); a faixa d é a sequência com d+1 aplicações de R
+function startOf(d, j){ let x = j; for (let c = 0; c <= d; c++){ if (x >= N) return Infinity; x = R[x]; } return x; }
+
+// ---------- relógio ----------
+let t0 = 0;
+const unit = () => 60 / P.bpm / 2;   // um termo "1" = colcheia
+const units = t => (t - t0) / unit();
+let nextJ = new Int32Array(NL), drawJ = new Int32Array(NL);
+function reset(){ generate(); t0 = O.now() + 0.6; nextJ.fill(0); drawJ.fill(0); chordDeg = 0; }
+
+// ---------- som ----------
+let chordDeg = 0;
+const PROG = { 1: 0, 2: 3, 3: 4 };
+function voice(d, j, t, durU){
+  const v = k[j], idx = A.indexOf(v), len = durU*unit();
+  const ch = O.chord(chordDeg), pan = ((d % 3) - 1)*0.45;
+  if (d === 0){
+    if (P.perc > 0) O.tick(t, P.perc*(idx ? 0.55 : 0.9), (j % 2 ? 0.3 : -0.3), idx ? 3200 : 8000, idx ? 0.12 : 0.04);
+    return;
+  }
+  if (d >= P.layers) return;
+  const top = Math.min(P.layers, NL) - 1;
+  if (d === top){
+    // a voz mais lenta muda o acorde
+    chordDeg = PROG[v] + (Math.floor(j/2) % 2 ? 5 : 0);
+    const c2 = O.chord(chordDeg);
+    c2.slice(0, 4).forEach((s, i) => O.pad(O.ROOT*Math.pow(2, s/12)*2, t + i*0.04, 0.9, (i - 1.5)*0.35, Math.max(1.5, len*0.95), Math.min(1.2, len*0.3)));
+    O.sine(O.ROOT*Math.pow(2, O.semi(chordDeg)/12), t, 0.8, 0, Math.max(1.5, len));
+    O.setDrone(O.semi(chordDeg), O.semi(chordDeg + 4) - O.semi(chordDeg), Math.min(2, len*0.4));
+    return;
+  }
+  const oct = Math.pow(2, Math.max(0, 3 - Math.floor(d/2)));
+  const f = O.ROOT*oct*Math.pow(2, ch[(d + idx*2) % 5]/12);
+  const dur = Math.min(4, Math.max(0.25, len*1.4));
+  if (d === 1) O.pluck(f, t, 0.75, pan, Math.min(1, dur));
+  else if (d === 2) O.bell(f, t, 0.55, pan, dur*1.6);
+  else if (d === 3) O.soft(f, t, 0.85, pan, dur);
+  else O.soft(f, t, 0.9, pan, dur*1.2);
+}
+const LOOK = 0.25;
+function schedule(t){
+  const until = units(t + LOOK);
+  for (let d = NL - 1; d >= 0; d--){
+    for (let guard = 0; guard < 200; guard++){
+      const j = nextJ[d], s = startOf(d, j);
+      if (s > until || !isFinite(s)) break;
+      const e = startOf(d, j + 1);
+      if (s >= units(t) - 0.5) voice(d, j, t0 + s*unit(), e - s);
+      nextJ[d]++;
+    }
+  }
+}
+
+// ---------- cor ----------
+function colorFor(d, idx, a, l){
+  switch (P.color){
+    case 'arco': return `hsla(${(190 + d*42 + idx*18) % 360},65%,${l}%,${a})`;
+    case 'brasa': return `hsla(${12 + d*6 + idx*20},${80 - idx*15}%,${l - idx*8}%,${a})`;
+    case 'branco': return `hsla(0,0%,${l + 10 - idx*18}%,${a})`;
+    default: return `hsla(${idx ? 215 : 195},${idx ? 40 : 55}%,${idx ? l - 12 : l + 8}%,${a})`;
+  }
+}
+
+O.bind(['bpm','layers','perc','alpha','zoom','links','graph','color'], (k2, old) => {
+  if (k2 === 'bpm'){ const t = O.now(), u = (t - t0)/(60/old.bpm/2); t0 = t - u*unit(); }
+  if (k2 === 'alpha') reset();
+});
+reset();
+
+// ---------- desenho ----------
+let lastTxt = -1;
+function frame(){
+  const t = O.now();
+  if (O.running) schedule(t);
+  const uNow = O.running ? Math.max(0, units(t)) : 0;
+  const nl = Math.min(NL, Math.max(2, P.layers));
+  const pxU = 14*P.zoom * Math.min(1.2, W/900 + 0.4);
+  const head = W*0.32;
+  const gH = P.graph ? Math.min(150, H*0.18) : 0;
+  const top = W < 640 ? 196 : 152, bottom = H - gH - 20, rowH = (bottom - top)/nl;
+  const u0 = uNow - head/pxU, u1 = uNow + (W - head)/pxU;
+  const X = u => head + (u - uNow)*pxU;
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+
+  for (let d = 0; d < nl; d++){
+    const row = nl - 1 - d, y = top + row*rowH, h = rowH*0.62;
+    // avança o primeiro termo visível
+    while (startOf(d, drawJ[d] + 1) < u0) drawJ[d]++;
+    for (let j = drawJ[d]; ; j++){
+      const s = startOf(d, j); if (s > u1 || !isFinite(s)) break;
+      const e = startOf(d, j + 1), idx = A.indexOf(k[j]);
+      const x0 = X(s), x1 = X(e);
+      const playing = uNow >= s && uNow < e;
+      const past = e <= uNow;
+      const glow = playing ? 1 - (uNow - s)/(e - s)*0.5 : 0;
+      const a = playing ? 0.85 : past ? 0.32 : 0.13;
+      ctx.fillStyle = colorFor(d, idx, a, 62 + glow*20);
+      const gap = Math.min(3, (x1 - x0)*0.12);
+      ctx.fillRect(x0 + gap/2, y + (idx ? 0 : h*0.18), Math.max(1, x1 - x0 - gap), idx ? h : h*0.64);
+      if (playing){
+        const g = ctx.createRadialGradient((x0 + x1)/2, y + h/2, 0, (x0 + x1)/2, y + h/2, Math.max(30, (x1 - x0)));
+        g.addColorStop(0, colorFor(d, idx, 0.25*glow, 75)); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(x0 - 40, y - 30, x1 - x0 + 80, h + 60);
+      }
+      // ligação com os filhos (o bloco que este termo descreve na faixa de baixo)
+      if (P.links && d > 0 && row < nl - 1){
+        const yb = y + rowH;
+        ctx.strokeStyle = colorFor(d, idx, past ? 0.1 : 0.05, 70); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x0 + gap/2, y + h); ctx.lineTo(x0 + gap/2, yb); ctx.stroke();
+      }
+    }
+    // rótulo da faixa
+    ctx.fillStyle = 'rgba(207,214,221,0.28)';
+    if (!document.body.classList.contains('semtexto')){
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.font = '300 10px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+      ctx.fillText(d === 0 ? 'termos' : d === nl - 1 ? 'acordes' : `nível ${d}`, 10, y + h + 3);
+      ctx.globalCompositeOperation = 'lighter';
+    }
+  }
+  // agulha
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(head + 0.5, top - 10); ctx.lineTo(head + 0.5, bottom); ctx.stroke();
+
+  // termo atual da faixa de baixo
+  let cur = 0; { let lo = 0, hi = N - 1; while (lo < hi){ const m = (lo + hi + 1) >> 1; if (R[m] <= uNow) lo = m; else hi = m - 1; } cur = lo; }
+
+  // gráfico da diferença entre 1 e 2
+  if (P.graph && gH > 30){
+    const gy0 = H - gH, gy1 = H - 16, mid = (gy0 + gy1)/2;
+    const nShow = Math.max(50, cur);
+    let mx = 4; const stepI = Math.max(1, Math.floor(nShow/W));
+    for (let i = 0; i <= cur; i += stepI) mx = Math.max(mx, Math.abs(D[i]));
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.beginPath(); ctx.moveTo(30, mid + 0.5); ctx.lineTo(W - 30, mid + 0.5); ctx.stroke();
+    ctx.strokeStyle = colorFor(1, 0, 0.7, 70); ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i <= cur; i += stepI){ const x = 30 + (W - 60)*i/nShow, y = mid - D[i]/mx*(gy1 - gy0)/2*0.9; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke();
+    if (!document.body.classList.contains('semtexto')){
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`quantidade de ${A[0]} menos quantidade de ${A[1]} (máx. ±${mx})`, 30, gy0 + 4);
+    }
+  }
+
+  // texto
+  if (cur !== lastTxt){
+    lastTxt = cur;
+    $('num').textContent = `termo ${O.fmt(cur + 1)}`;
+    // blocos recentes da faixa de baixo e seus tamanhos
+    const runs = []; let i = cur;
+    // volta até o começo do bloco atual e pega ~14 blocos
+    while (i > 0 && k[i-1] === k[cur]) i--;
+    let start = i; for (let c = 0; c < 13 && start > 0; c++){ let s = start - 1; while (s > 0 && k[s-1] === k[start-1]) s--; start = s; }
+    let q = start; const sizes = [];
+    while (q <= cur){ let e = q; while (e + 1 < N && k[e+1] === k[q]) e++; const n = e - q + 1;
+      const txt = String(k[q]).repeat(n);
+      runs.push(e >= cur && q <= cur ? `<b>${txt}</b>` : txt); sizes.push(n); q = e + 1; }
+    $('op').innerHTML = runs.join('<i>·</i>');
+    const ones = (cur + 1 + D[cur + 1]) / 2, pct = ones/(cur + 1)*100;
+    $('seq').innerHTML = `<span class="o">tamanho dos blocos: ${sizes.join(' ')} → é a própria sequência</span><br>` +
+      `<span class="o">${A[0]}: ${pct.toFixed(3).replace('.', ',')}% dos termos</span><span class="o">${A[0]} − ${A[1]}: ${D[cur + 1] > 0 ? '+' : ''}${D[cur + 1]}</span><span class="o">acorde de ${O.chordName(chordDeg)}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+$('bRe').addEventListener('click', reset);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

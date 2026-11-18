@@ -39,7 +39,38 @@ function reset(){
   om = []; for (let k = 1; k <= Nm; k++) om[k] = 2*Math.sin(k*Math.PI/(2*(Nm + 1)));
   const k0 = P.modo0|0;
   for (let i = 1; i <= Nm; i++) x[i] = P.amp*Math.sin(k0*i*Math.PI/(Nm + 1));
-  tSim = 0; hist = []; low = false; recs = 0; dom = k0; ghosts = []; accel(); info = { shown: false };
+  cas = []; tSim = 0; hist = []; low = false; recs = 0; dom = k0; ghosts = []; accel(); info = { shown: false };
+}
+// ---------- vista 3D: a corda na frente e as formas antigas recuando no fundo — uma cascata de cordas que mostra
+// a energia indo para outros modos e voltando. As massas são contas; ao lado, uma torre por modo com a energia de cada um.
+const T3 = Vista3D({ giro: 0.04, incl: 22, yaw: -0.5 });
+let cas = [];
+function draw3d(C, t){
+  T3.quadro(V.W, V.H); T3.centro(0, 30);
+  if (O.running && x){ cas.push(Float32Array.from(x)); if (cas.length > 90) cas.shift(); }
+  const L = 2.2, XS = i => (i/(Nm + 1) - 0.5)*L, A = 0.22*P.zoomY/Math.max(0.2, P.amp*1.4), ZS = q => 0.6 - (cas.length - 1 - q)*0.028;
+  C.globalCompositeOperation = 'lighter'; C.lineJoin = 'round';
+  C.strokeStyle = 'rgb(255,255,255)'; C.lineWidth = 1;
+  T3.seg(C, XS(0), 0, 0.6, XS(0), 0, ZS(0), 0.15); T3.seg(C, XS(Nm + 1), 0, 0.6, XS(Nm + 1), 0, ZS(0), 0.15);
+  cas.forEach((g, q) => {
+    if (q === cas.length - 1) return;
+    const arr = []; for (let i = 0; i <= Nm + 1; i++) arr.push(XS(i), g[i]*A, ZS(q));
+    C.strokeStyle = V.cor(0.2 + 0.4*(1 - q/cas.length), 1, 60); C.lineWidth = 1; T3.poli(C, arr, (0.1 + 0.5*q/cas.length)*(0.3 + P.fant), 40);
+  });
+  if (x){
+    const arr = []; for (let i = 0; i <= Nm + 1; i++) arr.push(XS(i), x[i]*A, 0.6);
+    C.strokeStyle = V.cor(0.1, 1, 72); C.lineWidth = 1.8; T3.poli(C, arr, 0.95, 80);
+    for (let i = 1; i <= Nm; i++) T3.ponto(C, XS(i), x[i]*A, 0.6, Nm > 40 ? 2.2 : 3.4, V.cor(Math.min(0.9, Math.abs(v[i])*0.6), 1, 80), 0.95);
+  }
+  // torres de energia dos modos 1 a 8, atrás da corda
+  if (P.hist && E.length){
+    let tot = 0; for (let k = 1; k <= Nm; k++) tot += E[k];
+    for (let k = 1; k <= Math.min(8, Nm); k++){
+      const xk = -0.7 + (k - 1)*0.2, h = (E[k]/(tot || 1))*0.9;
+      C.strokeStyle = V.cor((k - 1)/6, 1, 66); C.lineWidth = Math.max(2, T3.R*0.05);
+      T3.seg(C, xk, -0.55, ZS(0) - 0.2, xk, -0.55 + h, ZS(0) - 0.2, 0.85);
+    }
+  }
 }
 function accel(){
   const al = P.alfa, beta = P.modelo === 'beta';
@@ -87,6 +118,8 @@ function frame(){
     ghosts.push(Array.from(x)); if (ghosts.length > 14) ghosts.shift();
   }
   const { W, H } = V, C = V.begin();
+  if (T3.on) draw3d(C, t);
+  else {
   const top = 120, sh = P.hist ? (H - top)*0.48 : H - top - 40, cy = top + sh/2, x0 = 60, x1 = W - 60, ampPx = sh*0.22*P.zoomY;
   const PX = i => x0 + (x1 - x0)*i/(Nm + 1), PY = (xx, i) => cy - xx[i]*ampPx;
   C.globalCompositeOperation = 'lighter';
@@ -106,8 +139,9 @@ function frame(){
       C.stroke();
     }
   }
+  }
   V.end();
-  if (P.hist && !document.body.classList.contains('semtexto')){ const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.fillText('energia dos modos 1 a 6 (fração do total) · eixo: oscilações do modo 1', x0, top + sh + 22); }
+  if (!T3.on && P.hist && !document.body.classList.contains('semtexto')){ const top = 120, sh = (H - top)*0.48, x0 = 60; const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.fillText('energia dos modos 1 a 6 (fração do total) · eixo: oscilações do modo 1', x0, top + sh + 22); }
   if (info && !info.shown && E.length){
     info.shown = true; let tot = 0; for (let k = 1; k <= Nm; k++) tot += E[k];
     $('num').textContent = `${Math.floor(hist.length ? hist[hist.length - 1].t : 0)} oscilações do modo 1`;

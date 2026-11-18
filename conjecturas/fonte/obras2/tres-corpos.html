@@ -68,6 +68,34 @@ function rk4(h){
   const k1 = f(s), y2 = s.map((v, i) => v + h/2*k1[i]), k2 = f(y2), y3 = s.map((v, i) => v + h/2*k2[i]), k3 = f(y3), y4 = s.map((v, i) => v + h*k3[i]), k4 = f(y4);
   s = s.map((v, i) => v + h/6*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]));
 }
+// ---------- vista 3D: as órbitas ficam num plano deitado e o rastro sobe com o tempo — cada estrela desenha uma chaminé ----------
+const T3 = Vista3D({ giro: 0.05, incl: 22, yaw: 0.3 });
+let ex3 = 2;
+function draw3d(C, t){
+  T3.quadro(V.W, V.H); T3.centro(0, 40);
+  let ex = 1.1;
+  if (P.cam === 'cm'){ for (let i = 0; i < 3; i++) ex = Math.max(ex, Math.abs(s[4*i]) + 0.25, Math.abs(s[4*i + 1]) + 0.25); ex = Math.min(ex, 9); } else ex = 2.4;
+  ex3 += (ex - ex3)*0.04; const k = 1/ex3, y0 = -0.5, alto = 1.2;
+  C.globalCompositeOperation = 'lighter'; C.lineCap = 'round';
+  T3.chao(C, y0, 1.1, 8);
+  for (let i = 0; i < 3; i++){
+    const tr = trails[i], n = tr.length; if (n < 2) continue;
+    C.lineWidth = P.lw; C.strokeStyle = V.cor(i/3, 1, 66);
+    const step = Math.max(1, Math.floor(n/700)), seg = 30;
+    for (let a = 0; a < n - 1; a += seg*step){
+      const b = Math.min(n - 1, a + seg*step), al = 0.1 + 0.8*(b/n)**1.5, arr = [];
+      for (let q = a; q <= b; q += step) arr.push(tr[q][0]*k, y0 + (1 - q/(n - 1))*alto*(n/Math.max(n, P.rastro)), -tr[q][1]*k);
+      T3.poli(C, arr, al, 40);
+    }
+    // sombra da órbita no chão
+    const sh = []; for (let q = Math.max(0, n - 600); q < n; q += 2) sh.push(tr[q][0]*k, y0, -tr[q][1]*k);
+    T3.poli(C, sh, 0.12, 60);
+  }
+  for (let i = 0; i < 3; i++){
+    const x = s[4*i]*k, z = -s[4*i + 1]*k, R = 6 + 3*Math.sqrt(m[i]);
+    T3.brilho(C, x, y0, z, R*3, V.cor(i/3, 0.85, 75)); T3.ponto(C, x, y0, z, R*0.5, 'rgb(255,255,255)', 0.95);
+  }
+}
 const dist = (i, j) => Math.hypot(s[4*j] - s[4*i], s[4*j + 1] - s[4*i + 1]);
 const PAIRS = [[0, 1], [0, 2], [1, 2]];
 function frame(){
@@ -102,6 +130,8 @@ function frame(){
     if (fled && P.volta && Math.max(...[0, 1, 2].map(i => Math.hypot(s[4*i], s[4*i + 1]))) > 14) reset();
   }
   const { W, H } = V, C = V.begin();
+  if (T3.on){ if (s.length) draw3d(C, t); }
+  else {
   // câmera
   let ex = 1.1, mx = 0, my = 0;
   if (s.length){
@@ -125,6 +155,7 @@ function frame(){
     const x = X(s[4*i]), y = Y(s[4*i + 1]), R = 6 + 3*Math.sqrt(m[i]), g = C.createRadialGradient(x, y, 0, x, y, R*3);
     g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.25, V.cor(i/3, 0.8, 75)); g.addColorStop(1, 'rgba(0,0,0,0)');
     C.fillStyle = g; C.beginPath(); C.arc(x, y, R*3, 0, Math.PI*2); C.fill();
+  }
   }
   V.end();
   if (O.running && (!info || !info.shown || (t*3 | 0) !== info.k)){

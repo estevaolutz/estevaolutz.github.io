@@ -81,6 +81,7 @@
     </select></div>
   <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75"></div>
   <div class="row"><label>Drone</label><input type="range" id="drone" min="0" max="1" step="0.01" value="0.5"></div>
+  <div class="row"><label>Troca de timbre</label><input type="range" id="xfade" min="0.5" max="30" step="0.5" value="10"></div>
   <div class="row"><label>Reverb</label><input type="range" id="verb" min="0" max="1" step="0.01" value="0.55"></div>
   <h2>Imagem</h2>
   <div class="row"><label>Curva par</label><input type="range" id="aEven" min="0" max="0.5" step="0.005" value="0.135"></div>
@@ -115,7 +116,7 @@ const MARGIN = 1.6;           // o coral é desenhado numa área maior que a tel
 
 // ---------- parâmetros ----------
 const P = {};
-const ids = ['mode','speed','gap','scale','vol','drone','verb','aEven','aOdd','tilt','zoom','mem','color','showNum','graph'];
+const ids = ['mode','speed','gap','scale','vol','drone','verb','aEven','aOdd','tilt','zoom','mem','color','showNum','graph','xfade'];
 function readP(){
   for (const k of ids){ const el = $(k); P[k] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' ? el.value : parseFloat(el.value)); }
 }
@@ -345,38 +346,74 @@ const TIMBRES = [
   { nome: 'sino grave', up: { w:'sine',  r:1.48, pg:0.55, cut:0,  a:0.005, d:3.6 }, dn: { w:'sine',     r:2.0,  pg:0.3,  cut:0, a:0.02,  d:2.0 } },
   { nome: 'harpa',   up: { w:'square',   r:0,    pg:0,    cut:4,  a:0.003, d:2.0 }, dn: { w:'triangle', r:0,    pg:0,    cut:4, a:0.004, d:1.2 } }
 ];
-let tim = TIMBRES[0];
+// cada parte do timbre vira número para poder misturar dois timbres aos poucos
+const SPECTRA = (() => {
+  const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
+  return {
+    sine: mk(n => n === 1 ? 1 : 0),
+    triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
+    sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)),
+    square: mk(n => n % 2 ? 4/(Math.PI*n) : 0)
+  };
+})();
+function norm(spec){   // forma numérica de uma voz
+  return { w: spec.w, r: spec.r || 2, pg: spec.r ? spec.pg : 0, cut: spec.cut || 30, a: spec.a, d: spec.d,
+           lv: spec.w === 'sawtooth' || spec.w === 'square' ? 0.55 : 1 };
+}
+let timFrom = { up: norm(TIMBRES[0].up), dn: norm(TIMBRES[0].dn) }, timTo = timFrom, tim = TIMBRES[0], timT0 = -1e9;
 function timbreFor(seq){
   let odd = 0; for (let q = 0; q < seq.length - 1; q++) if (seq[q] % 2) odd++;
   return TIMBRES[(odd + Math.floor(Math.log2(seq[0]))) % TIMBRES.length];   // subidas do caminho + tamanho do número
 }
-function voice(spec, f, x, vel, t, v, send, dly, gain){
-  const dur = tail(spec.d);
+function timK(t){ const u = Math.max(0, Math.min(1, (t - timT0) / P.xfade)); return u*u*(3 - 2*u); }
+// estado do timbre num instante, já misturado (onda guardada como espectro)
+function timAt(t, part){
+  const k = timK(t), A = timFrom[part], B = timTo[part];
+  const L = (x, y) => x + (y - x)*k;
+  const spec = new Float32Array(33); for (let n = 1; n <= 32; n++) spec[n] = L(A.spec[n], B.spec[n]);
+  return { spec, r: Math.exp(L(Math.log(A.r), Math.log(B.r))), pg: L(A.pg, B.pg), cut: Math.exp(L(Math.log(A.cut), Math.log(B.cut))),
+           a: Math.exp(L(Math.log(A.a), Math.log(B.a))), d: L(A.d, B.d), lv: L(A.lv, B.lv) };
+}
+function withSpec(sp){ const n = norm(sp); n.spec = SPECTRA[sp.w]; return n; }
+function setTimbre(T, t){
+  // começa a nova troca a partir de onde a anterior estava
+  timFrom = { up: timAt(t, 'up'), dn: timAt(t, 'dn') };
+  timTo = { up: withSpec(T.up), dn: withSpec(T.dn) };
+  tim = T; timT0 = t;
+}
+timFrom = { up: withSpec(TIMBRES[0].up), dn: withSpec(TIMBRES[0].dn) }; timTo = timFrom;
+const waveCache = new Map();
+function waveFor(spec){
+  let key = ''; for (let n = 1; n <= 32; n++) key += Math.round(spec[n]*40) + ',';
+  let w = waveCache.get(key);
+  if (!w){ const real = new Float32Array(33); w = AC.createPeriodicWave(real, spec); if (waveCache.size > 400) waveCache.clear(); waveCache.set(key, w); }
+  return w;
+}
+function voice(part, f, x, vel, t, v, send, dly, gain){
+  const s = timAt(t, part);
+  const dur = tail(s.d);
   const bright = Math.min(1, Math.log2(Math.max(2, v)) / 22);          // valores grandes soam mais brilhantes
   const g = AC.createGain();
-  const o = AC.createOscillator(); o.type = spec.w; o.frequency.value = f;
-  let head = o;
-  if (spec.cut){
-    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5;
-    const c0 = Math.min(16000, f*spec.cut*(0.7 + bright*2.2));
-    lp.frequency.setValueAtTime(c0, t); lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1), t + Math.min(0.9, dur));
-    o.connect(lp); head = lp;
-  }
-  head.connect(g);
+  const o = AC.createOscillator(); o.setPeriodicWave(waveFor(s.spec)); o.frequency.value = f;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5;
+  const c0 = Math.min(18000, f*s.cut*(0.7 + bright*2.2));
+  lp.frequency.setValueAtTime(c0, t); const open = Math.max(0, Math.min(1, (s.cut - 8)/22));
+  lp.frequency.exponentialRampToValueAtTime(Math.max(80, Math.min(c0, f*1.1 + c0*0.5*open)), t + Math.min(0.9, dur));
+  o.connect(lp); lp.connect(g);
   let p = null;
-  if (spec.r){
-    p = AC.createOscillator(); p.frequency.value = f*spec.r;
+  if (s.pg > 0.005){
+    p = AC.createOscillator(); p.frequency.value = f*s.r;
     const pg = AC.createGain();
-    pg.gain.setValueAtTime(spec.pg*(0.6 + bright), t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, dur));
+    pg.gain.setValueAtTime(s.pg*(0.6 + bright), t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, dur));
     p.connect(pg); pg.connect(g);
   }
-  const lvl = gain * vel * (spec.w === 'sawtooth' || spec.w === 'square' ? 0.55 : 1);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + spec.a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  const lvl = gain * vel * s.lv;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + s.a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   out(g, x, send, dly);
   o.start(t); o.stop(t + dur + 0.05); if (p){ p.start(t); p.stop(t + dur + 0.05); }
 }
-function bell(f, x, vel, t, v){ voice(tim.up, f, x, vel, t, v || f, 0.6, 0.3, 0.16); }   // subida (×3+1)
-function soft(f, x, vel, t, v){ voice(tim.dn, f, x, vel, t, v || f, 0.45, 0.15, 0.14); } // descida (÷2)
+function bell(f, x, vel, t, v){ voice('up', f, x, vel, t, v || f, 0.6, 0.3, 0.16); }   // subida (×3+1)
+function soft(f, x, vel, t, v){ voice('dn', f, x, vel, t, v || f, 0.45, 0.15, 0.14); } // descida (÷2)
 function resolveChord(x, t){       // chegada ao 1
   harm.chord.forEach((semi,i) => {
     const f = ROOT*2 * Math.pow(2, semi/12), ti = t + i*0.09;
@@ -406,7 +443,7 @@ function begin(n){
   if (cur && !cur.done) commit(cur, Math.min(cur.seq.length-1, Math.floor((t - cur.t0)*P.speed)), t);
   const seq = collatz(n);
   cur = { seq, pos: layout(seq), t0: t + 0.08, next: 0, done: false }; lastShown = -1;
-  setHarmony(seq.length - 1, t); tim = timbreFor(seq);
+  setHarmony(seq.length - 1, t); { const T = timbreFor(seq); if (T !== tim) setTimbre(T, t); }
 }
 function scheduleStep(i, t){
   const c = cur, m = c.seq.length - 1, v = c.seq[i];
@@ -511,7 +548,7 @@ function drawGraph(c, i, frac, t){
   ctx.font = '300 11px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif';
   ctx.fillStyle = `rgba(207,214,221,${0.55*Math.max(life, 0.4)})`;
   ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
-  ctx.fillText(`${fmt(c.seq[0])}  ·  passo ${c.done ? m : i} de ${m}  ·  acorde de ${harm.name}  ·  timbre ${tim.nome}`, x0, H - GH + 22);
+  ctx.fillText(`${fmt(c.seq[0])}  ·  passo ${c.done ? m : i} de ${m}  ·  acorde de ${harm.name}  ·  timbre ${timK(t) < 0.999 ? 'indo para ' : ''}${tim.nome}`, x0, H - GH + 22);
   ctx.textAlign = 'right';
   ctx.fillText(`pico ${fmt(peak)} (passo ${pk})`, x1, H - GH + 22);
   ctx.textAlign = 'left'; ctx.fillText('1', x0 - 14, y1 + 4);

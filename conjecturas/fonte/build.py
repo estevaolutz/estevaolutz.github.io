@@ -10,6 +10,7 @@ DESTINO = os.path.join(REPO, 'conjecturas')  # cada obra fica em conjecturas/<ob
 CSS = open(os.path.join(AQUI, 'core.css')).read()
 JS = open(os.path.join(AQUI, 'core.js')).read()
 SOM = open(os.path.join(AQUI, 'som.html')).read()
+BANCO = open(os.path.join(AQUI, 'banco.js')).read()  # banco de configurações, entra em todas as obras
 
 OBRAS = {
   'corredor-solitario': ('Corredor Solitário', 'A conjectura do corredor solitário em polirritmia e luz'),
@@ -94,7 +95,7 @@ def main():
     for slug, (nome, desc) in OBRAS.items():
         if not os.path.exists(os.path.join(AQUI, slug + '.html')): continue
         src = open(os.path.join(AQUI, slug + '.html')).read()
-        html = src.replace('/*CORE_CSS*/', CSS).replace('<!--SOM-->', SOM).replace('//CORE_JS', JS)
+        html = src.replace('/*CORE_CSS*/', CSS).replace('<!--SOM-->', SOM).replace('//CORE_JS', JS).replace('//BANCO_JS', BANCO)
         pasta = os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
         open(os.path.join(pasta, 'index.html'), 'w').write(html)
         man = {"name": nome, "short_name": nome, "description": desc, "lang": "pt-BR", "start_url": "./", "scope": "./",
@@ -122,5 +123,22 @@ self.addEventListener('fetch', (e) => {{
                 icone(slug, sz).save(p, optimize=True)
         print('ok', slug)
 
+def granizo():
+    """O Granizo é feito à mão (fora do núcleo comum): só atualiza o banco de configurações entre os marcadores."""
+    p = os.path.join(DESTINO, 'granizo', 'index.html')
+    if not os.path.exists(p): return
+    html = open(p).read()
+    a, b = '<!--banco-->', '<!--/banco-->'
+    bloco = a + '<script>\n' + BANCO + '</script>' + b
+    if a in html: html = html[:html.index(a)] + bloco + html[html.index(b) + len(b):]
+    else: i = html.rindex('</body>'); html = html[:i] + bloco + '\n' + html[i:]
+    open(p, 'w').write(html)
+    sw = os.path.join(DESTINO, 'granizo', 'sw.js')
+    ver = hashlib.md5(html.encode()).hexdigest()[:8]
+    s = open(sw).read(); import re
+    open(sw, 'w').write(re.sub(r"const CACHE = '[^']*';", f"const CACHE = 'granizo-{ver}';", s))
+    print('ok granizo')
+
 if __name__ == '__main__':
     main()
+    granizo()

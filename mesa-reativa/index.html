@@ -220,7 +220,7 @@ function applyParams(o){
   }
   if(a.osc){
     o.baseIdx=Math.floor(r*14.99);
-    const base=t==='sine'?220:110;
+    const base=(t==='sine'?220:110)*Math.pow(2,o.oct||0);
     o.base=base;
     a.osc.type=t==='square'?'square':t==='saw'?'sawtooth':'sine';
     a.osc.detune.setTargetAtTime(o.detune||0,now,k);
@@ -252,7 +252,7 @@ function addObj(type,x,y,rot,vol){
     } x=best[0]; y=best[1];
   }
   const o={id:nid++,type,x,y,rot:rot??0.35,vol:vol??0.75,fade:0,born:performance.now(),dying:false,seqBy:null,target:null,ctlTarget:null,step:-1,
-    detune:0,q:type==='noise'?1.5:type==='lpf'?7:5,div:1,mix:0.6,mute:[false,false,false],wave:'sine',pat:null};
+    oct:0,detune:0,q:type==='noise'?1.5:type==='lpf'?7:5,div:1,mix:0.6,mute:[false,false,false],wave:'sine',pat:null};
   if(T[type].cat==='glb'){ for(const p of objs) if(p.type===type&&!p.dying) removeObj(p); if(type==='tempo'&&rot===undefined)o.rot=(bpm-60)/120; if(type==='vol'&&rot===undefined)o.rot=0.6; }
   if(ctx) makeAudio(o);
   objs.push(o); save(); return o;
@@ -431,7 +431,7 @@ function frame(){
   }
 }
 function label(o){ const r=o.rot,t=o.type;
-  if(o.a&&o.a.osc){ const n=['Lá','Dó','Ré','Mi','Sol']; const i=Math.floor(r*14.99); return n[i%5]+(Math.floor(i/5)+(t==='sine'?3:2)); }
+  if(o.a&&o.a.osc){ const n=['Lá','Dó','Ré','Mi','Sol']; const i=Math.floor(r*14.99); return n[i%5]+(Math.floor(i/5)+(t==='sine'?3:2)+(o.oct||0)); }
   if(t==='lpf'||t==='bpf') return Math.round(expMap(r,70,9000))+' Hz';
   if(t==='noise') return Math.round(expMap(r,150,16000))+' Hz';
   if(t==='drums') return 'padrão '+(Math.floor(r*3.99)+1);
@@ -522,7 +522,7 @@ document.getElementById('bRec').onclick=function(){
 };
 
 // guardar a mesa neste navegador
-let saveT; function save(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{ localStorage.setItem('mesaReativa',JSON.stringify(objs.filter(o=>!o.dying).map(o=>[o.type,+o.x.toFixed(3),+o.y.toFixed(3),+o.rot.toFixed(3),+o.vol.toFixed(3),{detune:o.detune,q:o.q,div:o.div,mix:o.mix,mute:o.mute,wave:o.wave,pat:o.pat}]))); }catch(e){} },400); }
+let saveT; function save(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{ localStorage.setItem('mesaReativa',JSON.stringify(objs.filter(o=>!o.dying).map(o=>[o.type,+o.x.toFixed(3),+o.y.toFixed(3),+o.rot.toFixed(3),+o.vol.toFixed(3),{oct:o.oct,detune:o.detune,q:o.q,div:o.div,mix:o.mix,mute:o.mute,wave:o.wave,pat:o.pat}]))); }catch(e){} },400); }
 try{ const s=JSON.parse(localStorage.getItem('mesaReativa')||'[]'); if(s.length){ for(const [t,x,y,r,v,ex] of s) if(T[t]){ const o=addObj(t,x,y,r,v); if(ex) Object.assign(o,ex); }
   document.getElementById('bGo').textContent='Continuar'; document.getElementById('bGo').onclick=()=>{unlock();document.getElementById('start').remove();}; document.getElementById('bGoEmpty').textContent='Exemplo';
   document.getElementById('bGoEmpty').onclick=()=>{unlock();document.getElementById('start').remove();demo();}; } }catch(e){}
@@ -538,6 +538,7 @@ function ctlDefs(o){
   L.push({k:'rot',label:rl,min:0,max:1,step:0.001,fmt:()=>label(o),set:v=>setRot(o,v)});
   if(osc){
     L.push({seg:'Forma de onda',opts:[['sine','Seno'],['saw','Serra'],['square','Quadrada']],get:()=>o.type,set:v=>{o.type=v;o.dirty=true;buildPanel(o);}});
+    L.push({seg:'Oitava',opts:[[-2,'−2'],[-1,'−1'],[0,'0'],[1,'+1'],[2,'+2']],get:()=>o.oct||0,set:v=>{o.oct=v;o.dirty=true;}});
     L.push({k:'detune',label:'Afinação fina',min:-50,max:50,step:1,fmt:v=>(v>0?'+':'')+v+' cents'});
   }
   if(t==='noise'||t==='lpf'||t==='bpf') L.push({k:'q',label:'Ressonância',min:0.5,max:20,step:0.1,fmt:v=>(+v).toFixed(1)});

@@ -417,14 +417,27 @@ function voice(part, f, x, vel, t, v, send, dly, gain){
 }
 function bell(f, x, vel, t, v){ voice('up', f, x, vel, t, v || f, 0.6, 0.3, 0.16); }   // subida (×3+1)
 function soft(f, x, vel, t, v){ voice('dn', f, x, vel, t, v || f, 0.45, 0.15, 0.14); } // descida (÷2)
-function resolveChord(x, t){       // chegada ao 1
+function resolveChord(x, t){       // chegada ao 1: o acorde soa com o timbre do momento (já misturado)
+  const sp = timAt(t, 'up'), wave = waveFor(sp.spec);
+  const strike = sp.a < 0.03;                                   // timbres percutidos dedilham o acorde; sopros crescem devagar
+  const att = strike ? 0.012 : 0.9, dur = Math.min(8, sp.d*2.4 + 2.5), lvl = 0.065 * sp.lv;
   harm.chord.forEach((semi,i) => {
-    const f = ROOT*2 * Math.pow(2, semi/12), ti = t + i*0.09;
-    const o = AC.createOscillator(), g = AC.createGain();
-    o.type = i === 0 ? 'sine' : 'triangle'; o.frequency.value = f; o.detune.value = (Math.random()-0.5)*8;
-    g.gain.setValueAtTime(0.0001, ti); g.gain.exponentialRampToValueAtTime(0.06, ti+1.2); g.gain.exponentialRampToValueAtTime(0.0001, ti+7);
-    o.connect(g); out(g, x + (i-2)*40, 0.9, 0);
-    o.start(ti); o.stop(ti+7.1);
+    const f = ROOT*2 * Math.pow(2, semi/12), ti = t + i*(strike ? 0.11 : 0.06);
+    const o = AC.createOscillator(), g = AC.createGain(), lp = AC.createBiquadFilter();
+    o.setPeriodicWave(wave); o.frequency.value = f; o.detune.value = (Math.random()-0.5)*8;
+    lp.type = 'lowpass'; lp.Q.value = 0.5;
+    const c0 = Math.min(16000, f*Math.min(sp.cut, 14));
+    lp.frequency.setValueAtTime(c0, ti); lp.frequency.exponentialRampToValueAtTime(Math.max(120, c0*0.35), ti + dur*0.8);
+    o.connect(lp); lp.connect(g);
+    let p = null;
+    if (sp.pg > 0.005){
+      p = AC.createOscillator(); p.frequency.value = f*sp.r;
+      const pg = AC.createGain(); pg.gain.setValueAtTime(sp.pg*0.5, ti); pg.gain.exponentialRampToValueAtTime(0.001, ti + Math.min(2.5, dur*0.5));
+      p.connect(pg); pg.connect(g);
+    }
+    g.gain.setValueAtTime(0.0001, ti); g.gain.exponentialRampToValueAtTime(lvl, ti + att); g.gain.exponentialRampToValueAtTime(0.0001, ti + dur);
+    out(g, x + (i-2)*40, 0.9, strike ? 0.12 : 0);
+    o.start(ti); o.stop(ti + dur + 0.1); if (p){ p.start(ti); p.stop(ti + dur + 0.1); }
   });
 }
 function loopPulse(i, x, t){       // laço 4 → 2 → 1

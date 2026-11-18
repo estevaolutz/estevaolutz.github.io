@@ -1,0 +1,123 @@
+<intro>Em 1953, Fermi, Pasta, Ulam e Tsingou puseram num dos primeiros computadores uma corda de 32 massas com molas um pouco não lineares e tocaram só o modo mais grave. Esperavam que a energia se espalhasse por todos os modos até virar ruído. Em vez disso, ela passeou por alguns modos e voltou quase toda ao começo. Aqui a corda é também o instrumento: cada modo é um harmônico, e dá para ouvir a energia ir e voltar.</intro>
+
+<painel>
+  <h2>Corda</h2>
+  <div class="row"><label>Massas</label><select id="nm"><option value="16">16</option><option value="32" selected>32</option><option value="64">64</option></select></div>
+  <div class="row"><label>Modelo</label><select id="modelo"><option value="alfa" selected>α (força quadrática)</option><option value="beta">β (força cúbica)</option></select></div>
+  <div class="row"><label>Não linearidade</label><input type="range" id="alfa" min="0" max="1.5" step="0.01" value="0.25"></div>
+  <div class="row"><label>Amplitude inicial</label><input type="range" id="amp" min="0.2" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>Modo inicial</label><input type="range" id="modo0" min="1" max="4" step="1" value="1"></div>
+  <div class="row"><label>Períodos por segundo</label><input type="range" id="speed" min="0.2" max="20" step="0.1" value="3"></div>
+  <div class="row"><label>Harmônicos audíveis</label><input type="range" id="nh" min="1" max="12" step="1" value="8"></div>
+  <div class="row"><label>Frequência do 1º modo (Hz)</label><input type="range" id="f1" min="40" max="300" step="1" value="98"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Ampliar a corda</label><input type="range" id="zoomY" min="0.3" max="5" step="0.01" value="2.2"></div>
+  <div class="row"><label>Histórico dos modos</label><input type="checkbox" id="hist" checked></div>
+  <div class="row"><label>Fantasmas da corda</label><input type="range" id="fant" min="0" max="1" step="0.01" value="0.4"></div>
+</imagem>
+
+<dica>Em cima, a corda: cada massa sobe e desce presa às vizinhas, com as pontas fixas. Embaixo, a energia de cada modo ao longo do tempo (o gráfico clássico do relatório de 1955): o modo 1 cai, os modos 2, 3, 4 sobem e descem, e depois de umas 160 oscilações quase tudo volta ao modo 1. É a recorrência.<br>Som: cada modo é uma voz senoidal com frequência proporcional à do modo (quase a série harmônica); o volume de cada voz segue a energia do modo, então o timbre vai de um seno puro a um som cheio e volta. O sino toca quando a energia volta ao modo 1; o pulso marca cada oscilação do modo 1.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Modos', nome: 'Modos (harmônicos)', timbre: '-', vol: 0.8, V: 0.6, D: 0.05 },
+    { k: 'Pulso', nome: 'Pulso do modo 1', timbre: 'marimba', vol: 0.6, V: 0.4, D: 0.25 },
+    { k: 'Volta', nome: 'Recorrência', timbre: 'sinoGrave', V: 0.8, D: 0.4, P: 0.15 },
+    { k: 'Troca', nome: 'Modo dominante muda', timbre: 'celesta', V: 0.55, D: 0.35 }
+  ]
+});
+const P = O.P, V = O.V;
+
+let Nm = 32, x, v, a, tSim = 0, E = [], om = [], hist = [], vozes = [], lastF = 0, info = null, low = false, recs = 0, dom = 1, lastSign = 0, ghosts = [];
+function reset(){
+  Nm = +P.nm; x = new Float64Array(Nm + 2); v = new Float64Array(Nm + 2); a = new Float64Array(Nm + 2);
+  om = []; for (let k = 1; k <= Nm; k++) om[k] = 2*Math.sin(k*Math.PI/(2*(Nm + 1)));
+  const k0 = P.modo0|0;
+  for (let i = 1; i <= Nm; i++) x[i] = P.amp*Math.sin(k0*i*Math.PI/(Nm + 1));
+  tSim = 0; hist = []; low = false; recs = 0; dom = k0; ghosts = []; accel(); info = { shown: false };
+}
+function accel(){
+  const al = P.alfa, beta = P.modelo === 'beta';
+  for (let i = 1; i <= Nm; i++){
+    const dl = x[i] - x[i - 1], dr = x[i + 1] - x[i];
+    a[i] = dr - dl + (beta ? al*(dr*dr*dr - dl*dl*dl) : al*(dr*dr - dl*dl));
+  }
+}
+function modes(){
+  const c = Math.sqrt(2/(Nm + 1)), out = [0];
+  for (let k = 1; k <= Nm; k++){
+    let Q = 0, Qd = 0; for (let i = 1; i <= Nm; i++){ const s = Math.sin(i*k*Math.PI/(Nm + 1)); Q += x[i]*s; Qd += v[i]*s; }
+    Q *= c; Qd *= c; out[k] = 0.5*(Qd*Qd + om[k]*om[k]*Q*Q);
+  }
+  return out;
+}
+function frame(){
+  const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t;
+  if (O.running){
+    // períodos do modo 1 por segundo → tempo da simulação
+    const T1 = 2*Math.PI/om[1], target = dt*P.speed*T1, h = 0.1;
+    const steps = Math.min(40000, Math.ceil(target/h));
+    for (let s = 0; s < steps; s++){
+      for (let i = 1; i <= Nm; i++){ v[i] += 0.5*h*a[i]; x[i] += h*v[i]; }
+      accel();
+      for (let i = 1; i <= Nm; i++) v[i] += 0.5*h*a[i];
+      tSim += h;
+    }
+    E = modes(); let tot = 0; for (let k = 1; k <= Nm; k++) tot += E[k];
+    const fr = E.map(e => e/(tot || 1));
+    hist.push({ t: tSim/T1, fr: fr.slice(0, 9) }); if (hist.length > 1600) hist.shift();
+    // vozes dos modos
+    while (vozes.length < 12 && O.AC) vozes.push(O.voz('Modos', 'sine'));
+    vozes.forEach((vz, q) => { const k = q + 1; if (k > P.nh || k > Nm){ vz.set(0, 0); return; } vz.set(P.f1*om[k]/om[1], 0.07*Math.sqrt(fr[k]), ((k % 3) - 1)*0.4, 0.06); });
+    // pulso: passagem por zero do modo 1 (ponto do meio da corda)
+    const mid = x[Math.ceil(Nm/2)], sg = Math.sign(mid);
+    if (sg > 0 && lastSign < 0) O.play('Pulso', dom - 1, t + 0.02, 0.5, 0, 0.6);
+    lastSign = sg || lastSign;
+    // recorrência e modo dominante
+    if (fr[1] < 0.6) low = true;
+    if (low && fr[1] > 0.95){ low = false; recs++; O.play('Volta', 0, t + 0.03, 0.9, 0, 2.5); info = { shown: false }; }
+    let d = 1; for (let k = 2; k <= Math.min(8, Nm); k++) if (fr[k] > fr[d]) d = k;
+    if (d !== dom){ dom = d; O.play('Troca', (d - 1)*2 + 7, t + 0.03, 0.75, 0, 1.4); O.setDrone(O.semi(d - 1), 7, 1.5); info = { shown: false }; }
+    if ((t*4 | 0) % 2 === 0 && info) info.shown = false;
+    ghosts.push(Array.from(x)); if (ghosts.length > 14) ghosts.shift();
+  }
+  const { W, H } = V, C = V.begin();
+  const top = 120, sh = P.hist ? (H - top)*0.48 : H - top - 40, cy = top + sh/2, x0 = 60, x1 = W - 60, ampPx = sh*0.22*P.zoomY;
+  const PX = i => x0 + (x1 - x0)*i/(Nm + 1), PY = (xx, i) => cy - xx[i]*ampPx;
+  C.globalCompositeOperation = 'lighter';
+  if (x){
+    if (P.fant > 0) ghosts.forEach((g, q) => { C.strokeStyle = V.cor(0.2, P.fant*0.25*(q + 1)/ghosts.length, 60); C.lineWidth = 1; C.beginPath(); for (let i = 0; i <= Nm + 1; i++){ const X = PX(i), Y = PY(g, i); i ? C.lineTo(X, Y) : C.moveTo(X, Y); } C.stroke(); });
+    C.strokeStyle = V.cor(0.1, 0.9, 72); C.lineWidth = 1.6; C.beginPath();
+    for (let i = 0; i <= Nm + 1; i++){ const X = PX(i), Y = PY(x, i); i ? C.lineTo(X, Y) : C.moveTo(X, Y); } C.stroke();
+    for (let i = 1; i <= Nm; i++){ C.fillStyle = V.cor(Math.min(0.9, Math.abs(v[i])*0.6), 0.95, 80); C.beginPath(); C.arc(PX(i), PY(x, i), Nm > 40 ? 2.2 : 3.4, 0, Math.PI*2); C.fill(); }
+    C.fillStyle = 'rgba(255,255,255,0.5)'; C.fillRect(PX(0) - 2, cy - 14, 2, 28); C.fillRect(PX(Nm + 1), cy - 14, 2, 28);
+  }
+  if (P.hist && hist.length > 1){
+    const gy0 = top + sh + 30, gy1 = H - 26, gh = gy1 - gy0, tMax = Math.max(60, hist[hist.length - 1].t), t0 = Math.max(0, tMax - 400);
+    C.strokeStyle = 'rgba(255,255,255,0.1)'; C.lineWidth = 1; C.beginPath(); C.moveTo(x0, gy1 + 0.5); C.lineTo(x1, gy1 + 0.5); C.stroke();
+    for (let k = 1; k <= 6; k++){
+      C.strokeStyle = V.cor((k - 1)/6, 0.85, 66); C.lineWidth = k === 1 ? 1.8 : 1.2; C.beginPath();
+      let f = true; for (const h of hist){ if (h.t < t0) continue; const X = x0 + (x1 - x0)*(h.t - t0)/(tMax - t0), Y = gy1 - gh*h.fr[k]; f ? C.moveTo(X, Y) : C.lineTo(X, Y); f = false; }
+      C.stroke();
+    }
+  }
+  V.end();
+  if (P.hist && !document.body.classList.contains('semtexto')){ const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.fillText('energia dos modos 1 a 6 (fração do total) · eixo: oscilações do modo 1', x0, top + sh + 22); }
+  if (info && !info.shown && E.length){
+    info.shown = true; let tot = 0; for (let k = 1; k <= Nm; k++) tot += E[k];
+    $('num').textContent = `${Math.floor(hist.length ? hist[hist.length - 1].t : 0)} oscilações do modo 1`;
+    $('op').textContent = `modo 1 tem ${Math.round(E[1]/tot*100)}% da energia · mais forte agora: modo ${dom}` + (recs ? ` · ${recs} ${recs === 1 ? 'volta' : 'voltas'} ao começo` : '');
+    $('seq').innerHTML = `<span class="o">${[1, 2, 3, 4, 5, 6].map(k => `modo ${k}: ${Math.round(E[k]/tot*100)}%`).join(' · ')}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (['nm', 'modelo', 'amp', 'modo0'].includes(k)) reset(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

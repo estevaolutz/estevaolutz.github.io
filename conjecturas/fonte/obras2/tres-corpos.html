@@ -1,0 +1,143 @@
+<intro>Três estrelas que se atraem: não existe fórmula geral para o movimento delas, e quase sempre ele é caótico. Mas há órbitas raras que se repetem, como a dança em oito, descoberta por Moore (1993) e provada por Chenciner e Montgomery (2000). Aqui cada estrela é uma voz; os encontros próximos tocam sinos. Basta um empurrão minúsculo para a ordem virar caos.</intro>
+
+<painel>
+  <h2>Estrelas</h2>
+  <div class="row"><label>Começo</label><select id="ini">
+    <option value="oito" selected>Oito (Chenciner–Montgomery)</option><option value="borboleta">Borboleta (Šuvakov–Dmitrašinović)</option>
+    <option value="lagrange">Triângulo de Lagrange</option><option value="pitagoras">Pitágoras (massas 3, 4, 5)</option></select></div>
+  <div class="row"><label>Empurrão</label><input type="range" id="pert" min="0" max="0.08" step="0.0005" value="0"></div>
+  <div class="row"><label>Velocidade</label><input type="range" id="speed" min="0.05" max="3" step="0.01" value="0.6"></div>
+  <div class="row"><label>Recomeçar se alguém fugir</label><input type="checkbox" id="volta" checked></div>
+  <div class="row"><label>Distância de encontro</label><input type="range" id="dEnc" min="0.05" max="1" step="0.01" value="0.35"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="arco" selected>Arco-íris</option><option value="gelo">Gelo</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Rastro</label><input type="range" id="rastro" min="50" max="4000" step="10" value="900"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="lw" min="0.5" max="4" step="0.05" value="1.4"></div>
+  <div class="row"><label>Câmera segue</label><select id="cam"><option value="cm" selected>Centro de massa</option><option value="fixa">Fixa</option></select></div>
+</imagem>
+
+<dica>Gravidade de Newton entre três corpos, integrada com passos que encolhem quando as estrelas se aproximam. O oito e a borboleta são órbitas periódicas: as três estrelas percorrem a mesma curva. O triângulo de Lagrange gira rígido, mas é instável e se desfaz. No problema de Pitágoras (Burrau, 1913), três estrelas paradas nos cantos de um triângulo 3-4-5 dançam caoticamente até uma ser expulsa.<br>Som: cada estrela é uma voz cuja nota sobe com a velocidade; quando uma estrela passa mais perto do centro, toca uma nota; encontros próximos tocam um sino (mais forte quanto mais perto); uma fuga toca o baixo. Use o empurrão no oito para ouvir a ordem se desfazer.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Voz', nome: 'Vozes das estrelas', timbre: '-', vol: 0.7, V: 0.7, D: 0.15 },
+    { k: 'Pass', nome: 'Passagem pelo centro', timbre: 'celesta', V: 0.5, D: 0.3 },
+    { k: 'Enc', nome: 'Encontros', timbre: 'sino', V: 0.7, D: 0.4, P: 0.15 },
+    { k: 'Fuga', nome: 'Fuga', timbre: 'sinoGrave', V: 0.8, D: 0.3 }
+  ],
+  padroes: { color: 'arco' }
+});
+const P = O.P, V = O.V;
+
+let m = [1, 1, 1], s = [], trails = [[], [], []], tSim = 0, lastF = 0, cam = { x: 0, y: 0, s: 120 }, vozes = [], rPrev = [0, 0, 0], rTrend = [0, 0, 0], dPrev = [9, 9, 9], dTrend = [0, 0, 0], fled = false, info = null, startT = 0;
+function reset(){
+  const e = P.pert;
+  if (P.ini === 'oito'){
+    m = [1, 1, 1]; const x1 = [0.97000436, -0.24308753], v3 = [-0.93240737, -0.86473146];
+    s = [x1[0], x1[1], -v3[0]/2 + e, -v3[1]/2, -x1[0], -x1[1], -v3[0]/2, -v3[1]/2, 0, 0, v3[0] - e, v3[1]];
+  } else if (P.ini === 'borboleta'){
+    m = [1, 1, 1]; const p1 = 0.30689, p2 = 0.12551;
+    s = [-1, 0, p1 + e, p2, 1, 0, p1, p2, 0, 0, -2*p1 - e, -2*p2];
+  } else if (P.ini === 'lagrange'){
+    m = [1, 1, 1]; s = []; const w = Math.pow(1/Math.sqrt(3), 0.5);
+    for (let i = 0; i < 3; i++){ const a = Math.PI/2 + i*2*Math.PI/3; s.push(Math.cos(a), Math.sin(a), -Math.sin(a)*w*(1 + (i ? 0 : e*5)), Math.cos(a)*w); }
+  } else {
+    m = [3, 4, 5]; s = [1, 3, 0, 0, -2, -1, 0, 0, 1, -1, 0, 0];
+    if (e) s[2] += e;
+  }
+  // centro de massa parado na origem
+  let M = m[0] + m[1] + m[2], cx = 0, cy = 0, px = 0, py = 0;
+  for (let i = 0; i < 3; i++){ cx += m[i]*s[4*i]; cy += m[i]*s[4*i + 1]; px += m[i]*s[4*i + 2]; py += m[i]*s[4*i + 3]; }
+  for (let i = 0; i < 3; i++){ s[4*i] -= cx/M; s[4*i + 1] -= cy/M; s[4*i + 2] -= px/M; s[4*i + 3] -= py/M; }
+  trails = [[], [], []]; tSim = 0; fled = false; startT = O.now(); rPrev = [0, 0, 0]; dPrev = [9, 9, 9]; info = { shown: false };
+}
+function f(y){
+  const d = new Array(12).fill(0);
+  for (let i = 0; i < 3; i++){ d[4*i] = y[4*i + 2]; d[4*i + 1] = y[4*i + 3]; }
+  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++){
+    const dx = y[4*j] - y[4*i], dy = y[4*j + 1] - y[4*i + 1], r2 = dx*dx + dy*dy + 1e-6, r3 = r2*Math.sqrt(r2);
+    d[4*i + 2] += m[j]*dx/r3; d[4*i + 3] += m[j]*dy/r3; d[4*j + 2] -= m[i]*dx/r3; d[4*j + 3] -= m[i]*dy/r3;
+  }
+  return d;
+}
+function rk4(h){
+  const k1 = f(s), y2 = s.map((v, i) => v + h/2*k1[i]), k2 = f(y2), y3 = s.map((v, i) => v + h/2*k2[i]), k3 = f(y3), y4 = s.map((v, i) => v + h*k3[i]), k4 = f(y4);
+  s = s.map((v, i) => v + h/6*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]));
+}
+const dist = (i, j) => Math.hypot(s[4*j] - s[4*i], s[4*j + 1] - s[4*i + 1]);
+const PAIRS = [[0, 1], [0, 2], [1, 2]];
+function frame(){
+  const t = O.now(), dt = Math.min(0.05, Math.max(0, t - (lastF || t))); lastF = t;
+  if (O.running && s.length){
+    let left = dt*P.speed*2, guard = 0;
+    while (left > 0 && guard++ < 4000){
+      const dmin = Math.min(dist(0, 1), dist(0, 2), dist(1, 2));
+      const h = Math.min(left, 0.004, 0.01*Math.pow(dmin, 1.5)); rk4(h); left -= h; tSim += h;
+    }
+    for (let i = 0; i < 3; i++){ trails[i].push([s[4*i], s[4*i + 1]]); while (trails[i].length > P.rastro) trails[i].shift(); }
+    // vozes
+    while (vozes.length < 3 && O.AC) vozes.push(O.voz('Voz', 'triangle'));
+    vozes.forEach((vz, i) => { const sp = Math.hypot(s[4*i + 2], s[4*i + 3]); vz.set(O.freq(Math.round(sp*4) + i*2, O.ROOT*2), 0.022, (s[4*i]/3), 0.12, 900 + sp*900); });
+    // passagens pelo centro (mínimo da distância ao centro de massa)
+    for (let i = 0; i < 3; i++){
+      const r = Math.hypot(s[4*i], s[4*i + 1]), tr = Math.sign(r - rPrev[i]);
+      if (rTrend[i] < 0 && tr > 0 && r < 2) O.play('Pass', i*2 + Math.round((1 - Math.min(1, r))*7), t + 0.02, 0.6, s[4*i]/3, 1);
+      if (tr) rTrend[i] = tr; rPrev[i] = r;
+    }
+    // encontros próximos (mínimo da distância de um par)
+    PAIRS.forEach(([i, j], q) => {
+      const d = dist(i, j), tr = Math.sign(d - dPrev[q]);
+      if (dTrend[q] < 0 && tr > 0 && d < P.dEnc){ O.play('Enc', 7 + q*2 + Math.round((P.dEnc - d)/P.dEnc*7), t + 0.02, Math.min(1, 0.4 + 0.15/Math.max(0.02, d)), (s[4*i] + s[4*j])/6, 1.6); info = { shown: false, enc: d }; }
+      if (tr) dTrend[q] = tr; dPrev[q] = d;
+    });
+    // fuga
+    for (let i = 0; i < 3; i++){
+      const r = Math.hypot(s[4*i], s[4*i + 1]);
+      if (r > 7 && !fled){ fled = true; O.play('Fuga', -14 + i*2, t, 0.9, 0, 3); info = { shown: false, fuga: i }; }
+    }
+    if (fled && P.volta && Math.max(...[0, 1, 2].map(i => Math.hypot(s[4*i], s[4*i + 1]))) > 14) reset();
+  }
+  const { W, H } = V, C = V.begin();
+  // câmera
+  let ex = 1.1, mx = 0, my = 0;
+  if (s.length){
+    if (P.cam === 'cm'){ for (let i = 0; i < 3; i++) ex = Math.max(ex, Math.abs(s[4*i]) + 0.25, Math.abs(s[4*i + 1]) + 0.25); ex = Math.min(ex, 9); }
+    else ex = 2.4;
+  }
+  const ts = Math.min(W, H - 120)*0.45/ex; cam.s += (ts - cam.s)*0.04;
+  const cx = W/2, cy = 60 + (H - 60)/2, X = x => cx + (x - mx)*cam.s, Y = y => cy - (y - my)*cam.s;
+  C.globalCompositeOperation = 'lighter'; C.lineCap = 'round';
+  for (let i = 0; i < 3; i++){
+    const tr = trails[i], n = tr.length; if (n < 2) continue;
+    C.lineWidth = P.lw;
+    const seg = 40;
+    for (let a = 0; a < n - 1; a += seg){
+      const b = Math.min(n - 1, a + seg), al = 0.08 + 0.8*(b/n)**1.5;
+      C.strokeStyle = V.cor(i/3, al, 66); C.beginPath(); C.moveTo(X(tr[a][0]), Y(tr[a][1]));
+      for (let k = a + 1; k <= b; k++) C.lineTo(X(tr[k][0]), Y(tr[k][1])); C.stroke();
+    }
+  }
+  if (s.length) for (let i = 0; i < 3; i++){
+    const x = X(s[4*i]), y = Y(s[4*i + 1]), R = 6 + 3*Math.sqrt(m[i]), g = C.createRadialGradient(x, y, 0, x, y, R*3);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.25, V.cor(i/3, 0.8, 75)); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.fillStyle = g; C.beginPath(); C.arc(x, y, R*3, 0, Math.PI*2); C.fill();
+  }
+  V.end();
+  if (O.running && (!info || !info.shown || (t*3 | 0) !== info.k)){
+    const nomes = { oito: 'Oito', borboleta: 'Borboleta', lagrange: 'Triângulo de Lagrange', pitagoras: 'Problema de Pitágoras' };
+    $('num').textContent = nomes[P.ini] + (P.pert ? ` · empurrão ${P.pert}` : '');
+    $('op').textContent = fled ? 'uma estrela foi expulsa' : `tempo ${tSim.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} · menor distância ${Math.min(dist(0, 1), dist(0, 2), dist(1, 2)).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}`;
+    $('seq').innerHTML = '';
+    info = { shown: true, k: t*3 | 0 };
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'ini' || k === 'pert') reset(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

@@ -1,0 +1,191 @@
+<intro>Todo grafo sem ponte pode ser coberto por ciclos que passam exatamente duas vezes por cada aresta? A pergunta é de Szekeres, de 1973, e em julho de 2026 foi publicada uma prova. Aqui cada ciclo é uma linha de ônibus com cor própria: uma luz percorre a linha, toca uma nota a cada vértice, e as linhas juntas formam uma polirritmia. Cada aresta acaba com duas cores.</intro>
+
+<painel>
+  <h2>Grafo</h2>
+  <div class="row"><label>Grafo</label><select id="grafo">
+    <option value="petersen" selected>Petersen (snark)</option><option value="cubo">Cubo</option><option value="tetra">Tetraedro</option>
+    <option value="prisma">Prisma pentagonal</option><option value="dodeca">Dodecaedro</option><option value="k33">K3,3</option><option value="icosa">Icosaedro</option></select></div>
+  <div class="row"><label>Trocar sozinho</label><input type="checkbox" id="auto" checked></div>
+  <div class="row"><label>Tempo por grafo (s)</label><input type="range" id="tempoG" min="20" max="240" step="5" value="70"></div>
+  <div class="row"><label>Velocidade das luzes</label><input type="range" id="speed" min="0.2" max="6" step="0.05" value="1.4"></div>
+  <div class="row"><label>Novo ciclo a cada (s)</label><input type="range" id="gap" min="0.5" max="10" step="0.1" value="3"></div>
+  <div class="row"><label>Giro 3D</label><input type="range" id="giro" min="0" max="1" step="0.01" value="0.25"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="arco" selected>Arco-íris</option><option value="gelo">Gelo</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Afastamento das cores</label><input type="range" id="sep" min="0" max="10" step="0.1" value="3.5"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="lw" min="0.5" max="5" step="0.05" value="1.8"></div>
+  <div class="row"><label>Rastro das luzes</label><input type="range" id="cauda" min="0" max="1" step="0.01" value="0.5"></div>
+</imagem>
+
+<dica>A cobertura é calculada na hora: a obra procura ciclos simples (dos menores para os maiores) até cada aresta ficar com exatamente duas cores. No Petersen são seis pentágonos. Nos poliedros aparecem as faces.<br>Cada ciclo tem um grau da escala; cada vértice soma um passo. Ciclos de tamanhos diferentes dão voltas em tempos diferentes, e é isso que vira polirritmia. Quando duas luzes chegam ao mesmo vértice juntas, toca o sino do encontro.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Ciclo', nome: 'Luzes nos vértices', timbre: 'marimba', V: 0.45, D: 0.3 },
+    { k: 'Volta', nome: 'Volta completa', timbre: 'sino', V: 0.6, D: 0.35 },
+    { k: 'Encontro', nome: 'Encontro', timbre: 'vidro', V: 0.7, D: 0.4, P: 0.15 },
+    { k: 'Baixo', nome: 'Novo ciclo (baixo)', timbre: 'grave', V: 0.6, D: 0.05 }
+  ]
+});
+const P = O.P, V = O.V;
+
+// ---------- grafos ----------
+const PHI = (1 + Math.sqrt(5))/2;
+function byDist(vs, d){ const E = []; for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++){ const [a, b] = [vs[i], vs[j]]; if (Math.abs(Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]) - d) < 1e-6) E.push([i, j]); } return E; }
+function grafo(nome){
+  if (nome === 'petersen'){
+    const vs = []; for (let i = 0; i < 5; i++){ const a = -Math.PI/2 + i*2*Math.PI/5; vs.push([Math.cos(a), Math.sin(a), 0]); }
+    for (let i = 0; i < 5; i++){ const a = -Math.PI/2 + i*2*Math.PI/5; vs.push([0.45*Math.cos(a), 0.45*Math.sin(a), 0]); }
+    const E = []; for (let i = 0; i < 5; i++){ E.push([i, (i + 1) % 5]); E.push([i, i + 5]); E.push([5 + i, 5 + (i + 2) % 5]); }
+    return { vs, E, d3: false };
+  }
+  if (nome === 'k33'){
+    const vs = []; for (let i = 0; i < 6; i++){ const a = -Math.PI/2 + i*Math.PI/3; vs.push([Math.cos(a), Math.sin(a), 0]); }
+    const E = []; for (const i of [0, 2, 4]) for (const j of [1, 3, 5]) E.push([Math.min(i, j), Math.max(i, j)]);
+    return { vs, E, d3: false };
+  }
+  if (nome === 'cubo'){ const vs = []; for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) vs.push([x, y, z]); return { vs, E: byDist(vs, 2), d3: true }; }
+  if (nome === 'tetra'){ const vs = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]]; return { vs, E: byDist(vs, Math.sqrt(8)), d3: true }; }
+  if (nome === 'prisma'){ const vs = []; for (const z of [-0.6, 0.6]) for (let i = 0; i < 5; i++){ const a = i*2*Math.PI/5; vs.push([Math.cos(a), Math.sin(a), z]); }
+    const E = []; for (let i = 0; i < 5; i++){ E.push([i, (i + 1) % 5]); E.push([5 + i, 5 + (i + 1) % 5]); E.push([i, i + 5]); } return { vs, E, d3: true }; }
+  if (nome === 'dodeca'){
+    const vs = []; for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) vs.push([x, y, z]);
+    for (const a of [-1, 1]) for (const b of [-1, 1]){ vs.push([0, a/PHI, b*PHI]); vs.push([a/PHI, b*PHI, 0]); vs.push([a*PHI, 0, b/PHI]); }
+    return { vs, E: byDist(vs, 2/PHI), d3: true };
+  }
+  const vs = []; for (const a of [-1, 1]) for (const b of [-1, 1]){ vs.push([0, a, b*PHI]); vs.push([a, b*PHI, 0]); vs.push([b*PHI, 0, a]); }
+  return { vs, E: byDist(vs, 2), d3: true };
+}
+// ciclos simples e a busca da dupla cobertura: tenta primeiro só ciclos curtos e vai aumentando
+function cdc(G){
+  const n = G.vs.length, adj = Array.from({ length: n }, () => []), eid = new Map();
+  G.E.forEach(([a, b], k) => { adj[a].push(b); adj[b].push(a); eid.set(a*100 + b, k); eid.set(b*100 + a, k); });
+  for (let LMAX = 3; LMAX <= Math.min(n, 12); LMAX++){
+    const cyc = [], seen = new Set();
+    for (let s = 0; s < n && cyc.length < 20000; s++){
+      const path = [s], used = new Set([s]);
+      (function dfs(u){
+        if (cyc.length >= 20000) return;
+        for (const w of adj[u]){
+          if (w === s && path.length >= 3){
+            const es = path.map((v, i) => eid.get(v*100 + path[(i + 1) % path.length])).sort((x, y) => x - y), key = es.join(',');
+            if (!seen.has(key)){ seen.add(key); cyc.push({ vs: path.slice(), es }); }
+          } else if (w > s && !used.has(w) && path.length < LMAX){ used.add(w); path.push(w); dfs(w); path.pop(); used.delete(w); }
+        }
+      })(s);
+    }
+    cyc.sort((a, b) => a.vs.length - b.vs.length);
+    const cover = new Array(G.E.length).fill(0), pick = [], byEdge = G.E.map(() => []);
+    cyc.forEach((c, i) => c.es.forEach(e => byEdge[e].push(i)));
+    let found = null, budget = 200000;
+    (function go(){
+      if (found || --budget < 0) return;
+      let e = -1, best = 1e9;
+      for (let k = 0; k < cover.length; k++) if (cover[k] < 2){ const opt = byEdge[k].length; if (opt < best){ best = opt; e = k; } }
+      if (e < 0){ found = pick.slice(); return; }
+      for (const ci of byEdge[e]){
+        const c = cyc[ci];
+        if (c.es.some(x => cover[x] >= 2)) continue;
+        c.es.forEach(x => cover[x]++); pick.push(ci); go(); pick.pop(); c.es.forEach(x => cover[x]--);
+        if (found || budget < 0) return;
+      }
+    })();
+    if (found) return found.map(i => cyc[i]);
+  }
+  return [];
+}
+
+// ---------- estado ----------
+let G = null, cycles = [], active = [], nextAdd = 0, startT = 0, rot = 0, ang = 0, done = false, doneT = 0, lastF = 0, info = null;
+const ORDEM = ['petersen', 'cubo', 'dodeca', 'k33', 'prisma', 'tetra', 'icosa'];
+function reset(){
+  G = grafo(P.grafo); cycles = cdc(G); active = []; nextAdd = O.now() + 0.8; startT = O.now(); done = false; doneT = 0;
+  info = { shown: false };
+}
+function addCycle(t){
+  const c = cycles[active.length]; if (!c) return;
+  const i = active.length;
+  active.push({ c, i, s: 0, t, lastV: -1, laps: 0 });
+  O.play('Baixo', -7 + i*2, t, 0.85, 0, 1.6);
+  if (active.length === cycles.length){ done = true; doneT = t; }
+  info = { shown: false };
+}
+function edgeCover(){ const cv = new Array(G.E.length).fill(0); for (const a of active) for (const e of a.c.es) cv[e]++; return cv; }
+function proj(v){
+  if (!G.d3) return [v[0], v[1], 0];
+  const [x, y, z] = v, ca = Math.cos(ang), sa = Math.sin(ang), cb = Math.cos(0.45), sb = Math.sin(0.45);
+  const x1 = x*ca + z*sa, z1 = -x*sa + z*ca, y1 = y*cb - z1*sb, z2 = y*sb + z1*cb;
+  const f = 3.2/(3.2 + z2*0.6); return [x1*f, y1*f, z2];
+}
+function frame(){
+  const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t;
+  ang += dt*P.giro*0.6;
+  if (O.running && G){
+    if (!done && t >= nextAdd){ addCycle(t); nextAdd = t + P.gap; }
+    if (P.auto && done && t - doneT > P.tempoG){ const el = $('grafo'); el.value = ORDEM[(ORDEM.indexOf(P.grafo) + 1) % ORDEM.length]; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    // as luzes andam pelos ciclos; cada vértice alcançado toca
+    const hitV = new Map();
+    for (const a of active){
+      const L = a.c.vs.length;
+      a.s += dt*P.speed;
+      const vi = Math.floor(a.s) % L;
+      if (vi !== a.lastV){
+        a.lastV = vi;
+        const v = a.c.vs[vi];
+        const deg = a.i*2 + vi, pan = proj(G.vs[v])[0]*0.6;
+        O.play('Ciclo', deg, t + 0.03, 0.6, pan, Math.max(0.35, Math.min(1.2, 1/P.speed)));
+        if (vi === 0 && a.s > 1){ a.laps++; O.play('Volta', a.i*2 + 7, t + 0.03, 0.7, pan, 1.4); }
+        hitV.set(v, (hitV.get(v) || 0) + 1);
+      }
+    }
+    for (const [v, k] of hitV) if (k >= 2) O.play('Encontro', 14 + (v % 7), t + 0.04, 0.6 + 0.1*k, 0, 1.6);
+  }
+  const { W, H } = V, C = V.begin();
+  if (G){
+    const cx = W/2, cy = H/2 + 30, R = Math.min(W, H)*(G.d3 ? 0.27 : 0.36);
+    const pp = G.vs.map(proj), X = i => cx + pp[i][0]*R, Y = i => cy + pp[i][1]*R;
+    // centro de cada ciclo, para afastar as duas cores de uma aresta
+    const ctr = active.map(a => { let x = 0, y = 0; for (const v of a.c.vs){ x += X(v); y += Y(v); } return [x/a.c.vs.length, y/a.c.vs.length]; });
+    C.globalCompositeOperation = 'lighter'; C.lineCap = 'round';
+    // arestas ainda não cobertas
+    const cv = edgeCover();
+    G.E.forEach(([a, b], k) => { C.strokeStyle = `rgba(255,255,255,${cv[k] === 0 ? 0.22 : 0.06})`; C.lineWidth = 1; C.beginPath(); C.moveTo(X(a), Y(a)); C.lineTo(X(b), Y(b)); C.stroke(); });
+    const N = Math.max(1, cycles.length);
+    active.forEach((a, j) => {
+      const u = a.i/N, age = t - a.t, al = Math.min(1, age*1.5);
+      const [mx, my] = ctr[j], sh = P.sep;
+      const pt = v => { const x = X(v), y = Y(v), dx = mx - x, dy = my - y, d = Math.hypot(dx, dy) || 1; return [x + dx/d*sh, y + dy/d*sh]; };
+      C.strokeStyle = V.cor(u, 0.55*al, 62); C.lineWidth = P.lw;
+      C.beginPath(); a.c.vs.forEach((v, q) => { const [x, y] = pt(v); q ? C.lineTo(x, y) : C.moveTo(x, y); }); C.closePath(); C.stroke();
+      // a luz
+      const L = a.c.vs.length, s = a.s % L, i0 = Math.floor(s), fr = s - i0;
+      for (let q = 0; q < 14; q++){
+        const ss = s - q*0.05*P.cauda*3; if (q && P.cauda <= 0) break;
+        const sw = ((ss % L) + L) % L, k0 = Math.floor(sw), f0 = sw - k0;
+        const [xa, ya] = pt(a.c.vs[k0]), [xb, yb] = pt(a.c.vs[(k0 + 1) % L]);
+        const x = xa + (xb - xa)*f0, y = ya + (yb - ya)*f0, rr = (q ? 3.2 : 5.5)*(1 - q/16);
+        C.fillStyle = V.cor(u, (q ? 0.35 : 1)*(1 - q/14)*al, 80); C.beginPath(); C.arc(x, y, rr, 0, Math.PI*2); C.fill();
+      }
+    });
+    for (let i = 0; i < G.vs.length; i++){ C.fillStyle = 'rgba(235,242,250,0.8)'; C.beginPath(); C.arc(X(i), Y(i), 2.6, 0, Math.PI*2); C.fill(); }
+  }
+  V.end();
+  if (info && !info.shown && G){
+    info.shown = true;
+    const cv = edgeCover(), cob = cv.filter(x => x === 2).length;
+    const nomes = { petersen: 'Grafo de Petersen', cubo: 'Cubo', tetra: 'Tetraedro', prisma: 'Prisma pentagonal', dodeca: 'Dodecaedro', k33: 'K3,3', icosa: 'Icosaedro' };
+    $('num').textContent = nomes[P.grafo];
+    $('op').textContent = `${active.length} de ${cycles.length} ciclos · ${cob} de ${G.E.length} arestas com duas cores` + (done ? ' · cobertura dupla completa' : '');
+    $('seq').innerHTML = `<span class="o">${active.map(a => `ciclo de ${a.c.vs.length}`).join(' · ')}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'grafo') reset(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

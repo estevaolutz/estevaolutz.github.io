@@ -1,0 +1,184 @@
+<intro>Espalhe n pontos no plano: quantos pares podem ficar a distância exatamente 1? Erdős (1946) mostrou que uma grade, com a unidade bem escolhida, dá um pouco mais que n pares, e conjecturou que não dava para ir muito além disso. Em maio de 2026 um modelo de IA encontrou construções melhores e derrubou a conjectura. Aqui os pontos entram um a um, e cada novo par à distância 1 vira uma nota.</intro>
+
+<painel>
+  <h2>Pontos</h2>
+  <div class="row"><label>Construção</label><select id="rede"><option value="grade" selected>Grade quadrada (Erdős)</option><option value="tri">Rede triangular</option><option value="moser">Fuso de Moser</option></select></div>
+  <div class="row"><label>Lado da grade</label><input type="range" id="lado" min="6" max="44" step="1" value="26"></div>
+  <div class="row"><label>Pontos/s</label><input type="range" id="speed" min="0.5" max="40" step="0.1" value="4"></div>
+  <div class="row"><label>Acelerar</label><input type="checkbox" id="accel" checked></div>
+  <div class="row"><label>Notas por ponto</label><input type="range" id="maxNotes" min="1" max="12" step="1" value="5"></div>
+  <div class="row"><label>Recomeçar sozinho</label><input type="checkbox" id="loop" checked></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Cor por direção</label><input type="checkbox" id="dirCor" checked></div>
+  <div class="row"><label>Espessura</label><input type="range" id="lw" min="0.3" max="3" step="0.05" value="0.9"></div>
+  <div class="row"><label>Brilho das ligações</label><input type="range" id="eBright" min="0.1" max="2" step="0.01" value="0.7"></div>
+  <div class="row"><label>Gráfico</label><input type="checkbox" id="graf" checked></div>
+</imagem>
+
+<dica>Na grade, a unidade é a raiz de um número que se escreve de muitos jeitos como soma de dois quadrados (por exemplo 65 = 1² + 8² = 4² + 7²): cada jeito é uma direção, e cada direção tem cor e grau próprios. O gráfico embaixo mostra pares por ponto, que na grade cresce devagar, quase como log n. A construção de 2026 usa teoria algébrica dos números e não está reproduzida aqui; a obra mostra a construção clássica que ela superou.<br>O fuso de Moser tem 7 pontos e 11 pares à distância 1, e vira um laço rítmico.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Lig', nome: 'Ligações', timbre: 'celesta', V: 0.55, D: 0.3 },
+    { k: 'Ponto', nome: 'Pontos', timbre: 'macio', vol: 0.6, V: 0.4, D: 0.1 },
+    { k: 'Marco', nome: 'Marcos (pares/ponto)', timbre: 'sinoGrave', V: 0.8, D: 0.4 },
+    { k: 'Baixo', nome: 'Baixo', timbre: 'grave', V: 0.6, D: 0.05 }
+  ]
+});
+const P = O.P, V = O.V;
+
+// ---------- construções ----------
+let pts = [], order = [], placed = [], edges = [], vecs = [], unitM = 0, reps = '', idx = 0, nextT = 0, edgeCount = 0, hist = [], lastMark = 0, finT = 0, cam = { x: 0, y: 0, s: 1 };
+function bestNorm(k, normFn, vecsOf){
+  // escolhe m com mais pares dentro da grade k×k
+  const cnt = new Map(), lim = Math.max(3, Math.floor(k/5));   // vetores curtos: as ligações aparecem logo no começo
+  for (let dx = 0; dx <= lim; dx++) for (let dy = -lim; dy <= lim; dy++){
+    if (dx === 0 && dy <= 0) continue;
+    const m = normFn(dx, dy); if (!m) continue;
+    cnt.set(m, (cnt.get(m) || 0) + (k - Math.abs(dx))*(k - Math.abs(dy)));
+  }
+  let best = 1, bv = -1; for (const [m, v] of cnt) if (v > bv){ bv = v; best = m; }
+  return best;
+}
+function build(){
+  pts = []; placed = []; edges = []; vecs = []; idx = 0; edgeCount = 0; hist = []; lastMark = 0; finT = 0;
+  const k = P.lado|0;
+  if (P.rede === 'moser'){
+    const s3 = Math.sqrt(3), a1 = Math.acos(5/6);
+    const rot = (x, y, a) => [x*Math.cos(a) - y*Math.sin(a), x*Math.sin(a) + y*Math.cos(a)];
+    const A = [0, 0], B = [1, 0], C = [0.5, s3/2], D = [1.5, s3/2];
+    const pts2 = [A, B, C, D].concat([B, C, D].map(p => rot(p[0], p[1], a1)));
+    pts = pts2.map(([x, y]) => ({ x, y }));
+    unitM = 1; reps = 'fuso de Moser'; order = pts.map((_, i) => i);
+  } else if (P.rede === 'grade'){
+    const norm = (dx, dy) => dx*dx + dy*dy;
+    unitM = bestNorm(k, norm);
+    for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) pts.push({ x: i, y: j, i, j });
+    for (let dx = -k; dx <= k; dx++) for (let dy = -k; dy <= k; dy++) if (dx*dx + dy*dy === unitM) vecs.push([dx, dy]);
+    reps = [...new Set(vecs.filter(([a, b]) => a >= 0 && b >= a).map(([a, b]) => `${a}² + ${b}²`))].join(' = ');
+  } else {
+    const norm = (dx, dy) => dx*dx + dx*dy + dy*dy;
+    unitM = bestNorm(k, norm);
+    for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) pts.push({ x: i + j/2, y: j*Math.sqrt(3)/2, i, j });
+    for (let dx = -k; dx <= k; dx++) for (let dy = -k; dy <= k; dy++) if (dx*dx + dx*dy + dy*dy === unitM) vecs.push([dx, dy]);
+    reps = `${vecs.length/2} direções com a² + ab + b² = ${unitM}`;
+  }
+  if (P.rede !== 'moser'){
+    // entram em espiral, do centro para fora
+    const cx = (k - 1)/2, cy = (k - 1)/2;
+    order = pts.map((p, i) => i).sort((a, b) => { const pa = pts[a], pb = pts[b];
+      const ra = Math.hypot(pa.i - cx, pa.j - cy), rb = Math.hypot(pb.i - cx, pb.j - cy);
+      return ra - rb || Math.atan2(pa.j - cy, pa.i - cx) - Math.atan2(pb.j - cy, pb.i - cx); });
+  }
+  // direção de cada vetor (v e −v contam como a mesma)
+  const canon = vecs.map(([a, b]) => (a > 0 || (a === 0 && b > 0)) ? a + ',' + b : (-a) + ',' + (-b));
+  const lista = [...new Set(canon)]; dirOf = canon.map(c => lista.indexOf(c)); nDir = P.rede === 'moser' ? 11 : Math.max(1, lista.length);
+  const sc = 1/Math.sqrt(unitM); for (const p of pts){ p.x *= sc; p.y *= sc; p.on = false; }
+  nextT = O.now() + 0.6;
+}
+const key = (i, j) => i*4096 + j;
+let grid = new Map(), dirOf = [], nDir = 1;
+function place(t){
+  if (idx >= order.length) return false;
+  const pi = order[idx++], p = pts[pi]; p.on = true; p.t = t; placed.push(pi);
+  if (idx === 1) grid = new Map();
+  const novos = [];
+  if (P.rede === 'moser'){
+    for (const qi of placed){ if (qi === pi) continue; const q = pts[qi]; if (Math.abs(Math.hypot(p.x - q.x, p.y - q.y) - 1) < 1e-6) novos.push([qi, Math.atan2(q.y - p.y, q.x - p.x)]); }
+  } else {
+    grid.set(key(p.i, p.j), pi);
+    vecs.forEach(([dx, dy], vi) => { const qi = grid.get(key(p.i + dx, p.j + dy)); if (qi != null) novos.push([qi, Math.atan2(dy, dx), dirOf[vi]]); });
+  }
+  const sp = speedNow(), dm = Math.max(0.3, Math.min(1.4, 2/sp));
+  O.play('Ponto', -7 + (idx % 5), t, 0.5, (p.x - cam.x)*0.05, dm);
+  novos.forEach(([qi, ang, dir0], k) => {
+    const dir = P.rede === 'moser' ? (edges.length % 11) : dir0;
+    edges.push({ a: pi, b: qi, t, dir });
+    edgeCount++;
+    if (k < P.maxNotes){ const deg = dir % 14; O.play('Lig', deg, t + k*Math.min(0.06, 0.4/sp), 0.75, Math.cos(ang)*0.6, dm); }
+  });
+  const ratio = edgeCount/idx;
+  hist.push([idx, ratio]);
+  if (Math.floor(ratio) > lastMark && idx > 3){ lastMark = Math.floor(ratio); O.play('Marco', lastMark - 7, t + 0.05, 0.9, 0, 1.6); }
+  if (idx % 8 === 0) O.play('Baixo', -14 + (novos.length % 7), t, 0.8, 0, 1.4*dm);
+  last = { pi, n: novos.length, t };
+  return true;
+}
+let last = null;
+function speedNow(){ return P.speed*(P.accel ? Math.min(10, 1 + idx/120) : 1); }
+
+// ---------- desenho ----------
+function frame(){
+  const t = O.now();
+  if (O.running){
+    while (t + 0.15 >= nextT){
+      const ok = place(Math.max(t, nextT));
+      if (!ok){
+        if (P.rede === 'moser'){ // laço: o fuso volta a tocar as 11 ligações
+          if (!finT) finT = t;
+          edges.forEach((e, k) => { if (k < 11) O.play('Lig', k, t + 0.2 + k*0.18, 0.7, 0, 0.8); });
+          nextT = t + 0.2 + 11*0.18 + 0.6; break;
+        }
+        if (!finT) finT = t;
+        if (P.loop && t - finT > 8){ build(); }
+        nextT = t + 0.5; break;
+      }
+      nextT = Math.max(t, nextT) + 1/speedNow();
+    }
+  }
+  const { W, H } = V, C = V.begin();
+  // câmera: enquadra os pontos já colocados
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const pi of placed){ const p = pts[pi]; x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  if (!placed.length){ x0 = y0 = -1; x1 = y1 = 1; }
+  const bottom = P.graf ? 150 : 30, aw = W - 80, ah = H - bottom - 130;
+  const ts = Math.min(aw/Math.max(1.5, x1 - x0 + 1), ah/Math.max(1.5, y1 - y0 + 1));
+  cam.s += (ts - cam.s)*0.05; cam.x += ((x0 + x1)/2 - cam.x)*0.05; cam.y += ((y0 + y1)/2 - cam.y)*0.05;
+  const cx = W/2, cy = 120 + ah/2;
+  const X = p => cx + (p.x - cam.x)*cam.s, Y = p => cy - (p.y - cam.y)*cam.s;
+  C.globalCompositeOperation = 'lighter';
+  const ne = edges.length, base = Math.min(0.9, 16/Math.sqrt(ne + 1))*P.eBright;
+  C.lineWidth = P.lw;
+  for (const e of edges){
+    const pa = pts[e.a], pb = pts[e.b], fl = Math.exp(-(t - e.t)*2.5);
+    const u = P.dirCor ? (e.dir/Math.max(1, nDir)) : 0.15;
+    C.strokeStyle = V.cor(u, Math.min(1, base + fl*0.8), 62 + fl*20);
+    C.beginPath(); C.moveTo(X(pa), Y(pa)); C.lineTo(X(pb), Y(pb)); C.stroke();
+  }
+  const r = Math.max(1.2, Math.min(4, cam.s*0.12));
+  for (const pi of placed){ const p = pts[pi], fl = Math.exp(-(t - p.t)*3);
+    C.fillStyle = `rgba(230,240,250,${0.55 + 0.45*fl})`; C.beginPath(); C.arc(X(p), Y(p), r*(1 + fl), 0, Math.PI*2); C.fill(); }
+  // gráfico de pares por ponto
+  if (P.graf && hist.length > 1){
+    const gx0 = 40, gx1 = W - 40, gy1 = H - 24, gh = 90, gy0 = gy1 - gh;
+    const nMax = order.length || 1; let rMax = 2; for (const h of hist) rMax = Math.max(rMax, h[1]*1.15);
+    C.globalCompositeOperation = 'source-over';
+    C.strokeStyle = 'rgba(255,255,255,0.1)'; C.lineWidth = 1; C.beginPath(); C.moveTo(gx0, gy1 + 0.5); C.lineTo(gx1, gy1 + 0.5); C.stroke();
+    C.globalCompositeOperation = 'lighter';
+    C.strokeStyle = V.cor(0.3, 0.85, 70); C.lineWidth = 1.3; C.beginPath();
+    hist.forEach(([n, r], i) => { const x = gx0 + (gx1 - gx0)*n/nMax, y = gy1 - gh*r/rMax; i ? C.lineTo(x, y) : C.moveTo(x, y); });
+    C.stroke();
+  }
+  V.end();
+  if (P.graf && !document.body.classList.contains('semtexto')){
+    const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)';
+    ctx.fillText('pares à distância 1 por ponto', 40, H - 24 - 96);
+  }
+  if (last && !last.shown){
+    last.shown = true;
+    $('num').textContent = `${O.fmt(idx)} ${idx === 1 ? 'ponto' : 'pontos'}`;
+    $('op').textContent = `${O.fmt(edgeCount)} pares à distância 1 · ${(edgeCount/Math.max(1, idx)).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} por ponto` + (last.n ? ` · este ponto ganhou ${last.n}` : '');
+    $('seq').innerHTML = `<span class="o">${P.rede === 'moser' ? '7 pontos e 11 pares: o fuso de Moser' : `unidade = √${unitM} · ${reps}`}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'rede' || k === 'lado') build(); });
+O.setup(() => { build(); O.setDrone(0, 7, 0.1); }, { r: build });
+build();
+requestAnimationFrame(frame);
+</js>

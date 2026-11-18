@@ -1,0 +1,118 @@
+<intro>Na década de 1950 Belousov viu uma solução que mudava de cor sozinha, para lá e para cá, como um relógio. Ninguém acreditou: uma reação química não deveria oscilar. Zhabotinsky confirmou, e em placas finas a reação desenha ondas e espirais que giram. Aqui o modelo é um autômato de três substâncias que se perseguem (pedra, papel, tesoura). Eletrodos espalhados pela placa tocam quando a onda passa.</intro>
+
+<painel>
+  <h2>Reação</h2>
+  <div class="row"><label>Resolução</label><select id="res"><option value="120">Grossa</option><option value="200" selected>Média</option><option value="320">Fina</option></select></div>
+  <div class="row"><label>Passos por quadro</label><input type="range" id="speed" min="0.1" max="4" step="0.05" value="0.6"></div>
+  <div class="row"><label>α (A come B)</label><input type="range" id="al" min="0.6" max="1.6" step="0.01" value="1"></div>
+  <div class="row"><label>β (B come C)</label><input type="range" id="be" min="0.6" max="1.6" step="0.01" value="1"></div>
+  <div class="row"><label>γ (C come A)</label><input type="range" id="ga" min="0.6" max="1.6" step="0.01" value="1"></div>
+  <div class="row"><label>Eletrodos</label><input type="range" id="nel" min="1" max="12" step="1" value="6"></div>
+  <div class="row"><label>Toque mexe a solução</label><input type="checkbox" id="toque" checked></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="arco">Arco-íris</option><option value="gelo" selected>Gelo</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Substância visível</label><select id="subst"><option value="a" selected>A</option><option value="b">B</option><option value="c">C</option><option value="mix">As três (RGB)</option></select></div>
+  <div class="row"><label>Suavizar</label><input type="checkbox" id="suave" checked></div>
+  <div class="row"><label>Mostrar eletrodos</label><input type="checkbox" id="showEl" checked></div>
+</imagem>
+
+<dica>Cada célula guarda três concentrações (A, B, C) e a cada passo olha a média das vizinhas: A cresce comendo B, B cresce comendo C, C cresce comendo A (o modelo de Alasdair Turner para o BZ). Por isso as ondas sempre seguem a mesma ordem e se enrolam em espirais. Mudar α, β e γ quebra o equilíbrio e muda o ritmo das ondas. Tocar na tela joga uma gota que cria novas espirais.<br>Som: cada eletrodo é uma voz da escala e toca quando a onda de A passa por ele; quando a placa toda pulsa junto entra o baixo; a gota faz um respingo.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Elet', nome: 'Eletrodos', timbre: 'marimba', V: 0.5, D: 0.3 },
+    { k: 'Pulso', nome: 'Pulso da placa', timbre: 'grave', V: 0.6, D: 0.05 },
+    { k: 'Gota', nome: 'Gota (toque)', timbre: 'vidro', V: 0.7, D: 0.4, P: 0.15 }
+  ]
+});
+const P = O.P, V = O.V;
+
+let gw = 0, gh = 0, A, B, Cc, A2, B2, C2, img = null, off = document.createElement('canvas'), octx = off.getContext('2d'), lut = null, lutKey = '', el = [], acc = 0, mean = [], info = null, lastF = 0, steps = 0;
+function reset(){
+  gw = +P.res; gh = Math.max(40, Math.round(gw*V.H/Math.max(1, V.W)));
+  const n = gw*gh; A = new Float32Array(n); B = new Float32Array(n); Cc = new Float32Array(n); A2 = new Float32Array(n); B2 = new Float32Array(n); C2 = new Float32Array(n);
+  for (let i = 0; i < n; i++){ A[i] = Math.random(); B[i] = Math.random(); Cc[i] = Math.random(); }
+  off.width = gw; off.height = gh; img = octx.createImageData(gw, gh);
+  placeEl(); mean = []; steps = 0; info = { shown: false };
+}
+function placeEl(){ el = []; const n = P.nel|0; for (let k = 0; k < n; k++){ const a = k/n*Math.PI*2 + 0.4, r = 0.28 + 0.12*(k % 2); el.push({ x: 0.5 + Math.cos(a)*r*V.H/Math.max(1, V.W)*1.4, y: 0.5 + Math.sin(a)*r, prev: 0, t: -9 }); } }
+function step(){
+  const al = P.al, be = P.be, ga = P.ga;
+  for (let y = 0; y < gh; y++){
+    const ym = (y - 1 + gh) % gh, yp = (y + 1) % gh;
+    for (let x = 0; x < gw; x++){
+      const xm = (x - 1 + gw) % gw, xp = (x + 1) % gw;
+      const r0 = ym*gw, r1 = y*gw, r2 = yp*gw;
+      const a = (A[r0 + xm] + A[r0 + x] + A[r0 + xp] + A[r1 + xm] + A[r1 + x] + A[r1 + xp] + A[r2 + xm] + A[r2 + x] + A[r2 + xp])/9;
+      const b = (B[r0 + xm] + B[r0 + x] + B[r0 + xp] + B[r1 + xm] + B[r1 + x] + B[r1 + xp] + B[r2 + xm] + B[r2 + x] + B[r2 + xp])/9;
+      const c = (Cc[r0 + xm] + Cc[r0 + x] + Cc[r0 + xp] + Cc[r1 + xm] + Cc[r1 + x] + Cc[r1 + xp] + Cc[r2 + xm] + Cc[r2 + x] + Cc[r2 + xp])/9;
+      const i = y*gw + x;
+      A2[i] = Math.min(1, Math.max(0, a + a*(al*b - ga*c)));
+      B2[i] = Math.min(1, Math.max(0, b + b*(be*c - al*a)));
+      C2[i] = Math.min(1, Math.max(0, c + c*(ga*a - be*b)));
+    }
+  }
+  [A, A2] = [A2, A]; [B, B2] = [B2, B]; [Cc, C2] = [C2, Cc]; steps++;
+}
+function buildLut(){
+  const key = P.color; if (lut && key === lutKey) return; lutKey = key;
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 1; const x = cv.getContext('2d');
+  for (let i = 0; i < 256; i++){ const u = i/255; x.fillStyle = '#000'; x.fillRect(i, 0, 1, 1); x.fillStyle = V.cor(0.05 + u*0.75, Math.pow(u, 2.4), 24 + u*44); x.fillRect(i, 0, 1, 1); }
+  lut = x.getImageData(0, 0, 256, 1).data;
+}
+function drop(px, py, t){
+  const cx = Math.floor(px*gw), cy = Math.floor(py*gh), R = Math.max(3, gw/30|0);
+  for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++){ if (x*x + y*y > R*R) continue; const i = ((cy + y + gh) % gh)*gw + ((cx + x + gw) % gw); A[i] = Math.random(); B[i] = Math.random(); Cc[i] = Math.random(); }
+  O.play('Gota', 14 + (Math.random()*5 | 0), t, 0.8, (px - 0.5)*1.4, 1.4);
+}
+V.cv.addEventListener('pointerdown', e => { if (!O.running || !P.toque || !A) return; drop(e.clientX/V.W, e.clientY/V.H, O.now()); });
+function frame(){
+  const t = O.now(); lastF = t;
+  if (O.running && A){
+    acc += P.speed; let k = Math.min(6, Math.floor(acc)); acc -= k;
+    while (k-- > 0){
+      step();
+      // eletrodos: a onda de A passando
+      el.forEach((e, q) => {
+        const i = Math.min(gh - 1, Math.max(0, e.y*gh|0))*gw + Math.min(gw - 1, Math.max(0, e.x*gw|0)), v = A[i];
+        if (e.prev < 0.5 && v >= 0.5 && t - e.t > 0.25){ e.t = t; O.play('Elet', [0, 2, 4, 7, 9, 11, 14, 16, 18, 21, 23, 25][q], t + 0.02, 0.6, (e.x - 0.5)*1.4, 1); }
+        e.prev = v;
+      });
+      let s = 0; for (let i = 0; i < A.length; i += 7) s += A[i]; s /= A.length/7;
+      mean.push(s); if (mean.length > 3) mean.shift();
+      if (mean.length === 3 && mean[1] > mean[0] && mean[1] >= mean[2] && mean[1] > 0.32) O.play('Pulso', -14 + Math.round(mean[1]*7), t + 0.02, 0.8, 0, 1.8);
+    }
+  }
+  const { W, H } = V, C = V.begin();
+  if (A){
+    buildLut();
+    const d = img.data, n = gw*gh, mode = P.subst;
+    for (let i = 0; i < n; i++){
+      if (mode === 'mix'){ d[4*i] = A[i]*255; d[4*i + 1] = B[i]*255; d[4*i + 2] = Cc[i]*255; }
+      else { const v = (mode === 'b' ? B[i] : mode === 'c' ? Cc[i] : A[i])*255 | 0; d[4*i] = lut[4*v]; d[4*i + 1] = lut[4*v + 1]; d[4*i + 2] = lut[4*v + 2]; }
+      d[4*i + 3] = 255;
+    }
+    octx.putImageData(img, 0, 0);
+    C.imageSmoothingEnabled = P.suave; C.globalCompositeOperation = 'lighter';
+    C.drawImage(off, 0, 0, W, H);
+    if (P.showEl) el.forEach(e => { const x = e.x*W, y = e.y*H, f = Math.exp(-(t - e.t)*4); C.strokeStyle = `rgba(255,255,255,${0.35 + 0.6*f})`; C.lineWidth = 1.2; C.beginPath(); C.arc(x, y, 6 + f*10, 0, Math.PI*2); C.stroke(); });
+  }
+  V.end();
+  if (O.running && (t*2 | 0) !== (info && info.k)){
+    info = { k: t*2 | 0 };
+    $('num').textContent = `${O.fmt(steps)} passos`;
+    $('op').textContent = ['α', 'β', 'γ'].map((l, i) => l + ' ' + [P.al, P.be, P.ga][i].toLocaleString('pt-BR', { minimumFractionDigits: 2 })).join(' · ');
+    $('seq').innerHTML = '';
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'res') reset(); if (k === 'nel') placeEl(); });
+V.resizers.push(() => { if (A) reset(); });
+O.setup(() => { O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

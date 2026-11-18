@@ -1,0 +1,167 @@
+<intro>Uma máquina de Turing de seis estados que ninguém consegue provar se para. Por dentro ela faz uma conta parecida com a de Collatz: a vira a + a/2; se a é par, b sobe 2, se é ímpar, b desce 1. Se b chegar a −1, a máquina para. Ela quase certamente nunca para, mas ninguém conseguiu provar.</intro>
+
+<painel>
+  <h2>Antihydra</h2>
+  <div class="row"><label>Vista</label><select id="vista"><option value="mapa" selected>Mapa (a, b)</option><option value="fita">Fita da máquina</option></select></div>
+  <div class="row"><label>a inicial</label><input type="number" id="a0" min="1" step="1" value="8"></div>
+  <div class="row"><label>b inicial</label><input type="number" id="b0" min="0" step="1" value="0"></div>
+  <div class="row"><label>Passos/s</label><input type="range" id="speed" min="0.3" max="40" step="0.1" value="2.5"></div>
+  <div class="row"><label>Acelerar</label><input type="checkbox" id="accel" checked></div>
+  <div class="row"><label>Notas por oitava de b</label><input type="range" id="bSpan" min="5" max="40" step="1" value="14"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Anéis de bits</label><input type="range" id="rings" min="20" max="400" step="1" value="160"></div>
+  <div class="row"><label>Linha de vida</label><input type="checkbox" id="life" checked></div>
+  <div class="row"><label>Giro</label><input type="range" id="spin" min="-1" max="1" step="0.01" value="0.12"></div>
+</imagem>
+
+<dica>Cada passo é um anel: os bits de a em binário dão a volta no círculo (o último bit, que decide par ou ímpar, fica no topo). A linha embaixo é b; o chão vermelho é −1, onde a máquina pararia. Par toca uma nota e b sobe; ímpar toca outra e b desce; quando b fica perto do chão, entra o sino de alerta.<br>Na vista “Fita da máquina” roda a própria máquina de Turing de 6 estados (1RB1RA_0LC1LE_1LD1LC_1LA0LB_1LF1RE_---0RA): cada linha é a fita num instante, e cada estado toca um grau.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Par', nome: 'Par (b + 2)', timbre: 'sino', V: 0.55, D: 0.3 },
+    { k: 'Impar', nome: 'Ímpar (b − 1)', timbre: 'macio', V: 0.5, D: 0.2 },
+    { k: 'Baixo', nome: 'Baixo (a cada 8)', timbre: 'grave', V: 0.6, D: 0.05 },
+    { k: 'Alerta', nome: 'Alerta (perto do −1)', timbre: 'sinoGrave', V: 0.8, D: 0.4, P: 0.2 },
+    { k: 'Fita', nome: 'Estados da fita', timbre: 'kalimba', V: 0.4, D: 0.3 }
+  ]
+});
+const P = O.P, V = O.V, ctx = V.ctx;
+
+// ---------- o mapa (a, b) ----------
+let a = 8n, b = 0, n = 0, hist = [], parHist = [], nextT = 0, lastStep = null, halted = false, oddRun = 0;
+function reset(){
+  let a0 = 8n; try { a0 = BigInt(Math.max(1, Math.floor(+$('a0').value || 8))); } catch (e) {}
+  a = a0; b = Math.max(0, Math.floor(+$('b0').value || 0)); n = 0; hist = []; parHist = []; halted = false; oddRun = 0; lastStep = null;
+  tmReset(); nextT = O.now() + 0.5;
+}
+function speedNow(){ return P.speed * (P.accel ? Math.min(12, 1 + n/400) : 1); }
+function step(t){
+  if (halted) return;
+  const even = (a & 1n) === 0n;
+  b += even ? 2 : -1;
+  const bits = a.toString(2);
+  a = a + a/2n; n++;
+  hist.push({ bits, even, b, t }); if (hist.length > 420) hist.shift();
+  parHist.push(even); if (parHist.length > 64) parHist.shift();
+  oddRun = even ? 0 : oddRun + 1;
+  lastStep = { even, t, b };
+  if (b < 0){ halted = true; }
+  // som
+  const span = P.bSpan, deg = ((b % span) + span) % span, oct = Math.floor(b/span) % 2;
+  const sp = speedNow(), dm = Math.max(0.25, Math.min(1.5, 1.6/sp));
+  if (P.vista === 'mapa'){
+    if (even) O.play('Par', deg + 7*oct, t, 0.8, 0.35, dm);
+    else O.play('Impar', deg - 2 + 7*oct, t, 0.7, -0.35, dm);
+    if (n % 8 === 0){ const odd = parHist.slice(-8).filter(x => !x).length; O.play('Baixo', odd - 7, t, 0.8, 0, 1.4*dm); }
+    if (b <= 4) O.play('Alerta', -b, t, 1 - b*0.12, 0, 1.2);
+  }
+  O.setDrone(O.semi(Math.floor(b/span)*2 % 7), 7, 1.5, 200 + Math.min(1200, b*4));
+  if (halted) O.play('Alerta', -14, t + 0.2, 1, 0, 3);
+}
+
+// ---------- a máquina de Turing (vista da fita) ----------
+const TM = '1RB1RA_0LC1LE_1LD1LC_1LA0LB_1LF1RE_---0RA'.split('_').map(s => [s.slice(0, 3), s.slice(3, 6)]);
+let tape = new Map(), head = 0, st = 0, tmSteps = 0, rows = [], lo = 0, hi = 0, tmHalt = false;
+function tmReset(){ tape = new Map(); head = 0; st = 0; tmSteps = 0; rows = []; lo = hi = 0; tmHalt = false; }
+function tmStep(){
+  if (tmHalt) return;
+  const r = tape.get(head) || 0, tr = TM[st][r];
+  if (tr[0] === '-'){ tmHalt = true; return; }
+  if (tr[0] === '1') tape.set(head, 1); else tape.delete(head);
+  head += tr[1] === 'R' ? 1 : -1; st = tr.charCodeAt(2) - 65; tmSteps++;
+  if (head < lo) lo = head; if (head > hi) hi = head;
+}
+function tmSnap(){ const w = 160, c = head, row = new Uint8Array(w); for (let i = 0; i < w; i++) row[i] = tape.get(c - (w >> 1) + i) || 0; rows.push({ row, st, head: w >> 1 }); if (rows.length > 260) rows.shift(); }
+let tmNext = 0;
+
+// ---------- desenho ----------
+let spin = 0, lastF = 0;
+function drawMap(C, t){
+  const { W, H } = V;
+  const cx = W/2, cy = H*0.43, Rmax = Math.min(W, H)*0.4;
+  const N = Math.min(hist.length, P.rings|0);
+  C.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < N; i++){
+    const h = hist[hist.length - N + i], age = N - 1 - i;
+    const r = Rmax*(0.08 + 0.92*(i + 1)/N);
+    const L = h.bits.length, al = 0.15 + 0.85*Math.pow((i + 1)/N, 2);
+    const flash = h === hist[hist.length - 1] ? Math.exp(-(t - h.t)*3) : 0;
+    const sz = Math.max(0.8, Math.min(3.2, r*2*Math.PI/L*0.45));
+    C.fillStyle = V.cor(h.even ? 0.05 : 0.6, al*(0.7 + flash), h.even ? 72 : 58);
+    for (let j = 0; j < L; j++){
+      if (h.bits.charCodeAt(L - 1 - j) !== 49) continue;
+      const ang = -Math.PI/2 + j/L*Math.PI*2 + spin + age*0.004;
+      C.fillRect(cx + Math.cos(ang)*r - sz/2, cy + Math.sin(ang)*r - sz/2, sz, sz);
+    }
+  }
+  // o bit da paridade no topo
+  if (hist.length){
+    const h = hist[hist.length - 1], g = C.createRadialGradient(cx, cy - Rmax, 0, cx, cy - Rmax, 18);
+    g.addColorStop(0, V.cor(h.even ? 0.05 : 0.6, 0.9, 85)); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.fillStyle = g; C.beginPath(); C.arc(cx, cy - Rmax, 18, 0, Math.PI*2); C.fill();
+  }
+  if (P.life) drawLife(C, t);
+}
+function drawLife(C, t){
+  const { W, H } = V, x0 = 34, x1 = W - 34, y1 = H - 26, h = Math.min(170, H*0.2), y0 = y1 - h;
+  const pts = hist.slice(-300); if (!pts.length) return;
+  let mx = 6; for (const p of pts) mx = Math.max(mx, p.b + 2);
+  const Y = v => y1 - (v + 1)/(mx + 1)*h;
+  C.globalCompositeOperation = 'source-over';
+  C.strokeStyle = 'rgba(255,70,60,0.55)'; C.lineWidth = 1; C.beginPath(); C.moveTo(x0, Y(-1)); C.lineTo(x1, Y(-1)); C.stroke();
+  C.globalCompositeOperation = 'lighter';
+  C.strokeStyle = V.cor(0.2, 0.8, 70); C.lineWidth = 1.4; C.beginPath();
+  pts.forEach((p, i) => { const x = x0 + (x1 - x0)*i/Math.max(1, 299); i ? C.lineTo(x, Y(p.b)) : C.moveTo(x, Y(p.b)); });
+  C.stroke();
+  const last = pts[pts.length - 1], xl = x0 + (x1 - x0)*(pts.length - 1)/299;
+  C.fillStyle = V.cor(last.even ? 0.05 : 0.6, 1, 85); C.beginPath(); C.arc(xl, Y(last.b), 3, 0, Math.PI*2); C.fill();
+}
+function drawTape(C, t){
+  const { W, H } = V, w = 160, cs = Math.max(2, Math.min(W/w, (H - 60)/260)), ox = (W - w*cs)/2, oy = 60;
+  C.globalCompositeOperation = 'lighter';
+  rows.forEach((r, j) => {
+    const y = oy + j*cs, al = 0.25 + 0.75*j/rows.length;
+    C.fillStyle = V.cor(r.st/6, al, 66);
+    for (let i = 0; i < w; i++) if (r.row[i]) C.fillRect(ox + i*cs, y, cs - (cs > 3 ? 1 : 0), cs - (cs > 3 ? 1 : 0));
+    C.fillStyle = `hsla(0,0%,100%,${al*0.8})`; C.fillRect(ox + r.head*cs, y, cs, cs);
+  });
+}
+function frame(){
+  const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t; spin += dt*P.spin*0.3;
+  if (O.running){
+    if (P.vista === 'mapa'){
+      while (t + 0.15 >= nextT && !halted){ step(Math.max(t, nextT)); nextT = Math.max(t, nextT) + 1/speedNow(); }
+    } else {
+      // fita: muitos passos da máquina por quadro, uma linha por quadro; cada troca de estado toca de vez em quando
+      const k = Math.max(1, Math.round(P.speed*2));
+      for (let i = 0; i < k; i++){ const s0 = st; tmStep(); if (st !== s0 && t >= tmNext){ O.play('Fita', [0, 2, 4, 5, 7, 9][st] + 7, t + 0.02, 0.6, (st - 2.5)/3, 0.5); tmNext = t + Math.max(0.09, 0.6/P.speed); } }
+      tmSnap();
+      // a conta (a, b) segue em paralelo para o texto e o drone
+      while (t + 0.15 >= nextT && !halted){ step(Math.max(t, nextT)); nextT = Math.max(t, nextT) + 1/speedNow(); }
+    }
+  }
+  const C = V.begin();
+  if (P.vista === 'mapa') drawMap(C, t); else drawTape(C, t);
+  V.end();
+  // texto
+  if (lastStep && lastStep.shown !== true){
+    lastStep.shown = true;
+    const as = a.toString(), ad = as.length > 40 ? as.slice(0, 18) + '…' + as.slice(-18) + ` (${as.length} dígitos)` : as;
+    $('num').textContent = P.vista === 'fita' ? `passo ${O.fmt(n)} · ${O.fmt(tmSteps)} passos da máquina` : `passo ${O.fmt(n)}`;
+    $('op').textContent = halted ? 'b chegou a −1: a máquina parou!' : (lastStep.even ? `a era par → b + 2 = ${b}` : `a era ímpar → b − 1 = ${b}`) + (b <= 4 ? ' · perto do chão' : '');
+    $('seq').innerHTML = `<span class="o">a = ${ad}</span><br><span class="o">${parHist.slice(-48).map(e => e ? 'P' : '<b>i</b>').join(' ')}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'vista'){ tmReset(); } });
+$('a0').addEventListener('change', () => { if (O.running) reset(); });
+$('b0').addEventListener('change', () => { if (O.running) reset(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

@@ -1,0 +1,189 @@
+<intro>Em 1900 Hilbert pediu que as leis dos fluidos fossem deduzidas das leis de Newton para as partículas. Em 2025 Deng, Hani e Ma anunciaram essa dedução para um gás rarefeito de esferas que só colidem, passando pela equação de Boltzmann, e há quem diga que o problema completo continua aberto. Aqui milhares de bolinhas colidem; de perto é granizo, de longe é um rio com redemoinhos.</intro>
+
+<painel>
+  <h2>Gás</h2>
+  <div class="row"><label>Partículas</label><input type="range" id="np" min="300" max="4000" step="50" value="2200"></div>
+  <div class="row"><label>Começo</label><select id="inicio"><option value="cisalha" selected>Duas correntes opostas</option><option value="jato">Jato no meio</option><option value="vortice">Redemoinho</option><option value="calor">Metade quente</option></select></div>
+  <div class="row"><label>Velocidade do tempo</label><input type="range" id="speed" min="0.2" max="4" step="0.05" value="1.2"></div>
+  <div class="row"><label>Agitação térmica</label><input type="range" id="term" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>De perto ↔ de longe</label><input type="range" id="escala" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Afastar sozinho</label><input type="checkbox" id="auto" checked></div>
+  <div class="row"><label>Recomeçar a cada (s)</label><input type="range" id="ciclo" min="20" max="240" step="5" value="75"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Grade do fluido</label><input type="range" id="grade" min="6" max="30" step="1" value="12"></div>
+  <div class="row"><label>Fios de tinta</label><input type="range" id="tinta" min="0" max="8000" step="100" value="4000"></div>
+  <div class="row"><label>Setas de velocidade</label><input type="range" id="setas" min="0" max="1" step="0.01" value="0.25"></div>
+</imagem>
+
+<dica>De perto, cada ponto é uma partícula que anda reto até bater em outra (choque elástico). De longe, a obra tira a média das velocidades em cada quadradinho da grade e solta tinta que é levada por essa média: é o fluido que nasce das colisões. A cor da tinta diz o giro (vorticidade) do lugar. Com o tempo as correntes viram calor e o rio se acalma, e a obra recomeça.<br>Som: as colisões viram grãos (agudos quando a batida é forte); o rio é uma voz contínua que abre o filtro com a energia do escoamento; os redemoinhos mais fortes tocam notas. O volume de cada camada segue o “de perto ↔ de longe”.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Grao', nome: 'Grãos (colisões)', timbre: '-', vol: 0.8, V: 0.35, D: 0.15 },
+    { k: 'Rio', nome: 'Rio (escoamento)', timbre: '-', vol: 0.8, V: 0.8, D: 0.1 },
+    { k: 'Vort', nome: 'Redemoinhos', timbre: 'sopro', V: 0.6, D: 0.35 },
+    { k: 'Baixo', nome: 'Baixo', timbre: 'grave', V: 0.6, D: 0.05 }
+  ]
+});
+const P = O.P, V = O.V;
+
+// ---------- partículas (discos rígidos) ----------
+const tcv = document.createElement('canvas'), tctx = tcv.getContext('2d');
+let N = 0, X, Y, VX, VY, BW = 1.6, BH = 1, rad = 0.004, startT = 0, field = null, dye = [], info = null, lastF = 0, rio = null, rio2 = null, nextVort = 0, nextBass = 0, colls = [], escala = 0;
+function reset(){
+  N = P.np|0; const asp = Math.max(1, V.W/Math.max(1, V.H)); BW = asp; BH = 1;
+  rad = Math.sqrt(0.06*BW*BH/(Math.PI*N));   // fração de área ~6%: gás rarefeito
+  X = new Float64Array(N); Y = new Float64Array(N); VX = new Float64Array(N); VY = new Float64Array(N);
+  const th = 0.25*P.term + 0.02;
+  const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); v = Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+  for (let i = 0; i < N; i++){
+    X[i] = Math.random()*BW; Y[i] = rad + Math.random()*(BH - 2*rad);
+    let vx = 0, vy = 0; const x = X[i], y = Y[i];
+    if (P.inicio === 'cisalha'){ vx = 0.6*Math.tanh((y - 0.5)/0.05); vy = 0.06*Math.sin(2*Math.PI*x*2/BW); }
+    else if (P.inicio === 'jato'){ vx = 0.8*Math.exp(-(((y - 0.5)/0.08)**2)); vy = 0.05*Math.sin(2*Math.PI*x*3/BW); }
+    else if (P.inicio === 'vortice'){ const dx = x - BW/2, dy = y - 0.5, r = Math.hypot(dx, dy) + 1e-3, w = 0.7*Math.exp(-((r/0.25)**2))/0.25*r; vx = -dy/r*w; vy = dx/r*w; }
+    else { vx = 0; vy = 0; }
+    const tt = P.inicio === 'calor' ? (x < BW/2 ? 0.5 : 0.04) : th;
+    VX[i] = vx + gauss()*tt; VY[i] = vy + gauss()*tt;
+  }
+  field = null; dye = []; startT = O.now(); info = { shown: false };
+}
+function physics(dt){
+  const cell = 2*rad*1.05, gw = Math.ceil(BW/cell), gh = Math.ceil(BH/cell), head = new Int32Array(gw*gh).fill(-1), next = new Int32Array(N);
+  for (let i = 0; i < N; i++){
+    X[i] += VX[i]*dt; Y[i] += VY[i]*dt;
+    if (X[i] < 0) X[i] += BW; else if (X[i] >= BW) X[i] -= BW;
+    if (Y[i] < rad){ Y[i] = 2*rad - Y[i]; VY[i] = Math.abs(VY[i]); } else if (Y[i] > BH - rad){ Y[i] = 2*(BH - rad) - Y[i]; VY[i] = -Math.abs(VY[i]); }
+    const c = Math.min(gw - 1, X[i]/cell|0) + Math.min(gh - 1, Math.max(0, Y[i]/cell|0))*gw; next[i] = head[c]; head[c] = i;
+  }
+  const d2 = 4*rad*rad;
+  for (let cy = 0; cy < gh; cy++) for (let cx = 0; cx < gw; cx++){
+    for (let i = head[cx + cy*gw]; i >= 0; i = next[i]){
+      for (let oy = 0; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++){
+        if (oy === 0 && ox < 0) continue;
+        const nyy = cy + oy; if (nyy >= gh) continue;
+        let nxx = cx + ox, wrap = 0; if (nxx < 0){ nxx += gw; wrap = BW; } else if (nxx >= gw){ nxx -= gw; wrap = -BW; }
+        for (let j = head[nxx + nyy*gw]; j >= 0; j = next[j]){
+          if (oy === 0 && ox === 0 && j <= i) continue;
+          const dx = X[j] - wrap - X[i], dy = Y[j] - Y[i], dd = dx*dx + dy*dy;
+          if (dd >= d2 || dd === 0) continue;
+          const dvx = VX[j] - VX[i], dvy = VY[j] - VY[i], dot = dvx*dx + dvy*dy;
+          if (dot >= 0) continue;
+          const k = dot/dd; VX[i] += k*dx; VY[i] += k*dy; VX[j] -= k*dx; VY[j] -= k*dy;
+          if (colls.length < 400) colls.push([X[i], Math.sqrt(-dot/Math.sqrt(dd))]);
+        }
+      }
+    }
+  }
+}
+// ---------- campo médio (o fluido) ----------
+function coarse(){
+  const G = P.grade|0, gw = Math.max(4, Math.round(G*BW)), gh = G, n = gw*gh;
+  if (!field || field.gw !== gw || field.gh !== gh) field = { gw, gh, u: new Float64Array(n), v: new Float64Array(n), m: new Float64Array(n) };
+  const su = new Float64Array(n), sv = new Float64Array(n), cnt = new Float64Array(n);
+  for (let i = 0; i < N; i++){ const c = Math.min(gw - 1, X[i]/BW*gw|0) + Math.min(gh - 1, Y[i]/BH*gh|0)*gw; su[c] += VX[i]; sv[c] += VY[i]; cnt[c]++; }
+  const a = 0.06, mu = new Float64Array(n), mv = new Float64Array(n);
+  for (let c = 0; c < n; c++){ const k = cnt[c] || 1; mu[c] = su[c]/k; mv[c] = sv[c]/k; }
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++){
+    let uu = 0, vv = 0, w = 0;
+    for (let dj = -1; dj <= 1; dj++){ const jj = j + dj; if (jj < 0 || jj >= gh) continue; for (let di = -1; di <= 1; di++){ const ii = (i + di + gw) % gw, ww = (di || dj) ? 0.5 : 1; uu += mu[ii + jj*gw]*ww; vv += mv[ii + jj*gw]*ww; w += ww; } }
+    const c = i + j*gw; field.u[c] += (uu/w - field.u[c])*a; field.v[c] += (vv/w - field.v[c])*a; field.m[c] += (cnt[c] - field.m[c])*a;
+  }
+}
+function vel(x, y){
+  const { gw, gh, u, v } = field; let fx = x/BW*gw - 0.5, fy = y/BH*gh - 0.5;
+  let i0 = Math.floor(fx), j0 = Math.floor(fy); const tx = fx - i0, ty = fy - j0;
+  const at = (i, j, A) => A[((i % gw) + gw) % gw + Math.max(0, Math.min(gh - 1, j))*gw];
+  const bl = A => (at(i0, j0, A)*(1 - tx) + at(i0 + 1, j0, A)*tx)*(1 - ty) + (at(i0, j0 + 1, A)*(1 - tx) + at(i0 + 1, j0 + 1, A)*tx)*ty;
+  return [bl(u), bl(v)];
+}
+function vortAt(i, j){ const { gw, gh, u, v } = field; const I = k => ((k % gw) + gw) % gw, J = k => Math.max(0, Math.min(gh - 1, k));
+  return (v[I(i + 1) + J(j)*gw] - v[I(i - 1) + J(j)*gw])*gw/(2*BW) - (u[I(i) + J(j + 1)*gw] - u[I(i) + J(j - 1)*gw])*gh/(2*BH); }
+
+function frame(){
+  const t = O.now(), dt = Math.min(0.05, Math.max(0, t - (lastF || t))); lastF = t;
+  if (P.auto && O.running){ const ph = ((t - startT)/P.ciclo) % 1; escala = Math.min(1, Math.max(0, (ph - 0.12)/0.45)); }
+  else escala = P.escala;
+  if (O.running && N){
+    if (t - startT > P.ciclo) reset();
+    colls = [];
+    const sub = 3, h = dt*P.speed*0.35/sub;
+    for (let s = 0; s < sub; s++) physics(h);
+    coarse();
+    // grãos
+    const nc = colls.length, k = Math.min(5, Math.ceil(nc/40));
+    for (let q = 0; q < k; q++){ const c = colls[(Math.random()*nc)|0]; if (!c) break; O.hit('Grao', t + Math.random()*0.04, (0.25 + Math.min(0.6, c[1]*0.8))*(1 - 0.75*escala), (c[0]/BW - 0.5)*1.4, 2500 + Math.min(9000, c[1]*9000), 0.03); }
+    // rio
+    if (!rio && O.AC){ rio = O.voz('Rio', 'sawtooth'); rio2 = O.voz('Rio', 'sawtooth'); }
+    let E = 0; for (let c = 0; c < field.u.length; c++) E += field.u[c]**2 + field.v[c]**2; E /= field.u.length;
+    if (rio){ rio.set(O.freq(0, O.ROOT), 0.03*escala, -0.4, 0.3, 120 + Math.min(4000, E*9000)); rio2.set(O.freq(4, O.ROOT), 0.022*escala, 0.4, 0.3, 120 + Math.min(4000, E*7000)); }
+    if (t >= nextVort){
+      nextVort = t + 1.1;
+      let best = [], { gw, gh } = field;
+      for (let j = 1; j < gh - 1; j += 2) for (let i = 0; i < gw; i += 2){ const w = vortAt(i, j); best.push([Math.abs(w), w, i, j]); }
+      best.sort((a, b) => b[0] - a[0]);
+      best.slice(0, 3).forEach(([a, w, i], q) => { if (a < 0.4) return; O.play('Vort', Math.round(Math.min(14, a*2)) * (w > 0 ? 1 : -1) + 7, t + 0.05 + q*0.18, (0.3 + 0.5*escala), (i/gw - 0.5)*1.4, 1.6); });
+    }
+    if (t >= nextBass){ nextBass = t + 4.4; O.play('Baixo', -14 + Math.round(E*20) % 5, t + 0.05, 0.7, 0, 2.5); }
+    // tinta levada pelo campo médio
+    const nd = P.tinta|0;
+    while (dye.length < nd) dye.push({ x: Math.random()*BW, y: Math.random()*BH, a: Math.random()*6 });
+    if (dye.length > nd) dye.length = nd;
+    for (const d of dye){
+      const [u, v] = vel(d.x, d.y), hh = dt*P.speed*0.35;
+      d.px = d.x; d.py = d.y; d.x += u*hh; d.y += v*hh; d.a += dt;
+      if (d.x < 0) { d.x += BW; d.px = d.x; } else if (d.x >= BW){ d.x -= BW; d.px = d.x; }
+      if (d.y < 0 || d.y > BH || d.a > 6){ d.x = Math.random()*BW; d.y = Math.random()*BH; d.px = d.x; d.py = d.y; d.a = 0; }
+    }
+  }
+  const { W, H } = V, C = V.begin();
+  const top = 110, sc = Math.min((W - 40)/BW, (H - top - 20)/BH), ox = (W - BW*sc)/2, oy = top + (H - top - 20 - BH*sc)/2;
+  C.globalCompositeOperation = 'lighter';
+  C.strokeStyle = 'rgba(255,255,255,0.12)'; C.lineWidth = 1; C.strokeRect(ox, oy, BW*sc, BH*sc);
+  if (N && escala < 0.99){
+    const al = (1 - escala)*0.85, r = Math.max(0.8, rad*sc);
+    for (let i = 0; i < N; i++){ const s = Math.hypot(VX[i], VY[i]); C.fillStyle = V.cor(Math.min(0.9, s*0.8), al, 62 + Math.min(25, s*30)); C.fillRect(ox + X[i]*sc - r, oy + Y[i]*sc - r, 2*r, 2*r); }
+  }
+  if (field && escala > 0.01){
+    const { gw, gh } = field;
+    if (tcv.width !== Math.round(W) || tcv.height !== Math.round(H)){ tcv.width = Math.round(W); tcv.height = Math.round(H); }
+    tctx.globalCompositeOperation = 'source-over'; tctx.fillStyle = 'rgba(0,0,0,0.035)'; tctx.fillRect(0, 0, W, H);
+    tctx.globalCompositeOperation = 'lighter'; tctx.lineWidth = 1.2;
+    for (const d of dye){
+      const i = Math.min(gw - 1, d.x/BW*gw|0), j = Math.min(gh - 1, Math.max(0, d.y/BH*gh|0)), w = vortAt(i, j);
+      const a = 0.34*Math.min(1, d.a*2)*Math.min(1, (6 - d.a));
+      tctx.strokeStyle = V.cor(0.5 + Math.max(-0.45, Math.min(0.45, w*0.1)), a, 64);
+      tctx.beginPath(); tctx.moveTo(ox + d.px*sc, oy + d.py*sc); tctx.lineTo(ox + d.x*sc + 0.4, oy + d.y*sc + 0.4); tctx.stroke();
+    }
+    C.save(); C.globalAlpha = Math.min(1, escala*1.6); C.drawImage(tcv, 0, 0, W, H); C.restore();
+    C.globalCompositeOperation = 'lighter';
+    if (P.setas > 0){
+      C.strokeStyle = `rgba(235,242,250,${P.setas*escala*0.6})`; C.lineWidth = 1;
+      for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++){
+        const x = ox + (i + 0.5)/gw*BW*sc, y = oy + (j + 0.5)/gh*BH*sc, u = field.u[i + j*gw], v = field.v[i + j*gw], L = sc*BW/gw*0.9;
+        C.beginPath(); C.moveTo(x, y); C.lineTo(x + u*L*1.6, y + v*L*1.6); C.stroke();
+      }
+    }
+  }
+  V.end();
+  if (O.running && (t*3 | 0) !== (info && info.k)){
+    info = { k: t*3 | 0 };
+    let E = 0, T = 0; if (field){ for (let c = 0; c < field.u.length; c++) E += field.u[c]**2 + field.v[c]**2; E /= field.u.length; }
+    for (let i = 0; i < N; i++) T += VX[i]*VX[i] + VY[i]*VY[i]; T /= Math.max(1, N);
+    $('num').textContent = `${O.fmt(N)} partículas`;
+    $('op').textContent = escala < 0.35 ? `de perto: granizo · ${O.fmt(colls.length*3)} colisões por quadro` : escala > 0.65 ? `de longe: um rio · energia do escoamento ${(E/Math.max(1e-9, T)*100).toFixed(0)}% do total` : 'no meio do caminho';
+    $('seq').innerHTML = `<span class="o">Newton → Boltzmann → Navier–Stokes</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'np' || k === 'inicio' || k === 'term') reset(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+V.resizers.push(() => { if (N) reset(); });
+reset();
+requestAnimationFrame(frame);
+</js>

@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Noperthedron</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s;text-align:center;padding:0 24px}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start p.sub{letter-spacing:.06em;opacity:.32;max-width:420px;line-height:1.6;font-size:11.5px}
+  #start.hide{opacity:0;pointer-events:none}
+  .hud{position:fixed;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums;transition:opacity .6s}
+  #num{left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:.55}
+  #op{left:30px;top:62px;right:60px;font-weight:300;font-size:16px;letter-spacing:.05em;opacity:.75;line-height:1.35}
+  #seq{left:30px;top:94px;right:60px;max-height:34%;font-weight:300;font-size:12.5px;line-height:1.75;letter-spacing:.03em;opacity:.42;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq b{font-weight:500}
+  body.semtexto .hud{opacity:0!important}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 96px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0;min-width:0}
+  .row select,.row input[type=number],.row input[type=text]{flex:1;min-width:0;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.55;margin-top:10px}
+  @media (max-width:640px){ #op{font-size:13.5px} #seq{top:112px;font-size:11.5px} #num{font-size:24px} }
+
+  #panel .sub{font-size:10.5px;letter-spacing:.12em;opacity:.45;margin:10px 0 2px;text-transform:uppercase}
+  #seq span.o{white-space:normal;display:inline}
+  .hud{text-shadow:0 0 8px #000,0 0 3px #000,0 0 1px #000}
+
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>NOPERTHEDRON</h1><p>toque para começar</p>
+  <p class="sub">No século XVII, o príncipe Rupert apostou que dava para abrir um túnel num cubo por onde passasse outro cubo do mesmo tamanho, e ganhou. Por séculos se achou que todo sólido convexo tinha essa propriedade. Em 2025 Steininger e Yurkevich construíram o Noperthedron, de 90 vértices e 152 faces, e provaram que ele não passa por dentro de si mesmo. Aqui a obra procura sem parar uma passagem: a sombra da cópia tenta caber na sombra do furo, e o som quase resolve, mas nunca resolve.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Sólido</h2>
+  <div class="row"><label>Sólido</label><select id="solido"><option value="nop" selected>Noperthedron</option><option value="cubo">Cubo (passa)</option><option value="tetra">Tetraedro</option><option value="octa">Octaedro</option><option value="dodeca">Dodecaedro</option></select></div>
+  <div class="row"><label>Tentativas/s</label><input type="range" id="speed" min="10" max="4000" step="10" value="600"></div>
+  <div class="row"><label>Notas/s</label><input type="range" id="notas" min="0.5" max="10" step="0.1" value="3"></div>
+  <div class="row"><label>Passo da busca</label><input type="range" id="passo" min="0.002" max="0.4" step="0.001" value="0.08"></div>
+  <div class="row"><label>Recomeçar a busca a cada</label><input type="range" id="paciencia" min="50" max="3000" step="10" value="700"></div>
+<div id="nucleo"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Sólido em 3D</label><input type="range" id="wire" min="0" max="1" step="0.01" value="0.45"></div>
+  <div class="row"><label>Tentativa atual</label><input type="range" id="trial" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Tamanho</label><input type="range" id="zoom" min="0.4" max="1.6" step="0.01" value="1"></div>
+<div id="nucleoVideo"></div>
+<div class="hint">Olhando o sólido de uma direção vemos a sombra dele: é o furo. A cópia, olhada de outra direção, faz outra sombra. Se ela couber inteira, com folga, dentro do furo, a cópia passa. A margem é o quanto a cópia teria de encolher (abaixo de 1) ou poderia crescer (acima de 1) para encostar na borda. No cubo a busca acha margens acima de 1 (o máximo é 1,06). No Noperthedron a margem chega perto de 1 e nunca passa; os pontos vermelhos são os vértices da cópia que ficaram para fora.<br>O som tem duas vozes fixas: a segunda fica a uma quinta justa da primeira quando a margem é 1 e desafina quanto mais longe de 1.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
+</div>
+<script>
+(() => {
+'use strict';
+// ---------- núcleo v2 das conjecturas ----------
+// Motor de som do Cometa de Goldbach / Recamán (um canal por elemento com volume e envios para reverb Valhalla, delay,
+// pitch delay e bit crusher; filtro, saturação e largura na saída), timbres e ADSR do Corredor Solitário, efeitos de
+// vídeo (brilho, contraste, saturação, matiz, brilho difuso, desfoque, rastro com zoom e giro, inverter, espelho) e o
+// painel padrão montado automaticamente. Cada obra só descreve os seus elementos e desenha.
+const $ = id => document.getElementById(id);
+function Nucleo(cfg){
+  cfg = cfg || {};
+  const EL = (cfg.elementos || []).map(e => Object.assign({ vol: 1, V: 0.5, D: 0.2, P: 0, B: 0, timbre: 'sino' }, e));
+  const P = {};
+
+  // ---------- painel padrão ----------
+  const rg = (id, lab, min, max, step, v) => `<div class="row"><label for="${id}">${lab}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${v}"></div>`;
+  const sl = (id, lab, opts, v) => `<div class="row"><label for="${id}">${lab}</label><select id="${id}">${opts.map(([a, b]) => `<option value="${a}"${String(a) === String(v) ? ' selected' : ''}>${b}</option>`).join('')}</select></div>`;
+  const ck = (id, lab, v) => `<div class="row"><label for="${id}">${lab}</label><input type="checkbox" id="${id}"${v ? ' checked' : ''}></div>`;
+  const sub = t => `<div class="sub">${t}</div>`;
+  const ESCALAS = [['jonico','Jônico (maior)'],['dorico','Dórico'],['frigio','Frígio'],['lidio','Lídio'],['mixolidio','Mixolídio'],['eolio','Eólio (menor)'],
+    ['menorHarm','Menor harmônica'],['menorMel','Menor melódica'],['frigioDom','Frígio dominante'],['hungara','Húngara menor'],['penta','Pentatônica menor'],
+    ['pentaMaior','Pentatônica maior'],['hirajoshi','Hirajoshi'],['tons','Tons inteiros']];
+  const TLIST = [['sino','Sino'],['corda','Corda'],['macio','Macio'],['vidro','Vidro'],['marimba','Marimba'],['celesta','Celesta'],['kalimba','Kalimba'],
+    ['sopro','Sopro'],['sinoGrave','Sino grave'],['harpa','Harpa'],['pad','Pad'],['seno','Seno puro'],['grave','Baixo redondo'],['percussao','Percussão']];
+  const nucleo = $('nucleo'), nVideo = $('nucleoVideo');
+  if (nucleo){
+    let h = '<h2>Som</h2>' + sl('scale', 'Modo', ESCALAS, 'dorico') + rg('vol', 'Volume geral', 0, 1, 0.01, 0.75);
+    h += '<h2>Volumes</h2>' + EL.map(e => rg('vol' + e.k, e.nome, 0, 1.5, 0.01, e.vol)).join('') + rg('drone', 'Drone', 0, 1, 0.01, 0.45);
+    h += '<h2>Timbre</h2>' + EL.filter(e => e.timbre !== '-').map(e => sl('tm' + e.k, e.nome, TLIST, e.timbre)).join('');
+    h += rg('tBright', 'Brilho', 0.2, 3, 0.01, 1) + rg('tPart', 'Parcial metálica', 0, 3, 0.01, 1) + rg('tRatio', 'Razão da parcial', 0.5, 2, 0.01, 1)
+       + rg('tDet', 'Desafinação', 0, 40, 0.5, 0) + rg('tLen', 'Duração', 0.2, 3, 0.01, 1)
+       + sl('envMode', 'Envelope', [['timbre','Do timbre'],['manual','ADSR manual']], 'timbre')
+       + sub('Amplitude') + rg('aA', 'Ataque', 0.001, 3, 0.001, 0.005) + rg('aD', 'Decaimento', 0.01, 4, 0.01, 0.9) + rg('aS', 'Sustentação', 0, 1, 0.01, 0.25) + rg('aR', 'Repouso', 0.01, 6, 0.01, 1.4)
+       + sub('Filtro') + rg('fCut', 'Corte', 0.5, 24, 0.1, 3) + rg('fRes', 'Ressonância', 0, 18, 0.1, 2) + rg('fAmt', 'Envelope', 0, 6, 0.05, 2.5)
+       + rg('fA', 'Ataque', 0.001, 3, 0.001, 0.01) + rg('fD', 'Decaimento', 0.01, 4, 0.01, 0.6) + rg('fS', 'Sustentação', 0, 1, 0.01, 0.2) + rg('fR', 'Repouso', 0.01, 6, 0.01, 1);
+    h += '<h2>Efeitos</h2>'
+       + sub('Delay') + rg('dMix', 'Mix', 0, 1, 0.01, 0.45) + rg('dTime', 'Tempo', 0.05, 1.5, 0.01, 0.42) + rg('dFbk', 'Realimentação', 0, 0.92, 0.01, 0.3) + rg('dTone', 'Tom', 400, 9000, 10, 2200)
+       + sub('Reverb Valhalla') + rg('verb', 'Mix', 0, 1, 0.01, 0.55) + rg('vSize', 'Tamanho', 0.5, 2.5, 0.01, 1.2) + rg('vDecay', 'Decaimento', 0.3, 0.95, 0.005, 0.78)
+       + rg('vDamp', 'Amortecimento', 500, 9000, 10, 2400) + rg('vMod', 'Modulação', 0, 1, 0.01, 0.35) + rg('vPre', 'Pré-delay', 0, 0.25, 0.005, 0.03)
+       + sub('Bit crusher') + rg('bMix', 'Mix', 0, 1, 0.01, 0) + rg('bBits', 'Bits', 2, 16, 0.1, 8) + rg('bDown', 'Redução', 1, 40, 1, 4)
+       + sub('Pitch delay') + rg('pMix', 'Mix', 0, 1, 0.01, 0) + rg('pSemi', 'Semitons', -12, 12, 1, 12) + rg('pTime', 'Tempo', 0.05, 1.5, 0.01, 0.5) + rg('pFbk', 'Realimentação', 0, 0.85, 0.01, 0.45)
+       + sub('Saída') + rg('oCut', 'Filtro', 200, 20000, 10, 20000) + rg('oRes', 'Ressonância', 0, 15, 0.1, 0.7) + rg('oDrive', 'Saturação', 0, 1, 0.01, 0) + rg('oWidth', 'Largura estéreo', 0, 1.5, 0.01, 1)
+       + '<div class="btns"><button id="bFxDef" type="button">Efeitos padrão</button><button id="bFxZero" type="button">Efeitos zerados</button></div>';
+    h += '<h2>Envios</h2>' + EL.concat([{ k: 'Dro', nome: 'Drone', V: 1, D: 0, P: 0, B: 0 }]).map(e => sub(e.nome)
+       + rg('s' + e.k + 'V', 'Reverb', 0, 1, 0.01, e.V) + rg('s' + e.k + 'D', 'Delay', 0, 1, 0.01, e.D) + rg('s' + e.k + 'P', 'Pitch delay', 0, 1, 0.01, e.P) + rg('s' + e.k + 'B', 'Bit crusher', 0, 1, 0.01, e.B)).join('');
+    nucleo.innerHTML = h;
+  }
+  if (nVideo){
+    nVideo.innerHTML = '<h2>Vídeo</h2>' + rg('vBri', 'Brilho', 0.3, 2.5, 0.01, 1) + rg('vCon', 'Contraste', 0.4, 2.5, 0.01, 1) + rg('vSat', 'Saturação', 0, 3, 0.01, 1)
+      + rg('vHue', 'Matiz', 0, 360, 1, 0) + rg('vGlow', 'Brilho difuso', 0, 30, 0.5, 4) + rg('vBlur', 'Desfoque', 0, 8, 0.1, 0) + rg('vTrail', 'Rastro', 0, 0.97, 0.01, 0)
+      + rg('vZoom', 'Zoom do rastro', 0.95, 1.06, 0.001, 1.01) + rg('vRot', 'Giro do rastro', -3, 3, 0.05, 0.3) + ck('vInv', 'Inverter', false)
+      + sl('vMirror', 'Espelho', [['0','Nenhum'],['2','2 lados'],['4','4 lados']], '0') + ck('showTxt', 'Texto', true)
+      + '<div class="btns"><button id="bRe" type="button">Recomeçar</button><button id="bFull" type="button">Tela cheia</button></div>';
+  }
+  // padrões próprios de cada obra
+  for (const k in (cfg.padroes || {})){ const el = $(k); if (!el) continue; if (el.type === 'checkbox') el.checked = !!cfg.padroes[k]; else el.value = cfg.padroes[k]; }
+  const FX_IDS = ['dMix','dTime','dFbk','dTone','verb','vSize','vDecay','vDamp','vMod','vPre','bMix','bBits','bDown','pMix','pSemi','pTime','pFbk','oCut','oRes','oDrive','oWidth'];
+  const FX_PAD = {}; for (const k of FX_IDS){ const el = $(k); if (el) FX_PAD[k] = el.value; }
+
+  // ---------- leitura dos controles ----------
+  const panel = $('panel');
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id]')].filter(el => !el.id.startsWith('bk') && el.type !== 'file');
+  function readP(){ for (const el of ctrls()) P[el.id] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' || el.type === 'text') ? el.value : el.value === '' ? NaN : parseFloat(el.value); }
+  readP();
+  const listeners = [];
+  for (const el of ctrls()){
+    el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => {
+      const old = Object.assign({}, P); readP(); applyMix(); if (el.id[0] === 'v' || el.id === 'showTxt') applyVideo();
+      for (const fn of listeners) fn(el.id, old);
+    });
+  }
+  const setCtl = (k, v) => { const el = $(k); if (!el) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+  if ($('bFxDef')) $('bFxDef').addEventListener('click', () => { for (const k in FX_PAD) setCtl(k, FX_PAD[k]); });
+  if ($('bFxZero')) $('bFxZero').addEventListener('click', () => { for (const k of ['dMix','verb','bMix','pMix','oDrive']) setCtl(k, 0); setCtl('oCut', 20000); setCtl('oRes', 0.7); });
+
+  // ---------- áudio ----------
+  const WORKLET_SRC = `
+  class Crusher extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'bits',defaultValue:8},{name:'down',defaultValue:4},{name:'mix',defaultValue:0}]; }
+    constructor(){ super(); this.ph = [0,0]; this.hold = [0,0]; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0]; if (!i || !i.length) return true;
+      const mix = p.mix[0], bits = p.bits[0], down = Math.max(1, p.down[0]), step = Math.pow(0.5, bits - 1);
+      for (let c = 0; c < o.length; c++){
+        const x = i[c] || i[0], y = o[c];
+        if (mix <= 0.0001){ y.set(x); continue; }
+        for (let n = 0; n < y.length; n++){
+          if (++this.ph[c] >= down){ this.ph[c] -= down; this.hold[c] = step * Math.round(x[n] / step); }
+          y[n] = x[n] * (1 - mix) + this.hold[c] * mix;
+        }
+      }
+      return true;
+    }
+  }
+  class PitchDelay extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'time',defaultValue:0.5},{name:'fb',defaultValue:0.45},{name:'semi',defaultValue:12}]; }
+    constructor(){ super(); this.N = Math.ceil(sampleRate*2.2); this.buf = new Float32Array(this.N); this.w = 0; this.ph = 0; this.W = Math.round(sampleRate*0.07); }
+    read(pos){ const N = this.N; pos = ((pos % N) + N) % N; const i0 = Math.floor(pos), fr = pos - i0; return this.buf[i0]*(1-fr) + this.buf[(i0+1)%N]*fr; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0], L = o[0].length;
+      const D = Math.min(this.N - this.W - 4, p.time[0]*sampleRate), fb = p.fb[0], ratio = Math.pow(2, p.semi[0]/12), W = this.W;
+      const inc = (1 - ratio) / W;
+      for (let n = 0; n < L; n++){
+        const x = i && i.length ? (i[0][n] + (i[1] ? i[1][n] : i[0][n]))*0.5 : 0;
+        this.ph += inc; this.ph -= Math.floor(this.ph);
+        let y = 0;
+        for (let k = 0; k < 2; k++){ const ph = (this.ph + k*0.5) % 1; y += this.read(this.w - D - W - ph*W) * Math.sin(Math.PI*ph); }
+        y *= 0.75;
+        this.buf[this.w] = x + Math.tanh(y*fb);
+        this.w = (this.w + 1) % this.N;
+        for (let c = 0; c < o.length; c++) o[c][n] = y;
+      }
+      return true;
+    }
+  }
+  registerProcessor('conj-crusher', Crusher);
+  registerProcessor('conj-pitchdelay', PitchDelay);
+  `;
+  let AC = null, master, comp, fxF, fxDrive, dFb, dRet, dLpF, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  let preDelay = null, combs = [], srcBus = {}, pdIn = null, pdOut = null, crIn = null, crOut = null, pdNode = null, crusher = null, lastDrive = -1;
+  const SCALES = {
+    jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+    mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+    menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+    penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+  };
+  const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+  const ROOT = 73.416; // Ré2
+  const now = () => AC ? AC.currentTime : performance.now()/1000;
+  let voices = 0;
+  const MAXV = cfg.maxVozes || 56;
+  function allpass(input, dt, g){
+    const sum = AC.createGain(), d = AC.createDelay(0.2), fbg = AC.createGain(), ff = AC.createGain(), o = AC.createGain();
+    d.delayTime.value = dt; fbg.gain.value = g; ff.gain.value = -g;
+    input.connect(sum); sum.connect(d); d.connect(fbg); fbg.connect(sum); sum.connect(ff); ff.connect(o); d.connect(o);
+    return o;
+  }
+  function initAudio(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+    master = AC.createGain();
+    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
+    fxDrive = AC.createWaveShaper(); fxDrive.oversample = '2x';
+    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(comp); comp.connect(AC.destination);
+    dryBus = AC.createGain(); dryBus.connect(master);
+    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+    // reverb "Valhalla": pré-delay, difusão em allpass e pentes modulados
+    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+    preDelay = AC.createDelay(0.5); preDelay.delayTime.value = 0.03;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200;
+    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 5000;
+    verbIn.connect(preDelay); preDelay.connect(hp); hp.connect(pre);
+    let diff = pre;
+    for (const [dt, gg] of [[0.0047,0.62],[0.0113,0.6],[0.0171,0.58],[0.0231,0.55]]) diff = allpass(diff, dt, gg);
+    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373,0.1489,0.1601].forEach((dt, i) => {
+      const d = AC.createDelay(0.6); d.delayTime.value = dt;
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+      const fb = AC.createGain(); fb.gain.value = 0.78;
+      const o = AC.createGain(); o.gain.value = 0.15;
+      const lfo = AC.createOscillator(); lfo.frequency.value = 0.13 + i*0.071;
+      const lg = AC.createGain(); lg.gain.value = 0.0012; lfo.connect(lg); lg.connect(d.delayTime); lfo.start();
+      diff.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+      combs.push({ d, lp, fb, lg, base: dt });
+    });
+    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+    dFb = AC.createGain(); dFb.gain.value = 0.3; dRet = AC.createGain(); dRet.gain.value = 1;
+    dLpF = AC.createBiquadFilter(); dLpF.type = 'lowpass'; dLpF.frequency.value = 2200;
+    delay.connect(dLpF); dLpF.connect(dFb); dFb.connect(delay); dLpF.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
+    pdIn = AC.createGain(); pdOut = AC.createGain(); pdOut.gain.value = 0; pdOut.connect(dryBus); pdOut.connect(verbIn);
+    crIn = AC.createGain(); crOut = AC.createGain(); crOut.gain.value = 0; crOut.connect(master);
+    for (const k of EL.map(e => e.k).concat(['Dro'])){
+      const bus = AC.createGain(); bus.connect(dryBus); const snd = {};
+      for (const [suf, dest] of [['V', verbIn], ['D', delay], ['P', pdIn], ['B', crIn]]){ const gg = AC.createGain(); gg.gain.value = 0; bus.connect(gg); gg.connect(dest); snd[suf] = gg; }
+      srcBus[k] = { bus, snd };
+    }
+    if (AC.audioWorklet){
+      const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+      AC.audioWorklet.addModule(url).then(() => {
+        pdNode = new AudioWorkletNode(AC, 'conj-pitchdelay', { outputChannelCount: [2] }); pdIn.connect(pdNode); pdNode.connect(pdOut);
+        crusher = new AudioWorkletNode(AC, 'conj-crusher', { outputChannelCount: [2] }); crusher.parameters.get('mix').value = 1; crIn.connect(crusher); crusher.connect(crOut);
+        applyMix();
+      }).catch(() => {});
+    }
+    droneG = AC.createGain(); droneG.gain.value = 0;
+    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
+    droneF.connect(droneG); droneG.connect(srcBus.Dro.bus);
+    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f, type, g]) => {
+      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    });
+    applyMix();
+  }
+  function applyMix(){
+    if (!AC) return;
+    const t = AC.currentTime;
+    master.gain.setTargetAtTime(P.vol, t, 0.1);
+    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
+    delay.delayTime.setTargetAtTime(P.dTime, t, 0.15); dFb.gain.setTargetAtTime(P.dFbk, t, 0.05);
+    dLpF.frequency.setTargetAtTime(P.dTone, t, 0.05); dRet.gain.setTargetAtTime(P.dMix*2.2, t, 0.05);
+    preDelay.delayTime.setTargetAtTime(P.vPre, t, 0.1);
+    for (const c of combs){
+      c.d.delayTime.setTargetAtTime(c.base*P.vSize, t, 0.2); c.fb.gain.setTargetAtTime(P.vDecay, t, 0.1);
+      c.lp.frequency.setTargetAtTime(P.vDamp, t, 0.1); c.lg.gain.setTargetAtTime(0.0035*P.vMod*P.vSize, t, 0.1);
+    }
+    pdOut.gain.setTargetAtTime(P.pMix*1.4, t, 0.05); crOut.gain.setTargetAtTime(P.bMix*1.2, t, 0.05);
+    for (const k in srcBus) if (k !== 'Dro') srcBus[k].bus.gain.setTargetAtTime(P['vol'+k] == null ? 1 : P['vol'+k], t, 0.05);
+    for (const k in srcBus) for (const suf in srcBus[k].snd) srcBus[k].snd[suf].gain.setTargetAtTime((P['s'+k+suf] || 0) * (suf === 'D' ? 1.2 : suf === 'P' ? 1.3 : 1), t, 0.05);
+    if (pdNode){ const pp = pdNode.parameters; pp.get('time').setTargetAtTime(P.pTime, t, 0.1); pp.get('fb').setTargetAtTime(P.pFbk, t, 0.05); pp.get('semi').setValueAtTime(P.pSemi, t); }
+    if (crusher){ const cp = crusher.parameters; cp.get('bits').setValueAtTime(P.bBits, t); cp.get('down').setValueAtTime(P.bDown, t); }
+    fxF.frequency.setTargetAtTime(P.oCut, t, 0.08); fxF.Q.setTargetAtTime(P.oRes, t, 0.08);
+    if (P.oDrive !== lastDrive){ lastDrive = P.oDrive; drive(P.oDrive); }
+    width = P.oWidth;
+  }
+  function drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
+    const n = 2048, c = new Float32Array(n), k = 1 + a*30;
+    for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; }
+  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
+    if (!AC) return;
+    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
+    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
+    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
+  }
+  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
+  function semi(d){ d = Math.round(d); const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
+  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chordName(d){
+    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
+    let name = NOTAS[root];
+    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+      if (q) name += ' ' + q; }
+    return name;
+  }
+  const noteName = d => NOTAS[((semi(d) % 12) + 12) % 12];
+  function out(node, pan, t, end, src){
+    let last = node;
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
+    last.connect((srcBus[src] || srcBus[EL[0] ? EL[0].k : 'Dro']).bus);
+    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  }
+  const ok = () => AC && voices < MAXV;
+
+  // ---------- timbres (espectro + parcial + filtro + envelope) ----------
+  const SPECTRA = (() => {
+    const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
+    return { sine: mk(n => n === 1 ? 1 : 0), triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
+             sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)), square: mk(n => n % 2 ? 4/(Math.PI*n) : 0) };
+  })();
+  const TIMBRES = {
+    sino:      { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:2.6 },
+    corda:     { w:'sawtooth', r:1.003,pg:0.4,  cut:10, q:2,   a:0.004, d:1.1 },
+    macio:     { w:'triangle', r:0,    pg:0,    cut:6,  q:0.5, a:0.025, d:2.0 },
+    vidro:     { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:3.2 },
+    marimba:   { w:'sine',     r:4.0,  pg:0.45, cut:0,  q:0.5, a:0.003, d:1.3 },
+    celesta:   { w:'sine',     r:3.0,  pg:0.4,  cut:0,  q:0.5, a:0.004, d:2.4 },
+    kalimba:   { w:'sine',     r:5.4,  pg:0.35, cut:0,  q:0.5, a:0.002, d:1.7 },
+    sopro:     { w:'triangle', r:2.0,  pg:0.22, cut:5,  q:0.5, a:0.09,  d:2.0 },
+    sinoGrave: { w:'sine',     r:1.48, pg:0.55, cut:0,  q:0.5, a:0.005, d:3.6 },
+    harpa:     { w:'square',   r:0,    pg:0,    cut:4,  q:0.5, a:0.003, d:2.0 },
+    pad:       { w:'sawtooth', r:1.006,pg:0.6,  cut:4,  q:0.5, a:0.6,   d:4.5 },
+    seno:      { w:'sine',     r:0,    pg:0,    cut:0,  q:0.5, a:0.012, d:2.6 },
+    grave:     { w:'triangle', r:2.0,  pg:0.12, cut:3,  q:0.7, a:0.01,  d:2.4 },
+    percussao: { w:'sine',     r:1.59, pg:0.9,  cut:0,  q:0.5, a:0.001, d:0.32 }
+  };
+  const waves = {};
+  function waveOf(w){ if (!waves[w]) waves[w] = AC.createPeriodicWave(new Float32Array(33), SPECTRA[w]); return waves[w]; }
+  // nota de um elemento com o timbre escolhido para ele; durMul alonga ou encurta o envelope
+  function note(src, f, t, vel = 0.8, pan = 0, durMul = 1){
+    if (!ok() || !(f > 15 && f < 20000)) return;
+    t = Math.max(t, AC.currentTime);
+    const T = TIMBRES[P['tm' + src]] || TIMBRES.sino, manual = P.envMode === 'manual';
+    const g = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.connect(g);
+    const o = AC.createOscillator(); o.setPeriodicWave(waveOf(T.w)); o.frequency.value = f; o.connect(lp);
+    let o2 = null;
+    if (P.tDet > 0){ o2 = AC.createOscillator(); o2.setPeriodicWave(waveOf(T.w)); o2.frequency.value = f; o2.detune.value = P.tDet; o.detune.value = -P.tDet*0.5; o2.connect(lp); }
+    const lvl = 0.14 * vel * (T.w === 'sawtooth' || T.w === 'square' ? 0.5 : 1) * (o2 ? 0.75 : 1);
+    let end;
+    if (!manual){
+      const dur = T.d * P.tLen * durMul;
+      lp.Q.value = T.q;
+      const c0 = Math.min(18000, f*(T.cut || 30)*P.tBright);
+      lp.frequency.setValueAtTime(c0, t);
+      if (T.cut) lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1*P.tBright), t + Math.min(0.9, dur*0.6));
+      const a = Math.min(T.a, dur*0.4);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      end = t + dur;
+    } else {
+      const tr = t + Math.max(P.aA, 0.12*P.tLen*durMul);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + P.aA);
+      g.gain.setTargetAtTime(lvl*P.aS, t + P.aA, P.aD/4); g.gain.setTargetAtTime(0, tr, P.aR/4);
+      const base = Math.min(18000, f*P.fCut*P.tBright), peak = Math.min(18000, base*Math.pow(2, P.fAmt));
+      lp.Q.value = P.fRes;
+      lp.frequency.setValueAtTime(base, t); lp.frequency.exponentialRampToValueAtTime(peak, t + P.fA);
+      lp.frequency.setTargetAtTime(Math.min(18000, base*Math.pow(2, P.fAmt*P.fS)), t + P.fA, P.fD/4);
+      lp.frequency.setTargetAtTime(base, tr, P.fR/4);
+      end = tr + P.aR*1.6;
+    }
+    let p = null;
+    if (T.r && T.pg*P.tPart > 0.005){
+      p = AC.createOscillator(); p.frequency.value = f*T.r*P.tRatio;
+      const pg = AC.createGain(); pg.gain.setValueAtTime(T.pg*P.tPart, t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, Math.max(0.05, end - t)));
+      p.connect(pg); pg.connect(lp);
+    }
+    out(g, pan, t, end, src);
+    o.start(t); o.stop(end + 0.05); if (o2){ o2.start(t); o2.stop(end + 0.05); } if (p){ p.start(t); p.stop(end + 0.05); }
+  }
+  // grau da escala → nota
+  const play = (src, d, t, vel, pan, durMul, base) => note(src, freq(d, base), t, vel, pan, durMul);
+  let noiseBuf = null;
+  function hit(src, t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = 1.4;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(bp); bp.connect(g); out(g, pan, t, t+dur, src); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
+  }
+  function kick(src, t, vel = 0.8, f0 = 120){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
+    o.connect(g); out(g, 0, t, t+0.5, src); o.start(t); o.stop(t+0.5);
+  }
+  // voz contínua de um elemento (oscilador sustentado): devolve {set(f, gain, pan), stop()}
+  function voz(src, type = 'sine'){
+    if (!AC) return null;
+    const o = AC.createOscillator(); o.type = type; const g = AC.createGain(); g.gain.value = 0;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4000;
+    let pn = null; o.connect(lp); lp.connect(g);
+    if (AC.createStereoPanner){ pn = AC.createStereoPanner(); g.connect(pn); pn.connect(srcBus[src].bus); } else g.connect(srcBus[src].bus);
+    o.start();
+    return {
+      set(f, gain, pan = 0, tc = 0.05, cut){ const t = AC.currentTime; if (f > 0) o.frequency.setTargetAtTime(f, t, tc); g.gain.setTargetAtTime(gain, t, tc);
+        if (pn) pn.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan*width)), t, tc); if (cut) lp.frequency.setTargetAtTime(cut, t, tc); },
+      stop(){ const t = AC.currentTime; g.gain.setTargetAtTime(0, t, 0.1); o.stop(t + 1); }
+    };
+  }
+
+  // ---------- vídeo ----------
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const lay = document.createElement('canvas'), lctx = lay.getContext('2d');
+  const fbk = document.createElement('canvas'), fctx = fbk.getContext('2d');
+  const HAS_FILTER = 'filter' in lctx;
+  const V = { cv, ctx, lay, lctx, W: 0, H: 0, DPR: 1, resizers: [] };
+  function resize(){
+    V.DPR = Math.min(devicePixelRatio || 1, 2); V.W = innerWidth; V.H = innerHeight;
+    for (const c of [cv, lay, fbk]){ c.width = V.W*V.DPR; c.height = V.H*V.DPR; }
+    ctx.setTransform(V.DPR,0,0,V.DPR,0,0); lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    for (const fn of V.resizers) fn();
+  }
+  addEventListener('resize', resize); resize();
+  function applyVideo(){
+    cv.style.filter = `brightness(${P.vBri}) contrast(${P.vCon}) saturate(${P.vSat}) hue-rotate(${P.vHue}deg)${P.vInv ? ' invert(1)' : ''}`;
+    document.body.classList.toggle('semtexto', P.showTxt === false);
+  }
+  applyVideo();
+  // começa um quadro: devolve o contexto da camada onde a obra desenha (tamanho em pixels CSS)
+  V.begin = (clear = true) => {
+    const { W, H } = V;
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    if (P.vTrail > 0){
+      ctx.save(); ctx.globalAlpha = P.vTrail;
+      ctx.translate(W/2, H/2); ctx.rotate(P.vRot*Math.PI/180); ctx.scale(P.vZoom, P.vZoom); ctx.translate(-W/2, -H/2);
+      ctx.drawImage(fbk, 0, 0, W, H); ctx.restore();
+    }
+    lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    lctx.globalCompositeOperation = 'source-over'; lctx.globalAlpha = 1; lctx.filter = 'none';
+    if (clear) lctx.clearRect(0, 0, W, H);
+    return lctx;
+  };
+  // fecha o quadro: brilho difuso, desfoque e espelho; guarda o quadro para o rastro
+  V.end = () => {
+    const { W, H } = V;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const m = +P.vMirror, mirrors = m === 4 ? [[1,1],[-1,1],[1,-1],[-1,-1]] : m === 2 ? [[1,1],[-1,1]] : [[1,1]];
+    for (const [sx, sy] of mirrors){
+      ctx.save(); ctx.translate(W/2, H/2); ctx.scale(sx, sy); ctx.translate(-W/2, -H/2);
+      const al = sx === 1 && sy === 1 ? 1 : 0.7;
+      if (HAS_FILTER && P.vGlow > 0){ ctx.filter = `blur(${P.vGlow}px)`; ctx.globalAlpha = 0.55*al; ctx.drawImage(lay, 0, 0, W, H); }
+      ctx.filter = HAS_FILTER && P.vBlur > 0 ? `blur(${P.vBlur}px)` : 'none';
+      ctx.globalAlpha = al; ctx.drawImage(lay, 0, 0, W, H);
+      ctx.restore();
+    }
+    ctx.restore(); ctx.filter = 'none';
+    if (P.vTrail > 0){ fctx.setTransform(1,0,0,1,0,0); fctx.globalCompositeOperation = 'copy'; fctx.drawImage(cv, 0, 0); fctx.globalCompositeOperation = 'source-over'; }
+  };
+  // cor da série (Gelo, Arco-íris, Brasa, Branco) para um valor u em [0,1)
+  V.cor = (u, a = 1, l = 66) => {
+    switch (P.color){
+      case 'arco': return `hsla(${(u*360 + 190) % 360},70%,${l}%,${a})`;
+      case 'brasa': return `hsla(${8 + 40*((u % 1 + 1) % 1)},85%,${l - 4}%,${a})`;
+      case 'branco': return `hsla(0,0%,${Math.min(96, l + 14)}%,${a})`;
+      default: { const k = (u % 1 + 1) % 1; return `hsla(${192 + 38*k},${60 - 26*k}%,${l + 10 - 18*k}%,${a})`; }
+    }
+  };
+
+  // ---------- tela, painel, teclas ----------
+  function toggleFull(){
+    const d = document;
+    try {
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+      else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } catch (e) {}
+  }
+  let running = false;
+  function setup(onStart, keys = {}){
+    $('start').addEventListener('pointerdown', e => { e.stopPropagation(); go(); });
+    function go(){ if (running) return; initAudio(); running = true; $('start').classList.add('hide'); onStart && onStart(); }
+    $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+    const bf = $('bFull'); if (bf) bf.addEventListener('click', toggleFull);
+    const br = $('bRe'); if (br && keys.r) br.addEventListener('click', () => keys.r());
+    const st = $('showTxt');
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+      if (e.target.tagName === 'SELECT') return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') $('panel').classList.toggle('on');
+      else if (k === 'f') toggleFull();
+      else if (k === 't' && st){ st.checked = !st.checked; st.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === ' ' && !running){ e.preventDefault(); go(); }
+      else if (keys[k] || keys[e.key]){ e.preventDefault(); if (running) (keys[k] || keys[e.key])(); }
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const fmt = v => typeof v === 'number' ? v.toLocaleString('pt-BR') : String(v);
+  return { P, V, readP, now, initAudio, applyMix, applyVideo, setDrone, freq, semi, chord, chordName, noteName, scale, SCALES, NOTAS, ROOT,
+    note, play, hit, kick, voz, setup, toggleFull, fmt, on: fn => listeners.push(fn),
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; }, get voices(){ return voices; } };
+}
+
+const O = Nucleo({
+  elementos: [
+    { k: 'Tent', nome: 'Tentativas', timbre: 'kalimba', vol: 0.8, V: 0.45, D: 0.3 },
+    { k: 'Melhor', nome: 'Nova melhor margem', timbre: 'sino', V: 0.6, D: 0.35 },
+    { k: 'Margem', nome: 'Vozes da margem', timbre: '-', vol: 0.7, V: 0.8, D: 0.1 },
+    { k: 'Passa', nome: 'Passou!', timbre: 'vidro', V: 0.8, D: 0.4, P: 0.2 }
+  ]
+});
+const P = O.P, V = O.V;
+
+// ---------- sólidos ----------
+const PHI = (1 + Math.sqrt(5))/2;
+function solid(nome){
+  if (nome === 'cubo'){ const v = []; for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x, y, z]); return v; }
+  if (nome === 'tetra') return [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+  if (nome === 'octa') return [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  if (nome === 'dodeca'){
+    const v = []; for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x, y, z]);
+    for (const a of [-1, 1]) for (const b of [-1, 1]){ v.push([0, a/PHI, b*PHI]); v.push([a/PHI, b*PHI, 0]); v.push([a*PHI, 0, b/PHI]); }
+    return v;
+  }
+  // Noperthedron (Steininger e Yurkevich): órbitas de três pontos pelo grupo C30 = {(−1)^l Rz(2πk/15)}
+  const C = [[152024884/259375205, 0, 210152163/259375205], [0.6632738028, 0.6106948881, 0.3980949609], [0.8193990033, 0.5298215096, 0.1230614493]];
+  const v = [];
+  for (const [x, y, z] of C) for (let k = 0; k < 15; k++) for (const s of [1, -1]){
+    const a = 2*Math.PI*k/15, c = Math.cos(a), sn = Math.sin(a);
+    v.push([s*(c*x - sn*y), s*(sn*x + c*y), s*z]);
+  }
+  return v;
+}
+// casca convexa 3D por força bruta (até 90 vértices): arestas verdadeiras = pares que separam faces de normais diferentes
+function hullEdges(vs){
+  const n = vs.length, faces = [], sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+  const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]], dot = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const norms = new Map();
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) for (let k = j + 1; k < n; k++){
+    let nn = cross(sub(vs[j], vs[i]), sub(vs[k], vs[i])); const L = Math.hypot(...nn); if (L < 1e-9) continue; nn = nn.map(x => x/L);
+    let pos = 0, neg = 0;
+    for (let q = 0; q < n; q++){ const d = dot(nn, sub(vs[q], vs[i])); if (d > 1e-7) pos++; else if (d < -1e-7) neg++; if (pos && neg) break; }
+    if (pos && neg) continue;
+    if (pos) nn = nn.map(x => -x);
+    const key = nn.map(x => x.toFixed(5)).join(',');
+    for (const [a, b] of [[i, j], [j, k], [i, k]]){ const e = a*1000 + b; if (!norms.has(e)) norms.set(e, new Set()); norms.get(e).add(key); }
+    faces.push(key);
+  }
+  const E = []; for (const [e, s] of norms) if (s.size >= 2) E.push([Math.floor(e/1000), e % 1000]);
+  return { E, nFaces: new Set(faces).size };
+}
+// ---------- sombras ----------
+function basis(th, ph, al){
+  const d = [Math.sin(th)*Math.cos(ph), Math.sin(th)*Math.sin(ph), Math.cos(th)];
+  let a = Math.abs(d[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  let e1 = [a[1]*d[2]-a[2]*d[1], a[2]*d[0]-a[0]*d[2], a[0]*d[1]-a[1]*d[0]]; const L = Math.hypot(...e1); e1 = e1.map(x => x/L);
+  const e2 = [d[1]*e1[2]-d[2]*e1[1], d[2]*e1[0]-d[0]*e1[2], d[0]*e1[1]-d[1]*e1[0]];
+  const c = Math.cos(al), s = Math.sin(al);
+  return { d, e1: e1.map((x, i) => c*x + s*e2[i]), e2: e2.map((x, i) => -s*e1[i] + c*x) };
+}
+function shadow(vs, B){ return hull2(vs.map(p => [p[0]*B.e1[0] + p[1]*B.e1[1] + p[2]*B.e1[2], p[0]*B.e2[0] + p[1]*B.e2[1] + p[2]*B.e2[2]])); }
+function hull2(pts){
+  pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lo = [], up = [];
+  for (const p of pts){ while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], p) <= 1e-12) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--){ const p = pts[i]; while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], p) <= 1e-12) up.pop(); up.push(p); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+// margem: o maior fator s tal que s·(sombra da cópia) cabe na sombra do furo (as duas são simétricas, então o centro basta)
+function margem(S1, S2){
+  let s = Infinity;
+  for (const v of S2){
+    const L = Math.hypot(v[0], v[1]); if (L < 1e-12) continue;
+    const u = [v[0]/L, v[1]/L];
+    let r = Infinity;
+    for (let i = 0; i < S1.length; i++){
+      const a = S1[i], b = S1[(i + 1) % S1.length], e = [b[0]-a[0], b[1]-a[1]];
+      const den = u[0]*e[1] - u[1]*e[0]; if (Math.abs(den) < 1e-14) continue;
+      const t = (a[0]*e[1] - a[1]*e[0])/den, w = (a[0]*u[1] - a[1]*u[0])/den;
+      if (t > 0 && w >= -1e-9 && w <= 1 + 1e-9) r = Math.min(r, t);
+    }
+    s = Math.min(s, r/L);
+  }
+  return s;
+}
+
+// ---------- busca ----------
+let VS = [], ED = [], nF = 0, cur = null, best = null, sinceBest = 0, tries = 0, passou = false, nextNote = 0, vozA = null, vozB = null, msg = null, rot3 = 0, lastF = 0;
+const rnd = () => [Math.acos(2*Math.random() - 1), Math.random()*2*Math.PI, Math.acos(2*Math.random() - 1), Math.random()*2*Math.PI, Math.random()*2*Math.PI];
+function evalX(x){ const B1 = basis(x[0], x[1], 0), B2 = basis(x[2], x[3], x[4]); const S1 = shadow(VS, B1), S2 = shadow(VS, B2); return { x, s: margem(S1, S2), S1, S2 }; }
+function reset(){
+  VS = solid(P.solido); const h = hullEdges(VS); ED = h.E; nF = h.nFaces;
+  cur = evalX(rnd()); best = cur; sinceBest = 0; tries = 0; passou = false; msg = { shown: false };
+}
+function search(k, t){
+  let improved = false;
+  for (let i = 0; i < k; i++){
+    tries++; sinceBest++;
+    if (sinceBest > P.paciencia){ cur = evalX(rnd()); sinceBest = 0; }
+    const st = P.passo*(0.3 + Math.random());
+    const x = cur.x.map(v => v + (Math.random()*2 - 1)*st*(Math.random() < 0.5 ? 1 : 0.1));
+    const c = evalX(x);
+    if (c.s >= cur.s || Math.random() < 0.002){ cur = c; }
+    if (c.s > best.s){ best = c; sinceBest = 0; improved = true; }
+  }
+  if (improved && t >= nextNote - 0.2){
+    O.play('Melhor', Math.round(best.s*20) - 12, t + 0.02, 0.8, 0, 1.4);
+    msg = { shown: false };
+    if (best.s > 1 && !passou){ passou = true; O.kick('Passa', t + 0.05, 0.9); O.chord(0).forEach((sm, i) => O.note('Passa', O.ROOT*4*Math.pow(2, sm/12), t + 0.05 + i*0.07, 0.8, (i - 2)/3, 2)); }
+  }
+}
+function frame(){
+  const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t; rot3 += dt*0.15;
+  if (O.running && VS.length){
+    search(Math.max(1, Math.round(P.speed*dt)), t);
+    if (t >= nextNote){ nextNote = t + 1/P.notas; O.play('Tent', Math.round(cur.s*24) - 10, t + 0.03, 0.55, (Math.random() - 0.5)*0.8, Math.min(1.2, 1.5/P.notas)); msg = msg && msg.shown ? { shown: false } : msg; }
+    if (!vozA && O.AC){ vozA = O.voz('Margem', 'triangle'); vozB = O.voz('Margem', 'triangle'); }
+    if (vozA){
+      const f = O.ROOT*2, dev = Math.max(0, 1 - Math.min(1, best.s));
+      vozA.set(f, 0.05, -0.3, 0.3, 1400); vozB.set(f*1.5*Math.pow(2, dev*0.9), 0.045, 0.3, 0.3, 1400);
+    }
+  }
+  const { W, H } = V, C = V.begin();
+  if (best){
+    const cx = W/2, cy = H/2 + 20, Rv = Math.min(W, H)*0.3*P.zoom;
+    let rmax = 0; for (const p of VS) rmax = Math.max(rmax, Math.hypot(...p)); const sc = Rv/rmax;
+    C.globalCompositeOperation = 'lighter';
+    // o sólido em 3D visto da direção do furo, girando devagar em torno dela
+    if (P.wire > 0){
+      const B = basis(best.x[0], best.x[1], 0), cr = Math.cos(rot3), sr = Math.sin(rot3);
+      const pr = p => { const x0 = p[0]*B.e1[0] + p[1]*B.e1[1] + p[2]*B.e1[2], y0 = p[0]*B.e2[0] + p[1]*B.e2[1] + p[2]*B.e2[2];
+        return [cx + (cr*x0 - sr*y0)*sc, cy - (sr*x0 + cr*y0)*sc, p[0]*B.d[0] + p[1]*B.d[1] + p[2]*B.d[2]]; };
+      const pp = VS.map(pr);
+      C.lineWidth = 0.8;
+      for (const [a, b] of ED){ const z = (pp[a][2] + pp[b][2])/(2*rmax); C.strokeStyle = V.cor(0.1, P.wire*(0.18 + 0.32*(z + 1)/2), 70); C.beginPath(); C.moveTo(pp[a][0], pp[a][1]); C.lineTo(pp[b][0], pp[b][1]); C.stroke(); }
+    }
+    const rotS = rot3;
+    const draw = (S, fill, stroke, lw) => {
+      const c = Math.cos(rotS), s = Math.sin(rotS);
+      C.beginPath(); S.forEach((p, i) => { const x = cx + (c*p[0] - s*p[1])*sc, y = cy - (s*p[0] + c*p[1])*sc; i ? C.lineTo(x, y) : C.moveTo(x, y); }); C.closePath();
+      if (fill){ C.fillStyle = fill; C.fill(); } if (stroke){ C.strokeStyle = stroke; C.lineWidth = lw; C.stroke(); }
+    };
+    // tentativa atual (fraca) e melhor (forte)
+    if (P.trial > 0){ draw(cur.S1, null, V.cor(0.15, P.trial*0.5, 60), 0.8); draw(cur.S2, null, V.cor(0.6, P.trial*0.5, 60), 0.8); }
+    draw(best.S1, V.cor(0.1, 0.07, 55), V.cor(0.1, 0.85, 72), 1.6);
+    draw(best.S2, null, V.cor(0.65, 0.9, 72), 1.3);
+    // vértices da cópia fora do furo
+    const c = Math.cos(rotS), s = Math.sin(rotS);
+    for (const v of best.S2){
+      const inside = margem(best.S1, [v]) >= 1;
+      const x = cx + (c*v[0] - s*v[1])*sc, y = cy - (s*v[0] + c*v[1])*sc;
+      C.fillStyle = inside ? 'rgba(220,240,255,0.8)' : 'rgba(255,80,70,0.95)'; C.beginPath(); C.arc(x, y, inside ? 1.8 : 3.4, 0, Math.PI*2); C.fill();
+    }
+  }
+  V.end();
+  if (msg && !msg.shown && best){
+    msg.shown = true;
+    const nomes = { nop: 'Noperthedron', cubo: 'Cubo', tetra: 'Tetraedro', octa: 'Octaedro', dodeca: 'Dodecaedro' };
+    const f = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    $('num').textContent = `${nomes[P.solido]} · ${VS.length} vértices · ${ED.length} arestas`;
+    $('op').textContent = `melhor margem ${f(best.s)}` + (best.s > 1 ? ' · a cópia passa!' : ' · ainda não passa') + ` · tentativa atual ${f(cur.s)}`;
+    $('seq').innerHTML = `<span class="o">${O.fmt(tries)} tentativas</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'solido') reset(); });
+O.setup(() => { O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+})();
+</script>
+<script>
+// ---------- banco de configurações (comum a todas as conjecturas) ----------
+// Lê e aplica todos os controles do painel (#panel) com id. Salva configurações com nome, carrega pelas teclas 1–9,
+// exporta/importa em .json e lembra os últimos ajustes ao reabrir. Para aplicar, muda o valor do controle e dispara
+// os eventos input/change, então cada obra reage como se a pessoa tivesse mexido no painel.
+(() => {
+  const panel = document.getElementById('panel');
+  if (!panel || window.__banco) return;
+  window.__banco = true;
+  const obra = (location.pathname.split('/').filter(Boolean).filter(s => s !== 'index.html').pop() || 'obra');
+  const KB = 'conjecturas-banco-' + obra, KA = 'conjecturas-atual-' + obra, KL = 'conjecturas-lembrar-' + obra;
+  const ls = {
+    get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id],textarea[id]')]
+    .filter(el => !el.id.startsWith('bk') && el.type !== 'file' && el.type !== 'button' && el.type !== 'submit');
+  const val = el => el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value;
+  const estado = () => { const s = {}; for (const el of ctrls()) s[el.id] = val(el); return s; };
+  const igual = (el, v) => el.type === 'checkbox' || el.type === 'radio' ? el.checked === !!v : String(el.value) === String(v);
+  const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+  let aplicando = false;
+  function aplicar(s){
+    if (!s) return;
+    aplicando = true;
+    try {
+      // duas passadas: se um controle muda outros (ex.: um modo que reposiciona sliders), a segunda corrige
+      for (let pass = 0; pass < 2; pass++){
+        for (const el of ctrls()){
+          if (!(el.id in s) || igual(el, s[el.id])) continue;
+          if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!s[el.id];
+          else if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(s[el.id]))) continue;
+          else el.value = s[el.id];
+          try { fire(el); } catch (e) { console.warn('banco:', el.id, e); }
+        }
+      }
+    } finally { aplicando = false; }
+    guardarAtual();
+  }
+  const PADRAO = estado();
+
+  // ---------- interface ----------
+  const css = document.createElement('style');
+  css.textContent = `
+    #bkBox{border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:12px;margin-bottom:6px}
+    #bkBox .row label{flex:0 0 52px}
+    #bkBox .btns{margin-top:6px}
+    #bkMsg{min-height:1em;opacity:.55;font-size:10.5px;margin-top:6px;transition:opacity .4s}
+    #bkBox .lembrar{display:flex;align-items:center;gap:6px;opacity:.7;margin-top:8px;font-size:11px}
+    #bkBox .lembrar input{accent-color:#9fb8d0;margin:0}`;
+  document.head.appendChild(css);
+  const box = document.createElement('div');
+  box.id = 'bkBox';
+  box.innerHTML = `
+    <h2>Configurações</h2>
+    <div class="row"><label for="bkSel">salvas</label><select id="bkSel"></select></div>
+    <div class="row"><label for="bkNome">nome</label><input id="bkNome" type="text" placeholder="nome da configuração" autocomplete="off" spellcheck="false"></div>
+    <div class="btns"><button id="bkSalvar" type="button">Salvar</button><button id="bkApagar" type="button">Apagar</button></div>
+    <div class="btns"><button id="bkExp" type="button">Exportar</button><button id="bkImp" type="button">Importar</button><input id="bkArq" type="file" accept=".json,application/json" style="display:none"></div>
+    <label class="lembrar"><input id="bkLembrar" type="checkbox"> lembrar os ajustes ao reabrir</label>
+    <div id="bkMsg"></div>
+    <div class="hint" style="margin-top:4px">Teclas 1–9 carregam as configurações salvas, na ordem da lista; 0 volta ao padrão. Exporte o .json para levar para outro aparelho.</div>`;
+  panel.insertBefore(box, panel.firstChild);
+  const $b = id => document.getElementById(id);
+  const sel = $b('bkSel'), nome = $b('bkNome'), bSalvar = $b('bkSalvar'), msgEl = $b('bkMsg'), lembrar = $b('bkLembrar');
+  let msgT;
+  const msg = t => { msgEl.textContent = t; msgEl.style.opacity = .7; clearTimeout(msgT); msgT = setTimeout(() => { msgEl.style.opacity = 0; }, 2600); };
+
+  let banco = ls.get(KB, []);
+  if (!Array.isArray(banco)) banco = [];
+  const gravarBanco = () => ls.set(KB, banco);
+  function lista(escolhido){
+    sel.innerHTML = '<option value="">— atual —</option><option value="__padrao">Padrão</option>' +
+      banco.map((c, i) => `<option value="${i}">${i < 9 ? (i + 1) + ' · ' : ''}${c.nome.replace(/[<&]/g, ch => ch === '<' ? '&lt;' : '&amp;')}</option>`).join('');
+    sel.value = escolhido == null ? '' : String(escolhido);
+    rotulo();
+  }
+  function rotulo(){ bSalvar.textContent = banco.some(c => c.nome === nome.value.trim()) ? 'Regravar' : 'Salvar'; }
+  function carregar(i){
+    if (i === '__padrao'){ aplicar(PADRAO); lista('__padrao'); nome.value = ''; rotulo(); msg('Padrão restaurado'); return; }
+    const c = banco[i]; if (!c) return;
+    aplicar(c.valores); lista(i); nome.value = c.nome; rotulo(); msg('Carregada: ' + c.nome);
+  }
+  sel.addEventListener('change', () => { if (sel.value !== '') carregar(sel.value === '__padrao' ? '__padrao' : +sel.value); });
+  nome.addEventListener('input', rotulo);
+  nome.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') bSalvar.click(); });
+  bSalvar.addEventListener('click', () => {
+    let n = nome.value.trim();
+    if (!n){ let k = banco.length + 1; while (banco.some(c => c.nome === 'Configuração ' + k)) k++; n = 'Configuração ' + k; }
+    const c = { nome: n, valores: estado(), data: new Date().toISOString() };
+    const j = banco.findIndex(x => x.nome === n);
+    if (j >= 0) banco[j] = c; else banco.push(c);
+    gravarBanco(); nome.value = n; lista(j >= 0 ? j : banco.length - 1);
+    msg((j >= 0 ? 'Regravada: ' : 'Salva: ') + n + ((j >= 0 ? j : banco.length - 1) < 9 ? ' (tecla ' + ((j >= 0 ? j : banco.length - 1) + 1) + ')' : ''));
+  });
+  $b('bkApagar').addEventListener('click', () => {
+    const i = sel.value === '' || sel.value === '__padrao' ? banco.findIndex(c => c.nome === nome.value.trim()) : +sel.value;
+    if (i < 0 || !banco[i]){ msg('Escolha na lista a configuração para apagar'); return; }
+    if ($b('bkApagar').dataset.ok !== String(i)){ // segundo toque confirma (sem janela de confirmação)
+      $b('bkApagar').dataset.ok = String(i); $b('bkApagar').textContent = 'Apagar mesmo?';
+      setTimeout(() => { delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar'; }, 3000); return;
+    }
+    const n = banco[i].nome; banco.splice(i, 1); gravarBanco(); nome.value = '';
+    delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar';
+    lista(); msg('Apagada: ' + n);
+  });
+  $b('bkExp').addEventListener('click', async () => {
+    const dados = { obra, versao: 1, exportado: new Date().toISOString(), atual: estado(), configuracoes: banco };
+    const txt = JSON.stringify(dados, null, 2), arq = obra + '-configuracoes.json';
+    const blob = new Blob([txt], { type: 'application/json' });
+    try {
+      const f = new File([blob], arq, { type: 'application/json' });
+      if (/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: arq }); msg('Exportado'); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = arq;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg('Exportado: ' + arq);
+  });
+  $b('bkImp').addEventListener('click', () => $b('bkArq').click());
+  $b('bkArq').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      const vem = Array.isArray(d) ? d : Array.isArray(d.configuracoes) ? d.configuracoes : [];
+      if (d && d.obra && d.obra !== obra && !vem.length) throw new Error('outra obra');
+      let novas = 0, troc = 0;
+      for (const c of vem){
+        if (!c || typeof c.nome !== 'string' || !c.valores) continue;
+        const j = banco.findIndex(x => x.nome === c.nome);
+        if (j >= 0){ banco[j] = c; troc++; } else { banco.push(c); novas++; }
+      }
+      gravarBanco(); lista();
+      msg(novas + troc ? `Importadas: ${novas} novas${troc ? ', ' + troc + ' substituídas' : ''}${d.obra && d.obra !== obra ? ' (arquivo de ' + d.obra + ')' : ''}` : 'Nenhuma configuração no arquivo');
+    } catch (err) { msg('Não consegui ler esse arquivo'); }
+  });
+
+  // ---------- lembrar ao reabrir ----------
+  lembrar.checked = ls.get(KL, true) !== false;
+  lembrar.addEventListener('change', () => { ls.set(KL, lembrar.checked); if (lembrar.checked) guardarAtual(); });
+  let tA;
+  function guardarAtual(){ if (!lembrar.checked) return; clearTimeout(tA); tA = setTimeout(() => ls.set(KA, estado()), 300); }
+  panel.addEventListener('input', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')){ guardarAtual(); if (sel.value !== '') sel.value = ''; } }, true);
+  panel.addEventListener('change', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')) guardarAtual(); }, true);
+  addEventListener('pagehide', () => { if (lembrar.checked) ls.set(KA, estado()); });
+
+  // ---------- teclas 1–9 e 0 ----------
+  addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && t.type !== 'range' && t.type !== 'checkbox'))) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^[1-9]$/.test(e.key)){ const i = +e.key - 1; if (banco[i]){ e.preventDefault(); carregar(i); } }
+    else if (e.key === '0'){ e.preventDefault(); carregar('__padrao'); }
+  });
+
+  lista();
+  if (lembrar.checked){ const a = ls.get(KA, null); if (a) aplicar(a); }
+})();
+
+</script>
+</body>
+</html>

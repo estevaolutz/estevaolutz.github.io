@@ -1,0 +1,176 @@
+<intro>Uma bolha de ar presa na água por uma onda de som cresce, desaba e, no fundo do colapso, solta um clarão de luz de trilionésimos de segundo. A energia do som se concentra mais de um trilhão de vezes. O mecanismo da luz ainda não tem explicação completa. Aqui a bolha segue a equação de Keller–Miksis, desacelerada: cada ciclo da onda dura alguns segundos.</intro>
+
+<painel>
+  <h2>Bolha</h2>
+  <div class="row"><label>Pressão do som (atm)</label><input type="range" id="pa" min="1.0" max="1.5" step="0.005" value="1.32"></div>
+  <div class="row"><label>Raio de repouso (µm)</label><input type="range" id="r0" min="2" max="8" step="0.1" value="4.5"></div>
+  <div class="row"><label>Gás</label><select id="gas"><option value="argonio" selected>Argônio (γ = 5/3)</option><option value="ar">Ar (γ = 1,4)</option></select></div>
+  <div class="row"><label>Ciclo na tela (s)</label><input type="range" id="periodo" min="0.4" max="8" step="0.05" value="2.4"></div>
+  <div class="row"><label>Câmera lenta no colapso</label><input type="range" id="lenta" min="0" max="1" step="0.01" value="0.6"></div>
+  <div class="row"><label>Microfone empurra a bolha</label><input type="checkbox" id="mic"></div>
+  <div class="row"><label>Sensibilidade do microfone</label><input type="range" id="micG" min="0" max="1" step="0.01" value="0.4"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Ondas de som</label><input type="range" id="aneis" min="0" max="1" step="0.01" value="0.5"></div>
+  <div class="row"><label>Tamanho do clarão</label><input type="range" id="clarao" min="0.2" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Tremor da superfície</label><input type="range" id="tremor" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Gráfico do raio</label><input type="checkbox" id="graf" checked></div>
+</imagem>
+
+<dica>A onda de som puxa (a bolha cresce até umas dez vezes o raio de repouso) e depois empurra: a bolha desaba mais rápido que o som no gás, o gás esquenta a milhares de graus e brilha. Depois vêm rebotes menores. Abaixo de uns 1,1 atm não há colapso violento nem luz; acima de 1,45 a bolha real se desfaz (aqui ela segue). A temperatura mostrada é a da compressão adiabática do modelo, só uma estimativa.<br>Som: a onda é um tom contínuo que pulsa com o ciclo; a voz da bolha desce quando ela cresce e sobe no colapso; o clarão é um sino (mais agudo e forte quanto mais quente), o choque é um bumbo, e os rebotes são notas curtas. Com o microfone ligado, o som da sala aumenta a pressão.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Onda', nome: 'Onda de som (tom)', timbre: '-', vol: 0.8, V: 0.6, D: 0 },
+    { k: 'Bolha', nome: 'Voz da bolha', timbre: '-', vol: 0.7, V: 0.6, D: 0.15 },
+    { k: 'Flash', nome: 'Clarão', timbre: 'vidro', V: 0.7, D: 0.4, P: 0.15 },
+    { k: 'Choque', nome: 'Choque', timbre: '-', V: 0.35, D: 0.1 },
+    { k: 'Rebote', nome: 'Rebotes', timbre: 'marimba', vol: 0.8, V: 0.5, D: 0.3 }
+  ]
+});
+const P = O.P, V = O.V;
+
+// ---------- Keller–Miksis com núcleo de van der Waals, integrada por Cash–Karp adaptativo ----------
+const p0 = 101325, rho = 998, sig = 0.0725, mu = 1e-3, cs = 1481, T0 = 293, F = 26.5e3, Tp = 1/F, W0 = 2*Math.PI*F;
+let R0, hc, gam, pg0, V0, Pa;
+function params(){ R0 = P.r0*1e-6; hc = R0/8.86; gam = P.gas === 'ar' ? 1.4 : 5/3; pg0 = p0 + 2*sig/R0; V0 = R0**3 - hc**3; }
+function deriv(t, R, U){
+  const Vg = Math.max(R**3 - hc**3, 1e-30), pg = pg0*Math.pow(V0/Vg, gam);
+  const pB = pg - 2*sig/R - 4*mu*U/R, pinf = p0 - Pa*Math.sin(W0*t);
+  const dpB = -3*gam*pg*R*R*U/Vg + 2*sig*U/(R*R) + 4*mu*U*U/(R*R);
+  return ((1 + U/cs)*(pB - pinf)/rho + R/(rho*cs)*dpB - 1.5*(1 - U/(3*cs))*U*U)/((1 - U/cs)*R);
+}
+const CA = [0, 1/5, 3/10, 3/5, 1, 7/8], CB = [[], [1/5], [3/40, 9/40], [3/10, -9/10, 6/5], [-11/54, 5/2, -70/27, 35/27], [1631/55296, 175/512, 575/13824, 44275/110592, 253/4096]];
+const C5 = [37/378, 0, 250/621, 125/594, 0, 512/1771], C4 = [2825/27648, 0, 18575/48384, 13525/55296, 277/14336, 1/4];
+let ts = 0, R = 0, U = 0, hs = 1e-9;
+const kR = new Float64Array(6), kU = new Float64Array(6);
+function rkStep(){
+  for (let i = 0; i < 6; i++){
+    let r = R, u = U; for (let q = 0; q < i; q++){ r += hs*CB[i][q]*kR[q]; u += hs*CB[i][q]*kU[q]; }
+    kR[i] = u; kU[i] = deriv(ts + CA[i]*hs, Math.max(r, hc*1.0001), u);
+  }
+  let r5 = R, u5 = U, r4 = R, u4 = U;
+  for (let i = 0; i < 6; i++){ r5 += hs*C5[i]*kR[i]; u5 += hs*C5[i]*kU[i]; r4 += hs*C4[i]*kR[i]; u4 += hs*C4[i]*kU[i]; }
+  const err = Math.max(Math.abs(r5 - r4)/(1e-7*R0 + 1e-6*Math.abs(r5)), Math.abs(u5 - u4)/(1e-3 + 1e-6*Math.abs(u5)));
+  if (err <= 1 && r5 > hc){ ts += hs; R = r5; U = u5; hs *= Math.min(4, 0.9*Math.pow(Math.max(err, 1e-10), -0.2)); hs = Math.min(hs, Tp/200); return true; }
+  hs *= Math.max(0.1, 0.9*Math.pow(err, -0.25)); return false;
+}
+const temp = r => T0*Math.pow(V0/Math.max(r**3 - hc**3, 1e-30), gam - 1);
+
+// ---------- estado ----------
+let trace = [], flashes = [], shocks = [], minR = 1, minT = 0, wasDown = false, mainDone = false, lastF = 0, info = null, onda = null, bolha = null, rmaxSeen = 1, cycleN = 0, mic = null, micLvl = 0;
+function reset(){ params(); ts = 0; R = R0; U = 0; hs = 1e-9; trace = []; flashes = []; shocks = []; wasDown = false; minR = R0; rmaxSeen = 2; cycleN = 0; info = { shown: false }; }
+async function micOn(){
+  if (mic || !O.AC) return;
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true } });
+    const src = O.AC.createMediaStreamSource(st), an = O.AC.createAnalyser(); an.fftSize = 1024; src.connect(an);
+    mic = { st, an, buf: new Float32Array(1024) };
+  } catch (e) { $('mic').checked = false; }
+}
+function micOff(){ if (mic){ mic.st.getTracks().forEach(t => t.stop()); mic = null; micLvl = 0; } }
+function advance(dtReal, t){
+  // quanto tempo da simulação cabe neste quadro: um ciclo dura P.periodo s; perto do colapso, câmera lenta
+  const slow = 1 + P.lenta*40*Math.max(0, Math.min(1, (Math.abs(U)/300)));
+  let target = ts + dtReal/P.periodo*Tp/slow, guard = 0;
+  Pa = (P.pa + micLvl*P.micG*0.6)*101325;
+  while (ts < target && guard++ < 20000){
+    const Rprev = R, Uprev = U;
+    if (!rkStep()) continue;
+    const ph = (ts % Tp)/Tp, cyc = Math.floor(ts/Tp);
+    if (cyc !== cycleN){ cycleN = cyc; mainDone = false; }
+    if (U < 0) { wasDown = true; if (R < minR){ minR = R; } }
+    if (Uprev < 0 && U >= 0 && wasDown){
+      // mínimo do raio: colapso principal ou rebote
+      const T = temp(R), ratio = R/R0;
+      if (!mainDone && ratio < 0.6 && T > 1500){
+        mainDone = true; flashes.push({ t, T, s: ts }); shocks.push({ t, T });
+        const deg = Math.round(Math.log10(T)*6) - 18;
+        O.play('Flash', deg, t + 0.02, Math.min(1, 0.4 + Math.log10(T/1000)*0.4), 0, 1.6);
+        O.kick('Choque', t + 0.02, Math.min(1, 0.3 + T/30000), 90 + Math.min(120, T/150));
+        info = { shown: false, T };
+      } else if (mainDone && ratio < 1.2){
+        O.play('Rebote', 7 + Math.round((1.2 - ratio)*10), t + 0.02, 0.35, (Math.random() - 0.5)*0.6, 0.6);
+      }
+      wasDown = false; minR = R;
+    }
+  }
+}
+function frame(){
+  const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t;
+  if (mic){ mic.an.getFloatTimeDomainData(mic.buf); let s = 0; for (const x of mic.buf) s += x*x; micLvl += (Math.min(1, Math.sqrt(s/mic.buf.length)*6) - micLvl)*0.2; }
+  if (O.running){
+    advance(dt, t);
+    trace.push([ts, R/R0]); while (trace.length > 2 && trace[0][0] < ts - 2.2*Tp) trace.shift();
+    if (!onda && O.AC){ onda = O.voz('Onda', 'sine'); bolha = O.voz('Bolha', 'triangle'); }
+    if (onda){
+      const s = Math.sin(W0*ts);
+      onda.set(O.freq(0, O.ROOT*2), 0.04*(P.pa/1.3)*(0.55 + 0.45*s), 0, 0.03);
+      const f = O.ROOT*4*Math.pow(Math.max(0.12, R/R0), -0.45);
+      bolha.set(Math.min(4000, f), 0.035*Math.min(1, 0.3 + Math.abs(U)/80), 0, 0.02, 600 + Math.min(5000, Math.abs(U)*20));
+    }
+  }
+  const { W, H } = V, C = V.begin();
+  const cx = W/2, cy = P.graf ? H*0.44 : H/2, Rs = Math.min(W, H)*0.3;
+  rmaxSeen = Math.max(rmaxSeen*0.999, ...trace.map(p => p[1]), 2);
+  const rpx = Math.max(1.2, R/R0/rmaxSeen*Rs);
+  C.globalCompositeOperation = 'lighter';
+  // ondas de som em volta: anéis que se afastam, mais claros na fase de puxar
+  if (P.aneis > 0){
+    const ph = (ts % Tp)/Tp;
+    for (let i = 0; i < 9; i++){
+      const u = (i + ph) % 9/9, r = Rs*0.35 + u*Math.max(W, H)*0.6, s = Math.sin(2*Math.PI*(ph - u*0.9));
+      C.strokeStyle = V.cor(0.15, P.aneis*0.22*(1 - u)*(0.5 + 0.5*s), 60); C.lineWidth = 1 + 6*(1 - u);
+      C.beginPath(); C.arc(cx, cy, r, 0, Math.PI*2); C.stroke();
+    }
+  }
+  // a bolha
+  const trem = P.tremor*Math.min(1, Math.abs(U)/250);
+  C.beginPath();
+  for (let q = 0; q <= 120; q++){
+    const a = q/120*Math.PI*2, w = 1 + trem*0.08*(Math.sin(5*a + ts*9e5) + 0.6*Math.sin(8*a - ts*1.3e6) + 0.4*Math.sin(13*a + 1.7));
+    const x = cx + Math.cos(a)*rpx*w, y = cy + Math.sin(a)*rpx*w; q ? C.lineTo(x, y) : C.moveTo(x, y);
+  }
+  C.closePath();
+  const g0 = C.createRadialGradient(cx, cy, 0, cx, cy, rpx);
+  g0.addColorStop(0, V.cor(0.2, 0.02, 60)); g0.addColorStop(0.8, V.cor(0.2, 0.07, 60)); g0.addColorStop(1, V.cor(0.2, 0.22, 70));
+  C.fillStyle = g0; C.fill(); C.strokeStyle = V.cor(0.1, 0.85, 78); C.lineWidth = 1.4; C.stroke();
+  // clarões e choques
+  for (const f of flashes){
+    const age = t - f.t; if (age > 2.5) continue;
+    const s = Math.log10(f.T/800)*P.clarao, r = 18 + s*80*(1 + age*0.4), a = Math.exp(-age*4);
+    const g = C.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.18, `rgba(200,225,255,${a*0.8})`); g.addColorStop(0.5, V.cor(0.55, a*0.35, 60)); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.fillStyle = g; C.beginPath(); C.arc(cx, cy, r, 0, Math.PI*2); C.fill();
+  }
+  for (const s of shocks){ const age = t - s.t; if (age > 3) continue; const r = age*Math.max(W, H)*0.45; C.strokeStyle = `rgba(230,240,255,${0.5*Math.exp(-age*1.4)})`; C.lineWidth = 1.5; C.beginPath(); C.arc(cx, cy, r, 0, Math.PI*2); C.stroke(); }
+  flashes = flashes.filter(f => t - f.t < 3); shocks = shocks.filter(s => t - s.t < 3.2);
+  // gráfico do raio nos dois últimos ciclos
+  if (P.graf && trace.length > 2){
+    const gx0 = 40, gx1 = W - 40, gy1 = H - 26, gh = Math.min(110, H*0.14), t0 = ts - 2*Tp;
+    let mx = 2; for (const p of trace) mx = Math.max(mx, p[1]);
+    C.strokeStyle = 'rgba(255,255,255,0.1)'; C.lineWidth = 1; C.beginPath(); C.moveTo(gx0, gy1 - gh/mx); C.lineTo(gx1, gy1 - gh/mx); C.stroke();
+    C.strokeStyle = V.cor(0.15, 0.8, 70); C.lineWidth = 1.3; C.beginPath();
+    let first = true; for (const [s, r] of trace){ if (s < t0) continue; const x = gx0 + (gx1 - gx0)*(s - t0)/(2*Tp), y = gy1 - gh*r/mx; first ? C.moveTo(x, y) : C.lineTo(x, y); first = false; }
+    C.stroke();
+  }
+  V.end();
+  if (P.graf && !document.body.classList.contains('semtexto')){ const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.fillText('raio da bolha nos dois últimos ciclos (a linha é o raio de repouso)', 40, H - 26 - Math.min(110, H*0.14) - 8); }
+  if (O.running && (!info || !info.shown || (t*4 | 0) % 2 === 0)){
+    const T = info && info.T;
+    $('num').textContent = `raio ${(R*1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} µm · ${(R/R0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}× o repouso`;
+    $('op').textContent = T ? `último clarão: ~${O.fmt(Math.round(T/100)*100)} K · ciclo ${cycleN}` : 'sem colapso violento ainda' + ((P.pa < 1.12) ? ' (aumente a pressão do som)' : '');
+    $('seq').innerHTML = `<span class="o">pressão ${(Pa/101325).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} atm${mic ? ' (com microfone)' : ''} · 26,5 kHz desacelerados</span>`;
+    if (info) info.shown = true;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'r0' || k === 'gas') reset(); if (k === 'mic'){ if (P.mic) micOn(); else micOff(); } });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); if (P.mic) micOn(); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

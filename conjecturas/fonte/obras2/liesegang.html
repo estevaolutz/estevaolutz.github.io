@@ -1,0 +1,128 @@
+<intro>Pingue um sal no centro de um gel que tem outro sal dissolvido: o precipitado não se forma por igual, mas em anéis separados, cada vez mais espaçados. Runge viu isso em 1855 e Liesegang em 1896. Até hoje não há uma explicação aceita por todos. Aqui um modelo de supersaturação faz os anéis nascerem um a um, e o intervalo entre eles cresce como um ritardando.</intro>
+
+<painel>
+  <h2>Gel</h2>
+  <div class="row"><label>Vista</label><select id="vista"><option value="placa" selected>Placa de Petri (anéis)</option><option value="tubo">Tubo de ensaio (faixas)</option></select></div>
+  <div class="row"><label>Velocidade</label><input type="range" id="speed" min="50" max="8000" step="50" value="600"></div>
+  <div class="row"><label>Concentração de fora</label><input type="range" id="a0" min="4" max="20" step="0.1" value="10"></div>
+  <div class="row"><label>Limiar de nucleação</label><input type="range" id="cstar" min="0.15" max="0.7" step="0.005" value="0.35"></div>
+  <div class="row"><label>Difusão do produto</label><input type="range" id="dc" min="0.1" max="1" step="0.01" value="0.5"></div>
+  <div class="row"><label>Recomeçar sozinho</label><input type="checkbox" id="auto" checked></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="brasa" selected>Brasa</option><option value="gelo">Gelo</option><option value="arco">Arco-íris</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Reagente visível</label><input type="range" id="reag" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Irregularidade dos anéis</label><input type="range" id="irreg" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="lw" min="0.5" max="3" step="0.05" value="1.2"></div>
+</imagem>
+
+<dica>O sal de fora (A) se espalha devagar e reage com o de dentro (B), formando um produto (C) que fica dissolvido até passar de um limiar; aí ele precipita de uma vez e “come” o produto em volta, deixando uma zona vazia. Só bem mais longe o limiar é alcançado de novo. A posição dos anéis cresce quase em progressão geométrica (a lei de Jablczynski): a razão entre um anel e o anterior aparece no texto.<br>Som: cada anel novo é uma nota (e o baixo muda a cada dois); a voz da frente desce enquanto a reação avança, cada vez mais devagar. O intervalo entre as notas cresce sozinho.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Anel', nome: 'Anel novo', timbre: 'sinoGrave', V: 0.6, D: 0.35 },
+    { k: 'Baixo', nome: 'Baixo', timbre: 'grave', V: 0.6, D: 0.05 },
+    { k: 'Frente', nome: 'Voz da frente', timbre: '-', vol: 0.6, V: 0.7, D: 0.1 },
+    { k: 'Brilho', nome: 'Cristais (crescimento)', timbre: 'celesta', vol: 0.6, V: 0.5, D: 0.3 }
+  ],
+  padroes: { color: 'brasa' }
+});
+const P = O.P, V = O.V;
+
+// ---------- modelo de supersaturação (1D, do centro para fora) ----------
+const N = 520, Da = 1, Db = 0.1, kr = 1, cs = 0.05, q = 1, dt = 0.2;
+let viewN = 160, a, b, c, p, bands = [], stepCount = 0, acc = 0, cst = 0.35, seed = [], frente = null, info = null, endT = 0, lastF = 0, nextCrys = 0;
+function reset(){
+  a = new Float64Array(N); b = new Float64Array(N).fill(1); c = new Float64Array(N); p = new Float64Array(N);
+  bands = []; stepCount = 0; acc = 0; endT = 0; viewN = 160; cst = P.cstar*(P.auto ? 0.92 + Math.random()*0.16 : 1);
+  seed = Array.from({ length: 80 }, () => [Math.random()*Math.PI*2, Math.random()*Math.PI*2, Math.random()*Math.PI*2]);
+  info = { shown: false };
+}
+const la = new Float64Array(N), lb = new Float64Array(N), lc = new Float64Array(N);
+function lap(u, out){ out[0] = 0; for (let i = 1; i < N - 1; i++) out[i] = u[i + 1] - 2*u[i] + u[i - 1]; out[N - 1] = u[N - 2] - u[N - 1]; }
+function step(t){
+  a[0] = P.a0;
+  lap(a, la); lap(b, lb); lap(c, lc);
+  for (let i = 0; i < N; i++){
+    const r = kr*a[i]*b[i];
+    const nuc = c[i] > cst && p[i] === 0, grow = (p[i] > 0 || nuc) && c[i] > cs;
+    const g = grow ? q*(c[i] - cs) : 0;
+    if (nuc && i > 2){
+      // anel novo: nucleou longe do último
+      const last = bands.length ? bands[bands.length - 1].i : -99;
+      if (i - last > 1){ bands.push({ i, t }); newBand(t); }
+    }
+    a[i] = Math.max(0, a[i] + dt*(Da*la[i] - r)); b[i] = Math.max(0, b[i] + dt*(Db*lb[i] - r));
+    c[i] = Math.max(0, c[i] + dt*(P.dc*lc[i] + r - g)); p[i] += dt*g;
+  }
+  stepCount++;
+}
+function newBand(t){
+  const k = bands.length - 1;
+  O.play('Anel', 14 - (k % 25), t, 0.85, ((k % 3) - 1)*0.4, 1.6);
+  if (k % 2 === 0) O.play('Baixo', -14 + (k/2) % 5, t, 0.8, 0, 2.2);
+  info = { shown: false };
+}
+function frenteIdx(){ for (let i = N - 1; i >= 0; i--) if (a[i] > 0.05) return i; return 0; }
+function frame(){
+  const t = O.now(), dt2 = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t;
+  if (O.running && a){
+    acc += dt2*P.speed; let k = Math.min(3000, Math.floor(acc)); acc -= k;
+    while (k-- > 0) step(t);
+    const fi = frenteIdx();
+    viewN += (Math.max(140, Math.min(N, fi*1.25)) - viewN)*0.03;
+    if (!frente && O.AC) frente = O.voz('Frente', 'triangle');
+    if (frente) frente.set(O.ROOT*4*Math.pow(2, -fi/N*2.5), 0.025, 0, 0.3, 1500);
+    if (t >= nextCrys && bands.length){ nextCrys = t + 0.35 + Math.random()*0.5; const bi = bands.length - 1, gi = bands[bi].i; if (p[gi] < 2) O.play('Brilho', 14 + (Math.random()*7 | 0), t + 0.02, 0.3, (Math.random() - 0.5), 0.8); }
+    if (P.auto && fi > N*0.93 && !endT) endT = t;
+    if (endT && t - endT > 6) reset();
+  }
+  const { W, H } = V, C = V.begin();
+  C.globalCompositeOperation = 'lighter';
+  if (a){
+    let pm = 0.01; for (let i = 0; i < N; i++) pm = Math.max(pm, p[i]);
+    if (P.vista === 'placa'){
+      const cx = W/2, cy = 60 + (H - 60)/2, Rm = Math.min(W, H - 120)*0.47;
+      // reagente que se espalha
+      if (P.reag > 0){ const g = C.createRadialGradient(cx, cy, 0, cx, cy, Rm); for (let s = 0; s <= 10; s++){ const i = Math.min(N - 1, Math.round(s/10*(viewN - 1))); g.addColorStop(s/10, V.cor(0.55, P.reag*0.25*Math.min(1, a[i]/P.a0*1.4), 50)); } C.fillStyle = g; C.beginPath(); C.arc(cx, cy, Rm, 0, Math.PI*2); C.fill(); }
+      C.strokeStyle = 'rgba(255,255,255,0.12)'; C.lineWidth = 1; C.beginPath(); C.arc(cx, cy, Rm, 0, Math.PI*2); C.stroke();
+      C.lineWidth = Math.max(0.6, Rm/N*1.1*P.lw);
+      for (let i = 1; i < N; i++){
+        if (p[i] < 0.002) continue;
+        const r = i/viewN*Rm; if (r > Rm*1.02) continue; const al = Math.min(1, Math.sqrt(p[i]/pm)*1.1), sd = seed[Math.min(seed.length - 1, bandOf(i))];
+        C.strokeStyle = V.cor(0.15 + 0.5*i/N, al*0.9, 64);
+        C.beginPath();
+        for (let qq = 0; qq <= 96; qq++){ const ang = qq/96*Math.PI*2, w = 1 + P.irreg*0.025*(Math.sin(3*ang + sd[0]) + 0.6*Math.sin(5*ang + sd[1]) + 0.4*Math.sin(9*ang + sd[2])); const x = cx + Math.cos(ang)*r*w, y = cy + Math.sin(ang)*r*w; qq ? C.lineTo(x, y) : C.moveTo(x, y); }
+        C.stroke();
+      }
+      C.fillStyle = V.cor(0.1, 0.9, 80); C.beginPath(); C.arc(cx, cy, 4, 0, Math.PI*2); C.fill();
+    } else {
+      const tw = Math.min(160, W*0.2), x0 = W/2 - tw/2, y0 = 120, y1 = H - 30, hh = y1 - y0;
+      C.strokeStyle = 'rgba(255,255,255,0.18)'; C.lineWidth = 1.2; C.beginPath(); C.moveTo(x0, y0); C.lineTo(x0, y1 - tw/2); C.arc(W/2, y1 - tw/2, tw/2, Math.PI, 0, true); C.lineTo(x0 + tw, y0); C.stroke();
+      const cell = hh/viewN;
+      for (let i = 0; i < Math.min(N, viewN); i++){
+        const y = y0 + i*cell;
+        if (P.reag > 0){ C.fillStyle = V.cor(0.55, P.reag*0.3*Math.min(1, a[i]/P.a0*1.4), 50); C.fillRect(x0 + 2, y, tw - 4, cell + 0.5); }
+        if (p[i] > 0.002){ const al = Math.min(1, Math.sqrt(p[i]/pm)*1.1); C.fillStyle = V.cor(0.15 + 0.5*i/N, al*0.95, 64); C.fillRect(x0 + 2, y, tw - 4, Math.max(1, cell*P.lw)); }
+      }
+    }
+  }
+  V.end();
+  if (info && !info.shown){
+    info.shown = true;
+    const n = bands.length, rat = n > 2 ? bands[n - 1].i/bands[n - 2].i : 0;
+    $('num').textContent = n ? `${n}º anel` : 'esperando o primeiro anel';
+    $('op').textContent = n > 2 ? `razão entre os dois últimos: ${rat.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}` : '';
+    $('seq').innerHTML = n ? `<span class="o">posições: ${bands.slice(-16).map(b => b.i).join(' · ')}</span>` : '';
+  }
+  requestAnimationFrame(frame);
+}
+function bandOf(i){ let k = 0; for (let j = 0; j < bands.length; j++) if (bands[j].i <= i) k = j; return k; }
+O.on(k => { if (k === 'cstar' || k === 'a0') reset(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

@@ -1,0 +1,151 @@
+<intro>A hipótese de Riemann diz que todos os zeros não triviais da função zeta estão sobre a linha ½. A fórmula explícita mostra que esses zeros são as ondas que somadas desenham a escada dos números primos. Aqui os zeros entram um a um: cada zero é uma frequência, a curva vai virando escada, e o som é literalmente a soma dessas ondas.</intro>
+
+<painel>
+  <h2>Zeros</h2>
+  <div class="row"><label>Zeros/s</label><input type="range" id="speed" min="0.2" max="20" step="0.1" value="1.2"></div>
+  <div class="row"><label>Acelerar</label><input type="checkbox" id="accel" checked></div>
+  <div class="row"><label>Até o zero nº</label><select id="kMax"><option value="50">50</option><option value="150">150</option><option value="400" selected>400</option></select></div>
+  <div class="row"><label>x vai até</label><input type="range" id="xMax" min="20" max="200" step="1" value="60"></div>
+  <div class="row"><label>Afinação</label><select id="afin"><option value="literal" selected>Zeros (literal)</option><option value="escala">Escala do modo</option></select></div>
+  <div class="row"><label>Frequência do 1º zero (Hz)</label><input type="range" id="f0" min="40" max="400" step="1" value="110"></div>
+  <div class="row"><label>Vozes do coro</label><input type="range" id="coro" min="0" max="12" step="1" value="6"></div>
+  <div class="row"><label>Varredura dos primos (s)</label><input type="range" id="varre" min="2" max="40" step="0.5" value="12"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Escada verdadeira</label><input type="range" id="escada" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Ondas de cada zero</label><input type="range" id="ondas" min="0" max="1" step="0.01" value="0.25"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="lw" min="0.5" max="4" step="0.05" value="1.6"></div>
+</imagem>
+
+<dica>A curva clara é ψ(x), que sobe ln p em cada primo p (e em suas potências). A curva brilhante é a mesma conta feita só com x menos a soma das ondas dos zeros já tocados: com poucos zeros ela é uma ondulação, e com muitos ela encosta na escada. Embaixo fica a linha crítica: cada ponto é um zero ½ + iγ (calculados aqui mesmo pela fórmula de Riemann–Siegel).<br>Na afinação literal, o zero de altura γ toca na frequência γ/14,13 vezes a do primeiro zero, então não há escala: são as próprias razões entre os zeros. O cursor que varre o gráfico toca uma nota em cada primo.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Zero', nome: 'Novo zero', timbre: 'vidro', V: 0.6, D: 0.35 },
+    { k: 'Coro', nome: 'Coro dos zeros', timbre: '-', vol: 0.8, V: 0.8, D: 0.1 },
+    { k: 'Primo', nome: 'Primos (varredura)', timbre: 'marimba', V: 0.45, D: 0.25 },
+    { k: 'Baixo', nome: 'Baixo (a cada 10 zeros)', timbre: 'grave', V: 0.6, D: 0.05 }
+  ]
+});
+const P = O.P, V = O.V;
+
+// ---------- zeros pela fórmula de Riemann–Siegel ----------
+function theta(t){ return t/2*Math.log(t/(2*Math.PI)) - t/2 - Math.PI/8 + 1/(48*t) + 7/(5760*t*t*t); }
+function Z(t){
+  const a = Math.sqrt(t/(2*Math.PI)), N = Math.floor(a); let p = a - N;
+  const th = theta(t); let s = 0;
+  for (let n = 1; n <= N; n++) s += Math.cos(th - t*Math.log(n))/Math.sqrt(n);
+  let c = Math.cos(2*Math.PI*p); if (Math.abs(c) < 1e-7){ p += 1e-6; c = Math.cos(2*Math.PI*p); }
+  const C0 = Math.cos(2*Math.PI*(p*p - p - 1/16))/c;
+  return 2*s + ((N - 1) % 2 ? -1 : 1)*Math.pow(t/(2*Math.PI), -0.25)*C0;
+}
+const ZEROS = [];
+(function(){
+  let t0 = 10, z0 = Z(t0);
+  for (let t = 10.02; t < 700 && ZEROS.length < 400; t += 0.02){
+    const z = Z(t);
+    if (z0*z < 0){ let a = t0, b = t, za = z0; for (let i = 0; i < 40; i++){ const m = (a + b)/2, zm = Z(m); if (za*zm <= 0) b = m; else { a = m; za = zm; } } ZEROS.push((a + b)/2); }
+    t0 = t; z0 = z;
+  }
+  // os dez primeiros com mais casas (a fórmula com um termo de correção erra na 3ª casa para γ pequeno)
+  [14.134725, 21.022040, 25.010858, 30.424876, 32.935062, 37.586178, 40.918719, 43.327073, 48.005151, 49.773832].forEach((g, i) => { ZEROS[i] = g; });
+})();
+// ---------- primos e ψ(x) ----------
+const PR = []; { const c = new Uint8Array(4001); for (let i = 2; i <= 4000; i++){ if (!c[i]){ PR.push(i); for (let j = i*i; j <= 4000; j += i) c[j] = 1; } } }
+const PP = []; for (const p of PR) for (let q = p; q <= 4000; q *= p) PP.push([q, p, q === p]); PP.sort((a, b) => a[0] - b[0]);
+const NS = 900;
+let xs = new Float64Array(NS), base = new Float64Array(NS), novo = new Float64Array(NS), psiT = new Float64Array(NS);
+let k = 0, nextT = 0, newT = -9, sweep = 0, lastF = 0, coro = [], info = null, lastPrime = -1;
+function setup(){
+  const X = P.xMax;
+  for (let i = 0; i < NS; i++){
+    const x = 1.5 + (X - 1.5)*i/(NS - 1); xs[i] = x;
+    base[i] = x - Math.log(2*Math.PI) - 0.5*Math.log(1 - 1/(x*x));
+    let s = 0; for (const [q, p] of PP){ if (q > x) break; s += Math.log(p); } psiT[i] = s;
+  }
+  for (let j = 0; j < k; j++) addTerm(base, ZEROS[j], 1);
+  novo.fill(0);
+}
+function addTerm(arr, g, w){ for (let i = 0; i < NS; i++){ const L = Math.log(xs[i]), sx = Math.sqrt(xs[i]); arr[i] -= w*2*sx*(0.5*Math.cos(g*L) + g*Math.sin(g*L))/(0.25 + g*g); } }
+function reset(){ k = 0; setup(); nextT = O.now() + 0.8; newT = -9; info = { shown: false }; }
+const fZero = g => P.afin === 'literal' ? P.f0*g/ZEROS[0] : O.freq(Math.round(Math.log2(g/ZEROS[0])*O.scale().length*1.2), P.f0);
+function addZero(t){
+  if (k >= Math.min(P.kMax, ZEROS.length)) return false;
+  if (k > 0) for (let i = 0; i < NS; i++) base[i] += novo[i];   // o anterior entra na base
+  novo.fill(0); addTerm(novo, ZEROS[k], 1);
+  const g = ZEROS[k]; k++; newT = t;
+  const f = fZero(g); let ff = f; while (ff > 3000) ff /= 2;
+  O.note('Zero', ff, t, 0.8, ((k % 7) - 3)/4, 1.2);
+  if (k % 10 === 0) O.play('Baixo', -14 + (k/10 % 7), t, 0.85, 0, 1.6);
+  info = { shown: false };
+  return true;
+}
+function speedNow(){ return P.speed*(P.accel ? Math.min(12, 1 + k/25) : 1); }
+function frame(){
+  const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t;
+  if (O.running){
+    if (t >= nextT){ if (!addZero(t)) nextT = t + 1e9; else nextT = t + 1/speedNow(); }
+    // coro: os últimos zeros tocando juntos
+    const nc = P.coro|0;
+    while (coro.length < nc && O.AC) coro.push(O.voz('Coro', 'sine'));
+    coro.forEach((v, i) => {
+      const j = k - 1 - i;
+      if (i >= nc || j < 0){ v.set(0, 0); return; }
+      let f = fZero(ZEROS[j]); while (f > 2400) f /= 2;
+      v.set(f, 0.05/(1 + i*0.35), ((j % 5) - 2)/3, 0.4);
+    });
+    // varredura dos primos
+    const prev = sweep; sweep = (sweep + dt/P.varre) % 1;
+    const xa = 1.5 + (P.xMax - 1.5)*prev, xb = 1.5 + (P.xMax - 1.5)*sweep;
+    for (let q = 0; q < PP.length; q++){ const [x, p, prime] = PP[q]; if (x > P.xMax) break;
+      if ((sweep >= prev && x > xa && x <= xb) || (sweep < prev && (x > xa || x <= xb))){ const ip = PR.indexOf(p); O.play('Primo', ip % 14 + (prime ? 0 : 7), t + 0.03, prime ? 0.7 : 0.4, (x/P.xMax - 0.5)*1.2, 0.9); lastPrime = x; }
+    }
+  }
+  const { W, H } = V, C = V.begin();
+  const gx0 = 50, gx1 = W - 40, gy0 = 110, gy1 = H - 150;
+  const yMax = P.xMax*1.12, X = x => gx0 + (gx1 - gx0)*(x - 1.5)/(P.xMax - 1.5), Y = y => gy1 - (gy1 - gy0)*y/yMax;
+  C.globalCompositeOperation = 'lighter';
+  // escada verdadeira
+  if (P.escada > 0){ C.strokeStyle = `rgba(255,255,255,${P.escada*0.7})`; C.lineWidth = 1; C.beginPath(); for (let i = 0; i < NS; i++){ const x = X(xs[i]), y = Y(psiT[i]); i ? C.lineTo(x, y) : C.moveTo(x, y); } C.stroke(); }
+  // onda do zero novo, sozinha
+  const w = Math.min(1, (t - newT)*1.5);
+  if (P.ondas > 0 && k){ C.strokeStyle = V.cor(0.7, P.ondas*(1 - 0.6*w), 66); C.lineWidth = 1; C.beginPath(); for (let i = 0; i < NS; i++){ const x = X(xs[i]), y = Y(P.xMax*0.5 + novo[i]*4); i ? C.lineTo(x, y) : C.moveTo(x, y); } C.stroke(); }
+  // aproximação com os zeros
+  C.strokeStyle = V.cor(0.15, 0.95, 72); C.lineWidth = P.lw; C.beginPath();
+  for (let i = 0; i < NS; i++){ const x = X(xs[i]), y = Y(base[i] + w*novo[i]); i ? C.lineTo(x, y) : C.moveTo(x, y); } C.stroke();
+  // primos no eixo
+  C.fillStyle = 'rgba(210,230,250,0.45)'; for (const p of PR){ if (p > P.xMax) break; C.fillRect(X(p) - 0.5, gy1 + 4, 1, 6); }
+  // cursor
+  if (O.running){ const xc = X(1.5 + (P.xMax - 1.5)*sweep); C.fillStyle = 'rgba(255,255,255,0.25)'; C.fillRect(xc, gy0, 1, gy1 - gy0); }
+  // linha crítica: os zeros como pontos
+  const ly = H - 70, tMax = ZEROS[Math.min(P.kMax, ZEROS.length) - 1] || 100, LX = g => gx0 + (gx1 - gx0)*g/tMax;
+  C.strokeStyle = 'rgba(255,255,255,0.12)'; C.lineWidth = 1; C.beginPath(); C.moveTo(gx0, ly); C.lineTo(gx1, ly); C.stroke();
+  for (let j = 0; j < Math.min(P.kMax, ZEROS.length); j++){
+    const on = j < k, x = LX(ZEROS[j]), fl = j === k - 1 ? Math.exp(-(t - newT)*2) : 0;
+    C.fillStyle = on ? V.cor(j/Math.min(P.kMax, ZEROS.length), 0.85, 70 + fl*20) : 'rgba(255,255,255,0.1)';
+    C.beginPath(); C.arc(x, ly, on ? 2.2 + fl*5 : 1.2, 0, Math.PI*2); C.fill();
+    if (fl > 0.02){ C.strokeStyle = V.cor(0.1, fl, 80); C.beginPath(); C.arc(x, ly, 4 + (1 - fl)*30, 0, Math.PI*2); C.stroke(); }
+  }
+  V.end();
+  if (!document.body.classList.contains('semtexto')){
+    const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)';
+    ctx.fillText('linha crítica Re(s) = ½ · altura γ dos zeros', gx0, ly - 12); ctx.textAlign = 'right'; ctx.fillText('ψ(x) e a soma com os zeros já tocados', gx1, gy0 - 6); ctx.textAlign = 'left';
+  }
+  if (info && !info.shown){
+    info.shown = true;
+    const g = k ? ZEROS[k - 1] : 0;
+    $('num').textContent = k ? `${k}º zero` : 'nenhum zero ainda';
+    $('op').textContent = k ? `½ + ${g.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} i · ${P.afin === 'literal' ? Math.round(fZero(g)) + ' Hz' : 'na escala'}` : '';
+    $('seq').innerHTML = `<span class="o">ψ(x) = x − Σ x<sup>ρ</sup>/ρ − ln 2π − ½ ln(1 − x⁻²)</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(key => { if (key === 'xMax') setup(); if (key === 'kMax' && k > P.kMax) reset(); if (key === 'kMax' && O.running && nextT > O.now() + 1e8) nextT = O.now(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+setup(); info = { shown: false };
+requestAnimationFrame(frame);
+</js>

@@ -1,0 +1,103 @@
+<intro>Escreva os primos numa linha: 2, 3, 5, 7, 11… Embaixo, as diferenças entre vizinhos (sem sinal): 1, 2, 2, 4… Embaixo, as diferenças das diferenças, e assim por diante. Gilbreath percebeu em 1958 que toda linha começa com 1. Já se conferiu isso para bilhões de linhas, mas ninguém provou. Aqui cada primo novo desce uma diagonal da pirâmide, e o 1 do fim é uma nota pedal que nunca falha.</intro>
+
+<painel>
+  <h2>Pirâmide</h2>
+  <div class="row"><label>Primos/s</label><input type="range" id="speed" min="0.3" max="40" step="0.1" value="2"></div>
+  <div class="row"><label>Acelerar</label><input type="checkbox" id="accel" checked></div>
+  <div class="row"><label>Começar no primo nº</label><input type="number" id="from" min="1" step="1" placeholder="ex.: 1000"></div>
+  <div class="row"><label>Notas por diagonal</label><input type="range" id="arp" min="1" max="16" step="1" value="6"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Diagonais visíveis</label><input type="range" id="cols" min="20" max="300" step="1" value="90"></div>
+  <div class="row"><label>Profundidade</label><input type="range" id="prof" min="10" max="200" step="1" value="60"></div>
+  <div class="row"><label>Zeros visíveis</label><input type="range" id="zeros" min="0" max="1" step="0.01" value="0.12"></div>
+</imagem>
+
+<dica>Em cima ficam os primos; cada linha de baixo é a diferença da linha de cima. A diagonal nova de cada primo desce até a primeira coluna, sempre em 1 (a coluna da esquerda, que acende a cada primo). Lá no fundo a pirâmide só tem 0 e 2: é por isso que o 1 sobrevive. A cor diz o valor (0 quase apagado, 1 claro, 2 médio, maiores em outras cores).<br>Som: a diagonal nova toca os primeiros valores maiores que 1 como arpejo (valor/2 = grau); o baixo segue o intervalo entre o primo novo e o anterior; os zeros viram um estalo; o 1 do fim é o sino pedal, sempre a mesma nota.</dica>
+
+<js>
+const O = Nucleo({
+  elementos: [
+    { k: 'Diag', nome: 'Diagonal (arpejo)', timbre: 'celesta', V: 0.45, D: 0.3 },
+    { k: 'Zero', nome: 'Zeros (estalo)', timbre: 'percussao', vol: 0.7, V: 0.3, D: 0.2 },
+    { k: 'Pedal', nome: 'Pedal do 1', timbre: 'sinoGrave', V: 0.7, D: 0.35 },
+    { k: 'Baixo', nome: 'Baixo (intervalo)', timbre: 'grave', V: 0.6, D: 0.05 }
+  ]
+});
+const P = O.P, V = O.V;
+
+const LIM = 400000, comp = new Uint8Array(LIM + 1), PR = [];
+for (let i = 2; i <= LIM; i++){ if (!comp[i]){ PR.push(i); for (let j = i*i; j <= LIM; j += i) comp[j] = 1; } }
+let n = 0, prev = null, diags = [], firstCol = [], nextT = 0, info = null, ok1 = true;
+function reset(){
+  n = 0; prev = null; diags = []; firstCol = []; ok1 = true;
+  const f = Math.max(1, Math.floor(+$('from').value || 1));
+  // avança em silêncio até o primo pedido (só guardando a última diagonal)
+  for (let i = 1; i < Math.min(f, 20000); i++) advance(false, 0);
+  nextT = O.now() + 0.6; info = { shown: false };
+}
+function advance(sound, t){
+  const p = PR[n], d = new Int32Array(n + 1); d[0] = p;
+  for (let k = 0; k < n; k++) d[k + 1] = Math.abs(d[k] - prev[k]);
+  prev = d; n++;
+  diags.push({ d: d.slice(0, 220), t, p }); if (diags.length > 320) diags.shift();
+  if (n > 1){ firstCol.push(d[n - 1]); if (firstCol.length > 400) firstCol.shift(); if (d[n - 1] !== 1) ok1 = false; }
+  if (!sound) return;
+  const sp = speedNow(), dm = Math.max(0.3, Math.min(1.3, 1.8/sp));
+  let c = 0, zeros = 0;
+  for (let k = 1; k < Math.min(n, 40) && c < P.arp; k++){
+    if (d[k] >= 2){ O.play('Diag', d[k]/2 + (k % 2 ? 0 : 7), t + c*Math.min(0.06, 0.5/(sp*P.arp)), 0.65, (k/40 - 0.5), dm); c++; }
+    else if (d[k] === 0) zeros++;
+  }
+  if (zeros) O.hit('Zero', t + 0.01, Math.min(0.9, 0.2 + zeros*0.05), 0, 2500 + zeros*80, 0.04);
+  if (n > 1) O.play('Pedal', 7, t + Math.min(0.5, c*0.06 + 0.08), d[n - 1] === 1 ? 0.75 : 1, 0, 1.4*dm);
+  if (n > 1) O.play('Baixo', -14 + (PR[n - 1] - PR[n - 2])/2, t, 0.8, 0, 1.4*dm);
+  info = { shown: false };
+}
+function speedNow(){ return P.speed*(P.accel ? Math.min(12, 1 + diags.length/60) : 1); }
+function cor(v, al){
+  if (v === 0) return `rgba(255,255,255,${al*P.zeros})`;
+  if (v === 1) return `rgba(240,248,255,${al})`;
+  if (v === 2) return V.cor(0.1, al*0.75, 62);
+  return V.cor(0.35 + Math.log2(v)*0.08, al*0.9, 60);
+}
+function frame(){
+  const t = O.now();
+  if (O.running){ while (t + 0.15 >= nextT && n < PR.length - 1){ advance(true, Math.max(t, nextT)); nextT = Math.max(t, nextT) + 1/speedNow(); } }
+  const { W, H } = V, C = V.begin();
+  const M = Math.min(diags.length, P.cols|0), D = P.prof|0;
+  const top = 130, cs = Math.max(2, Math.min((W - 90)/(M + D/2 + 2), (H - top - 20)/(D + 1)));
+  C.globalCompositeOperation = 'lighter';
+  // diagonal m (as últimas M) com profundidade k: a célula (k, j = m − k) fica em x = j + k/2
+  const mLast = n - 1, jMin = mLast - M + 1;
+  for (let q = 0; q < M; q++){
+    const dg = diags[diags.length - M + q], m = mLast - (M - 1 - q), fl = Math.exp(-(t - dg.t)*3);
+    for (let k = 0; k <= Math.min(D, m, dg.d.length - 1); k++){
+      const j = m - k, x = 70 + (j - jMin + k/2 + D/2)*cs;
+      if (x < 64) continue;
+      C.fillStyle = cor(dg.d[k], 0.75 + fl*0.25);
+      C.fillRect(x, top + k*cs, Math.max(1, cs - (cs > 4 ? 1 : 0)), Math.max(1, cs - (cs > 4 ? 1 : 0)));
+    }
+  }
+  // a primeira coluna: o 1 de cada linha
+  const fc = firstCol.slice(-Math.floor((H - top - 20)/Math.max(2, cs)));
+  fc.forEach((v, i) => { const al = 0.25 + 0.75*(i + 1)/fc.length; C.fillStyle = v === 1 ? `rgba(240,248,255,${al})` : `rgba(255,70,60,${al})`; C.fillRect(30, top + i*cs, Math.max(2, cs - 1), Math.max(1, cs - 1)); });
+  V.end();
+  if (!document.body.classList.contains('semtexto')){ const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.fillText('1ª coluna', 18, top - 8); }
+  if (info && !info.shown && diags.length){
+    info.shown = true;
+    const dg = diags[diags.length - 1];
+    $('num').textContent = `${O.fmt(dg.p)} · ${O.fmt(n)}º primo`;
+    $('op').textContent = n > 1 ? `a diagonal desce ${O.fmt(n)} linhas e termina em ${prev[n - 1]}` + (ok1 ? '' : ' · contraexemplo!') : 'o primeiro primo';
+    $('seq').innerHTML = `<span class="o">${Array.from(dg.d.slice(0, 32)).join(' ')}${n > 32 ? ' … 1' : ''}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+$('from').addEventListener('change', () => { if (O.running) reset(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+reset();
+requestAnimationFrame(frame);
+</js>

@@ -1,5 +1,5 @@
 // guarda a obra no aparelho para abrir sem internet (a página é atualizada sempre que houver rede)
-const CACHE = 'corredor-solitario-1847afc3';
+const CACHE = 'corredor-solitario-81a5608e';
 const ARQS = ['./', 'index.html', 'manifest.webmanifest', 'icone-192.png', 'icone-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ARQS))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))); self.clients.claim(); });

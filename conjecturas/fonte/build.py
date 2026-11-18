@@ -12,6 +12,7 @@ JS = open(os.path.join(AQUI, 'core.js')).read()
 SOM = open(os.path.join(AQUI, 'som.html')).read()
 BANCO = open(os.path.join(AQUI, 'banco.js')).read()  # banco de configurações, entra em todas as obras
 VISTA3D = '<script>\n' + open(os.path.join(AQUI, 'vista3d.js')).read() + '</script>'  # câmera 3D comum a todas as obras
+VISTA3D += '\n<script>\n' + open(os.path.join(AQUI, 'matiz.js')).read() + '</script>'  # saturação e matiz (as obras v2 já têm na seção Vídeo)
 
 OBRAS = {
   'corredor-solitario': ('Corredor Solitário', 'A conjectura do corredor solitário em polirritmia e luz'),

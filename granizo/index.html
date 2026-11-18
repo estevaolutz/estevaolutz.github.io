@@ -244,6 +244,7 @@ function resize(){
 addEventListener('resize', resize);
 
 // ---------- áudio ----------
+let analyser = null, specData = null;
 let AC = null, master, comp, verbIn, verbOut, dryBus, delay, droneG, droneF;
 const SCALES = {
   jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
@@ -285,6 +286,8 @@ function initAudio(){
   master = AC.createGain();
   comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
   master.connect(comp); comp.connect(AC.destination);
+  analyser = AC.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.82; comp.connect(analyser);
+  specData = new Uint8Array(analyser.frequencyBinCount);
   dryBus = AC.createGain(); dryBus.connect(master);
   // reverb leve: filtros de pente com amortecimento (bem mais barato que convolução)
   verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
@@ -462,6 +465,27 @@ function scheduleStep(i, t){
   }
 }
 
+// ---------- espectro: a cor de cada onda vem da energia da sua frequência no som ----------
+function specRead(){ if (analyser) analyser.getByteFrequencyData(specData); }
+function bandEnergy(f){
+  if (!analyser) return 0;
+  const hz = AC.sampleRate / analyser.fftSize; let e = 0, cnt = 0;
+  for (const mult of [1, 2, 3, 4]){
+    const b = Math.round(f*mult / hz);
+    for (let d = -1; d <= 1; d++){ const v = specData[b + d]; if (v !== undefined){ e += v * (mult === 1 ? 1.4 : 0.7); cnt++; } }
+  }
+  return Math.min(1, cnt ? e / cnt / 190 : 0);
+}
+function centroid(){
+  if (!analyser) return 400;
+  const hz = AC.sampleRate / analyser.fftSize; let num = 0, den = 0;
+  for (let b = 2; b < specData.length/4; b++){ const v = specData[b]; num += v*b*hz; den += v; }
+  return den > 0 ? num/den : 400;
+}
+// frequência → cor do arco-íris (grave = vermelho, agudo = violeta), como a luz
+const hueOfFreq = (f, lo, hi) => 285 * Math.max(0, Math.min(1, Math.log2(f/lo) / Math.log2(hi/lo)));
+const specE = [0,0,0,0,0]; let specC = 400;
+
 // ---------- ondas do acorde (fundo do gráfico) ----------
 const waves = { r: [1,1.19,1.5,1.78,2.24], a: [0,0,0,0,0], ph: [0,1.3,2.1,0.7,2.9], last: 0, swell: 0 };
 function drawChordWaves(c, i, peak, x0, x1, y0, y1, t, life){
@@ -473,16 +497,21 @@ function drawChordWaves(c, i, peak, x0, x1, y0, y1, t, life){
   waves.swell *= Math.exp(-dt*0.45);
   const amp = band * (0.3 + 0.5*alt + 0.5*waves.swell);
   const N = 140, w = x1 - x0;
+  specRead();
+  specC += (centroid() - specC) * 0.08;
   const sum = new Float32Array(N+1);
   for (let j = 0; j < n; j++){
     const target = Math.pow(2, harm.chord[j]/12);
     waves.r[j] += (target - waves.r[j]) * (1 - Math.exp(-dt*0.9));     // glissando entre acordes
     waves.a[j] += ((1 - j*0.12) - waves.a[j]) * (1 - Math.exp(-dt*0.6));
     waves.ph[j] += dt * (0.55 + waves.r[j]*0.45);
-    const r = waves.r[j], A = amp * waves.a[j] * (0.55 + 0.45*Math.sin(t*0.21 + j*1.7));
-    const base = arrivals ? rootHue : 195, hue = (base + j*22) % 360, sat = 45 + rootSat*0.4;
-    ctx.strokeStyle = `hsla(${hue},${sat}%,68%,${(0.24 + 0.15*waves.swell)*Math.max(life,0.5)})`;
-    ctx.lineWidth = 1.1;
+    const fj = ROOT*2 * Math.pow(2, harm.chord[j]/12);
+    const eNow = bandEnergy(fj); specE[j] += (eNow - specE[j]) * (eNow > specE[j] ? 0.35 : 0.06);
+    const e = specE[j];
+    const r = waves.r[j], A = amp * waves.a[j] * (0.45 + 0.35*Math.sin(t*0.21 + j*1.7) + 0.8*e);
+    const hue = (hueOfFreq(fj, 130, 760) + e*35 + 360) % 360;
+    ctx.strokeStyle = `hsla(${hue},${55 + e*40}%,${52 + e*30}%,${(0.14 + 0.55*e + 0.12*waves.swell)*Math.max(life,0.5)})`;
+    ctx.lineWidth = 1 + e*2.2;
     ctx.beginPath();
     for (let q = 0; q <= N; q++){
       const u = q/N, x = x0 + u*w, env = Math.sin(Math.PI*u);
@@ -495,9 +524,11 @@ function drawChordWaves(c, i, peak, x0, x1, y0, y1, t, life){
     ctx.stroke();
   }
   // a soma das vozes: a interferência do acorde inteiro
-  const bh = arrivals ? rootHue : 195;
+  // a soma segue o centro de gravidade do espectro (som escuro = quente, som brilhante = frio)
+  const eAll = specE.reduce((a, b) => a + b, 0) / n;
+  const bh = hueOfFreq(specC, 250, 3500);
   for (const [lw, al] of [[7, 0.06], [1.6, 0.4]]){
-    ctx.strokeStyle = `hsla(${bh},${45 + rootSat*0.4}%,80%,${(al + al*0.6*waves.swell)*Math.max(life,0.5)})`;
+    ctx.strokeStyle = `hsla(${bh},${60 + eAll*35}%,${70 + eAll*15}%,${(al*(0.6 + eAll*1.2) + al*0.6*waves.swell)*Math.max(life,0.5)})`;
     ctx.lineWidth = lw; ctx.beginPath();
     for (let q = 0; q <= N; q++){ const x = x0 + q/N*w; q ? ctx.lineTo(x, mid + sum[q]) : ctx.moveTo(x, mid + sum[q]); }
     ctx.stroke();

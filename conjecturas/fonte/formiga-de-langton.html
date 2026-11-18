@@ -39,6 +39,9 @@
       <option value="quadrado">Quadrado escuro</option>
       <option value="linha">Linha escura</option>
     </select></div>
+  <div class="row"><label>Formigas</label><input type="range" id="nAnts" min="1" max="12" step="1" value="1"></div>
+  <div class="row"><label>Entrada das formigas</label><select id="antModo"><option value="rodovia" selected>Uma nova a cada rodovia</option><option value="juntas">Todas desde o começo</option></select></div>
+  <div class="row"><label>Onde começam</label><select id="antPos"><option value="juntas" selected>Juntas no meio</option><option value="roda">Em roda</option><option value="fila">Em fila</option><option value="acaso">Ao acaso</option></select></div>
   <div class="row"><label>Batidas/s</label><input type="range" id="bps" min="1" max="24" step="0.5" value="6"></div>
   <div class="row"><label>Passos/batida</label>
     <select id="spb"><option value="1">1</option><option value="4">4</option><option value="13" selected>13 (rodovia = 8 batidas)</option><option value="26">26</option><option value="52">52</option><option value="104">104 (rodovia = 1 batida)</option></select></div>
@@ -48,6 +51,7 @@
   <div class="row"><label>Textura dos passos</label><input type="range" id="tex" min="0" max="1" step="0.01" value="0.35"></div>
   <div class="row"><label>Batida</label><input type="range" id="perc" min="0" max="1" step="0.01" value="0.6"></div>
   <div class="row"><label>Melodia</label><input type="range" id="mel" min="0" max="1" step="0.01" value="0.8"></div>
+  <div class="row"><label>Outras formigas</label><input type="range" id="antVoz" min="0" max="1" step="0.01" value="0.5"></div>
   <div class="row"><label>Baixo</label><input type="range" id="bass" min="0" max="1" step="0.01" value="0.7"></div>
   <h2>Efeitos de som</h2>
   <div class="row"><label>Delay</label>
@@ -74,7 +78,7 @@
   <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.4" max="3" step="0.01" value="1"></div>
   <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
   <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
-  <div class="hint">Cada batida reúne alguns passos: as viradas à esquerda escolhem a nota, a direção da formiga escolhe a voz. No caos a melodia não se repete; quando a rodovia aparece (período de 104 passos) a música vira um laço.<br>“Nunca parar”: a grade dá a volta nas bordas (a formiga sai de um lado e entra do outro) e a contagem de voltas é ignorada; quando a rodovia bate no rastro antigo, volta o caos e a obra procura a próxima rodovia.<br>Efeitos: o delay acompanha o andamento (em batidas); a varredura do filtro dura 8 batidas, o compasso da rodovia; “Abre na rodovia” deixa o filtro fechado no caos e abre quando a rodovia aparece.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · ↑/↓ velocidade.</div>
+  <div class="hint">Com mais de uma formiga, todas andam na mesma grade e uma muda o caminho da outra. Em “Uma nova a cada rodovia”, a próxima só nasce quando a mais nova acha a sua rodovia (sino e acorde); em “Todas desde o começo” saem juntas. a branca guia a melodia, a câmera e a busca da rodovia, e as coloridas tocam notas próprias (volume em “Outras formigas”).<br>Cada batida reúne alguns passos: as viradas à esquerda escolhem a nota, a direção da formiga escolhe a voz. No caos a melodia não se repete; quando a rodovia aparece (período de 104 passos) a música vira um laço.<br>“Nunca parar”: a grade dá a volta nas bordas (a formiga sai de um lado e entra do outro) e a contagem de voltas é ignorada; quando a rodovia bate no rastro antigo, volta o caos e a obra procura a próxima rodovia.<br>Efeitos: o delay acompanha o andamento (em batidas); a varredura do filtro dura 8 batidas, o compasso da rodovia; “Abre na rodovia” deixa o filtro fechado no caos e abre quando a rodovia aparece.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · ↑/↓ velocidade.</div>
 </div>
 
 <!--VISTA3D-->
@@ -123,6 +127,40 @@ const markDirty = (x, y) => { if (!dirty) dirty = [x, y, x, y]; else { if (x < d
 
 // ---------- formiga ----------
 let rule = 'RL', ax, ay, dir, steps, bb, turns, hw, trail, ended, endT, wrapped = false, hwN = 0;
+// formigas a mais: andam junto com a primeira (que guia a melodia, a rodovia e a câmera) e dividem a mesma grade
+let ants = [], leadFrozen = false, ativa = 0;   // ativa = índice da formiga mais nova (0 = a branca)
+const HIST2 = 1 << 13;
+const ANT_HUE = [200, 40, 330, 120, 270, 10, 170, 300, 60, 230, 90, 350];
+function placeAnts(){
+  ants = [];
+  const n = Math.max(1, P.nAnts|0), c = G/2;
+  for (let k = 1; k < n; k++){
+    let x = c, y = c, d = k & 3;
+    if (P.antPos === 'juntas'){ const a = k*2.399, r = 2 + k*0.9; x = c + Math.round(Math.cos(a)*r); y = c + Math.round(Math.sin(a)*r); }
+    else if (P.antPos === 'roda'){ const a = k/n*Math.PI*2, r = 8 + n*1.5; x = c + Math.round(Math.cos(a)*r); y = c + Math.round(Math.sin(a)*r); d = Math.round((a/(Math.PI/2)) + 1) & 3; }
+    else if (P.antPos === 'fila'){ x = c + (k % 2 ? 1 : -1)*Math.ceil(k/2)*6; d = 0; }
+    else { x = c + Math.floor(Math.random()*41) - 20; y = c + Math.floor(Math.random()*41) - 20; d = Math.floor(Math.random()*4); }
+    const seq = P.antModo === 'rodovia';
+    ants.push({ x, y, dir: d, hue: ANT_HUE[k % ANT_HUE.length], trail: [], nL: 0, alive: !seq, born: !seq, k: k + 1,
+      turns: new Uint8Array(HIST2), steps: 0, hw: null });
+  }
+  if (P.antPos === 'roda' && n > 1){ ax = c + Math.round(8 + n*1.5); ay = c; dir = 1; bb = [ax, ay, ax, ay]; }
+  if (P.antPos === 'acaso' && n > 1) dir = Math.floor(Math.random()*4);
+  leadFrozen = false; ativa = 0;
+  for (const a of ants){ if (!a.born) continue; bb[0] = Math.min(bb[0], a.x); bb[1] = Math.min(bb[1], a.y); bb[2] = Math.max(bb[2], a.x); bb[3] = Math.max(bb[3], a.y); }
+}
+function stepAnt(a){
+  if (!a.alive) return;
+  const i = a.y*G + a.x, c = grid[i], n = rule.length, L = rule.charCodeAt(c) === 76;
+  a.turns[a.steps & (HIST2-1)] = L ? 1 : 0; a.steps++;
+  a.dir = (a.dir + (L ? 3 : 1)) & 3;
+  if (vis[i] < 65535) vis[i]++;
+  const nc = (c + 1) % n; grid[i] = nc; px[i] = pal[nc]; markDirty(a.x, a.y);
+  a.x += DX[a.dir]; a.y += DY[a.dir]; if (L) a.nL++;
+  if (a.x < 0 || a.y < 0 || a.x >= G || a.y >= G){ if (P.never){ a.x = (a.x + G) & (G-1); a.y = (a.y + G) & (G-1); } else { a.x = Math.max(0, Math.min(G-1, a.x)); a.y = Math.max(0, Math.min(G-1, a.y)); } }
+  if (!P.never && (a.x < 3 || a.y < 3 || a.x > G-4 || a.y > G-4)){ a.alive = false; a.parou = true; }
+  if (a.x < bb[0]) bb[0] = a.x; if (a.y < bb[1]) bb[1] = a.y; if (a.x > bb[2]) bb[2] = a.x; if (a.y > bb[3]) bb[3] = a.y;
+}
 const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];   // 0 = norte, 1 = leste, 2 = sul, 3 = oeste
 const HIST = 1 << 16;
 function reset(){
@@ -134,22 +172,25 @@ function reset(){
   if (P.init === 'acaso'){ const k = 6 + Math.floor(Math.random()*14); for (let i = 0; i < k; i++){ const x = ax + Math.floor(Math.random()*11) - 5, y = ay + Math.floor(Math.random()*11) - 5; grid[y*G + x] = 1 + Math.floor(Math.random()*(n-1)); } }
   else if (P.init === 'quadrado'){ for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) grid[(ay+y)*G + ax + x] = 1; }
   else if (P.init === 'linha'){ for (let x = -8; x <= 8; x++) grid[(ay+3)*G + ax + x] = 1; }
+  placeAnts();
   makePal();
   beat = 0; nextBeatT = O.now() + 0.4;
   bbCam = null;
 }
 function step(){
+  if (leadFrozen){ for (const a of ants) stepAnt(a); steps++; return 0; }
   const i = ay*G + ax, c = grid[i], n = rule.length;
   const L = rule.charCodeAt(c) === 76;   // 'L'
   dir = (dir + (L ? 3 : 1)) & 3;
   if (vis[i] < 65535) vis[i]++;
   const nc = (c + 1) % n; grid[i] = nc; px[i] = pal[nc]; markDirty(ax, ay);
   turns[steps & (HIST-1)] = L ? 1 : 0;
+  for (const a of ants) stepAnt(a);
   ax += DX[dir]; ay += DY[dir]; steps++;
   if (P.never){
     // nunca parar: a grade é um toro (sai de um lado, entra do outro)
     if (ax < 0 || ay < 0 || ax >= G || ay >= G){ ax = (ax + G) & (G-1); ay = (ay + G) & (G-1); wrapped = true; }
-  } else if (ax < 3 || ay < 3 || ax > G-4 || ay > G-4) ended = true;
+  } else if (ax < 3 || ay < 3 || ax > G-4 || ay > G-4){ if (pendentes() || ants.some(a => a.alive)) leadFrozen = true; else ended = true; }
   if (ax < bb[0]) bb[0] = ax; if (ay < bb[1]) bb[1] = ay; if (ax > bb[2]) bb[2] = ax; if (ay > bb[3]) bb[3] = ay;
   return L ? 1 : 0;
 }
@@ -158,6 +199,24 @@ function holds(p){
   if (steps < 2*p) return false;
   for (let i = 1; i <= p; i++){ if (turns[(steps - i) & (HIST-1)] !== turns[(steps - i - p) & (HIST-1)]) return false; }
   return true;
+}
+function findPeriodAnt(a){
+  const T = a.turns, S = a.steps, maxP = Math.min(1200, Math.floor(S/3));
+  for (let p = 2; p <= maxP; p++){
+    let ok = true;
+    for (let i = 1; i <= 2*p; i++){ if (T[(S - i) & (HIST2-1)] !== T[(S - i - p) & (HIST2-1)]){ ok = false; break; } }
+    if (ok) return p;
+  }
+  return 0;
+}
+const pendentes = () => ants.some(a => !a.born);
+// a formiga mais nova chegou à rodovia: nasce a próxima
+function nasce(t){
+  const a = ants.find(q => !q.born); if (!a) return;
+  a.born = a.alive = true; a.bornT = t; ativa = a.k - 1;
+  if (a.x < bb[0]) bb[0] = a.x; if (a.y < bb[1]) bb[1] = a.y; if (a.x > bb[2]) bb[2] = a.x; if (a.y > bb[3]) bb[3] = a.y;
+  O.bell(O.freq(7 + (a.k % 5), O.ROOT*4), t + 0.05, 0.7, 0, 2.2);
+  O.kick(t, 0.5);
 }
 // procura um período p em que as últimas viradas se repetem 3 vezes (a rodovia)
 function findPeriod(){
@@ -208,6 +267,16 @@ function beatNow(t){
   let nL = 0, flips = 0;
   for (let s = 0; s < spb && !ended; s++){ const c0 = grid[ay*G + ax]; const l = step(); nL += l; if (c0 === 0) flips++; Ls.push(l); }
   trail.push([ax, ay, t]); if (trail.length > 600) trail.shift();
+  ants.forEach((a, k) => {
+    if (!a.born) return;
+    a.trail.push([a.x, a.y]); if (a.trail.length > 300) a.trail.shift();
+    if (P.antVoz > 0 && a.alive && O.running){
+      const pan = Math.max(-0.9, Math.min(0.9, (a.x - (bb[0]+bb[2])/2) / Math.max(20, (bb[2]-bb[0])/2)));
+      const f = O.freq(((a.nL*2 + k*3) % 9) + [0, 2, 4, 7][a.dir] + chordDeg, O.ROOT*(k % 2 ? 4 : 2));
+      if (P.mel > 0) O.pluck(f, t + 0.02 + (k % 4)*0.5/(P.bps*4), 0.45*P.antVoz*P.mel/Math.sqrt(ants.length), pan, 0.6);
+    }
+    a.nL = 0;
+  });
   if (wrapped){ wrapped = false; if (hw){ hw.lx = ax; hw.ly = ay; } }
   if (hw && P.never && !holds(hw.p)){
     // a rodovia bateu em alguma coisa: volta o caos e a obra procura a próxima rodovia
@@ -221,12 +290,25 @@ function beatNow(t){
       O.chord(chordDeg).forEach((s, i) => O.pad(O.ROOT*2*Math.pow(2, s/12), t + i*0.08, 1, (i-2)*0.3, 9, 2));
       O.setDrone(O.semi(chordDeg), 7, 3, 900); }
   }
+  // formigas extras: cada uma procura a sua rodovia; no modo em sequência a rodovia da mais nova faz nascer a próxima
+  if (beat % 4 === 2) for (const a of ants){
+    if (!a.alive || a.hw || a.steps < 1000) continue;
+    const p = findPeriodAnt(a);
+    if (p){ a.hw = { p, at: a.steps, t };
+      O.chord(3).forEach((s, i) => O.pad(O.ROOT*4*Math.pow(2, s/12), t + i*0.06, 0.5, (i-2)*0.3, 6, 1.5));
+      if (P.antModo === 'rodovia' && a.k - 1 === ativa) nasce(t); }
+  }
+  if (P.antModo === 'rodovia' && hw && ativa === 0 && pendentes()) nasce(t);
   if (!hw && beat % 64 === 0){ chordDeg = [0, 0, 5, 3][(beat/64|0) % 4]; O.setDrone(O.semi(chordDeg), 7, 4, 220 + Math.min(500, steps/40)); }
   playBeat(t, nL, flips, spb);
   pulses.push({ t, strong: !!hw && (beat % 8 === 0 || beat % 8 === 5) }); if (pulses.length > 32) pulses.shift();
   if (spb > 1) texture(t, spb, Ls);
   beat++;
-  if (hw && !P.never && (steps - hw.at) / hw.p >= P.laps && !ended){ ended = true; }
+  // fim (sem "Nunca parar"): todas já nasceram e cada uma está há P.laps voltas na sua rodovia (ou parou na borda)
+  if (!P.never && !ended && !pendentes()){
+    const pronta = (h, st) => h && (st - h.at)/h.p >= P.laps;
+    if ((leadFrozen || pronta(hw, steps)) && ants.every(a => a.parou || pronta(a.hw, a.steps))) ended = true;
+  }
   if (ended && endT == null){ endT = t; }
 }
 
@@ -258,8 +340,8 @@ function filterNow(t){
   if (P.sweep > 0) u *= 1 - P.sweep*0.6*(0.5 - 0.5*Math.cos(2*Math.PI*((t - nextBeatT)*P.bps + beat)/8));
   O.fx.filter(120*Math.pow(20000/120, Math.max(0, Math.min(1, u))), P.res);
 }
-O.bind(['rule','init','bps','spb','laps','never','tex','perc','color','trail','zoom'].concat(FXIDS), (k) => {
-  if (k === 'rule' || k === 'init') reset();
+O.bind(['nAnts','antPos','antModo','antVoz','rule','init','bps','spb','laps','never','tex','perc','color','trail','zoom'].concat(FXIDS), (k) => {
+  if (k === 'rule' || k === 'init' || k === 'nAnts' || k === 'antPos' || k === 'antModo') reset();
   if (k === 'color') makePal();
   applyFx();
 });
@@ -318,6 +400,17 @@ function draw3d(t, pk, fade){
       if (Math.abs(a[0] - b[0]) > 64 || Math.abs(a[1] - b[1]) > 64) continue;
       T3.seg(ctx, WX(a[0]), ah(a[0], a[1]), WZ(a[1]), WX(b[0]), ah(b[0], b[1]), WZ(b[1]), 0.4*u*u*fade);
     }
+  }
+  for (const a of ants){
+    if (!a.born) continue;
+    if (P.trail > 0 && a.trail.length > 1){
+      ctx.lineWidth = Math.max(1, cw*T3.R*0.4); ctx.strokeStyle = `hsl(${a.hue},80%,75%)`;
+      const n = a.trail.length, from = Math.max(1, n - Math.floor(300*P.trail));
+      for (let i = from; i < n; i++){ const p = a.trail[i-1], q = a.trail[i], u = (i - from)/(n - from);
+        if (Math.abs(p[0] - q[0]) > 64 || Math.abs(p[1] - q[1]) > 64) continue;
+        T3.seg(ctx, WX(p[0]), ah(p[0], p[1]), WZ(p[1]), WX(q[0]), ah(q[0], q[1]), WZ(q[1]), 0.4*u*u*fade); }
+    }
+    T3.brilho(ctx, WX(a.x), ah(a.x, a.y), WZ(a.y), Math.max(8, cw*T3.R*2.5)*(1 + pk), `hsla(${a.hue},90%,80%,${(a.alive ? 0.95 : 0.4)*fade})`);
   }
   T3.brilho(ctx, WX(ax), ah(ax, ay), WZ(ay), Math.max(10, cw*T3.R*3)*(1 + pk*1.5), `rgba(255,255,255,${0.95*fade})`);
   if (pk > 0.01){ ctx.fillStyle = `rgba(200,225,255,${pk*0.05})`; ctx.fillRect(0, 0, W, H); }
@@ -382,6 +475,21 @@ function frame(){
       ctx.beginPath(); ctx.moveTo((a[0]+0.5)*cam.s + sx, (a[1]+0.5)*cam.s + sy); ctx.lineTo((b[0]+0.5)*cam.s + sx, (b[1]+0.5)*cam.s + sy); ctx.stroke();
     }
   }
+  for (const a of ants){
+    if (!a.born) continue;
+    if (P.trail > 0 && a.trail.length > 1){
+      const n = a.trail.length, from = Math.max(1, n - Math.floor(300*P.trail));
+      ctx.lineWidth = Math.max(1, cam.s*0.5);
+      for (let i = from; i < n; i++){ const p = a.trail[i-1], q = a.trail[i], u = (i - from)/(n - from);
+        if (Math.abs(p[0] - q[0]) > 64 || Math.abs(p[1] - q[1]) > 64) continue;
+        ctx.strokeStyle = `hsla(${a.hue},80%,75%,${0.35*u*u*fade})`;
+        ctx.beginPath(); ctx.moveTo((p[0]+0.5)*cam.s + sx, (p[1]+0.5)*cam.s + sy); ctx.lineTo((q[0]+0.5)*cam.s + sx, (q[1]+0.5)*cam.s + sy); ctx.stroke(); }
+    }
+    const qx = (a.x + 0.5)*cam.s + sx, qy = (a.y + 0.5)*cam.s + sy, qr = Math.max(6, cam.s*2)*(1 + pk);
+    const qg = ctx.createRadialGradient(qx, qy, 0, qx, qy, qr);
+    qg.addColorStop(0, `hsla(${a.hue},90%,85%,${(a.alive ? 0.95 : 0.4)*fade})`); qg.addColorStop(0.3, `hsla(${a.hue},80%,65%,${0.4*fade})`); qg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = qg; ctx.beginPath(); ctx.arc(qx, qy, qr, 0, Math.PI*2); ctx.fill();
+  }
   const hx = (ax + 0.5)*cam.s + sx, hy = (ay + 0.5)*cam.s + sy, r = Math.max(8, cam.s*2.4)*(1 + pk*1.5);
   const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, r);
   g.addColorStop(0, `rgba(255,255,255,${0.95*fade})`); g.addColorStop(0.3, `rgba(200,225,255,${0.4*fade})`); g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -390,7 +498,7 @@ function frame(){
   cam.s = s0;
   }
   // texto
-  $('num').textContent = `passo ${O.fmt(steps)}`;
+  $('num').textContent = `passo ${O.fmt(steps)}` + (ants.length ? ` · ${ants.filter(a => a.born).length + 1} de ${ants.length + 1} formigas` + (ants.length ? ` · ${[hw, ...ants.map(a => a.hw)].filter(Boolean).length} na rodovia` : '') : '');
   $('op').innerHTML = hw ? `<span class="rod">${P.never && hwN > 1 ? hwN + 'ª ' : ''}rodovia · período ${hw.p} passos · desde o passo ${O.fmt(hw.at - 3*hw.p)}</span> · volta ${Math.floor((steps - hw.at)/hw.p) + 1}`
                          : `<span class="cao">${steps < 50 ? 'começo' : 'caos'}</span> · ${O.fmt(bb[2]-bb[0]+1)} × ${O.fmt(bb[3]-bb[1]+1)} casas`;
   const legend = [...rule].map((c, i) => `cor ${i} → vira à ${c === 'L' ? 'esquerda' : 'direita'}`).join(' · ');

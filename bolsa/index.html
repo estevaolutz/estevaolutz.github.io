@@ -251,6 +251,7 @@ const TTL=25*60*1000;
 const COLORS=['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim());
 const OTHER=getComputedStyle(document.documentElement).getPropertyValue('--other').trim();
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const nome=q=>{if(!q)return '';const sn=q.shortName,ln=q.longName;return (!sn||sn===q.symbol)?(ln&&ln!==q.symbol?ln:''):sn};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ---------- armazenamento ----------
@@ -364,7 +365,7 @@ function drawLista(){
     if(!q){return `<tr data-t="${t}"><td><div class="asset">${logo(null,t)}<div><b>${t}</b><span>${e?esc(e):'<span class="spin"></span> carregando'}</span></div></div></td><td colspan="${COLS.length-2}" class="muted small" style="text-align:left">${e&&precisaToken(t)?'Essa ação precisa da chave gratuita da brapi — veja em Ajustes.':''}</td><td><button class="ico" data-del="${t}" title="Tirar da lista">✕</button></td></tr>`}
     const I=indic(q),st=alvoStatus(t,q.regularMarketPrice),d=q.regularMarketChangePercent;
     return `<tr class="cl" data-t="${t}">
-      <td><div class="asset">${logo(q,t)}<div><b>${t}</b><span>${esc(q.shortName||q.longName||'')}</span></div></div></td>
+      <td><div class="asset">${logo(q,t)}<div><b>${t}</b><span>${esc(nome(q))}</span></div></div></td>
       <td>${brl(q.regularMarketPrice)}</td>
       <td class="${cls(d)}">${arrow(d)}${pct(d)}</td>
       <td class="hide-s ${cls(I.var)}">${pct(I.var,1)}</td>
@@ -493,7 +494,7 @@ function drawDet(){
   else fund=S.token?`<button class="btn" id="bMods">${q._modsLoading?'<span class="spin"></span> buscando…':'Buscar indicadores da empresa (ROE, margens, P/VP…)'}</button>`:'<p class="note">Os indicadores da empresa precisam da chave da brapi (Ajustes).</p>';
   const divs=(q.dividendsData&&q.dividendsData.cashDividends||[]).slice().sort((x,y)=>Date.parse(y.paymentDate||y.approvedOn)-Date.parse(x.paymentDate||x.approvedOn)).slice(0,8);
   dlg.innerHTML=`<button class="ico close" id="xc" title="Fechar">✕</button>
-  <div class="dhead">${logo(q,t)}<div><h2>${t}</h2><div class="muted small">${esc(q.longName||q.shortName||'')}</div></div>
+  <div class="dhead">${logo(q,t)}<div><h2>${t}</h2><div class="muted small">${esc((q.longName&&q.longName!==q.symbol)?q.longName:nome(q))}</div></div>
     <div class="px">${brl(q.regularMarketPrice)} <span class="${cls(d)}" style="font-size:16px">${arrow(d)}${pct(d)}</span></div></div>
   <div class="row small muted" style="margin-top:6px;gap:14px">
     <span>Abertura ${brl(q.regularMarketOpen)}</span><span>Mín/Máx do dia ${brl(q.regularMarketDayLow)} – ${brl(q.regularMarketDayHigh)}</span><span>Volume ${vol(q.regularMarketVolume)}</span><span>Valor de mercado ${big(q.marketCap)}</span>
@@ -544,7 +545,7 @@ function drawChart(t,q,a){
 let rz;window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{if(atual)drawDet();drawDonut()},200)});
 
 // ---------- CARTEIRA ----------
-function posicoes(){return S.carteira.map(p=>{const q=C[p.t]&&C[p.t].q;const px=q?q.regularMarketPrice:null;return Object.assign({},p,{q:p.q,px,val:px!=null?px*p.q:null,custo:p.pm*p.q,d:q?q.regularMarketChangePercent:null,nome:q?(q.shortName||''):'',ql:q})})}
+function posicoes(){return S.carteira.map(p=>{const q=C[p.t]&&C[p.t].q;const px=q?q.regularMarketPrice:null;return Object.assign({},p,{q:p.q,px,val:px!=null?px*p.q:null,custo:p.pm*p.q,d:q?q.regularMarketChangePercent:null,nome:nome(q),ql:q})})}
 function corDe(t){if(S.cores[t]==null){const usados=new Set(Object.values(S.cores));let i=0;while(usados.has(i)&&i<8)i++;S.cores[t]=i<8?i:-1;saveS()}return S.cores[t]}
 function drawCarteira(){
   const P=posicoes();const tot=P.reduce((s,p)=>s+(p.val||0),0),custo=P.reduce((s,p)=>s+p.custo,0);

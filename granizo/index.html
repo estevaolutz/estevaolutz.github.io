@@ -89,17 +89,8 @@
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 const coral = document.createElement('canvas'), cctx = coral.getContext('2d');
-let W = 0, H = 0, DPR = 1;
-
-function resize(){
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = innerWidth; H = innerHeight;
-  for (const c of [cv, coral]) { c.width = W*DPR; c.height = H*DPR; }
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-  cctx.setTransform(DPR,0,0,DPR,0,0);
-  if (cur) cur.pos = layout(cur.seq);
-}
-addEventListener('resize', resize);
+let W = 0, H = 0, DPR = 1, CDPR = 1;
+const MARGIN = 1.6;           // o coral é desenhado numa área maior que a tela, para o zoom abrir sem buracos
 
 // ---------- parâmetros ----------
 const P = {};
@@ -109,8 +100,10 @@ function readP(){
 }
 readP();
 for (const k of ids) $(k).addEventListener('input', () => {
+  const oldSpeed = P.speed;
   readP();
-  if (['aEven','aOdd','tilt','zoom'].includes(k)) { clearCoral(); if (cur) cur.pos = layout(cur.seq); }
+  if (k === 'speed' && cur && !cur.done){ const p = (now() - cur.t0) * oldSpeed; cur.t0 = now() - p / P.speed; cur.next = Math.max(cur.next, Math.floor(p) + 1); }
+  if (['aEven','aOdd','tilt'].includes(k)) relayoutAll();
   if (k === 'showNum') $('num').classList.toggle('on', P.showNum);
   applyMix();
 });
@@ -128,73 +121,138 @@ function nextSeed(){
   if (P.mode === 'rec') { const r = RECORDS[recIdx % RECORDS.length]; recIdx++; return r; }
   return Math.max(2, Math.round(Math.pow(2, 1.5 + Math.random()*17)));
 }
-
-// caminho desenhado a partir do 1 (raiz) até o número (ponta)
+// caminho em coordenadas do mundo (passo = 1), da raiz (1) até a ponta (n)
 function layout(seq){
-  const m = seq.length - 1;
-  const L = Math.min(W*0.62/137, H*0.85/120) * P.zoom;
-  const pos = new Array(m+1);
-  let x = W*0.5 + 40*L, y = H*0.93, a = -2.0 + P.tilt;
-  pos[0] = [x, y];
+  const m = seq.length - 1, pos = new Float32Array((m+1)*2);
+  let x = 0, y = 0, a = -2.0 + P.tilt;
   for (let j = 1; j <= m; j++){
-    const v = seq[m-j];
-    a += (v % 2 === 0) ? P.aEven : -P.aOdd;
-    x += Math.cos(a)*L; y += Math.sin(a)*L;
-    pos[j] = [x, y];
+    a += (seq[m-j] % 2 === 0) ? P.aEven : -P.aOdd;
+    x += Math.cos(a); y += Math.sin(a);
+    pos[j*2] = x; pos[j*2+1] = y;
   }
-  return pos; // pos[j] = posição do valor seq[m-j]
+  return pos; // ponto j = valor seq[m-j]
+}
+function bboxOf(pos, from, to, bb){
+  for (let j = from; j <= to; j++){ const x = pos[j*2], y = pos[j*2+1];
+    if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (x > bb[2]) bb[2] = x; if (y > bb[3]) bb[3] = y; }
+  return bb;
 }
 
 // ---------- cor ----------
 function colorFor(n, t, alpha){
   const lg = Math.log2(n+1);
   switch (P.color){
-    case 'arco':   return `hsla(${(lg*22 + t*40) % 360},70%,${62}%,${alpha})`;
-    case 'brasa':  return `hsla(${12 + Math.min(lg,24)*1.6},${85}%,${45 + Math.min(lg,24)*1.2}%,${alpha})`;
+    case 'arco':   return `hsla(${(lg*22 + t*40) % 360},70%,62%,${alpha})`;
+    case 'brasa':  return `hsla(${12 + Math.min(lg,24)*1.6},85%,${45 + Math.min(lg,24)*1.2}%,${alpha})`;
     case 'branco': return `hsla(0,0%,92%,${alpha})`;
     default:       return `hsla(${200 - Math.min(lg,30)*2.2},${45 + Math.min(lg,30)}%,${60 + Math.min(lg,30)*0.8}%,${alpha})`;
   }
 }
 
+// ---------- câmera ----------
+const cam = { s: 1, cx: 0, cy: 0 };      // escala (px por passo) e centro do mundo na tela
+const camR = { s: 1, cx: 0, cy: 0 };     // câmera com que o coral foi desenhado
+let worldBB = [-1, -1, 1, 1];
+function camTarget(){
+  const bb = worldBB.slice();
+  if (cur) bboxOf(cur.pos, 0, cur.seq.length - 1, bb);
+  const bw = Math.max(bb[2]-bb[0], 1), bh = Math.max(bb[3]-bb[1], 1);
+  const maxS = Math.min(W, H) / 7;                  // começa bem perto
+  const s = Math.min(maxS, W*0.84/bw, H*0.8/bh) * P.zoom;
+  return { s, cx: (bb[0]+bb[2])/2, cy: (bb[1]+bb[3])/2 };
+}
+function toScreen(x, y){ return [(x - cam.cx)*cam.s + W/2, (y - cam.cy)*cam.s + H/2]; }
+
+// ---------- coral (memória dos caminhos) ----------
+let paths = [];   // {n, seq, pos, upto, w, t}
+function relayoutAll(){
+  worldBB = [-1, -1, 1, 1];
+  for (const p of paths){ p.pos = layout(p.seq); bboxOf(p.pos, 0, p.upto, worldBB); }
+  if (cur) cur.pos = layout(cur.seq);
+  redrawCoral();
+}
+function drawPathOn(g, p, alphaMul, c){
+  const m = p.seq.length - 1;
+  g.lineWidth = 1.1;
+  // agrupa por cor em trechos para não fazer um traço por segmento
+  let i = 1;
+  while (i <= p.upto){
+    const col = colorFor(p.seq[i], p.t, 0.22*p.w*alphaMul);
+    const end = Math.min(p.upto, i + 11);
+    g.strokeStyle = col; g.beginPath();
+    let j = m - i + 1; g.moveTo((p.pos[j*2]-c.cx)*c.s + c.ox, (p.pos[j*2+1]-c.cy)*c.s + c.oy);
+    for (let k = i; k <= end; k++){ j = m - k; g.lineTo((p.pos[j*2]-c.cx)*c.s + c.ox, (p.pos[j*2+1]-c.cy)*c.s + c.oy); }
+    g.stroke(); i = end + 1;
+  }
+}
+function coralView(){ return { s: camR.s, cx: camR.cx, cy: camR.cy, ox: W*MARGIN/2, oy: H*MARGIN/2 }; }
+function redrawCoral(){
+  camR.s = cam.s; camR.cx = cam.cx; camR.cy = cam.cy;
+  cctx.setTransform(CDPR,0,0,CDPR,0,0);
+  cctx.globalCompositeOperation = 'source-over'; cctx.clearRect(0, 0, W*MARGIN, H*MARGIN);
+  cctx.globalCompositeOperation = 'lighter'; cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+  const c = coralView();
+  for (const p of paths) drawPathOn(cctx, p, 1, c);
+}
+function commit(c, upto, t){
+  if (upto < 1) return;
+  const fade = (1 - P.mem) * 0.5;
+  if (fade > 0){
+    for (const p of paths) p.w *= (1 - fade);
+    paths = paths.filter(p => p.w > 0.03);
+    cctx.globalCompositeOperation = 'destination-out'; cctx.fillStyle = `rgba(0,0,0,${fade})`; cctx.fillRect(0,0,W*MARGIN,H*MARGIN);
+  }
+  const p = { n: c.seq[0], seq: c.seq, pos: c.pos, upto, w: 1, t };
+  paths.push(p); if (paths.length > 4000) paths.shift();
+  bboxOf(p.pos, 0, upto, worldBB);
+  cctx.globalCompositeOperation = 'lighter'; cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+  drawPathOn(cctx, p, 1, coralView());
+}
+function clearCoral(){ paths = []; worldBB = [-1,-1,1,1]; redrawCoral(); }
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2); CDPR = Math.min(DPR, 1.5);
+  W = innerWidth; H = innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  coral.width = Math.ceil(W*MARGIN*CDPR); coral.height = Math.ceil(H*MARGIN*CDPR);
+  redrawCoral();
+}
+addEventListener('resize', resize);
+
 // ---------- áudio ----------
-let AC = null, master, comp, verbIn, verbOut, dryBus, delay, delayFb, droneG, droneF, droneOscs = [];
-const SCALES = {
-  dorico:[0,2,3,5,7,9,10], penta:[0,3,5,7,10], jonico:[0,2,4,5,7,9,11], lidio:[0,2,4,6,7,9,11], eolio:[0,2,3,5,7,8,10]
-};
+let AC = null, master, comp, verbIn, verbOut, dryBus, delay, droneG, droneF;
+const SCALES = { dorico:[0,2,3,5,7,9,10], penta:[0,3,5,7,10], jonico:[0,2,4,5,7,9,11], lidio:[0,2,4,6,7,9,11], eolio:[0,2,3,5,7,8,10] };
 const ROOT = 73.416; // Ré2
+const now = () => AC ? AC.currentTime : performance.now()/1000;
 
 function makeIR(sec){
   const len = Math.floor(AC.sampleRate*sec), b = AC.createBuffer(2, len, AC.sampleRate);
   for (let ch = 0; ch < 2; ch++){
     const d = b.getChannelData(ch);
-    for (let i = 0; i < len; i++){ const t = i/len; d[i] = (Math.random()*2-1) * Math.pow(1-t, 3.2) * (0.6 + 0.4*Math.sin(i*0.0007+ch)); }
+    for (let i = 0; i < len; i++){ const t = i/len; d[i] = (Math.random()*2-1) * Math.pow(1-t, 3); }
   }
   return b;
 }
 function initAudio(){
-  AC = new (window.AudioContext || window.webkitAudioContext)();
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
   master = AC.createGain();
-  comp = AC.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+  comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
   master.connect(comp); comp.connect(AC.destination);
   dryBus = AC.createGain(); dryBus.connect(master);
-  const conv = AC.createConvolver(); conv.buffer = makeIR(6.5);
+  const conv = AC.createConvolver(); conv.buffer = makeIR(3.2);
   verbIn = AC.createGain(); verbOut = AC.createGain();
   verbIn.connect(conv); conv.connect(verbOut); verbOut.connect(master);
   delay = AC.createDelay(2); delay.delayTime.value = 0.42;
-  delayFb = AC.createGain(); delayFb.gain.value = 0.33;
+  const fb = AC.createGain(); fb.gain.value = 0.33;
   const dLp = AC.createBiquadFilter(); dLp.type = 'lowpass'; dLp.frequency.value = 2200;
-  delay.connect(dLp); dLp.connect(delayFb); delayFb.connect(delay);
-  dLp.connect(verbIn); dLp.connect(dryBus);
-  // drone: tônica + quinta, filtro abre conforme o número sobe
+  delay.connect(dLp); dLp.connect(fb); fb.connect(delay); dLp.connect(verbIn); dLp.connect(dryBus);
   droneG = AC.createGain(); droneG.gain.value = 0;
   droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 220; droneF.Q.value = 0.7;
   droneF.connect(droneG); droneG.connect(dryBus); droneG.connect(verbIn);
-  [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.003,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06],[ROOT*2.0,'triangle',0.08]].forEach(([f,type,g]) => {
+  [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f,type,g]) => {
     const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
-    const gg = AC.createGain(); gg.gain.value = g;
-    const lfo = AC.createOscillator(); lfo.frequency.value = 0.05 + Math.random()*0.08;
-    const lg = AC.createGain(); lg.gain.value = f*0.003; lfo.connect(lg); lg.connect(o.frequency); lfo.start();
-    o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start();
   });
   applyMix();
 }
@@ -212,182 +270,171 @@ function freqForDegree(d, base){
   const oct = Math.floor(d / k), semi = sc[((d % k)+k)%k] + 12*oct;
   return base * Math.pow(2, semi/12);
 }
-function panner(x){ const p = AC.createStereoPanner ? AC.createStereoPanner() : null; if (p) p.pan.value = Math.max(-1, Math.min(1, (x/W)*2-1)) * 0.7; return p; }
-function out(node, x, send = 0.5, dly = 0.25){
-  const p = panner(x); const last = p || node; if (p) node.connect(p);
-  last.connect(dryBus); const s = AC.createGain(); s.gain.value = send; last.connect(s); s.connect(verbIn);
-  const d = AC.createGain(); d.gain.value = dly; last.connect(d); d.connect(delay);
+function out(node, x, send, dly){
+  let last = node;
+  if (AC.createStereoPanner){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, (x/W)*2-1)) * 0.7; node.connect(p); last = p; }
+  last.connect(dryBus);
+  const s = AC.createGain(); s.gain.value = send; last.connect(s); s.connect(verbIn);
+  if (dly > 0){ const d = AC.createGain(); d.gain.value = dly; last.connect(d); d.connect(delay); }
 }
-// subida (×3+1): sino FM brilhante
-function bell(f, x, vel){
-  const t = AC.currentTime + 0.01;
+// a cauda das notas encurta quando a velocidade sobe (menos vozes ao mesmo tempo)
+const tail = base => Math.min(base, 0.5 + 5/P.speed);
+function bell(f, x, vel, t){       // subida (×3+1)
+  const dur = tail(3.2);
   const c = AC.createOscillator(), m = AC.createOscillator(), mg = AC.createGain(), g = AC.createGain();
-  c.type = 'sine'; c.frequency.value = f; m.type = 'sine'; m.frequency.value = f*3.5;
-  mg.gain.setValueAtTime(f*2.2*vel, t); mg.gain.exponentialRampToValueAtTime(f*0.05, t+1.6);
+  c.frequency.value = f; m.frequency.value = f*3.5;
+  mg.gain.setValueAtTime(f*2.2*vel, t); mg.gain.exponentialRampToValueAtTime(f*0.05, t+Math.min(1.6, dur));
   m.connect(mg); mg.connect(c.frequency);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+3.2);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
   c.connect(g); out(g, x, 0.6, 0.3);
-  c.start(t); m.start(t); c.stop(t+3.3); m.stop(t+3.3);
+  c.start(t); m.start(t); c.stop(t+dur+0.05); m.stop(t+dur+0.05);
 }
-// descida (÷2): nota macia, filtrada
-function soft(f, x, vel){
-  const t = AC.currentTime + 0.01;
-  const o = AC.createOscillator(), o2 = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
-  o.type = 'triangle'; o.frequency.value = f; o2.type = 'sine'; o2.frequency.value = f*2.001;
-  const g2 = AC.createGain(); g2.gain.value = 0.25; o2.connect(g2); g2.connect(lp);
-  lp.type = 'lowpass'; lp.frequency.setValueAtTime(f*6, t); lp.frequency.exponentialRampToValueAtTime(f*1.2, t+0.9);
+function soft(f, x, vel, t){       // descida (÷2)
+  const dur = tail(1.6);
+  const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+  o.type = 'triangle'; o.frequency.value = f;
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(f*6, t); lp.frequency.exponentialRampToValueAtTime(f*1.2, t+Math.min(0.9, dur));
   o.connect(lp); lp.connect(g);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.13*vel, t+0.025); g.gain.exponentialRampToValueAtTime(0.0001, t+1.6);
-  out(g, x, 0.45, 0.18);
-  o.start(t); o2.start(t); o.stop(t+1.7); o2.stop(t+1.7);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+0.025); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  out(g, x, 0.45, 0.15);
+  o.start(t); o.stop(t+dur+0.05);
 }
-// chegada ao 1: acorde de repouso
-function resolveChord(x){
-  const t = AC.currentTime + 0.02, sc = SCALES[P.scale];
-  const degs = sc.length === 5 ? [0,2,4,5,8] : [0,4,7,9,11+1];
+function resolveChord(x, t){       // chegada ao 1
+  const sc = SCALES[P.scale];
+  const degs = sc.length === 5 ? [0,2,4,5,8] : [0,4,7,9,12];
   degs.forEach((d,i) => {
-    const f = freqForDegree(d, ROOT*2);
-    const o = AC.createOscillator(), g = AC.createGain(), lp = AC.createBiquadFilter();
+    const f = freqForDegree(d, ROOT*2), ti = t + i*0.09;
+    const o = AC.createOscillator(), g = AC.createGain();
     o.type = i === 0 ? 'sine' : 'triangle'; o.frequency.value = f; o.detune.value = (Math.random()-0.5)*8;
-    lp.type = 'lowpass'; lp.frequency.value = 1400;
-    g.gain.setValueAtTime(0.0001, t+i*0.09); g.gain.exponentialRampToValueAtTime(0.07, t+i*0.09+1.2); g.gain.exponentialRampToValueAtTime(0.0001, t+i*0.09+7.5);
-    o.connect(lp); lp.connect(g); out(g, x + (i-2)*40, 0.9, 0.15);
-    o.start(t+i*0.09); o.stop(t+i*0.09+7.6);
+    g.gain.setValueAtTime(0.0001, ti); g.gain.exponentialRampToValueAtTime(0.06, ti+1.2); g.gain.exponentialRampToValueAtTime(0.0001, ti+7);
+    o.connect(g); out(g, x + (i-2)*40, 0.9, 0);
+    o.start(ti); o.stop(ti+7.1);
   });
 }
-// laço 4 → 2 → 1: três pulsos graves
-function loopPulse(i, x){
-  const t = AC.currentTime + 0.01, f = ROOT * [4,2,1][i] / 2 * 2;
+function loopPulse(i, x, t){       // laço 4 → 2 → 1
+  const f = ROOT * [4,2,1][i];
   const o = AC.createOscillator(), g = AC.createGain();
-  o.type = 'sine'; o.frequency.setValueAtTime(f*1.02, t); o.frequency.exponentialRampToValueAtTime(f, t+0.15);
+  o.frequency.setValueAtTime(f*1.02, t); o.frequency.exponentialRampToValueAtTime(f, t+0.15);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22 - i*0.05, t+0.02); g.gain.exponentialRampToValueAtTime(0.0001, t+2.2);
-  o.connect(g); out(g, x, 0.7, 0.1); o.start(t); o.stop(t+2.3);
-}
-function setDroneAltitude(n){
-  if (!AC) return;
-  const lg = Math.log2(n);
-  droneF.frequency.setTargetAtTime(160 + lg*lg*7, AC.currentTime, 0.6);
+  o.connect(g); out(g, x, 0.7, 0); o.start(t); o.stop(t+2.3);
 }
 
 // ---------- estado da obra ----------
-let cur = null;           // {seq, pos, i, tStep, done}
+let cur = null;   // {seq, pos, t0, next, done}
 let ripples = [], sparks = [];
-let nextAt = 0, clock = 0, running = false;
+let nextAt = 0, running = false, lastShown = -1;
+const LOOK = 0.25;   // agenda as notas com antecedência no relógio do áudio
 
 function begin(n){
-  if (cur && !cur.done) commit(cur, cur.i);
+  const t = now();
+  if (cur && !cur.done) commit(cur, Math.min(cur.seq.length-1, Math.floor((t - cur.t0)*P.speed)), t);
   const seq = collatz(n);
-  cur = { seq, pos: layout(seq), i: 0, frac: 0, done: false, born: clock };
-  playStep(0);
+  cur = { seq, pos: layout(seq), t0: t + 0.08, next: 0, done: false };
 }
-function commit(c, upto){
-  // grava o trecho percorrido no coral
-  const m = c.seq.length - 1;
-  const fade = 1 - P.mem;
-  if (fade > 0){ cctx.globalCompositeOperation = 'destination-out'; cctx.fillStyle = `rgba(0,0,0,${fade*0.5})`; cctx.fillRect(0,0,W,H); }
-  cctx.globalCompositeOperation = 'lighter';
-  cctx.lineCap = 'round'; cctx.lineJoin = 'round';
-  for (let i = 1; i <= upto; i++){
-    const a = c.pos[m-i+1], b = c.pos[m-i];
-    cctx.strokeStyle = colorFor(c.seq[i], clock*0.02, 0.22);
-    cctx.lineWidth = 1.1;
-    cctx.beginPath(); cctx.moveTo(a[0], a[1]); cctx.lineTo(b[0], b[1]); cctx.stroke();
-  }
-}
-function clearCoral(){ cctx.globalCompositeOperation = 'source-over'; cctx.clearRect(0,0,W,H); }
-
-function playStep(i){
-  const c = cur, m = c.seq.length - 1, v = c.seq[i], p = c.pos[m-i];
-  setDroneAltitude(v);
-  $('num').textContent = v.toLocaleString('pt-BR');
-  if (!AC) return;
+function scheduleStep(i, t){
+  const c = cur, m = c.seq.length - 1, v = c.seq[i];
+  const [x] = toScreen(c.pos[(m-i)*2], c.pos[(m-i)*2+1]);
+  droneF.frequency.setTargetAtTime(160 + Math.log2(v)**2 * 7, t, 0.6);
   const f = freqForDegree(degreeFor(v), ROOT*2);
-  if (i === 0) { bell(f, p[0], 0.9); soft(f/2, p[0], 0.7); }
-  else if (c.seq[i-1] % 2 === 1) { bell(f, p[0], 0.75); sparks.push({x:p[0], y:p[1], t:clock, n:v}); }
-  else soft(f, p[0], 0.8);
-}
-function arrive(){
-  const c = cur, x = c.pos[0][0], y = c.pos[0][1];
-  c.done = true;
-  commit(c, c.seq.length-1);
-  if (AC) resolveChord(x);
-  for (let k = 0; k < 3; k++){
-    setTimeout(() => { ripples.push({x, y, t: clock, k}); if (AC) loopPulse(k, x); }, 900 + k*Math.max(350, 1000/P.speed*1.6));
+  if (i === 0) { bell(f, x, 0.9, t); soft(f/2, x, 0.7, t); }
+  else if (c.seq[i-1] % 2 === 1) { bell(f, x, 0.75, t); sparks.push({ i: m-i, c, t, n: v }); }
+  else soft(f, x, 0.8, t);
+  if (i === m){
+    resolveChord(x, t + 0.02);
+    const iv = Math.max(0.4, 1.6/P.speed);
+    for (let k = 0; k < 3; k++){ loopPulse(k, x, t + 0.9 + k*iv); ripples.push({ t: t + 0.9 + k*iv, k }); }
   }
-  nextAt = clock + P.gap + 1.8;
 }
 
 // ---------- desenho ----------
-let last = performance.now();
-function frame(now){
-  const dt = Math.min(0.1, (now - last)/1000); last = now; clock += dt;
+function frame(){
+  const t = now();
   if (running){
     if (cur && !cur.done){
-      cur.frac += dt * P.speed;
-      while (cur.frac >= 1 && !cur.done){
-        cur.frac -= 1; cur.i++;
-        if (cur.i >= cur.seq.length - 1){ cur.i = cur.seq.length - 1; cur.frac = 0; playStep(cur.i); arrive(); }
-        else playStep(cur.i);
-      }
-    } else if (clock >= nextAt) begin(nextSeed());
+      const m = cur.seq.length - 1;
+      while (cur.next <= m && cur.t0 + cur.next/P.speed < t + LOOK){ scheduleStep(cur.next, Math.max(t, cur.t0 + cur.next/P.speed)); cur.next++; }
+      if ((t - cur.t0)*P.speed >= m){ cur.done = true; cur.tDone = t; commit(cur, m, t); nextAt = t + P.gap + 1.8; }
+    } else if (t >= nextAt) begin(nextSeed());
   }
+
+  // câmera: aproxima no começo e abre a cada expansão
+  const tg = camTarget(), k = 0.035;
+  cam.s = Math.exp(Math.log(cam.s) + (Math.log(tg.s) - Math.log(cam.s))*k);
+  cam.cx += (tg.cx - cam.cx)*k; cam.cy += (tg.cy - cam.cy)*k;
+  const ratio = cam.s / camR.s;
+  const settled = Math.abs(Math.log(tg.s/cam.s)) < 0.01 && Math.hypot(tg.cx-cam.cx, tg.cy-cam.cy)*cam.s < 2;
+  if (Math.abs(Math.log(ratio)) > 0.4 || (settled && (Math.abs(Math.log(ratio)) > 0.02 || Math.hypot(camR.cx-cam.cx, camR.cy-cam.cy)*cam.s > 2))) redrawCoral();
 
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
   ctx.globalCompositeOperation = 'lighter';
-  ctx.drawImage(coral, 0, 0, W, H);
+  { const r = cam.s / camR.s, bw = W*MARGIN, bh = H*MARGIN;
+    const ox = W/2 - bw/2*r + (camR.cx - cam.cx)*cam.s, oy = H/2 - bh/2*r + (camR.cy - cam.cy)*cam.s;
+    ctx.drawImage(coral, ox, oy, bw*r, bh*r); }
 
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (cur){
     const c = cur, m = c.seq.length - 1;
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    // destino ainda não percorrido: fantasma
-    if (!c.done){
-      ctx.strokeStyle = colorFor(c.seq[c.i], clock*0.02, 0.07); ctx.lineWidth = 1;
-      ctx.beginPath(); const s = c.pos[m - c.i]; ctx.moveTo(s[0], s[1]);
-      for (let j = m - c.i - 1; j >= 0; j--) ctx.lineTo(c.pos[j][0], c.pos[j][1]);
+    const p = c.done ? m : Math.max(0, (t - c.t0)*P.speed);
+    const i = Math.min(m, Math.floor(p)), frac = c.done ? 0 : p - i;
+    const P2 = j => toScreen(c.pos[j*2], c.pos[j*2+1]);
+    if (i !== lastShown && !c.done){ lastShown = i; $('num').textContent = c.seq[i].toLocaleString('pt-BR'); }
+    // fantasma do caminho que falta
+    if (!c.done && i < m){
+      ctx.strokeStyle = colorFor(c.seq[i], t*0.02, 0.07); ctx.lineWidth = 1;
+      ctx.beginPath(); let q = P2(m - i); ctx.moveTo(q[0], q[1]);
+      for (let j = m - i - 1; j >= 0; j--){ q = P2(j); ctx.lineTo(q[0], q[1]); }
       ctx.stroke();
     }
-    // trecho percorrido: luz que esfria com o tempo
-    const upto = c.done ? m : c.i;
-    const life = c.done ? Math.max(0, 1 - (clock - (nextAt - P.gap - 1.8))/ (P.gap+1.8)) : 1;
-    for (let i = 1; i <= upto; i++){
-      const a = c.pos[m-i+1], b = c.pos[m-i];
-      const age = (upto - i);
-      const al = (0.25 + 0.75*Math.exp(-age/18)) * life;
-      if (al < 0.01) continue;
-      ctx.strokeStyle = colorFor(c.seq[i], clock*0.02, al);
-      ctx.lineWidth = 1 + 2.2*Math.exp(-age/10);
-      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    // trecho percorrido
+    const life = c.done ? Math.max(0, 1 - (t - c.tDone)/(P.gap + 1.8)) : 1;
+    if (life > 0.01 && i >= 1){
+      const FRESH = 30, cut = Math.max(1, i - FRESH);
+      if (cut > 1){       // parte antiga num único traço
+        ctx.strokeStyle = colorFor(c.seq[cut], t*0.02, 0.25*life); ctx.lineWidth = 1;
+        ctx.beginPath(); let q = P2(m); ctx.moveTo(q[0], q[1]);
+        for (let s = 1; s <= cut; s++){ q = P2(m - s); ctx.lineTo(q[0], q[1]); }
+        ctx.stroke();
+      }
+      for (let s = cut; s <= i; s++){
+        if (s < 1) continue;
+        const a = P2(m-s+1), b = P2(m-s), age = i - s;
+        ctx.strokeStyle = colorFor(c.seq[s], t*0.02, (0.25 + 0.75*Math.exp(-age/14))*life);
+        ctx.lineWidth = 1 + 2.2*Math.exp(-age/10);
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      }
     }
     // cabeça
     if (!c.done){
-      const a = c.pos[m - c.i], b = c.pos[Math.max(0, m - c.i - 1)];
-      const e = c.frac*c.frac*(3-2*c.frac);
+      const a = P2(m - i), b = P2(Math.max(0, m - i - 1)), e = frac*frac*(3-2*frac);
       const hx = a[0] + (b[0]-a[0])*e, hy = a[1] + (b[1]-a[1])*e;
-      const r = 14 + Math.log2(c.seq[c.i])*1.4;
+      const r = 14 + Math.log2(c.seq[i])*1.4;
       const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, r);
-      g.addColorStop(0, colorFor(c.seq[c.i], clock*0.02, 0.95)); g.addColorStop(0.25, colorFor(c.seq[c.i], clock*0.02, 0.35)); g.addColorStop(1, 'rgba(0,0,0,0)');
+      g.addColorStop(0, colorFor(c.seq[i], t*0.02, 0.95)); g.addColorStop(0.25, colorFor(c.seq[i], t*0.02, 0.35)); g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, r, 0, Math.PI*2); ctx.fill();
     }
   }
   // faíscas nas subidas
-  sparks = sparks.filter(s => clock - s.t < 1.6);
+  sparks = sparks.filter(s => t - s.t < 1.6);
+  ctx.lineWidth = 1;
   for (const s of sparks){
-    const k = (clock - s.t)/1.6, r = 4 + k*26;
-    ctx.strokeStyle = colorFor(s.n, clock*0.02, 0.5*(1-k)); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI*2); ctx.stroke();
+    if (t < s.t) continue;
+    const k2 = (t - s.t)/1.6, [x, y] = toScreen(s.c.pos[s.i*2], s.c.pos[s.i*2+1]);
+    ctx.strokeStyle = colorFor(s.n, t*0.02, 0.5*(1-k2));
+    ctx.beginPath(); ctx.arc(x, y, 4 + k2*26, 0, Math.PI*2); ctx.stroke();
   }
-  // ondas do laço 4-2-1 na raiz
-  ripples = ripples.filter(r => clock - r.t < 6);
+  // a raiz: o 1, e as ondas do laço 4-2-1
+  const [rx, ry] = toScreen(0, 0);
+  ripples = ripples.filter(r => t - r.t < 6);
+  ctx.lineWidth = 1.2;
   for (const r of ripples){
-    const k = (clock - r.t)/6, rad = 10 + Math.pow(k, 0.6) * Math.min(W,H) * (0.55 - r.k*0.12);
-    ctx.strokeStyle = colorFor(1 << (2 - r.k), clock*0.02, 0.35*(1-k)); ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, Math.PI*2); ctx.stroke();
+    if (t < r.t) continue;
+    const k2 = (t - r.t)/6, rad = 10 + Math.pow(k2, 0.6) * Math.min(W,H) * (0.55 - r.k*0.12);
+    ctx.strokeStyle = colorFor(1 << (2 - r.k), t*0.02, 0.35*(1-k2));
+    ctx.beginPath(); ctx.arc(rx, ry, rad, 0, Math.PI*2); ctx.stroke();
   }
-  // a raiz: o 1
-  if (cur){
-    const [rx, ry] = cur.pos[0], pulse = 0.5 + 0.5*Math.sin(clock*1.3);
-    const g = ctx.createRadialGradient(rx, ry, 0, rx, ry, 22);
+  if (running){
+    const pulse = 0.5 + 0.5*Math.sin(t*1.3), g = ctx.createRadialGradient(rx, ry, 0, rx, ry, 22);
     g.addColorStop(0, `rgba(255,255,255,${0.35 + pulse*0.25})`); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(rx, ry, 22, 0, Math.PI*2); ctx.fill();
   }
@@ -399,18 +446,19 @@ function startPiece(){
   if (running) return;
   initAudio(); running = true;
   $('start').classList.add('hide');
-  nextAt = clock + 0.8;
+  nextAt = now() + 0.8;
 }
 $('start').addEventListener('pointerdown', e => { e.stopPropagation(); startPiece(); });
-
 $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
 $('bClear').addEventListener('click', clearCoral);
 $('bFull').addEventListener('click', toggleFull);
 $('seedIn').addEventListener('change', e => { const n = Math.floor(+e.target.value); if (n >= 2 && n < 1e12 && running) begin(n); });
 function toggleFull(){
   const d = document;
-  if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
-  else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  try {
+    if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+    else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  } catch (e) {}
 }
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
@@ -423,6 +471,7 @@ addEventListener('keydown', e => {
 });
 
 resize();
+cam.s = camR.s = Math.min(W, H)/7;
 requestAnimationFrame(frame);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

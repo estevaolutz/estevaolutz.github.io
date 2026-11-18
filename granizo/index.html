@@ -36,7 +36,7 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div id="num"></div>
+<div id="num" class="on"></div>
 <div id="start"><h1>GRANIZO</h1><p>toque para começar</p></div>
 <div id="dot" title="Controles (M)"></div>
 <div id="panel">
@@ -75,7 +75,7 @@
       <option value="brasa">Brasa</option>
       <option value="branco">Branco</option>
     </select></div>
-  <div class="row"><label>Mostrar número</label><input type="checkbox" id="showNum"></div>
+  <div class="row"><label>Mostrar número</label><input type="checkbox" id="showNum" checked></div>
   <div class="btns">
     <button id="bClear">Limpar coral</button>
     <button id="bFull">Tela cheia</button>
@@ -225,14 +225,6 @@ const SCALES = { dorico:[0,2,3,5,7,9,10], penta:[0,3,5,7,10], jonico:[0,2,4,5,7,
 const ROOT = 73.416; // Ré2
 const now = () => AC ? AC.currentTime : performance.now()/1000;
 
-function makeIR(sec){
-  const len = Math.floor(AC.sampleRate*sec), b = AC.createBuffer(2, len, AC.sampleRate);
-  for (let ch = 0; ch < 2; ch++){
-    const d = b.getChannelData(ch);
-    for (let i = 0; i < len; i++){ const t = i/len; d[i] = (Math.random()*2-1) * Math.pow(1-t, 3); }
-  }
-  return b;
-}
 function initAudio(){
   const Ctx = window.AudioContext || window.webkitAudioContext;
   try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
@@ -240,9 +232,17 @@ function initAudio(){
   comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
   master.connect(comp); comp.connect(AC.destination);
   dryBus = AC.createGain(); dryBus.connect(master);
-  const conv = AC.createConvolver(); conv.buffer = makeIR(3.2);
-  verbIn = AC.createGain(); verbOut = AC.createGain();
-  verbIn.connect(conv); conv.connect(verbOut); verbOut.connect(master);
+  // reverb leve: filtros de pente com amortecimento (bem mais barato que convolução)
+  verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+  const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+  const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 3800; verbIn.connect(pre);
+  [0.0353,0.0411,0.0467,0.0521,0.0579,0.0631].forEach((dt, i) => {
+    const d = AC.createDelay(0.2); d.delayTime.value = dt * 1.9;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+    const fb = AC.createGain(); fb.gain.value = 0.84;
+    const o = AC.createGain(); o.gain.value = 0.16;
+    pre.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+  });
   delay = AC.createDelay(2); delay.delayTime.value = 0.42;
   const fb = AC.createGain(); fb.gain.value = 0.33;
   const dLp = AC.createBiquadFilter(); dLp.type = 'lowpass'; dLp.frequency.value = 2200;
@@ -271,8 +271,7 @@ function freqForDegree(d, base){
   return base * Math.pow(2, semi/12);
 }
 function out(node, x, send, dly){
-  let last = node;
-  if (AC.createStereoPanner){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, (x/W)*2-1)) * 0.7; node.connect(p); last = p; }
+  const last = node;
   last.connect(dryBus);
   const s = AC.createGain(); s.gain.value = send; last.connect(s); s.connect(verbIn);
   if (dly > 0){ const d = AC.createGain(); d.gain.value = dly; last.connect(d); d.connect(delay); }
@@ -282,9 +281,9 @@ const tail = base => Math.min(base, 0.5 + 5/P.speed);
 function bell(f, x, vel, t){       // subida (×3+1)
   const dur = tail(3.2);
   const c = AC.createOscillator(), m = AC.createOscillator(), mg = AC.createGain(), g = AC.createGain();
-  c.frequency.value = f; m.frequency.value = f*3.5;
-  mg.gain.setValueAtTime(f*2.2*vel, t); mg.gain.exponentialRampToValueAtTime(f*0.05, t+Math.min(1.6, dur));
-  m.connect(mg); mg.connect(c.frequency);
+  c.frequency.value = f; m.frequency.value = f*2.76;
+  mg.gain.setValueAtTime(0.5, t); mg.gain.exponentialRampToValueAtTime(0.001, t+Math.min(0.9, dur));
+  m.connect(mg); mg.connect(g);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
   c.connect(g); out(g, x, 0.6, 0.3);
   c.start(t); m.start(t); c.stop(t+dur+0.05); m.stop(t+dur+0.05);
@@ -323,7 +322,7 @@ function loopPulse(i, x, t){       // laço 4 → 2 → 1
 let cur = null;   // {seq, pos, t0, next, done}
 let ripples = [], sparks = [];
 let nextAt = 0, running = false, lastShown = -1;
-const LOOK = 0.25;   // agenda as notas com antecedência no relógio do áudio
+const LOOK = 0.6;   // agenda as notas com antecedência no relógio do áudio
 
 function begin(n){
   const t = now();

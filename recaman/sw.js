@@ -1,10 +1,8 @@
-// guarda a obra no aparelho para abrir sem internet (a página é atualizada sempre que houver rede)
-const CACHE = 'recaman-2bec487a';
-const ARQS = ['./', 'index.html', 'manifest.webmanifest', 'icone-192.png', 'icone-512.png', 'apple-touch-icon.png'];
-self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ARQS))); self.skipWaiting(); });
-self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))); self.clients.claim(); });
-self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(fetch(e.request).then((r) => { const c = r.clone(); if (r.ok && new URL(e.request.url).origin === location.origin) caches.open(CACHE).then((k) => k.put(e.request, c)); return r; })
-    .catch(() => caches.match(e.request).then((r) => r || caches.match('index.html'))));
+// a obra mudou para /conjecturas/: este service worker antigo apaga o cache e se desinstala
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('recaman-')).map((k) => caches.delete(k))))
+    .then(() => self.registration.unregister())
+    .then(() => self.clients.matchAll({ type: 'window' }))
+    .then((cs) => cs.forEach((c) => c.navigate(c.url))));
 });

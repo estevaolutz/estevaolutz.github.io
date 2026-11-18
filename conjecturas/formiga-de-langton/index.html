@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Formiga de Langton</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s;text-align:center;padding:0 24px}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start p.sub{letter-spacing:.06em;opacity:.32;max-width:420px;line-height:1.6;font-size:11.5px}
+  #start.hide{opacity:0;pointer-events:none}
+  .hud{position:fixed;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums;transition:opacity .6s}
+  #num{left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:.55}
+  #op{left:30px;top:62px;right:60px;font-weight:300;font-size:16px;letter-spacing:.05em;opacity:.75;line-height:1.35}
+  #seq{left:30px;top:94px;right:60px;max-height:34%;font-weight:300;font-size:12.5px;line-height:1.75;letter-spacing:.03em;opacity:.42;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq b{font-weight:500}
+  body.semtexto .hud{opacity:0!important}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 96px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0;min-width:0}
+  .row select,.row input[type=number],.row input[type=text]{flex:1;min-width:0;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.55;margin-top:10px}
+  @media (max-width:640px){ #op{font-size:13.5px} #seq{top:112px;font-size:11.5px} #num{font-size:24px} }
+
+  #op .rod{color:#e9f6ff}
+  #op .cao{color:#8fb3cc}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>FORMIGA DE LANGTON</h1><p>toque para começar</p>
+  <p class="sub">Na casa clara a formiga vira à direita, na escura vira à esquerda, e troca a cor da casa. Depois de uns dez mil passos de caos ela sempre começa a construir uma rodovia. Ninguém conseguiu provar que isso acontece sempre.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Formiga</h2>
+  <div class="row"><label>Regra</label>
+    <select id="rule">
+      <option value="RL" selected>RL — Langton</option>
+      <option value="LLRR">LLRR — simétrica</option>
+      <option value="RLR">RLR — caos sem fim</option>
+      <option value="LRRRRRLLR">LRRRRRLLR — quadrado</option>
+      <option value="RRLLLRLLLRRR">RRLLLRLLLRRR — triângulo</option>
+      <option value="LLRRRL">LLRRRL — rodovia ou não</option>
+      <option value="LLRLRLL">LLRLRLL — rodovia ou não</option>
+    </select></div>
+  <div class="row"><label>Começo</label>
+    <select id="init">
+      <option value="vazio" selected>Grade vazia</option>
+      <option value="acaso">Algumas casas ao acaso</option>
+      <option value="quadrado">Quadrado escuro</option>
+      <option value="linha">Linha escura</option>
+    </select></div>
+  <div class="row"><label>Batidas/s</label><input type="range" id="bps" min="1" max="24" step="0.5" value="6"></div>
+  <div class="row"><label>Passos/batida</label>
+    <select id="spb"><option value="1">1</option><option value="4">4</option><option value="13" selected>13 (rodovia = 8 batidas)</option><option value="26">26</option><option value="52">52</option><option value="104">104 (rodovia = 1 batida)</option></select></div>
+  <div class="row"><label>Rodovia (voltas)</label><input type="range" id="laps" min="4" max="120" step="1" value="28"></div>
+  <h2>Som</h2>
+  <div class="row"><label>Modo</label>
+    <select id="scale">
+      <option value="jonico">Jônico (maior)</option>
+      <option value="dorico" selected>Dórico</option>
+      <option value="frigio">Frígio</option>
+      <option value="lidio">Lídio</option>
+      <option value="mixolidio">Mixolídio</option>
+      <option value="eolio">Eólio (menor)</option>
+      <option value="menorHarm">Menor harmônica</option>
+      <option value="menorMel">Menor melódica</option>
+      <option value="frigioDom">Frígio dominante</option>
+      <option value="hungara">Húngara menor</option>
+      <option value="penta">Pentatônica menor</option>
+      <option value="pentaMaior">Pentatônica maior</option>
+      <option value="hirajoshi">Hirajoshi</option>
+      <option value="tons">Tons inteiros</option>
+    </select></div>
+  <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75"></div>
+  <div class="row"><label>Drone</label><input type="range" id="drone" min="0" max="1" step="0.01" value="0.45"></div>
+  <div class="row"><label>Reverb</label><input type="range" id="verb" min="0" max="1" step="0.01" value="0.55"></div>
+
+  <div class="row"><label>Textura dos passos</label><input type="range" id="tex" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Batida</label><input type="range" id="perc" min="0" max="1" step="0.01" value="0.6"></div>
+  <div class="row"><label>Melodia</label><input type="range" id="mel" min="0" max="1" step="0.01" value="0.8"></div>
+  <div class="row"><label>Baixo</label><input type="range" id="bass" min="0" max="1" step="0.01" value="0.7"></div>
+  <h2>Efeitos de som</h2>
+  <div class="row"><label>Delay</label>
+    <select id="dlyT"><option value="0">Desligado</option><option value="0.5">½ batida</option><option value="0.75">¾ batida</option><option value="1">1 batida</option><option value="1.5" selected>1½ batida</option><option value="2">2 batidas</option><option value="3">3 batidas</option></select></div>
+  <div class="row"><label>Repetições</label><input type="range" id="dlyFb" min="0" max="0.9" step="0.01" value="0.3"></div>
+  <div class="row"><label>Mistura do delay</label><input type="range" id="dlyMix" min="0" max="1.5" step="0.01" value="1"></div>
+  <div class="row"><label>Filtro</label><input type="range" id="cut" min="0" max="1" step="0.001" value="1"></div>
+  <div class="row"><label>Ressonância</label><input type="range" id="res" min="0.5" max="18" step="0.1" value="0.7"></div>
+  <div class="row"><label>Varredura</label><input type="range" id="sweep" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Abre na rodovia</label><input type="checkbox" id="hwOpen"></div>
+  <div class="row"><label>Saturação</label><input type="range" id="drv" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Bits</label><input type="range" id="crush" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Largura estéreo</label><input type="range" id="wid" min="0" max="1.5" step="0.01" value="1"></div>
+  <h2>Efeitos de imagem</h2>
+  <div class="row"><label>Brilho</label><input type="range" id="glow" min="0" max="1" step="0.01" value="0.3"></div>
+  <div class="row"><label>Persistência</label><input type="range" id="pers" min="0" max="0.95" step="0.01" value="0"></div>
+  <div class="row"><label>Pulso na batida</label><input type="range" id="pulse" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Luz da rodovia</label><input type="range" id="hwGlow" min="0" max="1.5" step="0.01" value="0.6"></div>
+  <div class="btns"><button id="bFxDef">Efeitos padrão</button><button id="bFxZero">Efeitos zerados</button></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label>
+    <select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Rastro da formiga</label><input type="range" id="trail" min="0" max="1" step="0.01" value="0.6"></div>
+  <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.4" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
+  <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
+  <div class="hint">Cada batida reúne alguns passos: as viradas à esquerda escolhem a nota, a direção da formiga escolhe a voz. No caos a melodia não se repete; quando a rodovia aparece (período de 104 passos) a música vira um laço.<br>Efeitos: o delay acompanha o andamento (em batidas); a varredura do filtro dura 8 batidas, o compasso da rodovia; “Abre na rodovia” deixa o filtro fechado no caos e abre quando a rodovia aparece.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · ↑/↓ velocidade.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- núcleo comum das obras de conjecturas (som, painel, tela inicial) ----------
+const $ = id => document.getElementById(id);
+const O = (() => {
+  const P = {};
+  let ids = [];
+  function readP(){
+    for (const k of ids){ const el = $(k); if (!el) continue;
+      P[k] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' || el.type === 'text') ? el.value : parseFloat(el.value); }
+  }
+  function bind(list, onChange){
+    ids = list.concat(['scale','vol','drone','verb']);
+    readP();
+    for (const k of ids){ const el = $(k); if (!el) continue;
+      el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => { const old = Object.assign({}, P); readP(); applyMix(); onChange && onChange(k, old); }); }
+  }
+
+  // ---------- áudio ----------
+  let AC = null, master, comp, fxF, fxDrive, fxCrush, dFb, dRet, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  const SCALES = {
+    jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+    mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+    menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+    penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+  };
+  const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+  const ROOT = 73.416; // Ré2
+  const now = () => AC ? AC.currentTime : performance.now()/1000;
+  let voices = 0;
+  const MAXV = 56;
+
+  function initAudio(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+    master = AC.createGain();
+    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    // efeitos de saída (neutros por padrão): filtro → saturação → redução de bits → compressor
+    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
+    fxDrive = AC.createWaveShaper(); fxCrush = AC.createWaveShaper(); fxDrive.oversample = '2x';
+    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(fxCrush); fxCrush.connect(comp); comp.connect(AC.destination);
+    dryBus = AC.createGain(); dryBus.connect(master);
+    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 3200;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220;
+    verbIn.connect(hp); hp.connect(pre);
+    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373].forEach((dt, i) => {
+      const d = AC.createDelay(0.3); d.delayTime.value = dt;
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+      const fb = AC.createGain(); fb.gain.value = 0.7;
+      const o = AC.createGain(); o.gain.value = 0.2;
+      pre.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+    });
+    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+    const fb = AC.createGain(); fb.gain.value = 0.3; dFb = fb; dRet = AC.createGain(); dRet.gain.value = 1;
+    const dLp = AC.createBiquadFilter(); dLp.type = 'lowpass'; dLp.frequency.value = 2200;
+    delay.connect(dLp); dLp.connect(fb); fb.connect(delay); dLp.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
+    droneG = AC.createGain(); droneG.gain.value = 0;
+    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
+    droneF.connect(droneG); droneG.connect(dryBus); droneG.connect(verbIn);
+    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f,type,g]) => {
+      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    });
+    applyMix();
+  }
+  function applyMix(){
+    if (!AC) return;
+    const t = AC.currentTime;
+    master.gain.setTargetAtTime(P.vol, t, 0.1);
+    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
+  }
+  // drone: fundamental e quinta em semitons acima do Ré
+  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
+    if (!AC) return;
+    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
+    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
+    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
+  }
+  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
+  function semi(d){ const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
+  // acorde de cinco vozes (terças empilhadas) a partir do grau d
+  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chordName(d){
+    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
+    let name = NOTAS[root];
+    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+      if (q) name += ' ' + q; }
+    return name;
+  }
+
+  function out(node, pan, send, dly, t, end){
+    let last = node;
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
+    last.connect(dryBus);
+    const s = AC.createGain(); s.gain.value = send; last.connect(s); s.connect(verbIn);
+    if (dly > 0){ const d = AC.createGain(); d.gain.value = dly; last.connect(d); d.connect(delay); }
+    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  }
+  const ok = () => AC && voices < MAXV;
+  function bell(f, t, vel = 0.8, pan = 0, dur = 3){
+    if (!ok()) return;
+    const c = AC.createOscillator(), m = AC.createOscillator(), mg = AC.createGain(), g = AC.createGain();
+    c.frequency.value = f; m.frequency.value = f*2.76;
+    mg.gain.setValueAtTime(f*0.5, t); mg.gain.exponentialRampToValueAtTime(0.01, t+Math.min(0.9, dur));
+    m.connect(mg); mg.connect(c.frequency);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    c.connect(g); out(g, pan, 0.6, 0.3, t, t+dur);
+    c.start(t); m.start(t); c.stop(t+dur+0.05); m.stop(t+dur+0.05);
+  }
+  function soft(f, t, vel = 0.8, pan = 0, dur = 1.6){
+    if (!ok()) return;
+    const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    lp.type = 'lowpass'; lp.frequency.setValueAtTime(Math.min(16000, f*6), t); lp.frequency.exponentialRampToValueAtTime(f*1.2, t+Math.min(0.9, dur));
+    o.connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+0.025); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    out(g, pan, 0.45, 0.15, t, t+dur);
+    o.start(t); o.stop(t+dur+0.05);
+  }
+  function pluck(f, t, vel = 0.8, pan = 0, dur = 0.9){
+    if (!ok()) return;
+    const o = AC.createOscillator(), o2 = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = 'sawtooth'; o.frequency.value = f; o2.type = 'square'; o2.frequency.value = f*1.003;
+    lp.type = 'lowpass'; lp.Q.value = 2; lp.frequency.setValueAtTime(Math.min(14000, f*10), t); lp.frequency.exponentialRampToValueAtTime(f*1.1, t+dur*0.6);
+    const g2 = AC.createGain(); g2.gain.value = 0.4; o2.connect(g2); g2.connect(lp);
+    o.connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    out(g, pan, 0.35, 0.2, t, t+dur);
+    o.start(t); o2.start(t); o.stop(t+dur+0.05); o2.stop(t+dur+0.05);
+  }
+  function pad(f, t, vel = 0.6, pan = 0, dur = 6, att = 1.2){
+    if (!ok()) return;
+    const g = AC.createGain(), lp = AC.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = Math.min(9000, f*4);
+    [-7, 7].forEach(dt => { const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = dt; o.connect(lp); o.start(t); o.stop(t+dur+0.1); });
+    lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.035*vel, t+att); g.gain.setTargetAtTime(0.0001, t+Math.max(att, dur-att*1.5), att*0.5);
+    out(g, pan, 0.9, 0, t, t+dur);
+  }
+  function sine(f, t, vel = 0.6, pan = 0, dur = 4, att = 0.02){
+    if (!ok()) return;
+    const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+att); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); out(g, pan, 0.7, 0.1, t, t+dur); o.start(t); o.stop(t+dur+0.05);
+  }
+  function kick(t, vel = 0.8, f0 = 120){
+    if (!ok()) return;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
+    o.connect(g); out(g, 0, 0.1, 0, t, t+0.5); o.start(t); o.stop(t+0.5);
+  }
+  let noiseBuf = null;
+  function tick(t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
+    if (!ok()) return;
+    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = 1.4;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(bp); bp.connect(g); out(g, pan, 0.25, 0.1, t, t+dur); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
+  }
+
+  // ---------- tela, painel, teclas ----------
+  function toggleFull(){
+    const d = document;
+    try {
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+      else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } catch (e) {}
+  }
+  let running = false;
+  function setup(onStart, keys = {}){
+    $('start').addEventListener('pointerdown', e => { e.stopPropagation(); go(); });
+    function go(){ if (running) return; initAudio(); running = true; $('start').classList.add('hide'); onStart && onStart(); }
+    $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+    const bf = $('bFull'); if (bf) bf.addEventListener('click', toggleFull);
+    const st = $('showTxt'); if (st) st.addEventListener('input', () => document.body.classList.toggle('semtexto', !st.checked));
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+      if (e.target.tagName === 'SELECT') return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') $('panel').classList.toggle('on');
+      else if (k === 'f') toggleFull();
+      else if (k === 't' && st){ st.checked = !st.checked; document.body.classList.toggle('semtexto', !st.checked); }
+      else if (k === ' ' && !running){ e.preventDefault(); go(); }
+      else if (keys[k]){ e.preventDefault(); if (running) keys[k](); }
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const fmt = v => v.toLocaleString('pt-BR');
+  // ---------- controles de efeitos ----------
+  const fx = {
+    delay(time, feedback, mix){ if (!AC) return; const t = AC.currentTime;
+      if (time > 0) delay.delayTime.setTargetAtTime(Math.min(1.95, time), t, 0.05);
+      dFb.gain.setTargetAtTime(Math.min(0.92, feedback), t, 0.05); dRet.gain.setTargetAtTime(time > 0 ? mix : 0, t, 0.05); },
+    filter(freq, q){ if (!AC) return; const t = AC.currentTime; fxF.frequency.setTargetAtTime(freq, t, 0.08); fxF.Q.setTargetAtTime(q, t, 0.08); },
+    drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
+      const n = 2048, c = new Float32Array(n), k = 1 + a*30;
+      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; },
+    crush(a){ if (!AC) return; if (a <= 0.001){ fxCrush.curve = null; return; }
+      const bits = 16 - a*14, steps = Math.pow(2, bits)/2, n = 8192, c = new Float32Array(n);
+      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.round(x*steps)/steps; } fxCrush.curve = c; },
+    width(w){ width = w; }
+  };
+  return { fx, P, bind, readP, now, initAudio, applyMix, setDrone, freq, semi, chord, chordName, scale, SCALES, NOTAS, ROOT,
+    bell, soft, pluck, pad, sine, kick, tick, setup, toggleFull, fmt,
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; } };
+})();
+
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', resize); resize();
+const P = O.P;
+
+// ---------- grade ----------
+const G = 1024;
+const grid = new Uint8Array(G*G);
+const off = document.createElement('canvas'); off.width = G; off.height = G;
+const octx = off.getContext('2d');
+const img = octx.createImageData(G, G), px = new Uint32Array(img.data.buffer);
+let pal = new Uint32Array(16);
+function rgba(r, g, b){ return (255 << 24) | (b << 16) | (g << 8) | r; }
+function hsl(h, s, l){ s /= 100; l /= 100; const k = n => (n + h/30) % 12, a = s*Math.min(l, 1-l);
+  const f = n => l - a*Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n), 1))); return [f(0)*255|0, f(8)*255|0, f(4)*255|0]; }
+function makePal(){
+  const n = rule.length;
+  pal[0] = rgba(0,0,0);
+  for (let c = 1; c < 16; c++){
+    const u = n > 2 ? (c-1)/(n-2) : 0;
+    let col;
+    switch (P.color){
+      case 'arco': col = hsl((200 + u*280) % 360, 60, 55); break;
+      case 'brasa': col = hsl(10 + u*40, 80, 40 + u*20); break;
+      case 'branco': col = hsl(0, 0, 70 + u*20); break;
+      default: col = hsl(212 - u*40, 40 + u*20, 52 + u*18);
+    }
+    pal[c] = rgba(col[0], col[1], col[2]);
+  }
+  for (let i = 0; i < G*G; i++) px[i] = pal[grid[i]];
+  dirty = [0, 0, G-1, G-1];
+}
+let dirty = null;
+const markDirty = (x, y) => { if (!dirty) dirty = [x, y, x, y]; else { if (x < dirty[0]) dirty[0] = x; if (y < dirty[1]) dirty[1] = y; if (x > dirty[2]) dirty[2] = x; if (y > dirty[3]) dirty[3] = y; } };
+
+// ---------- formiga ----------
+let rule = 'RL', ax, ay, dir, steps, bb, turns, hw, trail, ended, endT;
+const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];   // 0 = norte, 1 = leste, 2 = sul, 3 = oeste
+const HIST = 1 << 16;
+function reset(){
+  rule = P.rule; grid.fill(0);
+  ax = G/2; ay = G/2; dir = 0; steps = 0; ended = false;
+  bb = [ax, ay, ax, ay];
+  turns = new Uint8Array(HIST); hw = null; trail = [];
+  const n = rule.length;
+  if (P.init === 'acaso'){ const k = 6 + Math.floor(Math.random()*14); for (let i = 0; i < k; i++){ const x = ax + Math.floor(Math.random()*11) - 5, y = ay + Math.floor(Math.random()*11) - 5; grid[y*G + x] = 1 + Math.floor(Math.random()*(n-1)); } }
+  else if (P.init === 'quadrado'){ for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) grid[(ay+y)*G + ax + x] = 1; }
+  else if (P.init === 'linha'){ for (let x = -8; x <= 8; x++) grid[(ay+3)*G + ax + x] = 1; }
+  makePal();
+  beat = 0; nextBeatT = O.now() + 0.4;
+  bbCam = null;
+}
+function step(){
+  const i = ay*G + ax, c = grid[i], n = rule.length;
+  const L = rule.charCodeAt(c) === 76;   // 'L'
+  dir = (dir + (L ? 3 : 1)) & 3;
+  const nc = (c + 1) % n; grid[i] = nc; px[i] = pal[nc]; markDirty(ax, ay);
+  turns[steps & (HIST-1)] = L ? 1 : 0;
+  ax += DX[dir]; ay += DY[dir]; steps++;
+  if (ax < bb[0]) bb[0] = ax; if (ay < bb[1]) bb[1] = ay; if (ax > bb[2]) bb[2] = ax; if (ay > bb[3]) bb[3] = ay;
+  if (ax < 3 || ay < 3 || ax > G-4 || ay > G-4) ended = true;
+  return L ? 1 : 0;
+}
+// procura um período p em que as últimas viradas se repetem 3 vezes (a rodovia)
+function findPeriod(){
+  const maxP = Math.min(2500, Math.floor(steps/3));
+  for (let p = 2; p <= maxP; p++){
+    let ok = true;
+    for (let i = 1; i <= 2*p; i++){ if (turns[(steps - i) & (HIST-1)] !== turns[(steps - i - p) & (HIST-1)]){ ok = false; break; } }
+    if (ok) return p;
+  }
+  return 0;
+}
+
+// ---------- som ----------
+let beat = 0, nextBeatT = 0;
+const LOOK = 0.12;
+function playBeat(t, nL, flips, spb){
+  const d0 = dir, pan = Math.max(-0.8, Math.min(0.8, (ax - (bb[0]+bb[2])/2) / Math.max(20, (bb[2]-bb[0])/2)));
+  const inHw = !!hw;
+  // nota: viradas à esquerda escolhem o grau; a direção escolhe o registro
+  const deg = ((nL*3 + flips) % 9) + [0, 2, 4, 7][d0];
+  const f = O.freq(deg + chordDeg, O.ROOT*2);
+  const mv = P.mel*1.25;
+  if (mv > 0){
+  if (spb === 1){ (nL ? O.pluck : O.soft)(f, t, 0.6*mv, pan, 0.5); }
+  else if (d0 % 2 === 0) O.pluck(f, t, (inHw ? 0.9 : 0.7)*mv, pan, inHw ? 0.7 : 0.9);
+  else O.bell(f, t, (inHw ? 0.6 : 0.5)*mv, pan, inHw ? 1.4 : 2.2);
+  }
+  // batida
+  if (P.perc > 0){
+    const pos = beat % 8;
+    if (inHw){
+      if (pos === 0 || pos === 5) O.kick(t, P.perc*0.9);
+      O.tick(t, P.perc*(0.25 + 0.5*(flips % 2)), pan, 7000 + (nL % 4)*900, 0.05);
+      if (nL*2 > spb) O.tick(t + 0.5/P.bps, P.perc*0.35, -pan, 3200, 0.09);
+    } else if (nL*2 > spb + 2) O.tick(t, P.perc*0.3, pan, 2500 + flips*300, 0.07);
+  }
+  // baixo a cada 8 batidas
+  if (beat % 8 === 0 && P.bass > 0) O.sine(O.ROOT*Math.pow(2, O.semi(chordDeg)/12)*(inHw ? 2 : 1), t, (inHw ? 0.9 : 0.5)*P.bass*1.4, 0, inHw ? 3 : 5);
+}
+function texture(t, stepsInBeat, Ls){
+  if (P.tex <= 0) return;
+  const k = Math.min(stepsInBeat, 13), dt = 1/(P.bps*k);
+  for (let i = 0; i < k; i++) O.tick(t + i*dt, P.tex*0.35*(Ls[i] ? 1 : 0.6), (Ls[i] ? 0.4 : -0.4), Ls[i] ? 9000 : 5200, 0.025);
+}
+let chordDeg = 0, pulses = [];
+function beatNow(t){
+  const spb = +P.spb, Ls = [];
+  let nL = 0, flips = 0;
+  for (let s = 0; s < spb && !ended; s++){ const c0 = grid[ay*G + ax]; const l = step(); nL += l; if (c0 === 0) flips++; Ls.push(l); }
+  trail.push([ax, ay, t]); if (trail.length > 600) trail.shift();
+  // rodovia?
+  if (!hw && steps > 1000 && beat % 4 === 0){
+    const p = findPeriod();
+    if (p){ hw = { p, at: steps, t, lx: ax, ly: ay };
+      chordDeg = 3;
+      O.chord(chordDeg).forEach((s, i) => O.pad(O.ROOT*2*Math.pow(2, s/12), t + i*0.08, 1, (i-2)*0.3, 9, 2));
+      O.setDrone(O.semi(chordDeg), 7, 3, 900); }
+  }
+  if (!hw && beat % 64 === 0){ chordDeg = [0, 0, 5, 3][(beat/64|0) % 4]; O.setDrone(O.semi(chordDeg), 7, 4, 220 + Math.min(500, steps/40)); }
+  playBeat(t, nL, flips, spb);
+  pulses.push({ t, strong: !!hw && (beat % 8 === 0 || beat % 8 === 5) }); if (pulses.length > 32) pulses.shift();
+  if (spb > 1) texture(t, spb, Ls);
+  beat++;
+  if (hw && (steps - hw.at) / hw.p >= P.laps && !ended){ ended = true; }
+  if (ended && endT == null){ endT = t; }
+}
+
+// ---------- câmera ----------
+let bbCam = null, cam = { s: 8, x: G/2, y: G/2 };
+function camUpdate(){
+  const m = 14;
+  const tg = [bb[0] - m, bb[1] - m, bb[2] + m, bb[3] + m];
+  if (!bbCam) bbCam = tg.slice();
+  for (let i = 0; i < 4; i++) bbCam[i] += (tg[i] - bbCam[i])*0.04;
+  const bw = bbCam[2] - bbCam[0], bh = bbCam[3] - bbCam[1];
+  const top = 110, sTarget = Math.min(W*0.92/bw, (H - top - 20)*0.95/bh, 26) * P.zoom;
+  cam.s += (sTarget - cam.s)*0.06;
+  cam.x = (bbCam[0] + bbCam[2])/2; cam.y = (bbCam[1] + bbCam[3])/2;
+  cam.cy = top/2 + H/2;
+}
+
+const FXIDS = ['mel','bass','dlyT','dlyFb','dlyMix','cut','res','sweep','hwOpen','drv','crush','wid','glow','pers','pulse','hwGlow'];
+function applyFx(){
+  O.fx.delay(+P.dlyT/P.bps, P.dlyFb, P.dlyMix);
+  O.fx.drive(P.drv); O.fx.crush(P.crush); O.fx.width(P.wid);
+}
+// filtro: corte em escala logarítmica, varredura de 8 batidas (o compasso da rodovia) e abertura quando a rodovia aparece
+let hwOpenK = 1;
+function filterNow(t){
+  const tgt = !P.hwOpen ? 1 : hw ? 1 : 0.42;
+  hwOpenK += (tgt - hwOpenK)*(tgt > hwOpenK ? 0.01 : 0.05);
+  let u = P.cut*hwOpenK;
+  if (P.sweep > 0) u *= 1 - P.sweep*0.6*(0.5 - 0.5*Math.cos(2*Math.PI*((t - nextBeatT)*P.bps + beat)/8));
+  O.fx.filter(120*Math.pow(20000/120, Math.max(0, Math.min(1, u))), P.res);
+}
+O.bind(['rule','init','bps','spb','laps','tex','perc','color','trail','zoom'].concat(FXIDS), (k) => {
+  if (k === 'rule' || k === 'init') reset();
+  if (k === 'color') makePal();
+  applyFx();
+});
+const FXDEF = {}; FXIDS.forEach(id => { const el = $(id); FXDEF[id] = el.type === 'checkbox' ? el.checked : el.value; });
+$('bFxDef').addEventListener('click', () => {
+  for (const id in FXDEF){ const el = $(id); if (el.type === 'checkbox') el.checked = FXDEF[id]; else el.value = FXDEF[id]; }
+  O.readP(); applyFx();
+});
+$('bFxZero').addEventListener('click', () => {
+  const zero = { dlyT: '0', dlyFb: 0, dlyMix: 0, cut: 1, res: 0.7, sweep: 0, hwOpen: false, drv: 0, crush: 0, wid: 1, glow: 0, pers: 0, pulse: 0, hwGlow: 0 };
+  for (const id in zero){ const el = $(id); if (el.type === 'checkbox') el.checked = zero[id]; else el.value = zero[id]; }
+  O.readP(); applyFx();
+});
+reset();
+
+// ---------- desenho ----------
+function frame(){
+  const t = O.now();
+  if (O.running){
+    let guard = 0;
+    while (nextBeatT < t + LOOK && guard++ < 64){
+      if (!ended) beatNow(Math.max(t, nextBeatT));
+      nextBeatT += 1/P.bps;
+      if (nextBeatT < t - 1) nextBeatT = t;
+    }
+    if (ended && endT != null && t - endT > 6){ endT = null; if (P.init === 'vazio' && P.rule === 'RL') { $('init').value = 'acaso'; O.readP(); } reset(); }
+  }
+  if (dirty){
+    const [x0, y0, x1, y1] = dirty;
+    octx.putImageData(img, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1); dirty = null;
+  }
+  camUpdate();
+  if (O.running) filterNow(t);
+  // pulso da última batida
+  let pk = 0, strong = false;
+  for (const p of pulses){ if (p.t <= t){ const k = Math.exp(-(t - p.t)*7); if (k > pk){ pk = k; strong = p.strong; } } }
+  pk *= P.pulse*(strong ? 1.6 : 1);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = P.pers > 0 ? `rgba(0,0,0,${1 - P.pers})` : '#000'; ctx.fillRect(0, 0, W, H);
+  const bump = 1 + pk*0.012, s0 = cam.s; cam.s *= bump;
+  const sx = W/2 - cam.x*cam.s, sy = cam.cy - cam.y*cam.s;
+  ctx.imageSmoothingEnabled = cam.s < 1;
+  const fade = ended && endT != null ? Math.max(0, 1 - (t - endT)/6) : 1;
+  ctx.globalAlpha = fade;
+  ctx.drawImage(off, sx, sy, G*cam.s, G*cam.s);
+  if (P.glow > 0){
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = fade*Math.min(1, P.glow*(1 + pk));
+    ctx.filter = `blur(${Math.max(2, cam.s*(1 + P.glow*3))}px)`; ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, sx, sy, G*cam.s, G*cam.s); ctx.filter = 'none';
+  }
+  ctx.globalAlpha = 1;
+  if (pk > 0.01){ ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(200,225,255,${pk*0.05})`; ctx.fillRect(0, 0, W, H); }
+  // rodovia: brilho ao longo da diagonal
+  ctx.globalCompositeOperation = 'lighter';
+  if (hw && P.hwGlow > 0){
+    const k = Math.min(1, (t - hw.t)/3)*fade;
+    const g = ctx.createLinearGradient(hw.lx*cam.s + sx, hw.ly*cam.s + sy, ax*cam.s + sx, ay*cam.s + sy);
+    g.addColorStop(0, 'rgba(160,210,255,0)'); g.addColorStop(1, `rgba(190,225,255,${Math.min(1, 0.4*k*P.hwGlow*(1 + pk))})`);
+    ctx.strokeStyle = g; ctx.lineWidth = Math.max(6, cam.s*8); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(hw.lx*cam.s + sx, hw.ly*cam.s + sy); ctx.lineTo(ax*cam.s + sx, ay*cam.s + sy); ctx.stroke();
+  }
+  // rastro e formiga
+  if (P.trail > 0 && trail.length > 1){
+    ctx.lineWidth = Math.max(1, cam.s*0.6); ctx.lineJoin = 'round';
+    const n = trail.length, from = Math.max(1, n - Math.floor(600*P.trail));
+    for (let i = from; i < n; i++){
+      const a = trail[i-1], b = trail[i], u = (i - from)/(n - from);
+      ctx.strokeStyle = `rgba(230,240,255,${0.35*u*u*fade})`;
+      ctx.beginPath(); ctx.moveTo((a[0]+0.5)*cam.s + sx, (a[1]+0.5)*cam.s + sy); ctx.lineTo((b[0]+0.5)*cam.s + sx, (b[1]+0.5)*cam.s + sy); ctx.stroke();
+    }
+  }
+  const hx = (ax + 0.5)*cam.s + sx, hy = (ay + 0.5)*cam.s + sy, r = Math.max(8, cam.s*2.4)*(1 + pk*1.5);
+  const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, r);
+  g.addColorStop(0, `rgba(255,255,255,${0.95*fade})`); g.addColorStop(0.3, `rgba(200,225,255,${0.4*fade})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, r, 0, Math.PI*2); ctx.fill();
+
+  cam.s = s0;
+  // texto
+  $('num').textContent = `passo ${O.fmt(steps)}`;
+  $('op').innerHTML = hw ? `<span class="rod">rodovia · período ${hw.p} passos · desde o passo ${O.fmt(hw.at - 3*hw.p)}</span> · volta ${Math.floor((steps - hw.at)/hw.p) + 1}`
+                         : `<span class="cao">${steps < 50 ? 'começo' : 'caos'}</span> · ${O.fmt(bb[2]-bb[0]+1)} × ${O.fmt(bb[3]-bb[1]+1)} casas`;
+  const legend = [...rule].map((c, i) => `cor ${i} → vira à ${c === 'L' ? 'esquerda' : 'direita'}`).join(' · ');
+  $('seq').innerHTML = `<span class="o">regra ${rule}</span><span class="o">${legend}</span><span class="o">acorde de ${O.chordName(chordDeg)}</span>`;
+  requestAnimationFrame(frame);
+}
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1, 220); applyFx(); }, {
+  r: () => reset(),
+  arrowup: () => { $('bps').value = Math.min(24, P.bps + 1); O.readP(); },
+  arrowdown: () => { $('bps').value = Math.max(1, P.bps - 1); O.readP(); }
+});
+$('bRe').addEventListener('click', reset);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

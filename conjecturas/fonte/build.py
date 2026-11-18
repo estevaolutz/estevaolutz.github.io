@@ -5,7 +5,8 @@ import hashlib, json, math, os, sys, random
 from PIL import Image, ImageDraw, ImageFilter
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-REPO = sys.argv[1] if len(sys.argv) > 1 else os.path.join(AQUI, '..', 'estevaolutz.github.io')
+REPO = sys.argv[1] if len(sys.argv) > 1 else os.path.join(AQUI, '..', '..')
+DESTINO = os.path.join(REPO, 'conjecturas')  # cada obra fica em conjecturas/<obra>/
 CSS = open(os.path.join(AQUI, 'core.css')).read()
 JS = open(os.path.join(AQUI, 'core.js')).read()
 SOM = open(os.path.join(AQUI, 'som.html')).read()
@@ -94,7 +95,7 @@ def main():
         if not os.path.exists(os.path.join(AQUI, slug + '.html')): continue
         src = open(os.path.join(AQUI, slug + '.html')).read()
         html = src.replace('/*CORE_CSS*/', CSS).replace('<!--SOM-->', SOM).replace('//CORE_JS', JS)
-        pasta = os.path.join(REPO, slug); os.makedirs(pasta, exist_ok=True)
+        pasta = os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
         open(os.path.join(pasta, 'index.html'), 'w').write(html)
         man = {"name": nome, "short_name": nome, "description": desc, "lang": "pt-BR", "start_url": "./", "scope": "./",
                "display": "standalone", "orientation": "any", "background_color": "#000000", "theme_color": "#000000",

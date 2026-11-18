@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Kolakoski</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s;text-align:center;padding:0 24px}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start p.sub{letter-spacing:.06em;opacity:.32;max-width:420px;line-height:1.6;font-size:11.5px}
+  #start.hide{opacity:0;pointer-events:none}
+  .hud{position:fixed;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums;transition:opacity .6s}
+  #num{left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:.55}
+  #op{left:30px;top:62px;right:60px;font-weight:300;font-size:16px;letter-spacing:.05em;opacity:.75;line-height:1.35}
+  #seq{left:30px;top:94px;right:60px;max-height:34%;font-weight:300;font-size:12.5px;line-height:1.75;letter-spacing:.03em;opacity:.42;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq b{font-weight:500}
+  body.semtexto .hud{opacity:0!important}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 96px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0;min-width:0}
+  .row select,.row input[type=number],.row input[type=text]{flex:1;min-width:0;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .sub{font-size:10.5px;letter-spacing:.12em;opacity:.45;margin:10px 0 2px;text-transform:uppercase}
+  details.el{border-top:1px solid rgba(255,255,255,.07);padding:4px 0}
+  details.el summary{cursor:pointer;opacity:.85;padding:5px 0;font-size:12px;list-style:none}
+  details.el summary::before{content:'▸ ';opacity:.5}
+  details.el[open] summary::before{content:'▾ '}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.55;margin-top:10px}
+  @media (max-width:640px){ #op{font-size:13.5px} #seq{top:112px;font-size:11.5px} #num{font-size:24px} }
+
+  #op{letter-spacing:.12em;white-space:nowrap;overflow:hidden}
+  #op b{font-weight:500;color:#eaf6ff}
+  #op i{font-style:normal;opacity:.35;margin:0 .25em}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>KOLAKOSKI</h1><p>toque para começar</p>
+  <p class="sub">1 2 2 1 1 2 1 2 2 1 2 2 1 1 2… A sequência é feita de blocos de 1 e de 2, e o tamanho de cada bloco é a própria sequência. Cada faixa da tela é a mesma sequência, mais lenta: um cânone que nunca se repete. Ninguém provou que metade dos termos é 1.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Cânone</h2>
+  <div class="row"><label>Andamento</label><input type="range" id="bpm" min="40" max="240" step="1" value="112"></div>
+  <div class="row"><label>Vozes</label><input type="range" id="layers" min="1" max="7" step="1" value="6"></div>
+  <div class="row"><label>Alfabeto</label>
+    <select id="alpha"><option value="12" selected>1 e 2 (clássica)</option><option value="13">1 e 3</option><option value="23">2 e 3</option></select></div>
+  <h2>Som</h2>
+  <div class="row"><label>Modo</label>
+    <select id="scale">
+      <option value="jonico">Jônico (maior)</option>
+      <option value="dorico" selected>Dórico</option>
+      <option value="frigio">Frígio</option>
+      <option value="lidio">Lídio</option>
+      <option value="mixolidio">Mixolídio</option>
+      <option value="eolio">Eólio (menor)</option>
+      <option value="menorHarm">Menor harmônica</option>
+      <option value="menorMel">Menor melódica</option>
+      <option value="frigioDom">Frígio dominante</option>
+      <option value="hungara">Húngara menor</option>
+      <option value="penta">Pentatônica menor</option>
+      <option value="pentaMaior">Pentatônica maior</option>
+      <option value="hirajoshi">Hirajoshi</option>
+      <option value="tons">Tons inteiros</option>
+    </select></div>
+  <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75"></div>
+
+  <h2>Elementos</h2>
+  <details class="el"><summary>Percussão</summary>
+    <div class="row"><label>Volume</label><input type="range" id="perc" min="0" max="1" step="0.01" value="0.55"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="mutePerc"></div>
+    <div class="row"><label>Tom</label><input type="range" id="percTone" min="0.2" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Ressonância</label><input type="range" id="percQ" min="0.3" max="20" step="0.1" value="1.4"></div>
+    <div class="row"><label>Duração</label><input type="range" id="percLen" min="0.3" max="6" step="0.05" value="1"></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briPerc" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panPerc" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sPercV" min="0" max="1" step="0.01" value="0.25"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sPercD" min="0" max="1" step="0.01" value="0.1"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sPercP" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sPercB" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <details class="el"><summary>Voz 1 (rápida)</summary>
+    <div class="row"><label>Volume</label><input type="range" id="volV1" min="0" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="muteV1"></div>
+    <div class="row"><label>Timbre</label><select id="timV1"><option value="sino">Sino</option><option value="corda" selected>Corda</option><option value="macio">Macio</option><option value="vidro">Vidro</option><option value="marimba">Marimba</option><option value="celesta">Celesta</option><option value="kalimba">Kalimba</option><option value="sopro">Sopro</option><option value="sinoGrave">Sino grave</option><option value="harpa">Harpa</option><option value="pad">Pad</option><option value="seno">Seno</option><option value="orgao">Órgão</option><option value="coro">Coro</option></select></div>
+    <div class="row"><label>Parcial metálica</label><input type="range" id="tpV1" min="0" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Razão da parcial</label><input type="range" id="trV1" min="0.5" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Desafinação</label><input type="range" id="tdV1" min="0" max="40" step="0.5" value="0"></div>
+    <div class="row"><label>Ataque</label><input type="range" id="taV1" min="0.1" max="10" step="0.05" value="1"></div>
+    <div class="row"><label>Duração</label><input type="range" id="tlV1" min="0.2" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Oitava</label><input type="range" id="ocV1" min="-2" max="2" step="1" value="0"></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briV1" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panV1" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sV1V" min="0" max="1" step="0.01" value="0.35"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sV1D" min="0" max="1" step="0.01" value="0.2"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sV1P" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sV1B" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <details class="el"><summary>Voz 2</summary>
+    <div class="row"><label>Volume</label><input type="range" id="volV2" min="0" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="muteV2"></div>
+    <div class="row"><label>Timbre</label><select id="timV2"><option value="sino" selected>Sino</option><option value="corda">Corda</option><option value="macio">Macio</option><option value="vidro">Vidro</option><option value="marimba">Marimba</option><option value="celesta">Celesta</option><option value="kalimba">Kalimba</option><option value="sopro">Sopro</option><option value="sinoGrave">Sino grave</option><option value="harpa">Harpa</option><option value="pad">Pad</option><option value="seno">Seno</option><option value="orgao">Órgão</option><option value="coro">Coro</option></select></div>
+    <div class="row"><label>Parcial metálica</label><input type="range" id="tpV2" min="0" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Razão da parcial</label><input type="range" id="trV2" min="0.5" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Desafinação</label><input type="range" id="tdV2" min="0" max="40" step="0.5" value="0"></div>
+    <div class="row"><label>Ataque</label><input type="range" id="taV2" min="0.1" max="10" step="0.05" value="1"></div>
+    <div class="row"><label>Duração</label><input type="range" id="tlV2" min="0.2" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Oitava</label><input type="range" id="ocV2" min="-2" max="2" step="1" value="0"></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briV2" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panV2" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sV2V" min="0" max="1" step="0.01" value="0.6"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sV2D" min="0" max="1" step="0.01" value="0.3"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sV2P" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sV2B" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <details class="el"><summary>Voz 3</summary>
+    <div class="row"><label>Volume</label><input type="range" id="volV3" min="0" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="muteV3"></div>
+    <div class="row"><label>Timbre</label><select id="timV3"><option value="sino">Sino</option><option value="corda">Corda</option><option value="macio" selected>Macio</option><option value="vidro">Vidro</option><option value="marimba">Marimba</option><option value="celesta">Celesta</option><option value="kalimba">Kalimba</option><option value="sopro">Sopro</option><option value="sinoGrave">Sino grave</option><option value="harpa">Harpa</option><option value="pad">Pad</option><option value="seno">Seno</option><option value="orgao">Órgão</option><option value="coro">Coro</option></select></div>
+    <div class="row"><label>Parcial metálica</label><input type="range" id="tpV3" min="0" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Razão da parcial</label><input type="range" id="trV3" min="0.5" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Desafinação</label><input type="range" id="tdV3" min="0" max="40" step="0.5" value="0"></div>
+    <div class="row"><label>Ataque</label><input type="range" id="taV3" min="0.1" max="10" step="0.05" value="1"></div>
+    <div class="row"><label>Duração</label><input type="range" id="tlV3" min="0.2" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Oitava</label><input type="range" id="ocV3" min="-2" max="2" step="1" value="0"></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briV3" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panV3" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sV3V" min="0" max="1" step="0.01" value="0.45"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sV3D" min="0" max="1" step="0.01" value="0.15"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sV3P" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sV3B" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <details class="el"><summary>Vozes graves</summary>
+    <div class="row"><label>Volume</label><input type="range" id="volVg" min="0" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="muteVg"></div>
+    <div class="row"><label>Timbre</label><select id="timVg"><option value="sino">Sino</option><option value="corda">Corda</option><option value="macio" selected>Macio</option><option value="vidro">Vidro</option><option value="marimba">Marimba</option><option value="celesta">Celesta</option><option value="kalimba">Kalimba</option><option value="sopro">Sopro</option><option value="sinoGrave">Sino grave</option><option value="harpa">Harpa</option><option value="pad">Pad</option><option value="seno">Seno</option><option value="orgao">Órgão</option><option value="coro">Coro</option></select></div>
+    <div class="row"><label>Parcial metálica</label><input type="range" id="tpVg" min="0" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Razão da parcial</label><input type="range" id="trVg" min="0.5" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Desafinação</label><input type="range" id="tdVg" min="0" max="40" step="0.5" value="0"></div>
+    <div class="row"><label>Ataque</label><input type="range" id="taVg" min="0.1" max="10" step="0.05" value="1"></div>
+    <div class="row"><label>Duração</label><input type="range" id="tlVg" min="0.2" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Oitava</label><input type="range" id="ocVg" min="-2" max="2" step="1" value="0"></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briVg" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panVg" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sVgV" min="0" max="1" step="0.01" value="0.45"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sVgD" min="0" max="1" step="0.01" value="0.15"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sVgP" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sVgB" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <details class="el"><summary>Acordes</summary>
+    <div class="row"><label>Volume</label><input type="range" id="volAcor" min="0" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="muteAcor"></div>
+    <div class="row"><label>Timbre</label><select id="timAcor"><option value="sino">Sino</option><option value="corda">Corda</option><option value="macio">Macio</option><option value="vidro">Vidro</option><option value="marimba">Marimba</option><option value="celesta">Celesta</option><option value="kalimba">Kalimba</option><option value="sopro">Sopro</option><option value="sinoGrave">Sino grave</option><option value="harpa">Harpa</option><option value="pad" selected>Pad</option><option value="seno">Seno</option><option value="orgao">Órgão</option><option value="coro">Coro</option></select></div>
+    <div class="row"><label>Parcial metálica</label><input type="range" id="tpAcor" min="0" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Razão da parcial</label><input type="range" id="trAcor" min="0.5" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Desafinação</label><input type="range" id="tdAcor" min="0" max="40" step="0.5" value="0"></div>
+    <div class="row"><label>Ataque</label><input type="range" id="taAcor" min="0.1" max="10" step="0.05" value="1"></div>
+    <div class="row"><label>Duração</label><input type="range" id="tlAcor" min="0.2" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Oitava</label><input type="range" id="ocAcor" min="-2" max="2" step="1" value="0"></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briAcor" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panAcor" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sAcorV" min="0" max="1" step="0.01" value="0.9"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sAcorD" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sAcorP" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sAcorB" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <details class="el"><summary>Baixo</summary>
+    <div class="row"><label>Volume</label><input type="range" id="volBaixo" min="0" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="muteBaixo"></div>
+    <div class="row"><label>Timbre</label><select id="timBaixo"><option value="sino">Sino</option><option value="corda">Corda</option><option value="macio">Macio</option><option value="vidro">Vidro</option><option value="marimba">Marimba</option><option value="celesta">Celesta</option><option value="kalimba">Kalimba</option><option value="sopro">Sopro</option><option value="sinoGrave">Sino grave</option><option value="harpa">Harpa</option><option value="pad">Pad</option><option value="seno" selected>Seno</option><option value="orgao">Órgão</option><option value="coro">Coro</option></select></div>
+    <div class="row"><label>Parcial metálica</label><input type="range" id="tpBaixo" min="0" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Razão da parcial</label><input type="range" id="trBaixo" min="0.5" max="2" step="0.01" value="1"></div>
+    <div class="row"><label>Desafinação</label><input type="range" id="tdBaixo" min="0" max="40" step="0.5" value="0"></div>
+    <div class="row"><label>Ataque</label><input type="range" id="taBaixo" min="0.1" max="10" step="0.05" value="1"></div>
+    <div class="row"><label>Duração</label><input type="range" id="tlBaixo" min="0.2" max="3" step="0.01" value="1"></div>
+    <div class="row"><label>Oitava</label><input type="range" id="ocBaixo" min="-2" max="2" step="1" value="0"></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briBaixo" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panBaixo" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sBaixoV" min="0" max="1" step="0.01" value="0.7"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sBaixoD" min="0" max="1" step="0.01" value="0.1"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sBaixoP" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sBaixoB" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <details class="el"><summary>Drone</summary>
+    <div class="row"><label>Volume</label><input type="range" id="drone" min="0" max="1" step="0.01" value="0.45"></div>
+    <div class="row"><label>Mudo</label><input type="checkbox" id="muteDro"></div>
+    <div class="row"><label>Timbre</label><select id="timDro"><option value="original" selected>Original</option><option value="seno">Seno</option><option value="orgao">Órgão</option><option value="cordas">Cordas</option><option value="vidro">Vidro</option><option value="quadrada">Quadrada</option></select></div>
+    <div class="row"><label>Brilho</label><input type="range" id="briDro" min="0" max="1" step="0.01" value="1"></div>
+    <div class="row"><label>Panorama</label><input type="range" id="panDro" min="-1" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Reverb</label><input type="range" id="sDroV" min="0" max="1" step="0.01" value="0.3"></div>
+    <div class="row"><label>Delay</label><input type="range" id="sDroD" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Pitch delay</label><input type="range" id="sDroP" min="0" max="1" step="0.01" value="0"></div>
+    <div class="row"><label>Bit crusher</label><input type="range" id="sDroB" min="0" max="1" step="0.01" value="0"></div>
+  </details>
+  <h2>Timbre geral</h2>
+  <div class="row"><label>Brilho</label><input type="range" id="tBright" min="0.2" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Parcial metálica</label><input type="range" id="tPart" min="0" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Razão da parcial</label><input type="range" id="tRatio" min="0.5" max="2" step="0.01" value="1"></div>
+  <div class="row"><label>Desafinação</label><input type="range" id="tDet" min="0" max="40" step="0.5" value="0"></div>
+  <div class="row"><label>Duração</label><input type="range" id="tLen" min="0.2" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Envelope</label><select id="envMode"><option value="timbre" selected>Do timbre</option><option value="manual">ADSR manual</option></select></div>
+  <div class="sub">Amplitude</div>
+  <div class="row"><label>Ataque</label><input type="range" id="aA" min="0.001" max="3" step="0.001" value="0.005"></div>
+  <div class="row"><label>Decaimento</label><input type="range" id="aD" min="0.01" max="4" step="0.01" value="0.9"></div>
+  <div class="row"><label>Sustentação</label><input type="range" id="aS" min="0" max="1" step="0.01" value="0.25"></div>
+  <div class="row"><label>Repouso</label><input type="range" id="aR" min="0.01" max="6" step="0.01" value="1.4"></div>
+  <div class="sub">Filtro</div>
+  <div class="row"><label>Corte</label><input type="range" id="fCut" min="0.5" max="24" step="0.1" value="3"></div>
+  <div class="row"><label>Ressonância</label><input type="range" id="fRes" min="0" max="18" step="0.1" value="2"></div>
+  <div class="row"><label>Envelope</label><input type="range" id="fAmt" min="0" max="6" step="0.05" value="2.5"></div>
+  <div class="row"><label>Ataque</label><input type="range" id="fA" min="0.001" max="3" step="0.001" value="0.01"></div>
+  <div class="row"><label>Decaimento</label><input type="range" id="fD" min="0.01" max="4" step="0.01" value="0.6"></div>
+  <div class="row"><label>Sustentação</label><input type="range" id="fS" min="0" max="1" step="0.01" value="0.2"></div>
+  <div class="row"><label>Repouso</label><input type="range" id="fR" min="0.01" max="6" step="0.01" value="1.0"></div>
+  <h2>Efeitos</h2>
+  <div class="sub">Delay</div>
+  <div class="row"><label>Mix</label><input type="range" id="dMix" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Tempo</label><input type="range" id="dTime" min="0.05" max="1.5" step="0.01" value="0.42"></div>
+  <div class="row"><label>Realimentação</label><input type="range" id="dFbk" min="0" max="0.92" step="0.01" value="0.3"></div>
+  <div class="row"><label>Tom</label><input type="range" id="dTone" min="400" max="9000" step="10" value="2200"></div>
+  <div class="sub">Reverb Valhalla</div>
+  <div class="row"><label>Mix</label><input type="range" id="verb" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Tamanho</label><input type="range" id="vSize" min="0.5" max="2.5" step="0.01" value="1.2"></div>
+  <div class="row"><label>Decaimento</label><input type="range" id="vDecay" min="0.3" max="0.95" step="0.005" value="0.78"></div>
+  <div class="row"><label>Amortecimento</label><input type="range" id="vDamp" min="500" max="9000" step="10" value="2400"></div>
+  <div class="row"><label>Modulação</label><input type="range" id="vMod" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Pré-delay</label><input type="range" id="vPre" min="0" max="0.25" step="0.005" value="0.03"></div>
+  <div class="sub">Bit crusher</div>
+  <div class="row"><label>Mix</label><input type="range" id="bMix" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Bits</label><input type="range" id="bBits" min="2" max="16" step="0.1" value="8"></div>
+  <div class="row"><label>Redução</label><input type="range" id="bDown" min="1" max="40" step="1" value="4"></div>
+  <div class="sub">Pitch delay</div>
+  <div class="row"><label>Mix</label><input type="range" id="pMix" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Semitons</label><input type="range" id="pSemi" min="-12" max="12" step="1" value="12"></div>
+  <div class="row"><label>Tempo</label><input type="range" id="pTime" min="0.05" max="1.5" step="0.01" value="0.5"></div>
+  <div class="row"><label>Realimentação</label><input type="range" id="pFbk" min="0" max="0.85" step="0.01" value="0.45"></div>
+  <div class="sub">Saída</div>
+  <div class="row"><label>Filtro</label><input type="range" id="oCut" min="200" max="20000" step="10" value="20000"></div>
+  <div class="row"><label>Ressonância</label><input type="range" id="oRes" min="0" max="15" step="0.1" value="0.7"></div>
+  <div class="row"><label>Saturação</label><input type="range" id="oDrive" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Largura estéreo</label><input type="range" id="oWidth" min="0" max="1.5" step="0.01" value="1"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.3" max="4" step="0.01" value="1"></div>
+  <div class="row"><label>Ligações</label><input type="checkbox" id="links" checked></div>
+  <div class="row"><label>Gráfico 1 − 2</label><input type="checkbox" id="graph" checked></div>
+  <div class="row"><label>Cor</label>
+    <select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Texto</label><input type="checkbox" id="showTxt" checked></div>
+  <div class="btns"><button id="bRe">Recomeçar</button><button id="bFull">Tela cheia</button></div>
+  <div class="hint">Na faixa de baixo cada termo dura o seu valor (1 = curto, 2 = longo). Em cada faixa de cima, um termo dura um bloco inteiro da faixa de baixo. A faixa mais lenta escolhe o acorde. O gráfico mostra a diferença entre a quantidade de 1 e de 2: se a conjectura de Keane for verdadeira, ela cresce bem mais devagar que a sequência.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- núcleo comum das obras de conjecturas (som, painel, tela inicial) ----------
+const $ = id => document.getElementById(id);
+const O = (() => {
+  const P = {};
+  let ids = [];
+  function readP(){
+    for (const k of ids){ const el = $(k); if (!el) continue;
+      P[k] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' || el.type === 'text') ? el.value : parseFloat(el.value); }
+  }
+  function bind(list, onChange){
+    ids = list.concat(['scale','vol','drone','verb']);
+    readP();
+    for (const k of ids){ const el = $(k); if (!el) continue;
+      el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => { const old = Object.assign({}, P); readP(); applyMix(); onChange && onChange(k, old); }); }
+  }
+
+  // ---------- áudio ----------
+  const WORKLET_SRC = `
+  class Crusher extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'bits',defaultValue:8},{name:'down',defaultValue:4},{name:'mix',defaultValue:0}]; }
+    constructor(){ super(); this.ph = [0,0]; this.hold = [0,0]; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0]; if (!i || !i.length) return true;
+      const mix = p.mix[0], bits = p.bits[0], down = Math.max(1, p.down[0]), step = Math.pow(0.5, bits - 1);
+      for (let c = 0; c < o.length; c++){
+        const x = i[c] || i[0], y = o[c];
+        if (mix <= 0.0001){ y.set(x); continue; }
+        for (let n = 0; n < y.length; n++){
+          if (++this.ph[c] >= down){ this.ph[c] -= down; this.hold[c] = step * Math.round(x[n] / step); }
+          y[n] = x[n] * (1 - mix) + this.hold[c] * mix;
+        }
+      }
+      return true;
+    }
+  }
+  class PitchDelay extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'time',defaultValue:0.5},{name:'fb',defaultValue:0.45},{name:'semi',defaultValue:12}]; }
+    constructor(){ super(); this.N = Math.ceil(sampleRate*2.2); this.buf = new Float32Array(this.N); this.w = 0; this.ph = 0; this.W = Math.round(sampleRate*0.07); }
+    read(pos){ const N = this.N; pos = ((pos % N) + N) % N; const i0 = Math.floor(pos), fr = pos - i0; return this.buf[i0]*(1-fr) + this.buf[(i0+1)%N]*fr; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0], L = o[0].length;
+      const D = Math.min(this.N - this.W - 4, p.time[0]*sampleRate), fb = p.fb[0], ratio = Math.pow(2, p.semi[0]/12), W = this.W;
+      const inc = (1 - ratio) / W;
+      for (let n = 0; n < L; n++){
+        const x = i && i.length ? (i[0][n] + (i[1] ? i[1][n] : i[0][n]))*0.5 : 0;
+        this.ph += inc; this.ph -= Math.floor(this.ph);
+        let y = 0;
+        for (let k = 0; k < 2; k++){
+          const ph = (this.ph + k*0.5) % 1;
+          y += this.read(this.w - D - W - ph*W) * Math.sin(Math.PI*ph);
+        }
+        y *= 0.75;
+        this.buf[this.w] = x + Math.tanh(y*fb);
+        this.w = (this.w + 1) % this.N;
+        for (let c = 0; c < o.length; c++) o[c][n] = y;
+      }
+      return true;
+    }
+  }
+  registerProcessor('granizo-crusher', Crusher);
+  registerProcessor('granizo-pitchdelay', PitchDelay);
+  `;
+  const ELEMS = ["Perc", "V1", "V2", "V3", "Vg", "Acor", "Baixo", "Dro"];
+  let curSrc = 'V1';
+  let preDelay = null, combs = [], srcBus = {}, pdIn = null, pdOut = null, crIn = null, crOut = null, pdNode = null, crusher = null, dLpF = null, lastDrive = -1;
+  function allpass(input, dt, g){
+    const sum = AC.createGain(), d = AC.createDelay(0.2), fbg = AC.createGain(), ff = AC.createGain(), o = AC.createGain();
+    d.delayTime.value = dt; fbg.gain.value = g; ff.gain.value = -g;
+    input.connect(sum); sum.connect(d); d.connect(fbg); fbg.connect(sum); sum.connect(ff); ff.connect(o); d.connect(o);
+    return o;
+  }
+  let AC = null, master, comp, fxF, fxDrive, fxCrush, dFb, dRet, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  const SCALES = {
+    jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+    mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+    menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+    penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+  };
+  const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+  const ROOT = 73.416; // Ré2
+  const now = () => AC ? AC.currentTime : performance.now()/1000;
+  let voices = 0;
+  const MAXV = 56;
+
+  function initAudio(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+    master = AC.createGain();
+    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    // efeitos de saída (neutros por padrão): filtro → saturação → redução de bits → compressor
+    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
+    fxDrive = AC.createWaveShaper(); fxCrush = AC.createWaveShaper(); fxDrive.oversample = '2x';
+    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(fxCrush); fxCrush.connect(comp); comp.connect(AC.destination);
+    dryBus = AC.createGain(); dryBus.connect(master);
+    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+    // reverb "Valhalla": pré-delay, difusão em allpass e pentes modulados
+    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+    preDelay = AC.createDelay(0.5); preDelay.delayTime.value = 0.03;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200; hp.Q.value = -12;
+    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 5000; pre.Q.value = -12;
+    verbIn.connect(preDelay); preDelay.connect(hp); hp.connect(pre);
+    let diff = pre;
+    for (const [dt, gg] of [[0.0047,0.62],[0.0113,0.6],[0.0171,0.58],[0.0231,0.55]]) diff = allpass(diff, dt, gg);
+    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373,0.1489,0.1601].forEach((dt, i) => {
+      const d = AC.createDelay(0.6); d.delayTime.value = dt;
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = -12;
+      const fb = AC.createGain(); fb.gain.value = 0.78;
+      const o = AC.createGain(); o.gain.value = 0.15;
+      const lfo = AC.createOscillator(); lfo.frequency.value = 0.13 + i*0.071;
+      const lg = AC.createGain(); lg.gain.value = 0.0012; lfo.connect(lg); lg.connect(d.delayTime); lfo.start();
+      diff.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+      combs.push({ d, lp, fb, lg, base: dt });
+    });
+    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+    const fb = AC.createGain(); fb.gain.value = 0.3; dFb = fb; dRet = AC.createGain(); dRet.gain.value = 1;
+    dLpF = AC.createBiquadFilter(); dLpF.type = 'lowpass'; dLpF.frequency.value = 2200; dLpF.Q.value = -12;
+    delay.connect(dLpF); dLpF.connect(fb); fb.connect(delay); dLpF.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
+    // pitch delay e bit crusher como envios
+    pdIn = AC.createGain(); pdOut = AC.createGain(); pdOut.gain.value = 0; pdOut.connect(dryBus); pdOut.connect(verbIn);
+    crIn = AC.createGain(); crOut = AC.createGain(); crOut.gain.value = 0; crOut.connect(master);
+    // cada elemento tem seu canal: volume → brilho (filtro) → panorama → saída e envios
+    for (const k of ELEMS){
+      const bus = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 20000; lp.Q.value = 0.5;
+      const pn = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
+      bus.connect(lp); lp.connect(pn); pn.connect(dryBus); const snd = {};
+      for (const [suf, dest] of [['V', verbIn], ['D', delay], ['P', pdIn], ['B', crIn]]){ const gg = AC.createGain(); gg.gain.value = 0; pn.connect(gg); gg.connect(dest); snd[suf] = gg; }
+      srcBus[k] = { bus, lp, pn, snd };
+    }
+    if (AC.audioWorklet){
+      const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+      AC.audioWorklet.addModule(url).then(() => {
+        pdNode = new AudioWorkletNode(AC, 'granizo-pitchdelay', { outputChannelCount: [2] }); pdIn.connect(pdNode); pdNode.connect(pdOut);
+        crusher = new AudioWorkletNode(AC, 'granizo-crusher', { outputChannelCount: [2] }); crusher.parameters.get('mix').value = 1; crIn.connect(crusher); crusher.connect(crOut);
+        applyMix();
+      }).catch(() => {});
+    }
+    droneG = AC.createGain(); droneG.gain.value = 0;
+    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
+    droneF.connect(droneG); droneG.connect(srcBus.Dro.bus);
+    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f,type,g]) => {
+      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    });
+    applyMix();
+  }
+  function applyMix(){
+    if (!AC) return;
+    const t = AC.currentTime;
+    master.gain.setTargetAtTime(P.vol, t, 0.1);
+    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
+    delay.delayTime.setTargetAtTime(P.dTime, t, 0.15); dFb.gain.setTargetAtTime(P.dFbk, t, 0.05);
+    dLpF.frequency.setTargetAtTime(P.dTone, t, 0.05); dRet.gain.setTargetAtTime(P.dMix*2.2, t, 0.05);
+    preDelay.delayTime.setTargetAtTime(P.vPre, t, 0.1);
+    for (const c of combs){
+      c.d.delayTime.setTargetAtTime(c.base*P.vSize, t, 0.2); c.fb.gain.setTargetAtTime(P.vDecay, t, 0.1);
+      c.lp.frequency.setTargetAtTime(P.vDamp, t, 0.1); c.lg.gain.setTargetAtTime(0.0035*P.vMod*P.vSize, t, 0.1);
+    }
+    pdOut.gain.setTargetAtTime(P.pMix*1.4, t, 0.05); crOut.gain.setTargetAtTime(P.bMix*1.2, t, 0.05);
+    for (const k in srcBus){
+      const b = srcBus[k], on = !P['mute'+k];
+      for (const suf in b.snd) b.snd[suf].gain.setTargetAtTime((P['s'+k+suf] || 0) * (suf === 'D' ? 1.2 : suf === 'P' ? 1.3 : 1), t, 0.05);
+      b.bus.gain.setTargetAtTime(on ? (P['vol'+k] ?? 1) : 0, t, 0.05);
+      b.lp.frequency.setTargetAtTime(150 * Math.pow(2, (P['bri'+k] ?? 1) * 7.05), t, 0.08);
+      if (b.pn.pan) b.pn.pan.setTargetAtTime(P['pan'+k] || 0, t, 0.08);
+    }
+    if (pdNode){ const pp = pdNode.parameters; pp.get('time').setTargetAtTime(P.pTime, t, 0.1); pp.get('fb').setTargetAtTime(P.pFbk, t, 0.05); pp.get('semi').setValueAtTime(P.pSemi, t); }
+    if (crusher){ const cp = crusher.parameters; cp.get('bits').setValueAtTime(P.bBits, t); cp.get('down').setValueAtTime(P.bDown, t); }
+    fxF.frequency.setTargetAtTime(P.oCut, t, 0.08); fxF.Q.setTargetAtTime(P.oRes, t, 0.08);
+    if (P.oDrive !== lastDrive){ lastDrive = P.oDrive; fx.drive(P.oDrive); }
+    width = P.oWidth;
+  }
+  // drone: fundamental e quinta em semitons acima do Ré
+  function droneTimbre(name){
+    if (!AC) return;
+    const types = { original: ['sine','sawtooth','sawtooth','sawtooth'], seno: ['sine','sine','sine','sine'], orgao: ['sine','sine','triangle','sine'],
+                    cordas: ['sine','sawtooth','sawtooth','sawtooth'], vidro: ['sine','triangle','sine','triangle'], quadrada: ['sine','square','square','square'] };
+    const tt = types[name] || types.original;
+    droneOscs.forEach((o, i) => { o.type = tt[i]; });
+    if (droneOscs[2]) droneOscs[2].detune.value = name === 'cordas' ? 14 : 0;
+  }
+  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
+    if (!AC) return;
+    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
+    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
+    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
+  }
+  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
+  function semi(d){ const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
+  // acorde de cinco vozes (terças empilhadas) a partir do grau d
+  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chordName(d){
+    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
+    let name = NOTAS[root];
+    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+      if (q) name += ' ' + q; }
+    return name;
+  }
+
+  function out(node, pan, send, dly, t, end, src){
+    let last = node;
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
+    last.connect(srcBus[src || curSrc].bus);
+    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  }
+  const ok = () => AC && voices < MAXV;
+  function bell(f, t, vel = 0.8, pan = 0, dur = 3){
+    if (!ok()) return;
+    const c = AC.createOscillator(), m = AC.createOscillator(), mg = AC.createGain(), g = AC.createGain();
+    c.frequency.value = f; m.frequency.value = f*2.76;
+    mg.gain.setValueAtTime(f*0.5, t); mg.gain.exponentialRampToValueAtTime(0.01, t+Math.min(0.9, dur));
+    m.connect(mg); mg.connect(c.frequency);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    c.connect(g); out(g, pan, 0.6, 0.3, t, t+dur);
+    c.start(t); m.start(t); c.stop(t+dur+0.05); m.stop(t+dur+0.05);
+  }
+  function soft(f, t, vel = 0.8, pan = 0, dur = 1.6){
+    if (!ok()) return;
+    const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    lp.type = 'lowpass'; lp.frequency.setValueAtTime(Math.min(16000, f*6), t); lp.frequency.exponentialRampToValueAtTime(f*1.2, t+Math.min(0.9, dur));
+    o.connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+0.025); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    out(g, pan, 0.45, 0.15, t, t+dur);
+    o.start(t); o.stop(t+dur+0.05);
+  }
+  function pluck(f, t, vel = 0.8, pan = 0, dur = 0.9){
+    if (!ok()) return;
+    const o = AC.createOscillator(), o2 = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = 'sawtooth'; o.frequency.value = f; o2.type = 'square'; o2.frequency.value = f*1.003;
+    lp.type = 'lowpass'; lp.Q.value = 2; lp.frequency.setValueAtTime(Math.min(14000, f*10), t); lp.frequency.exponentialRampToValueAtTime(f*1.1, t+dur*0.6);
+    const g2 = AC.createGain(); g2.gain.value = 0.4; o2.connect(g2); g2.connect(lp);
+    o.connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    out(g, pan, 0.35, 0.2, t, t+dur);
+    o.start(t); o2.start(t); o.stop(t+dur+0.05); o2.stop(t+dur+0.05);
+  }
+  function pad(f, t, vel = 0.6, pan = 0, dur = 6, att = 1.2){
+    if (!ok()) return;
+    const g = AC.createGain(), lp = AC.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = Math.min(9000, f*4);
+    [-7, 7].forEach(dt => { const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = dt; o.connect(lp); o.start(t); o.stop(t+dur+0.1); });
+    lp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.035*vel, t+att); g.gain.setTargetAtTime(0.0001, t+Math.max(att, dur-att*1.5), att*0.5);
+    out(g, pan, 0.9, 0, t, t+dur);
+  }
+  function sine(f, t, vel = 0.6, pan = 0, dur = 4, att = 0.02){
+    if (!ok()) return;
+    const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+att); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); out(g, pan, 0.7, 0.1, t, t+dur); o.start(t); o.stop(t+dur+0.05);
+  }
+  function kick(t, vel = 0.8, f0 = 120){
+    if (!ok()) return;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
+    o.connect(g); out(g, 0, 0.1, 0, t, t+0.5); o.start(t); o.stop(t+0.5);
+  }
+  let noiseBuf = null;
+  function tick(t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
+    if (!ok()) return;
+    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const pc = (k, v) => (P[k] === undefined || isNaN(P[k]) ? v : P[k]);
+    dur *= pc('percLen', 1);
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = Math.min(18000, fc*pc('percTone', 1)); bp.Q.value = pc('percQ', 1.4);
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(bp); bp.connect(g); out(g, pan, 0.25, 0.1, t, t+dur); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
+  }
+
+
+  // ---------- timbres: cada um vira espectro + parcial + filtro + envelope ----------
+  const SPECTRA = (() => {
+    const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
+    return { sine: mk(n => n === 1 ? 1 : 0), triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
+             sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)), square: mk(n => n % 2 ? 4/(Math.PI*n) : 0) };
+  })();
+  const TIMBRES = {
+    sino:      { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:2.6 },
+    corda:     { w:'sawtooth', r:1.003,pg:0.4,  cut:10, q:2,   a:0.004, d:1.1 },
+    macio:     { w:'triangle', r:0,    pg:0,    cut:6,  q:0.5, a:0.025, d:2.0 },
+    vidro:     { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:3.2 },
+    marimba:   { w:'sine',     r:4.0,  pg:0.45, cut:0,  q:0.5, a:0.003, d:1.3 },
+    celesta:   { w:'sine',     r:3.0,  pg:0.4,  cut:0,  q:0.5, a:0.004, d:2.4 },
+    kalimba:   { w:'sine',     r:5.4,  pg:0.35, cut:0,  q:0.5, a:0.002, d:1.7 },
+    sopro:     { w:'triangle', r:2.0,  pg:0.22, cut:5,  q:0.5, a:0.09,  d:2.0 },
+    sinoGrave: { w:'sine',     r:1.48, pg:0.55, cut:0,  q:0.5, a:0.005, d:3.6 },
+    harpa:     { w:'square',   r:0,    pg:0,    cut:4,  q:0.5, a:0.003, d:2.0 },
+    pad:       { w:'sawtooth', r:1.006,pg:0.6,  cut:4,  q:0.5, a:0.6,   d:4.5 },
+    seno:      { w:'sine',     r:0,    pg:0,    cut:0,  q:0.5, a:0.02,  d:3.0 },
+    orgao:     { w:'sine',     r:2.0,  pg:0.5,  cut:0,  q:0.5, a:0.05,  d:3.0 },
+    coro:      { w:'triangle', r:1.004,pg:0.7,  cut:6,  q:0.5, a:0.8,   d:4.0 }
+  };
+  const waves = {};
+  function waveOf(w){ if (!waves[w]) waves[w] = AC.createPeriodicWave(new Float32Array(33), SPECTRA[w]); return waves[w]; }
+  const dflt = (k, v) => (P[k] === undefined || isNaN(P[k]) ? v : P[k]);
+  function tone(f, t, vel = 0.8, pan = 0, src = 'V1', durS){
+    if (!ok()) return;
+    const T = TIMBRES[P['tim'+src]] || TIMBRES.sino, manual = P.envMode === 'manual';
+    // ajustes do elemento multiplicam os gerais
+    const em = (k, v) => dflt(k + src, v);
+    const tBright = dflt('tBright', 1), tPart = dflt('tPart', 1)*em('tp', 1), tRatio = dflt('tRatio', 1)*em('tr', 1),
+          tDet = dflt('tDet', 0) + em('td', 0), tLen = dflt('tLen', 1)*em('tl', 1), aMul = em('ta', 1);
+    f *= Math.pow(2, em('oc', 0));
+    const g = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.connect(g);
+    const o = AC.createOscillator(); o.setPeriodicWave(waveOf(T.w)); o.frequency.value = f; o.connect(lp);
+    let o2 = null;
+    if (tDet > 0){ o2 = AC.createOscillator(); o2.setPeriodicWave(waveOf(T.w)); o2.frequency.value = f; o2.detune.value = tDet; o.detune.value = -tDet*0.5; o2.connect(lp); }
+    const lvl = 0.14 * vel * (T.w === 'sawtooth' || T.w === 'square' ? 0.5 : 1) * (o2 ? 0.75 : 1);
+    let end;
+    if (!manual){
+      const dur = (durS || T.d) * tLen;
+      lp.Q.value = T.q;
+      const c0 = Math.min(18000, f*(T.cut || 30)*tBright);
+      lp.frequency.setValueAtTime(c0, t);
+      if (T.cut) lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1*tBright), t + Math.min(0.9, dur*0.6));
+      const at = Math.min(dur*0.8, (src === 'Acor' && durS ? Math.min(1.2, durS*0.3) : T.a) * aMul);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + Math.max(0.001, at));
+      if (src === 'Acor'){ const rel = Math.max(0.15, at*0.5); g.gain.setTargetAtTime(0.0001, t + Math.max(at, dur - rel*3), rel); }   // acordes sustentam
+      else g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      end = t + dur;
+    } else {
+      const tr = t + Math.max(P.aA, 0.12*tLen);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + P.aA);
+      g.gain.setTargetAtTime(lvl*P.aS, t + P.aA, P.aD/4); g.gain.setTargetAtTime(0, tr, P.aR/4);
+      const base = Math.min(18000, f*P.fCut*tBright), peak = Math.min(18000, base*Math.pow(2, P.fAmt));
+      lp.Q.value = P.fRes;
+      lp.frequency.setValueAtTime(base, t); lp.frequency.exponentialRampToValueAtTime(peak, t + P.fA);
+      lp.frequency.setTargetAtTime(Math.min(18000, base*Math.pow(2, P.fAmt*P.fS)), t + P.fA, P.fD/4);
+      lp.frequency.setTargetAtTime(base, tr, P.fR/4);
+      end = tr + P.aR*1.6;
+    }
+    let p = null;
+    if (T.r && T.pg*tPart > 0.005){
+      p = AC.createOscillator(); p.frequency.value = f*T.r*tRatio;
+      const pg = AC.createGain(); pg.gain.setValueAtTime(T.pg*tPart, t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, end - t));
+      p.connect(pg); pg.connect(lp);
+    }
+    out(g, pan, 0, 0, t, end, src);
+    o.start(t); o.stop(end + 0.05); if (o2){ o2.start(t); o2.stop(end + 0.05); } if (p){ p.start(t); p.stop(end + 0.05); }
+  }
+
+  // ---------- tela, painel, teclas ----------
+  function toggleFull(){
+    const d = document;
+    try {
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+      else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } catch (e) {}
+  }
+  let running = false;
+  function setup(onStart, keys = {}){
+    $('start').addEventListener('pointerdown', e => { e.stopPropagation(); go(); });
+    function go(){ if (running) return; initAudio(); running = true; $('start').classList.add('hide'); onStart && onStart(); }
+    $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+    const bf = $('bFull'); if (bf) bf.addEventListener('click', toggleFull);
+    const st = $('showTxt'); if (st) st.addEventListener('input', () => document.body.classList.toggle('semtexto', !st.checked));
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+      if (e.target.tagName === 'SELECT') return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') $('panel').classList.toggle('on');
+      else if (k === 'f') toggleFull();
+      else if (k === 't' && st){ st.checked = !st.checked; document.body.classList.toggle('semtexto', !st.checked); }
+      else if (k === ' ' && !running){ e.preventDefault(); go(); }
+      else if (keys[k]){ e.preventDefault(); if (running) keys[k](); }
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const fmt = v => v.toLocaleString('pt-BR');
+  // ---------- controles de efeitos ----------
+  const fx = {
+    delay(time, feedback, mix){ if (!AC) return; const t = AC.currentTime;
+      if (time > 0) delay.delayTime.setTargetAtTime(Math.min(1.95, time), t, 0.05);
+      dFb.gain.setTargetAtTime(Math.min(0.92, feedback), t, 0.05); dRet.gain.setTargetAtTime(time > 0 ? mix : 0, t, 0.05); },
+    filter(freq, q){ if (!AC) return; const t = AC.currentTime; fxF.frequency.setTargetAtTime(freq, t, 0.08); fxF.Q.setTargetAtTime(q, t, 0.08); },
+    drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
+      const n = 2048, c = new Float32Array(n), k = 1 + a*30;
+      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; },
+    crush(a){ if (!AC) return; if (a <= 0.001){ fxCrush.curve = null; return; }
+      const bits = 16 - a*14, steps = Math.pow(2, bits)/2, n = 8192, c = new Float32Array(n);
+      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.round(x*steps)/steps; } fxCrush.curve = c; },
+    width(w){ width = w; }
+  };
+  return { fx, P, bind, readP, now, initAudio, applyMix, setDrone, freq, semi, chord, chordName, scale, SCALES, NOTAS, ROOT,
+    bell, soft, pluck, pad, sine, kick, tick, tone, droneTimbre, setSrc: k => { curSrc = k; }, setup, toggleFull, fmt,
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; } };
+})();
+
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){ DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', resize); resize();
+const P = O.P;
+const NL = 7;
+
+// ---------- a sequência ----------
+const N = 400000;
+let k, R, D, A = [1, 2];
+function generate(){
+  A = P.alpha === '13' ? [1, 3] : P.alpha === '23' ? [2, 3] : [1, 2];
+  k = new Uint8Array(N);
+  // auto-descrição: o bloco j tem tamanho k[j] e os blocos alternam entre A[0] e A[1]
+  let i = 0;
+  for (let j = 0; i < N; j++){
+    const val = A[j % 2], len = j < i ? k[j] : val;
+    for (let q = 0; q < len && i < N; q++) k[i++] = val;
+  }
+  R = new Int32Array(N + 1);
+  for (let q = 0; q < N; q++) R[q+1] = R[q] + k[q];
+  D = new Int32Array(N + 1);
+  for (let q = 0; q < N; q++) D[q+1] = D[q] + (k[q] === A[0] ? 1 : -1);
+}
+// início de um termo da faixa d (em unidades de tempo); a faixa d é a sequência com d+1 aplicações de R
+function startOf(d, j){ let x = j; for (let c = 0; c <= d; c++){ if (x >= N) return Infinity; x = R[x]; } return x; }
+
+// ---------- relógio ----------
+let t0 = 0;
+const unit = () => 60 / P.bpm / 2;   // um termo "1" = colcheia
+const units = t => (t - t0) / unit();
+let nextJ = new Int32Array(NL), drawJ = new Int32Array(NL);
+function reset(){ generate(); t0 = O.now() + 0.6; nextJ.fill(0); drawJ.fill(0); chordDeg = 0; }
+
+// ---------- som ----------
+let chordDeg = 0;
+const PROG = { 1: 0, 2: 3, 3: 4 };
+function voice(d, j, t, durU){
+  const v = k[j], idx = A.indexOf(v), len = durU*unit();
+  const ch = O.chord(chordDeg), pan = ((d % 3) - 1)*0.45;
+  if (d === 0){
+    O.setSrc('Perc'); if (P.perc > 0) O.tick(t, P.perc*(idx ? 0.55 : 0.9), (j % 2 ? 0.3 : -0.3), idx ? 3200 : 8000, idx ? 0.12 : 0.04);
+    return;
+  }
+  if (d >= P.layers) return;
+  const top = Math.min(P.layers, NL) - 1;
+  if (d === top){
+    // a voz mais lenta muda o acorde
+    chordDeg = PROG[v] + (Math.floor(j/2) % 2 ? 5 : 0);
+    const c2 = O.chord(chordDeg);
+    c2.slice(0, 4).forEach((s, i) => O.tone(O.ROOT*Math.pow(2, s/12)*2, t + i*0.04, 0.55, (i - 1.5)*0.35, 'Acor', Math.max(1.5, len*0.95)));
+    O.tone(O.ROOT*Math.pow(2, O.semi(chordDeg)/12), t, 0.8, 0, 'Baixo', Math.max(1.5, len));
+    O.setDrone(O.semi(chordDeg), O.semi(chordDeg + 4) - O.semi(chordDeg), Math.min(2, len*0.4));
+    return;
+  }
+  const oct = Math.pow(2, Math.max(0, 3 - Math.floor(d/2)));
+  const f = O.ROOT*oct*Math.pow(2, ch[(d + idx*2) % 5]/12);
+  const dur = Math.min(4, Math.max(0.25, len*1.4));
+  if (d === 1) O.tone(f, t, 0.75, pan, 'V1', Math.min(1, dur));
+  else if (d === 2) O.tone(f, t, 0.55, pan, 'V2', dur*1.6);
+  else if (d === 3) O.tone(f, t, 0.85, pan, 'V3', dur);
+  else O.tone(f, t, 0.9, pan, 'Vg', dur*1.2);
+}
+const LOOK = 0.25;
+function schedule(t){
+  const until = units(t + LOOK);
+  for (let d = NL - 1; d >= 0; d--){
+    for (let guard = 0; guard < 200; guard++){
+      const j = nextJ[d], s = startOf(d, j);
+      if (s > until || !isFinite(s)) break;
+      const e = startOf(d, j + 1);
+      if (s >= units(t) - 0.5) voice(d, j, t0 + s*unit(), e - s);
+      nextJ[d]++;
+    }
+  }
+}
+
+// ---------- cor ----------
+function colorFor(d, idx, a, l){
+  switch (P.color){
+    case 'arco': return `hsla(${(190 + d*42 + idx*18) % 360},65%,${l}%,${a})`;
+    case 'brasa': return `hsla(${12 + d*6 + idx*20},${80 - idx*15}%,${l - idx*8}%,${a})`;
+    case 'branco': return `hsla(0,0%,${l + 10 - idx*18}%,${a})`;
+    default: return `hsla(${idx ? 215 : 195},${idx ? 40 : 55}%,${idx ? l - 12 : l + 8}%,${a})`;
+  }
+}
+
+O.bind(['bpm','layers','perc','alpha','tpV1','trV1','tdV1','taV1','tlV1','ocV1','tpV2','trV2','tdV2','taV2','tlV2','ocV2','tpV3','trV3','tdV3','taV3','tlV3','ocV3','tpVg','trVg','tdVg','taVg','tlVg','ocVg','timAcor','tpAcor','trAcor','tdAcor','taAcor','tlAcor','ocAcor','timBaixo','tpBaixo','trBaixo','tdBaixo','taBaixo','tlBaixo','ocBaixo','percTone','percQ','percLen','timDro','zoom','links','graph','color','mutePerc','briPerc','panPerc','sPercV','sPercD','sPercP','sPercB','volV1','muteV1','timV1','briV1','panV1','sV1V','sV1D','sV1P','sV1B','volV2','muteV2','timV2','briV2','panV2','sV2V','sV2D','sV2P','sV2B','volV3','muteV3','timV3','briV3','panV3','sV3V','sV3D','sV3P','sV3B','volVg','muteVg','timVg','briVg','panVg','sVgV','sVgD','sVgP','sVgB','volAcor','muteAcor','briAcor','panAcor','sAcorV','sAcorD','sAcorP','sAcorB','volBaixo','muteBaixo','briBaixo','panBaixo','sBaixoV','sBaixoD','sBaixoP','sBaixoB','muteDro','briDro','panDro','sDroV','sDroD','sDroP','sDroB','tBright','tPart','tRatio','tDet','tLen','envMode','aA','aD','aS','aR','fCut','fRes','fAmt','fA','fD','fS','fR','dMix','dTime','dFbk','dTone','vSize','vDecay','vDamp','vMod','vPre','bMix','bBits','bDown','pMix','pSemi','pTime','pFbk','oCut','oRes','oDrive','oWidth'], (k2, old) => {
+  if (k2 === 'bpm'){ const t = O.now(), u = (t - t0)/(60/old.bpm/2); t0 = t - u*unit(); }
+  if (k2 === 'alpha') reset();
+  if (k2 === 'timDro') O.droneTimbre(P.timDro);
+  if (['aA','aD','aS','aR','fCut','fRes','fAmt','fA','fD','fS','fR'].includes(k2) && P.envMode !== 'manual'){ $('envMode').value = 'manual'; P.envMode = 'manual'; }
+});
+reset();
+
+// ---------- desenho ----------
+let lastTxt = -1;
+function frame(){
+  const t = O.now();
+  if (O.running) schedule(t);
+  const uNow = O.running ? Math.max(0, units(t)) : 0;
+  const nl = Math.min(NL, Math.max(2, P.layers));
+  const pxU = 14*P.zoom * Math.min(1.2, W/900 + 0.4);
+  const head = W*0.32;
+  const gH = P.graph ? Math.min(150, H*0.18) : 0;
+  const top = W < 640 ? 196 : 152, bottom = H - gH - 20, rowH = (bottom - top)/nl;
+  const u0 = uNow - head/pxU, u1 = uNow + (W - head)/pxU;
+  const X = u => head + (u - uNow)*pxU;
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+
+  for (let d = 0; d < nl; d++){
+    const row = nl - 1 - d, y = top + row*rowH, h = rowH*0.62;
+    // avança o primeiro termo visível
+    while (startOf(d, drawJ[d] + 1) < u0) drawJ[d]++;
+    for (let j = drawJ[d]; ; j++){
+      const s = startOf(d, j); if (s > u1 || !isFinite(s)) break;
+      const e = startOf(d, j + 1), idx = A.indexOf(k[j]);
+      const x0 = X(s), x1 = X(e);
+      const playing = uNow >= s && uNow < e;
+      const past = e <= uNow;
+      const glow = playing ? 1 - (uNow - s)/(e - s)*0.5 : 0;
+      const a = playing ? 0.85 : past ? 0.32 : 0.13;
+      ctx.fillStyle = colorFor(d, idx, a, 62 + glow*20);
+      const gap = Math.min(3, (x1 - x0)*0.12);
+      ctx.fillRect(x0 + gap/2, y + (idx ? 0 : h*0.18), Math.max(1, x1 - x0 - gap), idx ? h : h*0.64);
+      if (playing){
+        const g = ctx.createRadialGradient((x0 + x1)/2, y + h/2, 0, (x0 + x1)/2, y + h/2, Math.max(30, (x1 - x0)));
+        g.addColorStop(0, colorFor(d, idx, 0.25*glow, 75)); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(x0 - 40, y - 30, x1 - x0 + 80, h + 60);
+      }
+      // ligação com os filhos (o bloco que este termo descreve na faixa de baixo)
+      if (P.links && d > 0 && row < nl - 1){
+        const yb = y + rowH;
+        ctx.strokeStyle = colorFor(d, idx, past ? 0.1 : 0.05, 70); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x0 + gap/2, y + h); ctx.lineTo(x0 + gap/2, yb); ctx.stroke();
+      }
+    }
+    // rótulo da faixa
+    ctx.fillStyle = 'rgba(207,214,221,0.28)';
+    if (!document.body.classList.contains('semtexto')){
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.font = '300 10px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+      ctx.fillText(d === 0 ? 'termos' : d === nl - 1 ? 'acordes' : `nível ${d}`, 10, y + h + 3);
+      ctx.globalCompositeOperation = 'lighter';
+    }
+  }
+  // agulha
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(head + 0.5, top - 10); ctx.lineTo(head + 0.5, bottom); ctx.stroke();
+
+  // termo atual da faixa de baixo
+  let cur = 0; { let lo = 0, hi = N - 1; while (lo < hi){ const m = (lo + hi + 1) >> 1; if (R[m] <= uNow) lo = m; else hi = m - 1; } cur = lo; }
+
+  // gráfico da diferença entre 1 e 2
+  if (P.graph && gH > 30){
+    const gy0 = H - gH, gy1 = H - 16, mid = (gy0 + gy1)/2;
+    const nShow = Math.max(50, cur);
+    let mx = 4; const stepI = Math.max(1, Math.floor(nShow/W));
+    for (let i = 0; i <= cur; i += stepI) mx = Math.max(mx, Math.abs(D[i]));
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.beginPath(); ctx.moveTo(30, mid + 0.5); ctx.lineTo(W - 30, mid + 0.5); ctx.stroke();
+    ctx.strokeStyle = colorFor(1, 0, 0.7, 70); ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i <= cur; i += stepI){ const x = 30 + (W - 60)*i/nShow, y = mid - D[i]/mx*(gy1 - gy0)/2*0.9; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke();
+    if (!document.body.classList.contains('semtexto')){
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`quantidade de ${A[0]} menos quantidade de ${A[1]} (máx. ±${mx})`, 30, gy0 + 4);
+    }
+  }
+
+  // texto
+  if (cur !== lastTxt){
+    lastTxt = cur;
+    $('num').textContent = `termo ${O.fmt(cur + 1)}`;
+    // blocos recentes da faixa de baixo e seus tamanhos
+    const runs = []; let i = cur;
+    // volta até o começo do bloco atual e pega ~14 blocos
+    while (i > 0 && k[i-1] === k[cur]) i--;
+    let start = i; for (let c = 0; c < 13 && start > 0; c++){ let s = start - 1; while (s > 0 && k[s-1] === k[start-1]) s--; start = s; }
+    let q = start; const sizes = [];
+    while (q <= cur){ let e = q; while (e + 1 < N && k[e+1] === k[q]) e++; const n = e - q + 1;
+      const txt = String(k[q]).repeat(n);
+      runs.push(e >= cur && q <= cur ? `<b>${txt}</b>` : txt); sizes.push(n); q = e + 1; }
+    $('op').innerHTML = runs.join('<i>·</i>');
+    const ones = (cur + 1 + D[cur + 1]) / 2, pct = ones/(cur + 1)*100;
+    $('seq').innerHTML = `<span class="o">tamanho dos blocos: ${sizes.join(' ')} → é a própria sequência</span><br>` +
+      `<span class="o">${A[0]}: ${pct.toFixed(3).replace('.', ',')}% dos termos</span><span class="o">${A[0]} − ${A[1]}: ${D[cur + 1] > 0 ? '+' : ''}${D[cur + 1]}</span><span class="o">acorde de ${O.chordName(chordDeg)}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); O.droneTimbre(P.timDro); }, { r: reset });
+$('bRe').addEventListener('click', reset);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

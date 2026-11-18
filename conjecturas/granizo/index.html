@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Granizo — Collatz</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start.hide{opacity:0;pointer-events:none}
+  #num{position:fixed;left:28px;top:22px;font-weight:200;font-size:calc(28px*var(--ts,1));letter-spacing:.08em;opacity:0;transition:opacity .6s;pointer-events:none;font-variant-numeric:tabular-nums;z-index:2}
+  #num.on{opacity:.55}
+  #op{position:fixed;left:30px;top:calc(22px + 40px*var(--ts,1));font-weight:300;font-size:calc(17px*var(--ts,1));letter-spacing:.06em;opacity:0;transition:opacity .6s;pointer-events:none;font-variant-numeric:tabular-nums;z-index:2;white-space:nowrap}
+  #op.on{opacity:.75}
+  #op .par{color:#8fb3cc}
+  #op .imp{color:#d8f0ff}
+  #seq{position:fixed;left:30px;top:calc(22px + 74px*var(--ts,1));right:60px;max-height:40%;font-weight:300;font-size:calc(12.5px*var(--ts,1));line-height:1.75;letter-spacing:.03em;opacity:0;transition:opacity .6s;pointer-events:none;font-variant-numeric:tabular-nums;z-index:2;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq.on{opacity:.45}
+  #seq b{font-weight:500;opacity:1}
+  #seq .up{color:#bfe4ff}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:260px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 92px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0}
+  .row select,.row input[type=number]{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .sub{font-size:10.5px;letter-spacing:.12em;opacity:.45;margin:10px 0 2px;text-transform:uppercase}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.5;margin-top:10px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="on"></div><div id="op" class="on"></div><div id="seq" class="on"></div>
+<div id="start"><h1>GRANIZO</h1><p>toque para começar</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Números</h2>
+  <div class="row"><label>Origem</label>
+    <select id="mode">
+      <option value="seq" selected>Contagem (2, 3, 4…)</option>
+      <option value="rand">Acaso</option>
+      <option value="rec">Recordes (27, 97, 871…)</option>
+    </select></div>
+  <div class="row"><label>Tocar número</label><input type="number" id="seedIn" min="2" placeholder="ex.: 27"></div>
+  <div class="row"><label>Velocidade</label><input type="range" id="speed" min="0.6" max="14" step="0.1" value="3"></div>
+  <div class="row"><label>Pausa no 1</label><input type="range" id="gap" min="0.5" max="10" step="0.1" value="3.5"></div>
+  <h2>Som</h2>
+  <div class="row"><label>Modo</label>
+    <select id="scale">
+      <option value="jonico">Jônico (maior)</option>
+      <option value="dorico" selected>Dórico</option>
+      <option value="frigio">Frígio</option>
+      <option value="lidio">Lídio</option>
+      <option value="mixolidio">Mixolídio</option>
+      <option value="eolio">Eólio (menor)</option>
+      <option value="locrio">Lócrio</option>
+      <option value="menorHarm">Menor harmônica</option>
+      <option value="menorMel">Menor melódica</option>
+      <option value="frigioDom">Frígio dominante</option>
+      <option value="hungara">Húngara menor</option>
+      <option value="penta">Pentatônica menor</option>
+      <option value="pentaMaior">Pentatônica maior</option>
+      <option value="hirajoshi">Hirajoshi</option>
+      <option value="tons">Tons inteiros</option>
+    </select></div>
+  <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75"></div>
+  <div class="row"><label>Drone</label><input type="range" id="drone" min="0" max="1" step="0.01" value="0.5"></div>
+  <div class="row"><label>Troca de timbre</label><input type="range" id="xfade" min="0.5" max="30" step="0.5" value="10"></div>
+  <h2>Envelope</h2>
+  <div class="row"><label>Modo</label><select id="envMode"><option value="timbre" selected>Do timbre</option><option value="manual">ADSR manual</option></select></div>
+  <div class="sub">Amplitude</div>
+  <div class="row"><label>Ataque</label><input type="range" id="aA" min="0.001" max="3" step="0.001" value="0.005"></div>
+  <div class="row"><label>Decaimento</label><input type="range" id="aD" min="0.01" max="4" step="0.01" value="0.9"></div>
+  <div class="row"><label>Sustentação</label><input type="range" id="aS" min="0" max="1" step="0.01" value="0.25"></div>
+  <div class="row"><label>Repouso</label><input type="range" id="aR" min="0.01" max="6" step="0.01" value="1.4"></div>
+  <div class="sub">Filtro</div>
+  <div class="row"><label>Corte</label><input type="range" id="fCut" min="0.5" max="24" step="0.1" value="3"></div>
+  <div class="row"><label>Ressonância</label><input type="range" id="fRes" min="0" max="18" step="0.1" value="2"></div>
+  <div class="row"><label>Envelope</label><input type="range" id="fAmt" min="0" max="6" step="0.05" value="2.5"></div>
+  <div class="row"><label>Ataque</label><input type="range" id="fA" min="0.001" max="3" step="0.001" value="0.01"></div>
+  <div class="row"><label>Decaimento</label><input type="range" id="fD" min="0.01" max="4" step="0.01" value="0.6"></div>
+  <div class="row"><label>Sustentação</label><input type="range" id="fS" min="0" max="1" step="0.01" value="0.2"></div>
+  <div class="row"><label>Repouso</label><input type="range" id="fR" min="0.01" max="6" step="0.01" value="1.0"></div>
+  <h2>Efeitos</h2>
+  <div class="sub">Delay</div>
+  <div class="row"><label>Mix</label><input type="range" id="dMix" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Tempo</label><input type="range" id="dTime" min="0.05" max="1.5" step="0.01" value="0.42"></div>
+  <div class="row"><label>Realimentação</label><input type="range" id="dFb" min="0" max="0.92" step="0.01" value="0.28"></div>
+  <div class="row"><label>Tom</label><input type="range" id="dTone" min="400" max="9000" step="10" value="2200"></div>
+  <div class="sub">Reverb Valhalla</div>
+  <div class="row"><label>Mix</label><input type="range" id="verb" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Tamanho</label><input type="range" id="vSize" min="0.5" max="2.5" step="0.01" value="1.2"></div>
+  <div class="row"><label>Decaimento</label><input type="range" id="vDecay" min="0.3" max="0.95" step="0.005" value="0.78"></div>
+  <div class="row"><label>Amortecimento</label><input type="range" id="vDamp" min="500" max="9000" step="10" value="2400"></div>
+  <div class="row"><label>Modulação</label><input type="range" id="vMod" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Pré-delay</label><input type="range" id="vPre" min="0" max="0.25" step="0.005" value="0.03"></div>
+  <div class="sub">Bit crusher</div>
+  <div class="row"><label>Mix</label><input type="range" id="bMix" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Bits</label><input type="range" id="bBits" min="2" max="16" step="0.1" value="8"></div>
+  <div class="row"><label>Redução</label><input type="range" id="bDown" min="1" max="40" step="1" value="4"></div>
+  <div class="sub">Pitch delay</div>
+  <div class="row"><label>Mix</label><input type="range" id="pMix" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Semitons</label><input type="range" id="pSemi" min="-12" max="12" step="1" value="12"></div>
+  <div class="row"><label>Tempo</label><input type="range" id="pTime" min="0.05" max="1.5" step="0.01" value="0.5"></div>
+  <div class="row"><label>Realimentação</label><input type="range" id="pFb" min="0" max="0.85" step="0.01" value="0.45"></div>
+  <h2>Envios</h2>
+  <div class="sub">Melodia</div>
+  <div class="row"><label>Reverb</label><input type="range" id="sMelV" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Delay</label><input type="range" id="sMelD" min="0" max="1" step="0.01" value="0.3"></div>
+  <div class="row"><label>Pitch delay</label><input type="range" id="sMelP" min="0" max="1" step="0.01" value="0.6"></div>
+  <div class="row"><label>Bit crusher</label><input type="range" id="sMelB" min="0" max="1" step="0.01" value="0.6"></div>
+  <div class="sub">Drone</div>
+  <div class="row"><label>Reverb</label><input type="range" id="sDroV" min="0" max="1" step="0.01" value="0.25"></div>
+  <div class="row"><label>Delay</label><input type="range" id="sDroD" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Pitch delay</label><input type="range" id="sDroP" min="0" max="1" step="0.01" value="0"></div>
+  <div class="row"><label>Bit crusher</label><input type="range" id="sDroB" min="0" max="1" step="0.01" value="0"></div>
+  <div class="sub">Acordes</div>
+  <div class="row"><label>Reverb</label><input type="range" id="sChoV" min="0" max="1" step="0.01" value="0.85"></div>
+  <div class="row"><label>Delay</label><input type="range" id="sChoD" min="0" max="1" step="0.01" value="0.12"></div>
+  <div class="row"><label>Pitch delay</label><input type="range" id="sChoP" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="row"><label>Bit crusher</label><input type="range" id="sChoB" min="0" max="1" step="0.01" value="0.25"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Curva par</label><input type="range" id="aEven" min="0" max="0.5" step="0.005" value="0.135"></div>
+  <div class="row"><label>Curva ímpar</label><input type="range" id="aOdd" min="0" max="0.8" step="0.005" value="0.27"></div>
+  <div class="row"><label>Inclinação</label><input type="range" id="tilt" min="-1.2" max="1.2" step="0.01" value="0"></div>
+  <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.3" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Memória</label><input type="range" id="mem" min="0" max="1" step="0.01" value="0.9"></div>
+  <div class="sub">Coral</div>
+  <div class="row"><label>Brilho</label><input type="range" id="coralA" min="0" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="coralW" min="0.3" max="4" step="0.05" value="1"></div>
+  <div class="sub">Caminho atual</div>
+  <div class="row"><label>Brilho</label><input type="range" id="pathA" min="0" max="2" step="0.01" value="1"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="pathW" min="0.3" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>Fantasma</label><input type="range" id="ghostA" min="0" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>Cabeça</label><input type="range" id="headR" min="0" max="3" step="0.05" value="1"></div>
+  <div class="row"><label>Faíscas</label><input type="range" id="sparkA" min="0" max="3" step="0.05" value="1"></div>
+  <div class="sub">Anéis</div>
+  <div class="row"><label>Brilho</label><input type="range" id="ringA" min="0" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="ringW" min="0.3" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>Tamanho</label><input type="range" id="ringS" min="0.3" max="2" step="0.01" value="1"></div>
+  <div class="row"><label>Vibração</label><input type="range" id="ringV" min="0" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>Giro</label><input type="range" id="ringRot" min="0" max="6" step="0.05" value="1"></div>
+  <div class="row"><label>Respiração</label><input type="range" id="ringB" min="0" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>Duração do brilho</label><input type="range" id="ringLife" min="0.3" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>Ecos</label><input type="range" id="echoA" min="0" max="3" step="0.05" value="1"></div>
+  <div class="row"><label>Distância dos ecos</label><input type="range" id="echoGap" min="0" max="3" step="0.05" value="1"></div>
+  <div class="sub">Raiz</div>
+  <div class="row"><label>Brilho do 1</label><input type="range" id="rootA" min="0" max="3" step="0.05" value="1"></div>
+  <div class="sub">Gráfico</div>
+  <div class="row"><label>Altura</label><input type="range" id="gH" min="0.1" max="0.45" step="0.01" value="0.24"></div>
+  <div class="row"><label>Linha</label><input type="range" id="gLineA" min="0" max="2" step="0.01" value="1"></div>
+  <div class="row"><label>Ondas: brilho</label><input type="range" id="wavA" min="0" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Ondas: altura</label><input type="range" id="wavAmp" min="0" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Ondas: velocidade</label><input type="range" id="wavSp" min="0" max="4" step="0.05" value="1"></div>
+  <div class="sub">Textos</div>
+  <div class="row"><label>Tamanho</label><input type="range" id="txtS" min="0.6" max="2.2" step="0.05" value="1"></div>
+  <div class="sub">Geral</div>
+  <div class="row"><label>Cor</label>
+    <select id="color">
+      <option value="gelo" selected>Gelo</option>
+      <option value="arco">Arco-íris</option>
+      <option value="brasa">Brasa</option>
+      <option value="branco">Branco</option>
+    </select></div>
+  <div class="row"><label>Mostrar número</label><input type="checkbox" id="showNum" checked></div>
+  <div class="row"><label>Gráfico</label><input type="checkbox" id="graph" checked></div>
+  <div class="btns">
+    <button id="bClear">Limpar coral</button>
+    <button id="bFull">Tela cheia</button>
+  </div>
+  <div class="hint">Par → ÷2 (o som desce). Ímpar → ×3+1 (o som sobe).<br>Todo caminho termina no 1 e no laço 4 → 2 → 1.<br>Teclas: M controles · F tela cheia · C limpar · N números · G gráfico · Espaço próximo.</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const coral = document.createElement('canvas'), cctx = coral.getContext('2d');
+let W = 0, H = 0, DPR = 1, CDPR = 1;
+const MARGIN = 1.6;           // o coral é desenhado numa área maior que a tela, para o zoom abrir sem buracos
+
+// ---------- parâmetros ----------
+const P = {};
+const ids = ['mode','speed','gap','scale','vol','drone','verb','aEven','aOdd','tilt','zoom','mem','color','showNum','graph','xfade','envMode','aA','aD','aS','aR','fCut','fRes','fAmt','fA','fD','fS','fR','dMix','dTime','dFb','dTone','vSize','vDecay','vDamp','vMod','vPre','bMix','bBits','bDown','pMix','pSemi','pTime','pFb','sMelV','sMelD','sMelP','sMelB','sDroV','sDroD','sDroP','sDroB','sChoV','sChoD','sChoP','sChoB','coralA','coralW','pathA','pathW','ghostA','headR','sparkA','ringA','ringW','ringS','ringV','ringRot','ringB','ringLife','echoA','echoGap','rootA','gH','gLineA','wavA','wavAmp','wavSp','txtS'];
+function readP(){
+  for (const k of ids){ const el = $(k); P[k] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' ? el.value : parseFloat(el.value)); }
+}
+readP();
+for (const k of ids) $(k).addEventListener('input', () => {
+  const oldSpeed = P.speed;
+  readP();
+  if (k === 'speed' && cur && !cur.done){ const p = (now() - cur.t0) * oldSpeed; cur.t0 = now() - p / P.speed; cur.next = Math.max(cur.next, Math.floor(p) + 1); }
+  if (['aEven','aOdd','tilt'].includes(k)) relayoutAll();
+  if (['aA','aD','aS','aR','fCut','fRes','fAmt','fA','fD','fS','fR'].includes(k) && P.envMode !== 'manual'){ $('envMode').value = 'manual'; P.envMode = 'manual'; }
+  if (k === 'coralA' || k === 'coralW') redrawCoral();
+  if (k === 'txtS') document.documentElement.style.setProperty('--ts', P.txtS);
+  if (k === 'scale' && cur) setHarmony(cur.seq.length - 1, now());
+  if (k === 'showNum') { $('num').classList.toggle('on', P.showNum); $('seq').classList.toggle('on', P.showNum); $('op').classList.toggle('on', P.showNum); }
+  applyMix();
+});
+
+// ---------- matemática ----------
+function collatz(n){
+  const s = [n];
+  while (n !== 1){ n = (n % 2 === 0) ? n/2 : 3*n+1; s.push(n); }
+  return s;
+}
+const RECORDS = [27, 97, 871, 6171, 77031, 837799, 8400511, 63728127];
+let seqCounter = 2, recIdx = 0;
+function nextSeed(){
+  if (P.mode === 'seq') return seqCounter++;
+  if (P.mode === 'rec') { const r = RECORDS[recIdx % RECORDS.length]; recIdx++; return r; }
+  return Math.max(2, Math.round(Math.pow(2, 1.5 + Math.random()*17)));
+}
+// caminho em coordenadas do mundo (passo = 1), da raiz (1) até a ponta (n)
+function layout(seq){
+  const m = seq.length - 1, pos = new Float32Array((m+1)*2);
+  let x = 0, y = 0, a = -2.0 + P.tilt;
+  for (let j = 1; j <= m; j++){
+    a += (seq[m-j] % 2 === 0) ? P.aEven : -P.aOdd;
+    x += Math.cos(a); y += Math.sin(a);
+    pos[j*2] = x; pos[j*2+1] = y;
+  }
+  return pos; // ponto j = valor seq[m-j]
+}
+function bboxOf(pos, from, to, bb){
+  for (let j = from; j <= to; j++){ const x = pos[j*2], y = pos[j*2+1];
+    if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (x > bb[2]) bb[2] = x; if (y > bb[3]) bb[3] = y; }
+  return bb;
+}
+
+// ---------- cor ----------
+function colorFor(n, t, alpha){
+  const lg = Math.log2(n+1);
+  switch (P.color){
+    case 'arco':   return `hsla(${(lg*22 + t*40) % 360},70%,62%,${alpha})`;
+    case 'brasa':  return `hsla(${12 + Math.min(lg,24)*1.6},85%,${45 + Math.min(lg,24)*1.2}%,${alpha})`;
+    case 'branco': return `hsla(0,0%,92%,${alpha})`;
+    default:       return `hsla(${200 - Math.min(lg,30)*2.2},${45 + Math.min(lg,30)}%,${60 + Math.min(lg,30)*0.8}%,${alpha})`;
+  }
+}
+
+// ---------- câmera ----------
+const cam = { s: 1, cx: 0, cy: 0 };      // escala (px por passo) e centro do mundo na tela
+const camR = { s: 1, cx: 0, cy: 0 };     // câmera com que o coral foi desenhado
+let worldBB = [-1, -1, 1, 1];
+function camTarget(){
+  const bb = worldBB.slice();
+  if (cur) bboxOf(cur.pos, 0, cur.seq.length - 1, bb);
+  const bw = Math.max(bb[2]-bb[0], 1), bh = Math.max(bb[3]-bb[1], 1);
+  const maxS = Math.min(W, H) / 7;                  // começa bem perto
+  const s = Math.min(maxS, W*0.84/bw, (H - GH)*0.78/bh) * P.zoom;
+  return { s, cx: (bb[0]+bb[2])/2, cy: (bb[1]+bb[3])/2 };
+}
+let CY = 0, GH = 0;   // centro vertical do coral e altura do gráfico (suavizados)
+function toScreen(x, y){ return [(x - cam.cx)*cam.s + W/2, (y - cam.cy)*cam.s + CY]; }
+
+// ---------- coral (memória dos caminhos) ----------
+let paths = [];   // {n, seq, pos, upto, w, t}
+function relayoutAll(){
+  worldBB = [-1, -1, 1, 1];
+  for (const p of paths){ p.pos = layout(p.seq); bboxOf(p.pos, 0, p.upto, worldBB); }
+  if (cur) cur.pos = layout(cur.seq);
+  redrawCoral();
+}
+function drawPathOn(g, p, alphaMul, c){
+  const m = p.seq.length - 1;
+  g.lineWidth = 1.1*P.coralW;
+  // agrupa por cor em trechos para não fazer um traço por segmento
+  let i = 1;
+  while (i <= p.upto){
+    const col = colorFor(p.seq[i], p.t, Math.min(1, 0.22*p.w*alphaMul*P.coralA));
+    const end = Math.min(p.upto, i + 11);
+    g.strokeStyle = col; g.beginPath();
+    let j = m - i + 1; g.moveTo((p.pos[j*2]-c.cx)*c.s + c.ox, (p.pos[j*2+1]-c.cy)*c.s + c.oy);
+    for (let k = i; k <= end; k++){ j = m - k; g.lineTo((p.pos[j*2]-c.cx)*c.s + c.ox, (p.pos[j*2+1]-c.cy)*c.s + c.oy); }
+    g.stroke(); i = end + 1;
+  }
+}
+function coralView(){ return { s: camR.s, cx: camR.cx, cy: camR.cy, ox: W*MARGIN/2, oy: H*MARGIN/2 + (camR.CY - H/2) }; }
+function redrawCoral(){
+  camR.s = cam.s; camR.cx = cam.cx; camR.cy = cam.cy; camR.CY = CY;
+  cctx.setTransform(CDPR,0,0,CDPR,0,0);
+  cctx.globalCompositeOperation = 'source-over'; cctx.clearRect(0, 0, W*MARGIN, H*MARGIN);
+  cctx.globalCompositeOperation = 'lighter'; cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+  const c = coralView();
+  for (const p of paths) drawPathOn(cctx, p, 1, c);
+}
+function commit(c, upto, t){
+  if (upto < 1) return;
+  const fade = (1 - P.mem) * 0.5;
+  if (fade > 0){
+    for (const p of paths) p.w *= (1 - fade);
+    paths = paths.filter(p => p.w > 0.03);
+    cctx.globalCompositeOperation = 'destination-out'; cctx.fillStyle = `rgba(0,0,0,${fade})`; cctx.fillRect(0,0,W*MARGIN,H*MARGIN);
+  }
+  const p = { n: c.seq[0], seq: c.seq, pos: c.pos, upto, w: 1, t };
+  paths.push(p); if (paths.length > 4000) paths.shift();
+  bboxOf(p.pos, 0, upto, worldBB);
+  cctx.globalCompositeOperation = 'lighter'; cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+  drawPathOn(cctx, p, 1, coralView());
+}
+function clearCoral(){ rings = []; paths = []; worldBB = [-1,-1,1,1]; redrawCoral(); }
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2); CDPR = Math.min(DPR, 1.5);
+  W = innerWidth; H = innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  coral.width = Math.ceil(W*MARGIN*CDPR); coral.height = Math.ceil(H*MARGIN*CDPR);
+  redrawCoral();
+}
+addEventListener('resize', resize);
+
+// ---------- áudio ----------
+let analyser = null, specData = null, dronePaused = false;
+let AC = null, master, comp, verbIn, verbOut, dryBus, delay, droneG, droneF;
+const SCALES = {
+  jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+  mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+  menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+  penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+};
+const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+// harmonia de cada número: o grau do acorde e do drone vem do número de passos até o 1
+let harm = { chord: [0,3,7,10,14], root: 0, fifth: 7, name: 'Ré menor' };
+function harmonyFor(m){
+  const sc = SCALES[P.scale], k = sc.length, deg = m % k;
+  const st = d => sc[((d % k) + k) % k] + 12*Math.floor(d / k);
+  const rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4];
+  const chord = rel.map(r => st(deg + r));
+  const r0 = st(deg), root = ((r0 % 12) + 12) % 12;
+  let fifth = 7, name = NOTAS[root];
+  if (k === 7){
+    const third = st(deg+2) - r0; fifth = st(deg+4) - r0;
+    const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+    if (q) name += ' ' + q;
+  } else if (k === 5){ fifth = st(deg+3) - r0; }
+  return { chord, root, fifth, name, deg };
+}
+let droneOscs = [];
+function setHarmony(m, t){
+  harm = harmonyFor(m);
+  if (!AC) return;
+  // o drone toca o acorde inteiro: baixo, fundamental, terça, quinta e sétima (ou as notas do modo)
+  const off = 12*Math.floor(harm.chord[0]/12), F = j => ROOT * Math.pow(2, (harm.chord[j] - off)/12);
+  const tg = [F(0)/2, F(0), F(1), F(2), F(3)];
+  droneOscs.forEach((o, i) => o.frequency.setTargetAtTime(tg[i], t, 1.2));
+}
+const ROOT = 73.416; // Ré2
+const now = () => AC ? AC.currentTime : performance.now()/1000;
+
+
+const WORKLET_SRC = `
+class Crusher extends AudioWorkletProcessor {
+  static get parameterDescriptors(){ return [{name:'bits',defaultValue:8},{name:'down',defaultValue:4},{name:'mix',defaultValue:0}]; }
+  constructor(){ super(); this.ph = [0,0]; this.hold = [0,0]; }
+  process(ins, outs, p){
+    const i = ins[0], o = outs[0]; if (!i || !i.length) return true;
+    const mix = p.mix[0], bits = p.bits[0], down = Math.max(1, p.down[0]), step = Math.pow(0.5, bits - 1);
+    for (let c = 0; c < o.length; c++){
+      const x = i[c] || i[0], y = o[c];
+      if (mix <= 0.0001){ y.set(x); continue; }
+      for (let n = 0; n < y.length; n++){
+        if (++this.ph[c] >= down){ this.ph[c] -= down; this.hold[c] = step * Math.round(x[n] / step); }
+        y[n] = x[n] * (1 - mix) + this.hold[c] * mix;
+      }
+    }
+    return true;
+  }
+}
+class PitchDelay extends AudioWorkletProcessor {
+  static get parameterDescriptors(){ return [{name:'time',defaultValue:0.5},{name:'fb',defaultValue:0.45},{name:'semi',defaultValue:12}]; }
+  constructor(){ super(); this.N = Math.ceil(sampleRate*2.2); this.buf = new Float32Array(this.N); this.w = 0; this.ph = 0; this.W = Math.round(sampleRate*0.07); }
+  read(pos){ const N = this.N; pos = ((pos % N) + N) % N; const i0 = Math.floor(pos), fr = pos - i0; return this.buf[i0]*(1-fr) + this.buf[(i0+1)%N]*fr; }
+  process(ins, outs, p){
+    const i = ins[0], o = outs[0], L = o[0].length;
+    const D = Math.min(this.N - this.W - 4, p.time[0]*sampleRate), fb = p.fb[0], ratio = Math.pow(2, p.semi[0]/12), W = this.W;
+    const inc = (1 - ratio) / W;
+    for (let n = 0; n < L; n++){
+      const x = i && i.length ? (i[0][n] + (i[1] ? i[1][n] : i[0][n]))*0.5 : 0;
+      this.ph += inc; this.ph -= Math.floor(this.ph);
+      let y = 0;
+      for (let k = 0; k < 2; k++){
+        const ph = (this.ph + k*0.5) % 1;
+        y += this.read(this.w - D - W - ph*W) * Math.sin(Math.PI*ph);
+      }
+      y *= 0.75;
+      this.buf[this.w] = x + Math.tanh(y*fb);
+      this.w = (this.w + 1) % this.N;
+      for (let c = 0; c < o.length; c++) o[c][n] = y;
+    }
+    return true;
+  }
+}
+registerProcessor('granizo-crusher', Crusher);
+registerProcessor('granizo-pitchdelay', PitchDelay);
+`;
+let srcBus = {}, crIn = null, crOut = null;
+let crusher = null, pdNode = null, pdIn = null, pdOut = null, dOut = null, dFbG = null, dLpF = null, preDelay = null, combs = [];
+function allpass(input, dt, g){
+  const sum = AC.createGain(), d = AC.createDelay(0.2), fbg = AC.createGain(), ff = AC.createGain(), o = AC.createGain();
+  d.delayTime.value = dt; fbg.gain.value = g; ff.gain.value = -g;
+  input.connect(sum); sum.connect(d); d.connect(fbg); fbg.connect(sum); sum.connect(ff); ff.connect(o); d.connect(o);
+  return o;
+}
+function initAudio(){
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+  master = AC.createGain();
+  comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+  master.connect(comp); comp.connect(AC.destination);
+  analyser = AC.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.82; comp.connect(analyser);
+  specData = new Uint8Array(analyser.frequencyBinCount);
+  dryBus = AC.createGain(); dryBus.connect(master);
+  // reverb "Valhalla": pré-delay, difusão em allpass e pentes modulados (cauda longa e cintilante)
+  verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+  const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+  preDelay = AC.createDelay(0.5); preDelay.delayTime.value = 0.03;
+  const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200; hp.Q.value = -12;
+  const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 5000; pre.Q.value = -12;
+  verbIn.connect(preDelay); preDelay.connect(hp); hp.connect(pre);
+  let diff = pre;
+  for (const [dt, g] of [[0.0047,0.62],[0.0113,0.6],[0.0171,0.58],[0.0231,0.55]]) diff = allpass(diff, dt, g);
+  combs = [];
+  [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373,0.1489,0.1601].forEach((dt, i) => {
+    const d = AC.createDelay(0.6); d.delayTime.value = dt;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = -12;
+    const fb = AC.createGain(); fb.gain.value = 0.78;
+    const o = AC.createGain(); o.gain.value = 0.15;
+    const lfo = AC.createOscillator(); lfo.frequency.value = 0.13 + i*0.071;
+    const lg = AC.createGain(); lg.gain.value = 0.0012; lfo.connect(lg); lg.connect(d.delayTime); lfo.start();
+    diff.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+    combs.push({ d, lp, fb, lg, base: dt });
+  });
+  // delay
+  delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+  dFbG = AC.createGain(); dFbG.gain.value = 0.28;
+  dLpF = AC.createBiquadFilter(); dLpF.type = 'lowpass'; dLpF.frequency.value = 2200; dLpF.Q.value = -12;
+  dOut = AC.createGain();
+  delay.connect(dLpF); dLpF.connect(dFbG); dFbG.connect(delay); dLpF.connect(dOut); dOut.connect(verbIn); dOut.connect(dryBus);
+  // pitch delay e bit crusher (AudioWorklet), ambos como envio
+  pdIn = AC.createGain(); pdOut = AC.createGain(); pdOut.gain.value = 0; pdOut.connect(dryBus); pdOut.connect(verbIn);
+  crIn = AC.createGain(); crOut = AC.createGain(); crOut.gain.value = 0; crOut.connect(master);
+  // três fontes, cada uma com seus envios para os efeitos
+  for (const k of ['Mel','Dro','Cho']){
+    const bus = AC.createGain(); bus.connect(dryBus);
+    const snd = {};
+    for (const [suf, dest] of [['V', verbIn], ['D', delay], ['P', pdIn], ['B', crIn]]){ const g = AC.createGain(); g.gain.value = 0; bus.connect(g); g.connect(dest); snd[suf] = g; }
+    srcBus[k] = { bus, snd };
+  }
+  if (AC.audioWorklet){
+    const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+    AC.audioWorklet.addModule(url).then(() => {
+      pdNode = new AudioWorkletNode(AC, 'granizo-pitchdelay', { outputChannelCount: [2] });
+      pdIn.connect(pdNode); pdNode.connect(pdOut);
+      crusher = new AudioWorkletNode(AC, 'granizo-crusher', { outputChannelCount: [2] });
+      crusher.parameters.get('mix').value = 1;
+      crIn.connect(crusher); crusher.connect(crOut);
+      applyMix();
+    }).catch(() => {});
+  }
+  droneG = AC.createGain(); droneG.gain.value = 0;
+  droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 220; droneF.Q.value = 0.7;
+  droneF.connect(droneG); droneG.connect(srcBus.Dro.bus);
+  [[ROOT/2,'sine',0.5],[ROOT,'sawtooth',0.09],[ROOT*1.189,'sawtooth',0.055],[ROOT*1.4983,'sawtooth',0.065],[ROOT*1.782,'triangle',0.07]].forEach(([f,type,g]) => {
+    const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+    const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+  });
+  applyMix();
+}
+function applyMix(){
+  if (!AC) return;
+  const t = AC.currentTime;
+  master.gain.setTargetAtTime(P.vol, t, 0.1);
+  delay.delayTime.setTargetAtTime(P.dTime, t, 0.15); dFbG.gain.setTargetAtTime(P.dFb, t, 0.05);
+  dLpF.frequency.setTargetAtTime(P.dTone, t, 0.05); dOut.gain.setTargetAtTime(P.dMix*2.2, t, 0.05);
+  preDelay.delayTime.setTargetAtTime(P.vPre, t, 0.1);
+  for (const c of combs){
+    c.d.delayTime.setTargetAtTime(c.base*P.vSize, t, 0.2); c.fb.gain.setTargetAtTime(P.vDecay, t, 0.1);
+    c.lp.frequency.setTargetAtTime(P.vDamp, t, 0.1); c.lg.gain.setTargetAtTime(0.0035*P.vMod*P.vSize, t, 0.1);
+  }
+  pdOut.gain.setTargetAtTime(P.pMix*1.4, t, 0.05);
+  if (pdNode){ const pp = pdNode.parameters; pp.get('time').setTargetAtTime(P.pTime, t, 0.1); pp.get('fb').setTargetAtTime(P.pFb, t, 0.05); pp.get('semi').setValueAtTime(P.pSemi, t); }
+  crOut.gain.setTargetAtTime(P.bMix*1.2, t, 0.05);
+  for (const k in srcBus) for (const suf in srcBus[k].snd) srcBus[k].snd[suf].gain.setTargetAtTime(P['s'+k+suf] * (suf === 'V' ? 1 : suf === 'D' ? 1.2 : 1.3), t, 0.05);
+  if (crusher){ const cp = crusher.parameters; cp.get('bits').setValueAtTime(P.bBits, t); cp.get('down').setValueAtTime(P.bDown, t); }
+  verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+  dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+  droneG.gain.setTargetAtTime(dronePaused ? 0 : P.drone*0.32, t, 1.5);
+}
+function degreeFor(n){ return Math.min(30, Math.round(Math.log2(n) * 1.35)); }
+function freqForDegree(d, base){
+  const sc = SCALES[P.scale], k = sc.length;
+  const oct = Math.floor(d / k), semi = sc[((d % k)+k)%k] + 12*oct;
+  return base * Math.pow(2, semi/12);
+}
+function out(node, x, send, dly, src){
+  node.connect(srcBus[src || 'Mel'].bus);
+}
+// a cauda das notas encurta quando a velocidade sobe (menos vozes ao mesmo tempo)
+const tail = base => Math.min(base, 0.5 + 5/P.speed);
+// ---------- timbres: cada número escolhe uma família, e o tamanho de cada valor muda o brilho ----------
+// up = subida (×3+1), dn = descida (÷2): onda, parcial (razão, ganho), filtro (× freq), ataque, duração
+const TIMBRES = [
+  { nome: 'vidro',   up: { w:'sine',     r:2.76, pg:0.5,  cut:0,  a:0.006, d:3.2 }, dn: { w:'triangle', r:0,    pg:0,    cut:6, a:0.025, d:1.6 } },
+  { nome: 'marimba', up: { w:'sine',     r:4.0,  pg:0.45, cut:0,  a:0.003, d:1.3 }, dn: { w:'sine',     r:4.0,  pg:0.2,  cut:0, a:0.004, d:0.9 } },
+  { nome: 'celesta', up: { w:'sine',     r:3.0,  pg:0.4,  cut:0,  a:0.004, d:2.4 }, dn: { w:'triangle', r:2.0,  pg:0.15, cut:8, a:0.01,  d:1.3 } },
+  { nome: 'kalimba', up: { w:'sine',     r:5.4,  pg:0.35, cut:0,  a:0.002, d:1.7 }, dn: { w:'sine',     r:2.0,  pg:0.25, cut:0, a:0.003, d:1.0 } },
+  { nome: 'corda',   up: { w:'sawtooth', r:0,    pg:0,    cut:7,  a:0.004, d:2.2 }, dn: { w:'sawtooth', r:0,    pg:0,    cut:3, a:0.006, d:1.4 } },
+  { nome: 'sopro',   up: { w:'triangle', r:2.0,  pg:0.22, cut:5,  a:0.09,  d:2.0 }, dn: { w:'sine',     r:3.0,  pg:0.1,  cut:0, a:0.07,  d:1.6 } },
+  { nome: 'sino grave', up: { w:'sine',  r:1.48, pg:0.55, cut:0,  a:0.005, d:3.6 }, dn: { w:'sine',     r:2.0,  pg:0.3,  cut:0, a:0.02,  d:2.0 } },
+  { nome: 'harpa',   up: { w:'square',   r:0,    pg:0,    cut:4,  a:0.003, d:2.0 }, dn: { w:'triangle', r:0,    pg:0,    cut:4, a:0.004, d:1.2 } }
+];
+// cada parte do timbre vira número para poder misturar dois timbres aos poucos
+const SPECTRA = (() => {
+  const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
+  return {
+    sine: mk(n => n === 1 ? 1 : 0),
+    triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
+    sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)),
+    square: mk(n => n % 2 ? 4/(Math.PI*n) : 0)
+  };
+})();
+function norm(spec){   // forma numérica de uma voz
+  return { w: spec.w, r: spec.r || 2, pg: spec.r ? spec.pg : 0, cut: spec.cut || 30, a: spec.a, d: spec.d,
+           lv: spec.w === 'sawtooth' || spec.w === 'square' ? 0.55 : 1 };
+}
+let timFrom = { up: norm(TIMBRES[0].up), dn: norm(TIMBRES[0].dn) }, timTo = timFrom, tim = TIMBRES[0], timT0 = -1e9;
+function timbreFor(seq){
+  let odd = 0; for (let q = 0; q < seq.length - 1; q++) if (seq[q] % 2) odd++;
+  return TIMBRES[(odd + Math.floor(Math.log2(seq[0]))) % TIMBRES.length];   // subidas do caminho + tamanho do número
+}
+function timK(t){ const u = Math.max(0, Math.min(1, (t - timT0) / P.xfade)); return u*u*(3 - 2*u); }
+// estado do timbre num instante, já misturado (onda guardada como espectro)
+function timAt(t, part){
+  const k = timK(t), A = timFrom[part], B = timTo[part];
+  const L = (x, y) => x + (y - x)*k;
+  const spec = new Float32Array(33); for (let n = 1; n <= 32; n++) spec[n] = L(A.spec[n], B.spec[n]);
+  return { spec, r: Math.exp(L(Math.log(A.r), Math.log(B.r))), pg: L(A.pg, B.pg), cut: Math.exp(L(Math.log(A.cut), Math.log(B.cut))),
+           a: Math.exp(L(Math.log(A.a), Math.log(B.a))), d: L(A.d, B.d), lv: L(A.lv, B.lv) };
+}
+function withSpec(sp){ const n = norm(sp); n.spec = SPECTRA[sp.w]; return n; }
+function setTimbre(T, t){
+  // começa a nova troca a partir de onde a anterior estava
+  timFrom = { up: timAt(t, 'up'), dn: timAt(t, 'dn') };
+  timTo = { up: withSpec(T.up), dn: withSpec(T.dn) };
+  tim = T; timT0 = t;
+}
+timFrom = { up: withSpec(TIMBRES[0].up), dn: withSpec(TIMBRES[0].dn) }; timTo = timFrom;
+const waveCache = new Map();
+function waveFor(spec){
+  let key = ''; for (let n = 1; n <= 32; n++) key += Math.round(spec[n]*40) + ',';
+  let w = waveCache.get(key);
+  if (!w){ const real = new Float32Array(33); w = AC.createPeriodicWave(real, spec); if (waveCache.size > 400) waveCache.clear(); waveCache.set(key, w); }
+  return w;
+}
+function voice(part, f, x, vel, t, v, send, dly, gain){
+  const s = timAt(t, part), manual = P.envMode === 'manual';
+  const bright = Math.min(1, Math.log2(Math.max(2, v)) / 22);          // valores grandes soam mais brilhantes
+  const g = AC.createGain();
+  const o = AC.createOscillator(); o.setPeriodicWave(waveFor(s.spec)); o.frequency.value = f;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass';
+  o.connect(lp); lp.connect(g);
+  const lvl = gain * vel * s.lv;
+  let end;
+  if (!manual){
+    const dur = tail(s.d);
+    lp.Q.value = 0.5;
+    const c0 = Math.min(18000, f*s.cut*(0.7 + bright*2.2)), open = Math.max(0, Math.min(1, (s.cut - 8)/22));
+    lp.frequency.setValueAtTime(c0, t); lp.frequency.exponentialRampToValueAtTime(Math.max(80, Math.min(c0, f*1.1 + c0*0.5*open)), t + Math.min(0.9, dur));
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + s.a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    end = t + dur;
+  } else {
+    // ADSR: a nota fica "apertada" durante um passo; depois vem o repouso
+    const hold = Math.max(0.04, 0.9 / P.speed), tr = t + Math.max(P.aA, hold);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + P.aA);
+    g.gain.setTargetAtTime(lvl * P.aS, t + P.aA, P.aD/4);
+    g.gain.setTargetAtTime(0, tr, P.aR/4);
+    const base = Math.min(18000, f*P.fCut*(0.75 + bright*1.5)), peak = Math.min(18000, base*Math.pow(2, P.fAmt));
+    lp.Q.value = P.fRes;
+    lp.frequency.setValueAtTime(base, t); lp.frequency.exponentialRampToValueAtTime(peak, t + P.fA);
+    lp.frequency.setTargetAtTime(Math.min(18000, base*Math.pow(2, P.fAmt*P.fS)), t + P.fA, P.fD/4);
+    lp.frequency.setTargetAtTime(base, tr, P.fR/4);
+    end = tr + P.aR*1.6;
+  }
+  let p = null;
+  if (s.pg > 0.005){
+    p = AC.createOscillator(); p.frequency.value = f*s.r;
+    const pg = AC.createGain();
+    pg.gain.setValueAtTime(s.pg*(0.6 + bright), t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, end - t));
+    p.connect(pg); pg.connect(lp);
+  }
+  out(g, x, send, dly);
+  o.start(t); o.stop(end + 0.05); if (p){ p.start(t); p.stop(end + 0.05); }
+}
+function bell(f, x, vel, t, v){ voice('up', f, x, vel, t, v || f, 0.6, 0.3, 0.16); }   // subida (×3+1)
+function soft(f, x, vel, t, v){ voice('dn', f, x, vel, t, v || f, 0.45, 0.15, 0.14); } // descida (÷2)
+function resolveChord(x, t){       // chegada ao 1: o acorde soa com o timbre do momento (já misturado)
+  const sp = timAt(t, 'up'), wave = waveFor(sp.spec);
+  const strike = sp.a < 0.03;                                   // timbres percutidos dedilham o acorde; sopros crescem devagar
+  const att = strike ? 0.012 : 0.9, dur = Math.min(8, sp.d*2.4 + 2.5), lvl = 0.065 * sp.lv;
+  harm.chord.forEach((semi,i) => {
+    const f = ROOT*2 * Math.pow(2, semi/12), ti = t + i*(strike ? 0.11 : 0.06);
+    const o = AC.createOscillator(), g = AC.createGain(), lp = AC.createBiquadFilter();
+    o.setPeriodicWave(wave); o.frequency.value = f; o.detune.value = (Math.random()-0.5)*8;
+    lp.type = 'lowpass'; lp.Q.value = 0.5;
+    const c0 = Math.min(16000, f*Math.min(sp.cut, 14));
+    lp.frequency.setValueAtTime(c0, ti); lp.frequency.exponentialRampToValueAtTime(Math.max(120, c0*0.35), ti + dur*0.8);
+    o.connect(lp); lp.connect(g);
+    let p = null;
+    if (sp.pg > 0.005){
+      p = AC.createOscillator(); p.frequency.value = f*sp.r;
+      const pg = AC.createGain(); pg.gain.setValueAtTime(sp.pg*0.5, ti); pg.gain.exponentialRampToValueAtTime(0.001, ti + Math.min(2.5, dur*0.5));
+      p.connect(pg); pg.connect(g);
+    }
+    g.gain.setValueAtTime(0.0001, ti); g.gain.exponentialRampToValueAtTime(lvl, ti + att); g.gain.exponentialRampToValueAtTime(0.0001, ti + dur);
+    out(g, x, 0, 0, 'Cho');
+    o.start(ti); o.stop(ti + dur + 0.1); if (p){ p.start(ti); p.stop(ti + dur + 0.1); }
+  });
+}
+function loopPulse(i, x, t){       // laço 4 → 2 → 1
+  const f = ROOT * Math.pow(2, harm.root/12) * [4,2,1][i];
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.frequency.setValueAtTime(f*1.02, t); o.frequency.exponentialRampToValueAtTime(f, t+0.15);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22 - i*0.05, t+0.02); g.gain.exponentialRampToValueAtTime(0.0001, t+2.2);
+  o.connect(g); out(g, x, 0, 0, 'Cho'); o.start(t); o.stop(t+2.3);
+}
+
+// ---------- estado da obra ----------
+let cur = null;   // {seq, pos, t0, next, done}
+let ripples = [], sparks = [], rings = [];
+let nextAt = 0, running = false, lastShown = -1, arrivals = 0, rootHue = 0, rootSat = 0;
+const LOOK = 0.6;   // agenda as notas com antecedência no relógio do áudio
+
+function begin(n){
+  const t = now();
+  if (cur && !cur.done) commit(cur, Math.min(cur.seq.length-1, Math.floor((t - cur.t0)*P.speed)), t);
+  const seq = collatz(n);
+  cur = { seq, pos: layout(seq), t0: t + 0.08, next: 0, done: false }; lastShown = -1;
+  if (dronePaused && droneG){ dronePaused = false; droneG.gain.cancelScheduledValues(t); droneG.gain.setTargetAtTime(P.drone*0.32, t, 0.7); }
+  setHarmony(seq.length - 1, t); { const T = timbreFor(seq); if (T !== tim) setTimbre(T, t); }
+}
+function scheduleStep(i, t){
+  const c = cur, m = c.seq.length - 1, v = c.seq[i];
+  const [x] = toScreen(c.pos[(m-i)*2], c.pos[(m-i)*2+1]);
+  droneF.frequency.setTargetAtTime(160 + Math.log2(v)**2 * 7, t, 0.6);
+  const f = freqForDegree(degreeFor(v), ROOT*2);
+  if (i === 0) { bell(f, x, 0.9, t, v); soft(f/2, x, 0.7, t, v); }
+  else if (c.seq[i-1] % 2 === 1) { bell(f, x, 0.75, t, v); sparks.push({ i: m-i, c, t, n: v }); }
+  else soft(f, x, 0.8, t, v);
+  if (i === m){
+    resolveChord(x, t + 0.02);
+    const iv = Math.max(0.4, 1.6/P.speed);
+    arrivals++; const hue = (195 + arrivals*137.508) % 360; c.hue = hue;
+    const ring = { m, hue, born: t + 0.9, iv, seed: Math.random()*100, dir: rings.length % 2 ? 1 : -1 };
+    rings.push(ring); if (rings.length > 140) rings.shift();
+    for (let k = 0; k < 3; k++){ loopPulse(k, x, t + 0.9 + k*iv); }
+  }
+}
+
+// ---------- espectro: a cor de cada onda vem da energia da sua frequência no som ----------
+function specRead(){ if (analyser) analyser.getByteFrequencyData(specData); }
+function bandEnergy(f){
+  if (!analyser) return 0;
+  const hz = AC.sampleRate / analyser.fftSize; let e = 0, cnt = 0;
+  for (const mult of [1, 2, 3, 4]){
+    const b = Math.round(f*mult / hz);
+    for (let d = -1; d <= 1; d++){ const v = specData[b + d]; if (v !== undefined){ e += v * (mult === 1 ? 1.4 : 0.7); cnt++; } }
+  }
+  return Math.min(1, cnt ? e / cnt / 190 : 0);
+}
+function centroid(){
+  if (!analyser) return 400;
+  const hz = AC.sampleRate / analyser.fftSize; let num = 0, den = 0;
+  for (let b = 2; b < specData.length/4; b++){ const v = specData[b]; num += v*b*hz; den += v; }
+  return den > 0 ? num/den : 400;
+}
+// frequência → cor do arco-íris (grave = vermelho, agudo = violeta), como a luz
+const hueOfFreq = (f, lo, hi) => 285 * Math.max(0, Math.min(1, Math.log2(f/lo) / Math.log2(hi/lo)));
+const specE = [0,0,0,0,0]; let specC = 400;
+
+// ---------- ondas do acorde (fundo do gráfico) ----------
+const waves = { r: [1,1.19,1.5,1.78,2.24], a: [0,0,0,0,0], ph: [0,1.3,2.1,0.7,2.9], last: 0, swell: 0 };
+function drawChordWaves(c, i, peak, x0, x1, y0, y1, t, life){
+  const dt = Math.min(0.1, Math.max(0, t - (waves.last || t))); waves.last = t;
+  const n = harm.chord.length, mid = (y0 + y1)/2, band = (y1 - y0)/2;
+  // altura do número atual faz as ondas crescerem; a chegada ao 1 dá um sopro
+  const alt = Math.log2(Math.max(2, c.seq[i])) / Math.log2(Math.max(4, peak));
+  if (c.done && t - c.tDone < 0.05) waves.swell = 1;
+  waves.swell *= Math.exp(-dt*0.45);
+  const amp = band * (0.3 + 0.5*alt + 0.5*waves.swell) * P.wavAmp;
+  waves.tc = (waves.tc || 0) + dt*P.wavSp; const tw = waves.tc;
+  const N = 140, w = x1 - x0;
+  specRead();
+  specC += (centroid() - specC) * 0.08;
+  const sum = new Float32Array(N+1);
+  for (let j = 0; j < n; j++){
+    const target = Math.pow(2, harm.chord[j]/12);
+    waves.r[j] += (target - waves.r[j]) * (1 - Math.exp(-dt*0.9));     // glissando entre acordes
+    waves.a[j] += ((1 - j*0.12) - waves.a[j]) * (1 - Math.exp(-dt*0.6));
+    waves.ph[j] += dt * (0.55 + waves.r[j]*0.45) * P.wavSp;
+    const fj = ROOT*2 * Math.pow(2, harm.chord[j]/12);
+    const eNow = bandEnergy(fj); specE[j] += (eNow - specE[j]) * (eNow > specE[j] ? 0.35 : 0.06);
+    const e = specE[j];
+    const r = waves.r[j], A = amp * waves.a[j] * (0.45 + 0.35*Math.sin(tw*0.21 + j*1.7) + 0.8*e);
+    const hue = (hueOfFreq(fj, 130, 760) + e*35 + 360) % 360;
+    ctx.strokeStyle = `hsla(${hue},${55 + e*40}%,${52 + e*30}%,${Math.min(1, (0.14 + 0.55*e + 0.12*waves.swell)*Math.max(life,0.5)*P.wavA)})`;
+    ctx.lineWidth = 1 + e*2.2;
+    ctx.beginPath();
+    for (let q = 0; q <= N; q++){
+      const u = q/N, x = x0 + u*w, env = Math.sin(Math.PI*u);
+      const wob = Math.sin(u*3.1 + tw*0.33 + j) * 0.35;                 // ondulação lenta, orgânica
+      const y = Math.sin(u*Math.PI*2*(1.2 + r*1.6) + waves.ph[j] + wob) * A * env
+              + Math.sin(u*Math.PI*2*(0.5 + r*0.3) - tw*0.17 + j*2.3) * A * 0.25 * env;
+      sum[q] += y / n * 1.6;
+      q ? ctx.lineTo(x, mid + y) : ctx.moveTo(x, mid + y);
+    }
+    ctx.stroke();
+  }
+  // a soma das vozes: a interferência do acorde inteiro
+  // a soma segue o centro de gravidade do espectro (som escuro = quente, som brilhante = frio)
+  const eAll = specE.reduce((a, b) => a + b, 0) / n;
+  const bh = hueOfFreq(specC, 250, 3500);
+  for (const [lw, al] of [[7, 0.06], [1.6, 0.4]]){
+    ctx.strokeStyle = `hsla(${bh},${60 + eAll*35}%,${70 + eAll*15}%,${Math.min(1, (al*(0.6 + eAll*1.2) + al*0.6*waves.swell)*Math.max(life,0.5)*P.wavA)})`;
+    ctx.lineWidth = lw; ctx.beginPath();
+    for (let q = 0; q <= N; q++){ const x = x0 + q/N*w; q ? ctx.lineTo(x, mid + sum[q]) : ctx.moveTo(x, mid + sum[q]); }
+    ctx.stroke();
+  }
+}
+
+// ---------- gráfico da sequência (voo do granizo) ----------
+function fmt(v){ return v.toLocaleString('pt-BR'); }
+function drawGraph(c, i, frac, t){
+  const m = c.seq.length - 1, x0 = 30, x1 = W - 30, y1 = H - 26, y0 = H - GH + 34;
+  if (y1 - y0 < 30) return;
+  let peak = 1, pk = 0; for (let q = 0; q <= m; q++) if (c.seq[q] > peak){ peak = c.seq[q]; pk = q; }
+  const lp = Math.log2(Math.max(peak, 2));
+  const X = q => x0 + (x1 - x0) * (m ? q/m : 0);
+  const Y = v => y1 - (y1 - y0) * (Math.log2(v) / lp);
+  const life = c.done ? Math.max(0, 1 - (t - c.tDone)/(P.gap + 1.8)) : 1;
+  ctx.save(); ctx.globalCompositeOperation = 'source-over';
+  // fundo e linha do 1
+  const bg = ctx.createLinearGradient(0, H - GH, 0, H);
+  bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(0.25, 'rgba(0,0,0,0.75)'); bg.addColorStop(1, 'rgba(0,0,0,0.9)');
+  ctx.fillStyle = bg; ctx.fillRect(0, H - GH, W, GH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, y1 + 0.5); ctx.lineTo(x1, y1 + 0.5); ctx.stroke();
+  ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(x0, Y(peak) + 0.5); ctx.lineTo(x1, Y(peak) + 0.5); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalCompositeOperation = 'lighter';
+  drawChordWaves(c, i, peak, x0, x1, y0, y1, t, life);
+  // caminho todo, apagado
+  ctx.strokeStyle = colorFor(c.seq[0], t*0.02, 0.18*Math.max(life, 0.3)); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(X(0), Y(c.seq[0])); for (let q = 1; q <= m; q++) ctx.lineTo(X(q), Y(c.seq[q])); ctx.stroke();
+  // trecho percorrido: subidas mais claras e grossas
+  const upto = c.done ? m : i;
+  for (let q = 1; q <= upto; q++){
+    const up = c.seq[q-1] % 2 === 1;
+    ctx.strokeStyle = colorFor(c.seq[q], t*0.02, Math.min(1, (up ? 0.95 : 0.6)*life*P.gLineA));
+    ctx.lineWidth = up ? 1.8 : 1.2;
+    ctx.beginPath(); ctx.moveTo(X(q-1), Y(c.seq[q-1])); ctx.lineTo(X(q), Y(c.seq[q])); ctx.stroke();
+  }
+  // ponto atual
+  if (!c.done){
+    const v0 = c.seq[i], v1 = c.seq[Math.min(m, i+1)], e = frac*frac*(3-2*frac);
+    const hx = X(i + e*(i < m ? 1 : 0)), hy = Y(v0) + (Y(v1) - Y(v0))*e;
+    const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 12);
+    g.addColorStop(0, colorFor(v0, t*0.02, 0.95)); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI*2); ctx.fill();
+  }
+  // legendas
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.font = '300 11px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif';
+  ctx.fillStyle = `rgba(207,214,221,${0.55*Math.max(life, 0.4)})`;
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillText(`${fmt(c.seq[0])}  ·  passo ${c.done ? m : i} de ${m}  ·  acorde de ${harm.name}  ·  timbre ${timK(t) < 0.999 ? 'indo para ' : ''}${tim.nome}`, x0, H - GH + 22);
+  ctx.textAlign = 'right';
+  ctx.fillText(`pico ${fmt(peak)} (passo ${pk})`, x1, H - GH + 22);
+  ctx.textAlign = 'left'; ctx.fillText('1', x0 - 14, y1 + 4);
+  ctx.restore();
+}
+
+// forma de um anel (usada também pelas ondas secundárias que nascem com ele)
+function ringW(a, r, t, vib, modes){
+  const rot = t*0.04*P.ringRot*(r.dir || 1) + r.seed;
+  let w = 0.03*Math.sin(3*a + rot + t*0.23) + 0.02*Math.sin(5*a - rot*1.3 + r.seed) + 0.015*Math.sin(2*a + t*0.11 + r.seed*0.7);
+  for (let h = 0; h < 5; h++) w += vib[h] * Math.sin(modes[h]*a + r.seed*(h+1)) * Math.sin(t*(2.2 + modes[h]*1.3) + r.seed + h);
+  return w;
+}
+function ringModes(){ return waves.r.map(r => Math.max(2, Math.round(r*4))); }
+function ringVib(f){ return specE.map(e => (0.008 + e*0.05) * f); }
+
+// ---------- desenho ----------
+function frame(){
+  const t = now();
+  if (running){
+    if (cur && !cur.done){
+      const m = cur.seq.length - 1;
+      while (cur.next <= m && cur.t0 + cur.next/P.speed < t + LOOK){ scheduleStep(cur.next, Math.max(t, cur.t0 + cur.next/P.speed)); cur.next++; }
+      if ((t - cur.t0)*P.speed >= m){ cur.done = true; cur.tDone = t; dronePaused = true; if (droneG){ droneG.gain.cancelScheduledValues(t); droneG.gain.setTargetAtTime(0, t + 0.6, Math.max(0.3, P.gap/4)); } if (cur.hue != null) rootHue = cur.hue; commit(cur, m, t); nextAt = t + P.gap + 1.8; }
+    } else if (t >= nextAt) begin(nextSeed());
+  }
+
+  const ghT = P.graph ? H*P.gH : 0;
+  GH += (ghT - GH)*0.08; CY = (H - GH)/2;
+  if (Math.abs(CY - camR.CY) > 3 && Math.abs(ghT - GH) < 0.5) redrawCoral();
+  // câmera: aproxima no começo e abre a cada expansão
+  const tg = camTarget(), k = 0.035;
+  cam.s = Math.exp(Math.log(cam.s) + (Math.log(tg.s) - Math.log(cam.s))*k);
+  cam.cx += (tg.cx - cam.cx)*k; cam.cy += (tg.cy - cam.cy)*k;
+  const ratio = cam.s / camR.s;
+  const settled = Math.abs(Math.log(tg.s/cam.s)) < 0.01 && Math.hypot(tg.cx-cam.cx, tg.cy-cam.cy)*cam.s < 2;
+  if (Math.abs(Math.log(ratio)) > 0.4 || (settled && (Math.abs(Math.log(ratio)) > 0.02 || Math.hypot(camR.cx-cam.cx, camR.cy-cam.cy)*cam.s > 2))) redrawCoral();
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation = 'lighter';
+  { const r = cam.s / camR.s, bw = W*MARGIN, bh = H*MARGIN;
+    const ox = W/2 - bw/2*r + (camR.cx - cam.cx)*cam.s, oy = CY - (H*MARGIN/2 + (camR.CY - H/2))*r + (camR.cy - cam.cy)*cam.s;
+    ctx.drawImage(coral, ox, oy, bw*r, bh*r); }
+
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (cur){
+    const c = cur, m = c.seq.length - 1;
+    const p = c.done ? m : Math.max(0, (t - c.t0)*P.speed);
+    const i = Math.min(m, Math.floor(p)), frac = c.done ? 0 : p - i;
+    const P2 = j => toScreen(c.pos[j*2], c.pos[j*2+1]);
+    const si = c.done ? m : i;
+    if (si !== lastShown){
+      lastShown = si; const i = si;
+      $('num').textContent = c.seq[i].toLocaleString('pt-BR');
+      const v = fmt(c.seq[i]);
+      if (i === 0) $('op').innerHTML = `${v} é ${c.seq[0] % 2 ? '<span class="imp">ímpar</span>' : '<span class="par">par</span>'}`;
+      else { const pv = c.seq[i-1], a = fmt(pv);
+        $('op').innerHTML = pv % 2 ? `<span class="imp">${a} × 3 + 1</span> = ${v}` : `<span class="par">${a} ÷ 2</span> = ${v}`; }
+      // todas as contas da sequência, sem cortes; as mais novas ficam sempre à vista
+      const parts = [];
+      for (let q = 1; q <= i; q++){
+        const pv = c.seq[q-1], up = pv % 2 === 1, txt = up ? `${fmt(pv)} × 3 + 1 = ${fmt(c.seq[q])}` : `${fmt(pv)} ÷ 2 = ${fmt(c.seq[q])}`;
+        parts.push(q === i ? `<span class="o"><b${up ? ' class="up"' : ''}>${txt}</b></span>` : `<span class="o${up ? ' up' : ''}">${txt}</span>`);
+      }
+      const el = $('seq'); el.innerHTML = parts.join('');
+      el.style.maxHeight = Math.max(60, H - GH - (22 + 74*P.txtS) - 40) + 'px';
+      el.scrollTop = el.scrollHeight;
+      el.classList.toggle('cheio', el.scrollHeight > el.clientHeight + 2);
+    }
+    if (P.graph && GH > 20) drawGraph(c, i, frac, t);
+    // fantasma do caminho que falta
+    if (!c.done && i < m){
+      ctx.strokeStyle = colorFor(c.seq[i], t*0.02, Math.min(1, 0.07*P.ghostA)); ctx.lineWidth = P.pathW;
+      ctx.beginPath(); let q = P2(m - i); ctx.moveTo(q[0], q[1]);
+      for (let j = m - i - 1; j >= 0; j--){ q = P2(j); ctx.lineTo(q[0], q[1]); }
+      ctx.stroke();
+    }
+    // trecho percorrido
+    const life = c.done ? Math.max(0, 1 - (t - c.tDone)/(P.gap + 1.8)) : 1;
+    if (life > 0.01 && i >= 1){
+      const FRESH = 30, cut = Math.max(1, i - FRESH);
+      if (cut > 1){       // parte antiga num único traço
+        ctx.strokeStyle = colorFor(c.seq[cut], t*0.02, Math.min(1, 0.25*life*P.pathA)); ctx.lineWidth = P.pathW;
+        ctx.beginPath(); let q = P2(m); ctx.moveTo(q[0], q[1]);
+        for (let s = 1; s <= cut; s++){ q = P2(m - s); ctx.lineTo(q[0], q[1]); }
+        ctx.stroke();
+      }
+      for (let s = cut; s <= i; s++){
+        if (s < 1) continue;
+        const a = P2(m-s+1), b = P2(m-s), age = i - s;
+        ctx.strokeStyle = colorFor(c.seq[s], t*0.02, Math.min(1, (0.25 + 0.75*Math.exp(-age/14))*life*P.pathA));
+        ctx.lineWidth = (1 + 2.2*Math.exp(-age/10))*P.pathW;
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      }
+    }
+    // cabeça
+    if (!c.done){
+      const a = P2(m - i), b = P2(Math.max(0, m - i - 1)), e = frac*frac*(3-2*frac);
+      const hx = a[0] + (b[0]-a[0])*e, hy = a[1] + (b[1]-a[1])*e;
+      const r = Math.max(0.1, (14 + Math.log2(c.seq[i])*1.4)*P.headR);
+      const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, r);
+      g.addColorStop(0, colorFor(c.seq[i], t*0.02, 0.95)); g.addColorStop(0.25, colorFor(c.seq[i], t*0.02, 0.35)); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, r, 0, Math.PI*2); ctx.fill();
+    }
+  }
+  // anéis vivos: cada 1 alcançado deixa um círculo que respira e ondula
+  if (rings.length){
+    const [ox, oy] = toScreen(0, 0), NR = rings.length;
+    let maxM = 1; for (const r of rings) if (r.m > maxM) maxM = r.m;
+    // vibração harmônica: modos de onda estacionária nas proporções do acorde, com força vinda do espectro
+    const modes = waves.r.map(r => Math.max(2, Math.round(r*4)));
+    const vibBase = specE.map(e => 0.008 + e*0.05);
+    for (let ri = 0; ri < NR; ri++){
+      const r = rings[ri];
+      const fromNewest = NR - 1 - ri;
+      const fade = fromNewest > 90 ? Math.max(0, 1 - (fromNewest - 90)/50) : 1;
+      const Rfull = Math.min(W, H - GH) * (0.04 + 0.42*Math.sqrt(r.m / maxM)) * P.ringS;
+      // anel principal (camada 0) e as três ondas do laço 4 → 2 → 1 (camadas 1–3), todas com a mesma vida
+      for (let k = 3; k >= 0; k--){
+        const born = r.born + (k ? (k - 1)*(r.iv || 0.5) + 0.05 : 0);
+        if (t < born) continue;
+        const age = t - born;
+        const grow = 1 - Math.exp(-age*1.4);                            // nasce do centro e se abre
+        const R0 = Rfull * (1 + 0.085*k*P.echoGap) * grow;
+        const sd = r.seed + k*0.9, rr0 = { seed: sd, dir: r.dir };
+        const breath = 1 + 0.035*P.ringB*Math.sin(t*0.5 + sd);
+        const LF = 3*P.ringLife, al = Math.min(1, (0.09 + 0.55*Math.exp(-age/LF)) * fade * (k ? (0.62 - k*0.1)*P.echoA : 1) * P.ringA);
+        if (al < 0.01) continue;
+        ctx.strokeStyle = `hsla(${r.hue},70%,${66 + 10*Math.exp(-age/LF) - k*4}%,${al})`;
+        ctx.lineWidth = (1 + 1.5*Math.exp(-age/(2.5*P.ringLife))) * (k ? 0.8 : 1) * P.ringW;
+        const fresh = (0.55 + 1.2*Math.exp(-age/(5*P.ringLife))) * P.ringV;
+        const vib = vibBase.map(b => b*fresh);
+        ctx.beginPath();
+        const K = 120;
+        for (let q = 0; q <= K; q++){
+          const a = q/K*Math.PI*2;
+          const rr = R0 * breath * (1 + ringW(a, rr0, t, vib, modes));
+          const x = ox + Math.cos(a)*rr, y = oy + Math.sin(a)*rr;
+          q ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.stroke();
+      }
+    }
+  }
+  // faíscas nas subidas
+  sparks = sparks.filter(s => t - s.t < 1.6);
+  ctx.lineWidth = 1;
+  for (const s of sparks){
+    if (t < s.t) continue;
+    const k2 = (t - s.t)/1.6, [x, y] = toScreen(s.c.pos[s.i*2], s.c.pos[s.i*2+1]);
+    ctx.strokeStyle = colorFor(s.n, t*0.02, Math.min(1, 0.5*(1-k2)*P.sparkA));
+    ctx.beginPath(); ctx.arc(x, y, 4 + k2*26, 0, Math.PI*2); ctx.stroke();
+  }
+  // a raiz: o 1, e as ondas do laço 4-2-1
+  const [rx, ry] = toScreen(0, 0);
+  ripples = ripples.filter(r => t - r.t < 6);
+  ctx.lineWidth = 1.2;
+  for (const r of ripples){
+    if (t < r.t) continue;
+    const k2 = (t - r.t)/6, rad = 10 + Math.pow(k2, 0.6) * Math.min(W,H) * (0.55 - r.k*0.12);
+    ctx.strokeStyle = `hsla(${r.hue},75%,${68 - r.k*8}%,${0.45*(1-k2)})`;
+    ctx.beginPath();
+    if (r.ring){
+      // segue a forma do anel principal daquela chegada, com a vibração crescendo enquanto se abre
+      const vib = ringVib(1.75 * (0.7 + k2*0.8)), modes = ringModes(), breath = 1 + 0.035*Math.sin(t*0.5 + r.ring.seed);
+      for (let q = 0; q <= 120; q++){
+        const a = q/120*Math.PI*2, rr = rad * breath * (1 + ringW(a, r.ring, t, vib, modes));
+        q ? ctx.lineTo(rx + Math.cos(a)*rr, ry + Math.sin(a)*rr) : ctx.moveTo(rx + Math.cos(a)*rr, ry + Math.sin(a)*rr);
+      }
+    } else ctx.arc(rx, ry, rad, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  if (running){
+    const pulse = 0.5 + 0.5*Math.sin(t*1.3), g = ctx.createRadialGradient(rx, ry, 0, rx, ry, 22);
+    rootSat += ((arrivals ? 70 : 0) - rootSat)*0.05;
+    g.addColorStop(0, `hsla(${rootHue},${rootSat}%,82%,${Math.min(1, (0.4 + pulse*0.25)*P.rootA)})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(rx, ry, 22, 0, Math.PI*2); ctx.fill();
+    ctx.font = '300 13px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillStyle = `hsla(${rootHue},${rootSat}%,85%,${Math.min(1, 0.7*P.rootA)})`; ctx.fillText('1', rx, ry + 16);
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------- interação ----------
+function startPiece(){
+  if (running) return;
+  initAudio(); running = true;
+  $('start').classList.add('hide');
+  nextAt = now() + 0.8;
+}
+$('start').addEventListener('pointerdown', e => { e.stopPropagation(); startPiece(); });
+$('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+$('bClear').addEventListener('click', clearCoral);
+$('bFull').addEventListener('click', toggleFull);
+$('seedIn').addEventListener('change', e => { const n = Math.floor(+e.target.value); if (n >= 2 && n < 1e12 && running) begin(n); });
+function toggleFull(){
+  const d = document;
+  try {
+    if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+    else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  } catch (e) {}
+}
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'm') $('panel').classList.toggle('on');
+  else if (k === 'f') toggleFull();
+  else if (k === 'c') clearCoral();
+  else if (k === 'n') { $('showNum').checked = !$('showNum').checked; readP(); $('num').classList.toggle('on', P.showNum); $('seq').classList.toggle('on', P.showNum); $('op').classList.toggle('on', P.showNum); }
+  else if (k === 'g') { $('graph').checked = !$('graph').checked; readP(); }
+  else if (k === ' ') { e.preventDefault(); if (!running) startPiece(); else begin(nextSeed()); }
+});
+
+resize();
+cam.s = camR.s = Math.min(W, H)/7; GH = P.graph ? H*P.gH : 0; CY = camR.CY = (H - GH)/2; redrawCoral();
+requestAnimationFrame(frame);
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>

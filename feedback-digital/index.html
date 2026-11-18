@@ -20,7 +20,7 @@ canvas#tela{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
 #entrada{z-index:40;inset:0;display:grid;place-items:center;overflow-y:auto;
   padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
   background:radial-gradient(ellipse at 50% 35%,rgba(0,0,0,.35),rgba(0,0,0,.93) 70%)}
-#entrada[hidden],#compart[hidden],.ic[hidden]{display:none!important}
+#entrada[hidden],#compart[hidden],.ic[hidden],.big[hidden]{display:none!important}
 #entrada .c{width:min(30rem,100%);display:grid;gap:14px}
 #entrada h1{margin:0;font:200 clamp(1.6rem,6vw,3rem)/1 system-ui,-apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase}
 #entrada h1 b{font-weight:600;color:var(--ac)}
@@ -56,6 +56,7 @@ aside button.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
 <div id="entrada" class="app-ui" role="dialog" aria-labelledby="entT"><div class="c">
   <h1 id="entT">Feedback <b>Digital</b></h1>
   <p id="entradaP">O seu movimento, a sua voz e o seu toque alimentam um feedback que derrete ao acaso. Ajustes completos no ⚙.</p>
+  <button class="big p" id="eLogi" type="button" hidden>Câmera Logitech<small id="eLogiN">Use a webcam Logitech conectada ao computador</small></button>
   <button class="big p" id="eCamF" type="button">Câmera da frente<small>Fique de frente para a tela e se mexa</small></button>
   <button class="big" id="eCamT" type="button">Câmera de trás<small>Aponte o aparelho para quem se move</small></button>
   <button class="big" id="eSem" type="button">Sem câmera<small>Só o toque e o microfone</small></button>
@@ -481,11 +482,41 @@ async function comecar(qual) {
   entrada(false); dica('Ligando…', 1500);
   const mic = await ligarMicrofone();
   let cam = false;
-  if (qual === 'sem') pararCamera(); else cam = await ligarCamera(qual === 'tras' ? 'environment' : 'user');
+  if (qual === 'sem') pararCamera();
+  else if (qual === 'logi') cam = await ligarLogitech();
+  else cam = await ligarCamera(qual === 'tras' ? 'environment' : 'user');
   if (qual !== 'sem' && !cam) dica('Câmera bloqueada: libere em Ajustes › Safari › Câmera. Toque e som continuam.', 5000);
   else if (!mic) dica('Microfone bloqueado: libere em Ajustes › Safari › Microfone.', 5000);
   else dica(qual === 'sem' ? 'Toque na tela e fale' : 'Mexa-se, toque na tela e fale', 3000);
 }
+// Logitech: botão próprio na entrada, aparece quando há uma Logitech (ou quando o navegador ainda esconde os nomes no computador)
+const ehLogi = (l) => (window.CameraPref ? CameraPref.ehLogitech(l) : /logi|logitech|brio|streamcam/i.test(l || ''));
+async function ligarLogitech() {
+  let lista = [];
+  try { lista = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput'); } catch (e) {}
+  let logi = lista.find((d) => ehLogi(d.label));
+  if (!logi && (!lista.length || !lista[0].label)) {   // sem permissão ainda: abre uma câmera para liberar os nomes
+    try { const t = await navigator.mediaDevices.getUserMedia({ video: true }); t.getTracks().forEach((x) => x.stop()); } catch (e) { return false; }
+    try { lista = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput'); } catch (e) {}
+    logi = lista.find((d) => ehLogi(d.label));
+  }
+  if (!logi) { dica('Nenhuma câmera Logitech encontrada — usando a câmera padrão', 4000); return ligarCamera('user'); }
+  try { localStorage.setItem('camera-preferida', JSON.stringify({ modo: 'fixa', id: logi.deviceId, label: logi.label })); } catch (e) {}
+  pararCamera(); camFacing = 'user';
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: logi.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
+    video.srcObject = camStream; await video.play(); camOn = true; return true;
+  } catch (e) { camOn = false; return false; }
+}
+(async () => {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let lista = [];
+  try { lista = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput'); } catch (e) {}
+  const logi = lista.find((d) => ehLogi(d.label));
+  if (logi) { $('eLogiN').textContent = logi.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)/i, ''); }
+  if (logi || (!ios && lista.length && !lista[0].label)) { $('eLogi').hidden = false; $('eCamF').classList.remove('p'); }
+})();
+$('eLogi').onclick = () => comecar('logi');
 $('eCamF').onclick = () => comecar('frente');
 $('eCamT').onclick = () => comecar('tras');
 $('eSem').onclick = () => comecar('sem');

@@ -268,6 +268,7 @@
   <div class="hint">Na faixa de baixo cada termo dura o seu valor (1 = curto, 2 = longo). Em cada faixa de cima, um termo dura um bloco inteiro da faixa de baixo. A faixa mais lenta escolhe o acorde. O gráfico mostra a diferença entre a quantidade de 1 e de 2: se a conjectura de Keane for verdadeira, ela cresce bem mais devagar que a sequência.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar.</div>
 </div>
 
+<!--VISTA3D-->
 <script>
 (() => {
 'use strict';
@@ -762,6 +763,42 @@ reset();
 
 // ---------- desenho ----------
 let lastTxt = -1;
+// ---------- vista 3D: as faixas viram uma arquibancada; os níveis mais lentos ficam atrás e mais altos ----------
+// cada termo é um bloco: 1 = baixo, 2 = alto; a agulha é uma lâmina de luz que atravessa todas as faixas.
+const T3 = Vista3D({ giro: 0, incl: 26, yaw: -0.32, persp: 0.4, zoom: 0.88 });
+function draw3d(t, uNow, nl, pxU){
+  T3.quadro(W, H); T3.centro(0, P.graph ? -Math.min(150, H*0.18)/2 + 50 : 50);
+  ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  const kx = pxU*2.2/W, XN = -0.7, XW = u => (u - uNow)*kx + XN, u0 = uNow - 1.4/kx, u1 = uNow + 2.6/kx;
+  const dz = 1.5/nl, ZL = d => 0.7 - d*dz, YL = d => -0.45 + d*0.1, prof = dz*0.62;
+  T3.chao(ctx, -0.46, 1.4, 10);
+  for (let d = nl - 1; d >= 0; d--){
+    const z0 = ZL(d), z1 = z0 - prof, yb = YL(d);
+    while (startOf(d, drawJ[d] + 1) < u0) drawJ[d]++;
+    let j = drawJ[d]; while (j > 0 && startOf(d, j) > u0) j--;
+    for (; ; j++){
+      const s = startOf(d, j); if (s > u1 || !isFinite(s)) break;
+      const e = startOf(d, j + 1); if (e < u0) continue;
+      const idx = A.indexOf(k[j]), playing = uNow >= s && uNow < e, past = e <= uNow;
+      const glow = playing ? 1 - (uNow - s)/(e - s)*0.5 : 0, al = playing ? 0.85 : past ? 0.34 : 0.14;
+      const xa = XW(s), xb = XW(e), gap = Math.min(0.01, (xb - xa)*0.12), h = idx ? 0.16 : 0.07, yt = yb + h;
+      const xA = xa + gap/2, xB = xb - gap/2;
+      T3.p((xA + xB)/2, yt, (z0 + z1)/2); const fog = T3.A;
+      // frente e tampa
+      ctx.fillStyle = colorFor(d, idx, Math.min(1, al*0.55*fog), 58 + glow*20);
+      ctx.beginPath(); T3.mv(ctx, xA, yb, z0); T3.ln(ctx, xB, yb, z0); T3.ln(ctx, xB, yt, z0); T3.ln(ctx, xA, yt, z0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = colorFor(d, idx, Math.min(1, al*fog), 66 + glow*20);
+      ctx.beginPath(); T3.mv(ctx, xA, yt, z0); T3.ln(ctx, xB, yt, z0); T3.ln(ctx, xB, yt, z1); T3.ln(ctx, xA, yt, z1); ctx.closePath(); ctx.fill();
+      if (playing) T3.brilho(ctx, (xA + xB)/2, yt + 0.04, (z0 + z1)/2, Math.max(36, (xB - xA)*T3.R), colorFor(d, idx, 0.3*glow, 75));
+      // ligação com os filhos: o bloco que este termo descreve na faixa da frente
+      if (P.links && d > 0){ ctx.strokeStyle = colorFor(d, idx, 1, 70); ctx.lineWidth = 1; T3.seg(ctx, xA, yb, z0, xA, YL(d - 1) + 0.07, ZL(d - 1) - prof, past ? 0.14 : 0.06); }
+    }
+  }
+  // agulha
+  ctx.strokeStyle = 'rgb(255,255,255)'; ctx.lineWidth = 1; ctx.globalAlpha = 0.28;
+  ctx.beginPath(); T3.mv(ctx, XN, YL(0), ZL(0) + 0.05); T3.ln(ctx, XN, YL(nl - 1) + 0.3, ZL(nl - 1) - prof); ctx.stroke(); ctx.globalAlpha = 1;
+}
 function frame(){
   const t = O.now();
   if (O.running) schedule(t);
@@ -774,6 +811,8 @@ function frame(){
   const u0 = uNow - head/pxU, u1 = uNow + (W - head)/pxU;
   const X = u => head + (u - uNow)*pxU;
 
+  if (T3.on) draw3d(t, uNow, nl, pxU);
+  else {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'lighter';
@@ -818,6 +857,7 @@ function frame(){
   ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(head + 0.5, top - 10); ctx.lineTo(head + 0.5, bottom); ctx.stroke();
 
+  }
   // termo atual da faixa de baixo
   let cur = 0; { let lo = 0, hi = N - 1; while (lo < hi){ const m = (lo + hi + 1) >> 1; if (R[m] <= uNow) lo = m; else hi = m - 1; } cur = lo; }
 

@@ -112,6 +112,39 @@ function place(t){
 let last = null;
 function speedNow(){ return P.speed*(P.accel ? Math.min(10, 1 + idx/120) : 1); }
 
+// ---------- vista 3D: os pontos ficam no chão e cada um ganha uma coluna da altura do seu número de ligações ----------
+// as ligações novas saltam como arcos e depois deitam no chão.
+const T3 = Vista3D({ giro: 0.08, incl: 34, yaw: 0.4 });
+let ext3 = 3;
+function draw3d(C, t, ext){
+  T3.quadro(V.W, V.H); T3.centro(0, P.graf ? -30 : 20);
+  ext3 += (ext - ext3)*0.05;
+  const sc = 2.1/Math.max(1.5, ext3), WX = p => (p.x - cam.x)*sc, WZ = p => -(p.y - cam.y)*sc;
+  const deg = new Uint16Array(pts.length); for (const e of edges){ deg[e.a]++; deg[e.b]++; }
+  let dmax = 1; for (const pi of placed) if (deg[pi] > dmax) dmax = deg[pi];
+  const hk = 0.55/Math.max(4, dmax);
+  T3.chao(C, -0.002, 1.2, 10);
+  C.globalCompositeOperation = 'lighter';
+  const ne = edges.length, base = Math.min(0.9, 16/Math.sqrt(ne + 1))*P.eBright;
+  C.lineWidth = P.lw;
+  for (const e of edges){
+    const pa = pts[e.a], pb = pts[e.b], fl = Math.exp(-(t - e.t)*2.5), u = P.dirCor ? e.dir/Math.max(1, nDir) : 0.15;
+    C.strokeStyle = V.cor(u, 1, 62 + fl*20);
+    const xa = WX(pa), za = WZ(pa), xb = WX(pb), zb = WZ(pb);
+    if (fl > 0.03){
+      const L = Math.hypot(xb - xa, zb - za)*0.5*fl; C.globalAlpha = Math.min(1, base + fl*0.8); C.beginPath();
+      for (let q = 0; q <= 12; q++){ const f = q/12; (q ? T3.ln : T3.mv)(C, xa + (xb - xa)*f, Math.sin(f*Math.PI)*L, za + (zb - za)*f); }
+      C.stroke(); C.globalAlpha = 1;
+    } else T3.seg(C, xa, 0, za, xb, 0, zb, Math.min(1, base));
+  }
+  for (const pi of placed){
+    const p = pts[pi], fl = Math.exp(-(t - p.t)*3), x = WX(p), z = WZ(p), h = deg[pi]*hk;
+    // o ponto cai do alto quando entra
+    const drop = Math.max(0, 1 - (t - p.t)*2.5)*0.6;
+    if (h > 0){ C.strokeStyle = V.cor(0.12 + 0.5*deg[pi]/dmax, 1, 70); C.lineWidth = Math.max(1, 2.2*P.lw); T3.seg(C, x, 0, z, x, h, z, 0.35 + 0.4*fl); }
+    T3.ponto(C, x, h + drop, z, 2.6*(1 + fl), 'rgb(230,240,250)', 0.55 + 0.45*fl);
+  }
+}
 // ---------- desenho ----------
 function frame(){
   const t = O.now();
@@ -141,6 +174,8 @@ function frame(){
   cam.s += (ts - cam.s)*0.05; cam.x += ((x0 + x1)/2 - cam.x)*0.05; cam.y += ((y0 + y1)/2 - cam.y)*0.05;
   const cx = W/2, cy = 120 + ah/2;
   const X = p => cx + (p.x - cam.x)*cam.s, Y = p => cy - (p.y - cam.y)*cam.s;
+  if (T3.on) draw3d(C, t, Math.max(x1 - x0, y1 - y0) + 1);
+  else {
   C.globalCompositeOperation = 'lighter';
   const ne = edges.length, base = Math.min(0.9, 16/Math.sqrt(ne + 1))*P.eBright;
   C.lineWidth = P.lw;
@@ -153,6 +188,7 @@ function frame(){
   const r = Math.max(1.2, Math.min(4, cam.s*0.12));
   for (const pi of placed){ const p = pts[pi], fl = Math.exp(-(t - p.t)*3);
     C.fillStyle = `rgba(230,240,250,${0.55 + 0.45*fl})`; C.beginPath(); C.arc(X(p), Y(p), r*(1 + fl), 0, Math.PI*2); C.fill(); }
+  }
   // gráfico de pares por ponto
   if (P.graf && hist.length > 1){
     const gx0 = 40, gx1 = W - 40, gy1 = H - 24, gh = 90, gy0 = gy1 - gh;

@@ -64,6 +64,38 @@ function step(t){
   info = { shown: false };
 }
 function speedNow(){ return P.speed*(P.accel ? Math.min(10, 1 + passos/80) : 1); }
+// ---------- vista 3D: cada passo é um anel de algarismos empilhado numa torre; o algarismo vira um espinho para fora.
+// O anel é simétrico em relação ao plano do espelho: os pares que já se espelham acendem dos dois lados.
+const T3 = Vista3D({ giro: 0.1, incl: 24, yaw: 0.2 });
+function draw3d(C, t){
+  T3.quadro(V.W, V.H); T3.centro(0, 60);
+  const N = Math.min(rows.length, Math.min(100, P.linhas|0)); if (!N) return;
+  const Lmax = rows[rows.length - 1].s.length, top = 0.72, dy = 1.6/Math.max(30, N);
+  C.globalCompositeOperation = 'lighter'; C.lineCap = 'round';
+  // o plano do espelho
+  C.strokeStyle = 'rgb(255,255,255)'; C.lineWidth = 1;
+  T3.seg(C, -1.15, top, 0, 1.15, top, 0, 0.1*P.esp); T3.seg(C, -1.15, top - (N - 1)*dy, 0, 1.15, top - (N - 1)*dy, 0, 0.06*P.esp);
+  for (let j = 0; j < N; j++){
+    const r = rows[rows.length - 1 - j], L = r.s.length, y = top - j*dy, R0 = 0.15 + 0.5*L/Lmax;
+    const al = (1 - j/N)*0.9 + 0.1, fl = Math.exp(-(t - r.t)*2.5);
+    T3.p(0, y, 0); const fog = T3.A;
+    C.lineWidth = Math.max(1, Math.min(2.4, R0*2*Math.PI/L*T3.R*0.3));
+    // agrupa por algarismo e por espelhado (20 caminhos por anel) para traçar tudo de uma vez
+    const cam = [];
+    for (let i = 0; i < L; i++){
+      const d = r.s.charCodeAt(i) - 48, q = d*2 + (r.s[i] === r.s[L - 1 - i] ? 1 : 0);
+      const a = Math.PI/2 + (i + 0.5)/L*Math.PI*2, c = Math.cos(a), s = Math.sin(a), len = 0.015 + d*0.011;
+      if (!T3.p(c*R0, y, s*R0)) continue; const x0 = T3.X, y0 = T3.Y;
+      if (!T3.p(c*(R0 + len), y, s*(R0 + len))) continue;
+      const pth = cam[q] || (cam[q] = new Path2D()); pth.moveTo(x0, y0); pth.lineTo(T3.X, T3.Y);
+    }
+    cam.forEach((pth, q) => { if (!pth) return; const d = q >> 1, mir = q & 1;
+      C.strokeStyle = r.pal ? 'rgb(255,255,255)' : V.cor(d/10, 1, mir ? 70 : 52);
+      C.globalAlpha = Math.min(1, fog*(r.pal ? al*0.8 : al*(mir ? 0.3 + 0.5*P.esp : 0.18) + fl*0.35)); C.stroke(pth); });
+  }
+  C.globalAlpha = 1;
+  const r = rows[rows.length - 1]; if (r.pal) T3.brilho(C, 0, top, 0, 60, 'rgba(255,255,255,0.5)');
+}
 function frame(){
   const t = O.now();
   if (O.running){
@@ -82,7 +114,8 @@ function frame(){
   }
   const { W, H } = V, C = V.begin();
   const N = Math.min(rows.length, P.linhas|0); C.globalCompositeOperation = 'lighter';
-  if (P.forma === 'cascata'){
+  if (T3.on) draw3d(C, t);
+  else if (P.forma === 'cascata'){
     const top = 130, bot = H - 20, rh = Math.max(1.5, Math.min(18, (bot - top)/Math.max(24, N)));
     for (let j = 0; j < N; j++){
       const r = rows[rows.length - 1 - j], L = r.s.length, cw = Math.max(0.6, Math.min(26, (W - 60)/L)), x0 = (W - L*cw)/2, y = top + j*rh;

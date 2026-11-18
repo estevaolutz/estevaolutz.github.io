@@ -167,6 +167,7 @@
   <div class="hint">Cada corredor toca sua nota ao passar pela largada; os ritmos se cruzam em polirritmia. Quando um corredor fica sozinho (ninguém a menos de 1/n da volta) ele acende e canta. A cada volta completa todos se reencontram na largada (a tela pisca). Só os ataques das notas, sem acordes; o drone começa desligado.<br>Provada até 10 corredores (2025); em geral, ainda aberta.<br>Teclas: M controles · F tela cheia · T texto · N novas velocidades.</div>
 </div>
 
+<!--VISTA3D-->
 <script>
 (() => {
 'use strict';
@@ -647,6 +648,61 @@ function fmtFrac(n){ return `1/${n} da volta (${(1/n).toFixed(3).replace('.', ',
 
 // ---------- desenho ----------
 let flash = 0, lastList = 0;
+// ---------- vista 3D: as pistas viram uma torre de anéis; a pista comum fica no alto ----------
+const T3 = Vista3D({ giro: 0.07, incl: 24, yaw: 0.3 });
+function draw3d(t, pos, n, lim){
+  T3.quadro(W, H); T3.centro(0, W > H ? 20 : 50);
+  ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  const RR = 0.78, yB = -0.75, dy = 1.25/Math.max(1, n - 1), yT = yB + 1.25 + 0.28;
+  const ang = p => -Math.PI/2 + p*2*Math.PI, Y = i => yB + i*dy;
+  const pt = (a, r, y) => [Math.cos(a)*r, y, Math.sin(a)*r];
+  flash *= 0.96;
+  T3.chao(ctx, yB - 0.12, 1.1, 8);
+  // largada: uma linha de pé que atravessa a torre
+  ctx.strokeStyle = 'rgb(255,255,255)'; ctx.lineWidth = 1;
+  T3.seg(ctx, ...pt(-Math.PI/2, RR*1.06, yB - 0.12), ...pt(-Math.PI/2, RR*1.06, yT), 0.16 + flash*0.6);
+  if (flash > 0.02) T3.brilho(ctx, 0, 0, 0, Math.min(W, H)*0.5, `rgba(200,220,255,${flash*0.12})`);
+  // leques de solidão: cortinas que atravessam a torre inteira
+  if (P.fan) runners.forEach((r, i) => {
+    const k = r.lonely ? Math.min(1, (t - r.onT)*4) : Math.max(0, 1 - (t - (r.offT || -9))*2.5);
+    if (k <= 0.01) return;
+    const a = ang(pos[i]), w = lim*2*Math.PI;
+    for (const y of [Y(i)]){
+      ctx.fillStyle = colorOf(r, 0.07*k); ctx.beginPath(); T3.mv(ctx, 0, y, 0);
+      for (let q = 0; q <= 16; q++) T3.ln(ctx, ...pt(a - w + 2*w*q/16, RR, y)); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = colorOf(r, 1); ctx.lineWidth = 1;
+    for (const s of [-1, 1]){ T3.seg(ctx, ...pt(a + s*w, RR, yB - 0.12), ...pt(a + s*w, RR, yT), 0.2*k); T3.seg(ctx, ...pt(a + s*w, 0.05, Y(i)), ...pt(a + s*w, RR, Y(i)), 0.25*k); }
+  });
+  runners.forEach((r, i) => {
+    const a = ang(pos[i]), y = Y(i);
+    ctx.strokeStyle = colorOf(r, 1); ctx.lineWidth = 1; ctx.globalAlpha = 0.12;
+    ctx.beginPath(); T3.circulo(ctx, 0, y, 0, RR, 'y', 72); ctx.stroke(); ctx.globalAlpha = 1;
+    if (r.v > 0 && P.trail > 0){
+      const len = Math.min(Math.PI*1.8, (0.25 + r.v*0.06)*P.trail*Math.PI*1.4), N = 24;
+      for (let q = 0; q < N; q++){
+        ctx.strokeStyle = colorOf(r, 1); ctx.lineWidth = (2.4*(1 - q/N) + 0.4)*Math.max(0.6, T3.S);
+        T3.seg(ctx, ...pt(a - len*q/N, RR, y), ...pt(a - len*(q + 1)/N, RR, y), 0.55*(1 - q/N)**1.6);
+      }
+    }
+    const k = r.lonely ? Math.min(1, (t - r.onT)*3) : 0, rr = 8 + k*18 + (r.v === 0 ? 4 : 0);
+    T3.brilho(ctx, ...pt(a, RR, y), rr*2.2, colorOf(r, 0.95, 70 + k*20));
+    T3.ponto(ctx, ...pt(a, RR, y), 2.6, colorOf(r, 1, 85), 0.9);
+    if (k > 0 && T3.p(...pt(a, RR, y))){ ctx.strokeStyle = colorOf(r, 0.5*k*T3.A, 80); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(T3.X, T3.Y, (14 + (t - r.onT)*30 % 40)*T3.S, 0, Math.PI*2); ctx.stroke(); }
+    if (P.track){ ctx.strokeStyle = colorOf(r, 1); ctx.lineWidth = 1; T3.seg(ctx, ...pt(a, RR, y), ...pt(a, RR*1.04, yT), 0.07 + k*0.25); }
+  });
+  if (P.track){
+    ctx.strokeStyle = 'rgb(255,255,255)'; ctx.lineWidth = 1; ctx.globalAlpha = 0.18;
+    ctx.beginPath(); T3.circulo(ctx, 0, yT, 0, RR*1.04, 'y', 96); ctx.stroke(); ctx.globalAlpha = 1;
+    runners.forEach((r, i) => T3.ponto(ctx, ...pt(ang(pos[i]), RR*1.04, yT), r.lonely ? 4.5 : 3, colorOf(r, 1, 72), r.lonely ? 1 : 0.75));
+  }
+  if (!document.body.classList.contains('semtexto')){
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    runners.forEach((r, i) => { if (T3.p(...pt(-Math.PI/2, RR, Y(i)))){ ctx.fillStyle = colorOf(r, (r.lonely ? 0.85 : 0.4)*T3.A, 75); ctx.fillText(String(r.v), T3.X + 6, T3.Y); } });
+  }
+}
 function frame(){
   const t = O.now();
   if (O.running) schedule(t);
@@ -665,6 +721,8 @@ function frame(){
   if (changed || t - lastList > 0.5){ lastList = t; showList(); }
   $('num').textContent = `volta ${O.fmt(Math.floor(tt) + 1)}`;
 
+  if (T3.on) draw3d(t, pos, n, lim);
+  else {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'lighter';
@@ -731,6 +789,7 @@ function frame(){
     ctx.globalCompositeOperation = 'source-over';
     ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     runners.forEach((r, i) => { ctx.fillStyle = colorOf(r, r.lonely ? 0.85 : 0.4, 75); ctx.fillText(String(r.v), cx + 6, cy - (r0 + i*dr) + 1); });
+  }
   }
   requestAnimationFrame(frame);
 }

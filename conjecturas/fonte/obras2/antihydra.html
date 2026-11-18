@@ -131,6 +131,61 @@ function drawTape(C, t){
     C.fillStyle = `hsla(0,0%,100%,${al*0.8})`; C.fillRect(ox + r.head*cs, y, cs, cs);
   });
 }
+// ---------- vista 3D ----------
+// mapa: cada passo é um anel de bits empilhado numa torre (a torre engorda porque a cresce), e a vida de b é uma espiral em volta.
+// fita: o diagrama espaço-tempo da máquina vira um relevo, a linha mais nova na frente.
+const T3 = Vista3D({ giro: 0.09, incl: 22, yaw: 0.3 });
+function draw3dMap(C, t){
+  T3.quadro(V.W, V.H); T3.centro(0, P.life ? -40 : 20);
+  const N = Math.min(hist.length, P.rings|0); if (!N) return;
+  const Lmax = hist[hist.length - 1].bits.length, y0 = -0.9, dy = 1.8/Math.max(40, N);
+  C.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < N; i++){
+    const h = hist[hist.length - N + i], L = h.bits.length, y = y0 + i*dy, r = 0.15 + 0.75*L/Lmax;
+    const al = 0.15 + 0.85*Math.pow((i + 1)/N, 1.5), flash = i === N - 1 ? Math.exp(-(t - h.t)*3) : 0;
+    C.fillStyle = V.cor(h.even ? 0.05 : 0.6, 1, h.even ? 72 : 58);
+    const sz = Math.max(1.5, Math.min(3.2, r*2*Math.PI/L*T3.R*0.45));
+    C.strokeStyle = C.fillStyle; C.lineWidth = 1; C.globalAlpha = 0.07*al; C.beginPath(); T3.circulo(C, 0, y, 0, r, 'y', 48); C.stroke();
+    for (let j = 0; j < L; j++){
+      if (h.bits.charCodeAt(L - 1 - j) !== 49) continue;
+      const ang = j/L*Math.PI*2 + spin;
+      if (!T3.p(Math.cos(ang)*r, y, Math.sin(ang)*r)) continue;
+      const s2 = sz*T3.S; C.globalAlpha = Math.min(1, al*(0.7 + flash)*T3.A); C.fillRect(T3.X - s2/2, T3.Y - s2/2, s2, s2);
+    }
+  }
+  C.globalAlpha = 1;
+  // a vida de b: espiral por fora, com o raio crescendo com b; o anel vermelho é o −1 onde a máquina pararia
+  if (P.life){
+    const pts = hist.slice(-N); let mx = 6; for (const p of pts) mx = Math.max(mx, p.b + 2);
+    const R0 = 1.05, rb = b => R0 + (b + 1)/(mx + 1)*0.45, a = [];
+    pts.forEach((p, i) => { const ang = i*0.08 + spin*0.5; a.push(Math.cos(ang)*rb(p.b), y0 + i*dy, Math.sin(ang)*rb(p.b)); });
+    C.strokeStyle = V.cor(0.2, 1, 70); C.lineWidth = 1.4; T3.poli(C, a, 0.8, 16);
+    C.strokeStyle = 'rgb(255,70,60)'; C.lineWidth = 1; C.globalAlpha = 0.22; C.beginPath(); T3.circulo(C, 0, y0 + (N - 1)*dy, 0, R0, 'y', 64); C.stroke(); C.globalAlpha = 1;
+    const l = pts[pts.length - 1], n3 = a.length/3 - 1;
+    T3.brilho(C, a[n3*3], a[n3*3 + 1], a[n3*3 + 2], 12, V.cor(l.even ? 0.05 : 0.6, 1, 85));
+  }
+  const top = y0 + (N - 1)*dy, h = hist[hist.length - 1];
+  T3.brilho(C, 0, top + 0.05, 0, 22, V.cor(h.even ? 0.05 : 0.6, 0.9, 85));
+}
+function draw3dTape(C, t){
+  T3.quadro(V.W, V.H); T3.centro(0, 40);
+  const w = 160, nr = rows.length; if (!nr) return;
+  const cw = 2.4/w, X = i => (i - w/2)*cw, Z = j => (j/Math.max(60, nr) - 1)*2 + 0.9;
+  T3.chao(C, 0, 1.25, 10);
+  // de trás para a frente (linhas antigas no fundo), com tinta opaca para os blocos se taparem
+  C.globalCompositeOperation = 'source-over';
+  rows.forEach((r, j) => {
+    const z = Z(j), al = 0.3 + 0.7*j/nr, corpo = V.cor(r.st/6, 1, 40), tampa = V.cor(r.st/6, 1, 70);
+    for (let i = 0; i < w; i++){ if (!r.row[i]) continue;
+      if (!T3.p(X(i), 0, z)) continue; const bx = T3.X, by = T3.Y, bw = Math.max(0.8, cw*T3.R*T3.S*0.8), a = T3.A*al;
+      T3.p(X(i), cw*2.2, z); const ty = T3.Y; C.globalAlpha = a;
+      C.fillStyle = corpo; C.fillRect(bx - bw/2, ty, bw, Math.max(1, by - ty));
+      C.fillStyle = tampa; C.fillRect(bx - bw/2, ty - bw*0.2, bw, Math.max(1, bw*0.4)); }
+  });
+  C.globalAlpha = 1; C.globalCompositeOperation = 'lighter';
+  rows.forEach((r, j) => T3.ponto(C, X(r.head), cw*3.2, Z(j), 1.6, 'rgb(255,255,255)', (0.3 + 0.7*j/nr)*0.8));
+  const r = rows[nr - 1]; T3.brilho(C, X(r.head), cw*4, Z(nr - 1), 16, V.cor(r.st/6, 0.9, 85));
+}
 function frame(){
   const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t; spin += dt*P.spin*0.3;
   if (O.running){
@@ -146,7 +201,8 @@ function frame(){
     }
   }
   const C = V.begin();
-  if (P.vista === 'mapa') drawMap(C, t); else drawTape(C, t);
+  if (T3.on) (P.vista === 'mapa' ? draw3dMap : draw3dTape)(C, t);
+  else if (P.vista === 'mapa') drawMap(C, t); else drawTape(C, t);
   V.end();
   // texto
   if (lastStep && lastStep.shown !== true){

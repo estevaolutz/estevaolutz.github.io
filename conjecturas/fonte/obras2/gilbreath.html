@@ -64,10 +64,45 @@ function cor(v, al){
   if (v === 2) return V.cor(0.1, al*0.75, 62);
   return V.cor(0.35 + Math.log2(v)*0.08, al*0.9, 60);
 }
+// ---------- vista 3D: a pirâmide vira um relevo; a altura de cada casa é o valor (os primos são as torres do fundo) ----------
+const T3 = Vista3D({ giro: 0.07, incl: 30, yaw: -0.35 });
+function draw3d(C, t){
+  T3.quadro(V.W, V.H); T3.centro(0, 50);
+  const M = Math.min(diags.length, P.cols|0), D = P.prof|0, mLast = n - 1, jMin = mLast - M + 1;
+  const Dv = Math.max(4, Math.min(D, mLast)), xiA = D/2 - Dv/2, xiB = M - 1 + D/2, span = Math.max(24, xiB - xiA + 3);
+  const cw = 2.5/span, X = xi => ((xi - (xiA + xiB)/2)/span)*2.5, Z = k => (k/Dv - 0.5)*Math.min(1.8, Dv*cw*1.4);
+  const HV = v => v === 0 ? 0 : v === 1 ? 0.07 : v === 2 ? 0.13 : 0.13 + Math.log2(v)*0.07, base = -0.35;
+  T3.chao(C, base - 0.01, 1.3, 10);
+  C.globalCompositeOperation = 'lighter';
+  const bwk = cw*T3.R*0.82;
+  for (let q = 0; q < M; q++){
+    const dg = diags[diags.length - M + q], m = mLast - (M - 1 - q), fl = Math.exp(-(t - dg.t)*3);
+    for (let k = 0; k <= Math.min(D, m, dg.d.length - 1); k++){
+      const j = m - k, xi = j - jMin + k/2 + D/2, v = dg.d[k];
+      const x = X(xi), z = Z(k), h = k === 0 ? Math.log10(v + 1)*0.32 : HV(v);
+      if (!T3.p(x, base, z)) continue; const bx = T3.X, by = T3.Y, bw = Math.max(1, bwk*T3.S), al = T3.A;
+      if (v === 0){ if (P.zeros > 0){ C.globalAlpha = al*P.zeros*0.8; C.fillStyle = '#fff'; C.fillRect(bx - bw/2, by - bw*0.15, bw, Math.max(1, bw*0.3)); } continue; }
+      T3.p(x, base + h, z); const ty = T3.Y;
+      C.globalAlpha = Math.min(1, al*(0.55 + fl*0.45)); C.fillStyle = k === 0 ? V.cor(0.85, 1, 64) : cor(v, 1);
+      C.fillRect(bx - bw/2, ty, bw, Math.max(1, by - ty));
+    }
+  }
+  C.globalAlpha = 1;
+  // a primeira coluna: o 1 de cada linha, uma fila que corre pela beira da pirâmide
+  const fc = firstCol.slice(-Dv);
+  fc.forEach((v, i) => { const k = Dv - fc.length + i;
+    T3.ponto(C, X(xiA) - 0.12, base + 0.06, Z(k), 2.4, v === 1 ? 'rgb(240,248,255)' : 'rgb(255,70,60)', 0.3 + 0.7*(i + 1)/fc.length); });
+  // o pedal: um anel em volta da ponta da diagonal nova
+  if (diags.length){ const dg = diags[diags.length - 1], fl = Math.exp(-(t - dg.t)*2.5), k = Math.min(D, n - 1);
+    C.strokeStyle = 'rgb(240,248,255)'; C.lineWidth = 1.2; C.globalAlpha = 0.25 + fl*0.6;
+    C.beginPath(); T3.circulo(C, X(M - 1 - k/2 + D/2), base + 0.08, Z(k), 0.03 + (1 - fl)*0.12, 'y', 32); C.stroke(); C.globalAlpha = 1; }
+}
 function frame(){
   const t = O.now();
   if (O.running){ while (t + 0.15 >= nextT && n < PR.length - 1){ advance(true, Math.max(t, nextT)); nextT = Math.max(t, nextT) + 1/speedNow(); } }
   const { W, H } = V, C = V.begin();
+  if (T3.on) draw3d(C, t);
+  else {
   const M = Math.min(diags.length, P.cols|0), D = P.prof|0;
   const top = 130, cs = Math.max(2, Math.min((W - 90)/(M + D/2 + 2), (H - top - 20)/(D + 1)));
   C.globalCompositeOperation = 'lighter';
@@ -85,8 +120,9 @@ function frame(){
   // a primeira coluna: o 1 de cada linha
   const fc = firstCol.slice(-Math.floor((H - top - 20)/Math.max(2, cs)));
   fc.forEach((v, i) => { const al = 0.25 + 0.75*(i + 1)/fc.length; C.fillStyle = v === 1 ? `rgba(240,248,255,${al})` : `rgba(255,70,60,${al})`; C.fillRect(30, top + i*cs, Math.max(2, cs - 1), Math.max(1, cs - 1)); });
+  }
   V.end();
-  if (!document.body.classList.contains('semtexto')){ const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.fillText('1ª coluna', 18, top - 8); }
+  if (!T3.on && !document.body.classList.contains('semtexto')){ const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)'; ctx.fillText('1ª coluna', 18, 122); }
   if (info && !info.shown && diags.length){
     info.shown = true;
     const dg = diags[diags.length - 1];

@@ -73,6 +73,176 @@
 <div class="hint">A curva clara é ψ(x), que sobe ln p em cada primo p (e em suas potências). A curva brilhante é a mesma conta feita só com x menos a soma das ondas dos zeros já tocados: com poucos zeros ela é uma ondulação, e com muitos ela encosta na escada. Embaixo fica a linha crítica: cada ponto é um zero ½ + iγ (calculados aqui mesmo pela fórmula de Riemann–Siegel).<br>Na afinação literal, o zero de altura γ toca na frequência γ/14,13 vezes a do primeiro zero, então não há escala: são as próprias razões entre os zeros. O cursor que varre o gráfico toca uma nota em cada primo.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
 </div>
 <script>
+// Vista 3D das Conjecturas — câmera em órbita e projeção em perspectiva desenhadas no mesmo canvas 2D da obra,
+// então o som, os efeitos de vídeo (rastro, brilho, espelho) e o banco de configurações valem também para o 3D.
+// A cena é descrita em unidades de mundo de mais ou menos −1 a 1 (y para cima). Uso:
+//   const T = Vista3D({ ligado: true, giro: 0.12, incl: 20 });
+//   if (T.on){ T.quadro(); C.beginPath(); T.mv(C, x, y, z); T.ln(C, x2, y2, z2); C.stroke(); }
+// Controles: arrastar = girar, pinça/roda = aproximar, dois toques = recentrar, tecla D = liga/desliga.
+window.Vista3D = function(opt = {}){
+  const $ = id => document.getElementById(id);
+  const cv = opt.canvas || $('cv');
+  const DEF = Object.assign({ ligado: true, giro: 0.12, incl: 22, zoom: 1, persp: 0.45, nevoa: 0.35, grade: true, yaw: 0.5 }, opt);
+  const T = { on: DEF.ligado, giro: DEF.giro, incl: DEF.incl, zoom: DEF.zoom, persp: DEF.persp, nevoa: DEF.nevoa, grade: DEF.grade,
+    X: 0, Y: 0, S: 1, A: 1, Z: 0, R: 300, W: 0, H: 0, cx: 0, cy: 0, ouvintes: [] };
+  let yaw = DEF.yaw, dPitch = 0, zMul = 1, last = 0, cy = 1, sy = 0, cp = 1, sp = 0, D = 4, F = 1, ox = 0, oy = 0;
+
+  // ---------- painel: uma seção "Vista 3D" logo antes dos efeitos de vídeo (ou da seção Imagem) ----------
+  const panel = $('panel');
+  if (panel && !$('v3d')){
+    const box = document.createElement('div'); box.id = 'vista3dBox';
+    box.innerHTML = `<h2>Vista 3D</h2>
+      <div class="row"><label>3D (tecla D)</label><input type="checkbox" id="v3d"${T.on ? ' checked' : ''}></div>
+      <div class="row"><label>Giro automático</label><input type="range" id="v3dGiro" min="-1" max="1" step="0.01" value="${T.giro}"></div>
+      <div class="row"><label>Inclinação</label><input type="range" id="v3dIncl" min="-15" max="85" step="1" value="${T.incl}"></div>
+      <div class="row"><label>Aproximar</label><input type="range" id="v3dZoom" min="0.4" max="3" step="0.01" value="${T.zoom}"></div>
+      <div class="row"><label>Perspectiva</label><input type="range" id="v3dPersp" min="0" max="1" step="0.01" value="${T.persp}"></div>
+      <div class="row"><label>Névoa ao fundo</label><input type="range" id="v3dNev" min="0" max="1" step="0.01" value="${T.nevoa}"></div>
+      <div class="row"><label>Grade do chão</label><input type="checkbox" id="v3dGrade"${T.grade ? ' checked' : ''}></div>
+      <div class="row"><button id="v3dCentro" type="button">Recentrar câmera</button></div>`;
+    const antes = opt.antes ? $(opt.antes) : ($('nucleoVideo') || [...panel.querySelectorAll('h2')].find(h => /imagem|v[ií]deo/i.test(h.textContent)) || panel.querySelector('.hint'));
+    if (antes && antes.parentNode) antes.parentNode.insertBefore(box, antes); else panel.appendChild(box);
+    const ler = () => {
+      T.on = $('v3d').checked; T.giro = +$('v3dGiro').value; T.incl = +$('v3dIncl').value; T.zoom = +$('v3dZoom').value;
+      T.persp = +$('v3dPersp').value; T.nevoa = +$('v3dNev').value; T.grade = $('v3dGrade').checked;
+      document.body.classList.toggle('em3d', T.on); const b = $('b3d'); if (b) b.classList.toggle('on', T.on);
+      for (const fn of T.ouvintes) fn(T.on);
+    };
+    box.addEventListener('input', ler); box.addEventListener('change', ler);
+    $('v3dCentro').addEventListener('click', () => T.recentrar());
+    T.ler = ler;
+  }
+  // botão rápido "3D" ao lado do ponto do painel
+  if (!$('b3d')){
+    const st = document.createElement('style');
+    st.textContent = `#b3d{position:fixed;right:50px;top:16px;height:26px;padding:0 9px;border-radius:13px;z-index:4;border:1px solid rgba(255,255,255,.25);
+      background:rgba(0,0,0,.35);color:#cfd6dd;font:500 10.5px/24px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;letter-spacing:.12em;cursor:pointer;opacity:.28;transition:opacity .4s}
+      #b3d:hover{opacity:.8} #b3d.on{opacity:.55;border-color:rgba(191,228,255,.7);color:#e8f4ff} body.em3d #cv{cursor:grab} body.em3d #cv:active{cursor:grabbing}`;
+    document.head.appendChild(st);
+    const b = document.createElement('button'); b.id = 'b3d'; b.type = 'button'; b.title = 'Vista 3D (D)'; b.textContent = '3D';
+    b.classList.toggle('on', T.on); document.body.appendChild(b);
+    b.addEventListener('click', e => { e.stopPropagation(); T.alternar(); });
+  }
+  document.body.classList.toggle('em3d', T.on);
+  T.alternar = () => { const c = $('v3d'); if (c){ c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); } else { T.on = !T.on; for (const fn of T.ouvintes) fn(T.on); } };
+  T.recentrar = () => { yaw = DEF.yaw; dPitch = 0; zMul = 1; };
+  T.mudou = fn => T.ouvintes.push(fn);
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'd' || e.key === 'D'){ e.preventDefault(); T.alternar(); }
+  });
+
+  // ---------- arrastar, pinça, roda, dois toques ----------
+  const pts = new Map(); let pinch0 = 0, zoom0 = 1, tapT = 0;
+  cv.addEventListener('pointerdown', e => {
+    if (!T.on) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 2){ const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = zMul; }
+    const agora = performance.now(); if (agora - tapT < 300 && pts.size === 1) T.recentrar(); tapT = agora;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!T.on || !pts.has(e.pointerId)) return;
+    const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 1){ yaw += dx*0.008; dPitch = Math.max(-80, Math.min(80, dPitch + dy*0.35)); }
+    else if (pts.size === 2 && pinch0 > 0){ const [a, b] = [...pts.values()]; zMul = Math.max(0.25, Math.min(6, zoom0*Math.hypot(a.x - b.x, a.y - b.y)/pinch0)); }
+  });
+  const solta = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; };
+  cv.addEventListener('pointerup', solta); cv.addEventListener('pointercancel', solta);
+  cv.addEventListener('wheel', e => { if (!T.on) return; e.preventDefault(); zMul = Math.max(0.25, Math.min(6, zMul*Math.exp(-e.deltaY*0.0012))); }, { passive: false });
+  cv.style.touchAction = 'none';
+
+  // ---------- câmera ----------
+  // chamar uma vez por quadro, antes de desenhar; dt em segundos (opcional)
+  T.quadro = (W = innerWidth, H = innerHeight, dt) => {
+    const agora = performance.now()/1000;
+    if (dt === undefined) dt = Math.min(0.1, last ? agora - last : 0); last = agora;
+    if (!pts.size) yaw += dt*T.giro*0.6;
+    const pitch = Math.max(-89, Math.min(89, T.incl + dPitch))*Math.PI/180;
+    cy = Math.cos(yaw); sy = Math.sin(yaw); cp = Math.cos(pitch); sp = Math.sin(pitch);
+    const fov = (12 + T.persp*68)*Math.PI/180; D = 1.25/Math.tan(fov/2);
+    T.W = W; T.H = H; T.cx = W/2 + ox; T.cy = H/2 + oy;
+    T.R = Math.min(W, H)*0.42*T.zoom*zMul; F = T.R*D;
+    T.yaw = yaw; T.pitch = pitch; T.D = D;
+    return T;
+  };
+  // desloca o centro da tela (por exemplo, para deixar espaço para o texto)
+  T.centro = (dx = 0, dy = 0) => { ox = dx; oy = dy; };
+  // projeta (x, y, z): grava T.X, T.Y (pixels), T.S (escala: 1 = na origem), T.A (névoa 0–1), T.Z (profundidade); false se atrás da câmera
+  T.p = (x, y, z) => {
+    const x1 = cy*x + sy*z, z1 = -sy*x + cy*z;
+    const y2 = cp*y - sp*z1, z2 = sp*y + cp*z1;
+    const zc = D - z2;
+    if (zc < 0.08) return false;
+    const k = F/zc;
+    T.X = T.cx + x1*k; T.Y = T.cy - y2*k; T.S = D/zc; T.Z = zc;
+    T.A = T.nevoa > 0 ? Math.exp(-T.nevoa*1.1*Math.max(0, zc - D + 1)) : 1;
+    return true;
+  };
+  // caminhos: mv = moveTo, ln = lineTo (pulando o que fica atrás da câmera)
+  let tem = false;
+  T.mv = (C, x, y, z) => { tem = T.p(x, y, z); if (tem) C.moveTo(T.X, T.Y); return tem; };
+  T.ln = (C, x, y, z) => { const ok = T.p(x, y, z); if (ok){ tem ? C.lineTo(T.X, T.Y) : C.moveTo(T.X, T.Y); } tem = ok; return ok; };
+  // ponto redondo com raio r (em pixels na origem), com névoa
+  T.ponto = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(0.4, r*T.S), a = alfa*T.A; if (a < 0.01) return true;
+    C.globalAlpha = Math.min(1, a); if (cor) C.fillStyle = cor;
+    if (rr < 1.6) C.fillRect(T.X - rr, T.Y - rr, rr*2, rr*2);
+    else { C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); }
+    C.globalAlpha = 1; return true;
+  };
+  // brilho redondo (gradiente) — para estrelas, cabeças, clarões
+  T.brilho = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(1, r*T.S), a = Math.min(1, alfa*T.A); if (a < 0.01) return true;
+    const g = C.createRadialGradient(T.X, T.Y, 0, T.X, T.Y, rr);
+    g.addColorStop(0, cor); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.globalAlpha = a; C.fillStyle = g; C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); C.globalAlpha = 1; return true;
+  };
+  // segmento com névoa
+  T.seg = (C, x1, y1, z1, x2, y2, z2, alfa = 1) => {
+    if (!T.p(x1, y1, z1)) return; const ax = T.X, ay = T.Y, aa = T.A;
+    if (!T.p(x2, y2, z2)) return;
+    C.globalAlpha = Math.min(1, alfa*(aa + T.A)/2); C.beginPath(); C.moveTo(ax, ay); C.lineTo(T.X, T.Y); C.stroke(); C.globalAlpha = 1;
+  };
+  // linha por vários pontos [x, y, z, x, y, z, ...], em trechos com a névoa de cada trecho
+  T.poli = (C, a, alfa = 1, trecho = 12) => {
+    const n = a.length/3 | 0; if (n < 2) return;
+    for (let i = 0; i < n - 1; i += trecho){
+      const f = Math.min(n - 1, i + trecho), m = (i + f) >> 1;
+      T.p(a[m*3], a[m*3 + 1], a[m*3 + 2]); const al = Math.min(1, alfa*T.A); if (al < 0.01) continue;
+      C.globalAlpha = al; C.beginPath(); tem = false;
+      for (let j = i; j <= f; j++) T.ln(C, a[j*3], a[j*3 + 1], a[j*3 + 2]);
+      C.stroke();
+    }
+    C.globalAlpha = 1;
+  };
+  // círculo no espaço: centro, raio, eixo 'y' (deitado), 'z' (de pé, de frente) ou 'x'
+  T.circulo = (C, x, y, z, r, eixo = 'y', n = 48, a0 = 0, a1 = Math.PI*2) => {
+    tem = false;
+    for (let i = 0; i <= n; i++){
+      const a = a0 + (a1 - a0)*i/n, c = Math.cos(a)*r, s = Math.sin(a)*r;
+      if (eixo === 'y') T.ln(C, x + c, y, z + s); else if (eixo === 'z') T.ln(C, x + c, y + s, z); else T.ln(C, x, y + c, z + s);
+    }
+  };
+  // grade do chão (y = nivel) e eixo, para dar referência de espaço
+  T.chao = (C, nivel = -1, tam = 1.2, div = 8, cor = 'rgba(150,190,230,1)', alfa = 0.07) => {
+    if (!T.grade) return;
+    C.save(); C.strokeStyle = cor; C.lineWidth = 1;
+    for (let i = 0; i <= div; i++){
+      const u = -tam + 2*tam*i/div;
+      T.seg(C, u, nivel, -tam, u, nivel, tam, alfa); T.seg(C, -tam, nivel, u, tam, nivel, u, alfa);
+    }
+    C.restore();
+  };
+  T.ler && T.ler();
+  return T;
+};
+</script>
+<script>
 (() => {
 'use strict';
 // ---------- núcleo v2 das conjecturas ----------
@@ -573,6 +743,47 @@ function addZero(t){
   return true;
 }
 function speedNow(){ return P.speed*(P.accel ? Math.min(12, 1 + k/25) : 1); }
+// ---------- vista 3D: ζ(½ + it) desenhada como uma curva no espaço — t corre ao longo do eixo (a linha crítica),
+// e a curva passa pelo eixo exatamente em cada zero. Atrás, na parede, a escada ψ(x) e a soma com os zeros já tocados.
+const T3 = Vista3D({ giro: 0.05, incl: 16, yaw: -0.45 });
+const ZT0 = 8, ZDT = 0.025;
+let zRe = null, zIm = null;
+function zetaCurva(){
+  const tMax = (ZEROS[ZEROS.length - 1] || 100) + 20, n = Math.ceil((tMax - ZT0)/ZDT);
+  zRe = new Float32Array(n); zIm = new Float32Array(n);
+  for (let i = 0; i < n; i++){ const tt = ZT0 + i*ZDT, z = Z(tt), th = theta(tt), c = z/(1 + Math.abs(z)*0.12);
+    zRe[i] = c*Math.cos(th); zIm[i] = -c*Math.sin(th); }
+}
+let zHead = 14;
+function draw3d(C, t){
+  if (!zRe) zetaCurva();
+  T3.quadro(V.W, V.H); T3.centro(0, 10);
+  const w = Math.min(1, (t - newT)*1.5);
+  const alvo = k ? ZEROS[k - 1] + 3 : 14; zHead += (alvo - zHead)*0.04;
+  const span = 26 + Math.min(40, k*0.4), tA = Math.max(ZT0, zHead - span), XT = tt => ((tt - tA)/span - 0.62)*2.6;
+  const ry = 0.26;
+  C.globalCompositeOperation = 'lighter'; C.lineJoin = 'round';
+  // a linha crítica (o eixo) com os zeros como contas
+  C.strokeStyle = 'rgb(255,255,255)'; C.lineWidth = 1; T3.seg(C, XT(tA), 0, 0, XT(zHead + 8), 0, 0, 0.18);
+  for (let j = 0; j < Math.min(P.kMax, ZEROS.length); j++){
+    const g = ZEROS[j]; if (g < tA || g > zHead + 8) continue;
+    const on = j < k, fl = j === k - 1 ? Math.exp(-(t - newT)*2) : 0;
+    T3.ponto(C, XT(g), 0, 0, on ? 2.4 + fl*5 : 1.2, on ? V.cor(j/Math.min(P.kMax, ZEROS.length), 1, 70 + fl*20) : 'rgb(255,255,255)', on ? 0.9 : 0.15);
+    if (fl > 0.02){ C.strokeStyle = V.cor(0.1, 1, 80); C.globalAlpha = fl; C.beginPath(); T3.circulo(C, XT(g), 0, 0, 0.02 + (1 - fl)*0.25, 'x', 40); C.stroke(); C.globalAlpha = 1; }
+  }
+  // a curva até a cabeça (o que vem depois fica apagado)
+  const i0 = Math.max(0, Math.floor((tA - ZT0)/ZDT)), iH = Math.min(zRe.length - 1, Math.floor((zHead - ZT0)/ZDT)), iF = Math.min(zRe.length - 1, Math.floor((zHead + 8 - ZT0)/ZDT));
+  const seg = (a, b) => { const arr = []; for (let i = a; i <= b; i += 2) arr.push(XT(ZT0 + i*ZDT), zIm[i]*ry, zRe[i]*ry); return arr; };
+  C.lineWidth = P.lw; C.strokeStyle = V.cor(0.15, 1, 72); T3.poli(C, seg(i0, iH), 0.95, 10);
+  C.lineWidth = 1; T3.poli(C, seg(iH, iF), 0.12, 10);
+  T3.brilho(C, XT(ZT0 + iH*ZDT), zIm[iH]*ry, zRe[iH]*ry, 14, V.cor(0.15, 0.9, 85));
+  // parede do fundo: ψ(x) verdadeira e a aproximação pelos zeros
+  const zw = -0.95, gx0 = -1.3, gx1 = 1.3, yMax = P.xMax*1.12, WXp = x => gx0 + (gx1 - gx0)*(x - 1.5)/(P.xMax - 1.5), WYp = y => -0.75 + 1.5*y/yMax;
+  if (P.escada > 0){ C.strokeStyle = 'rgb(255,255,255)'; C.lineWidth = 1; const a = []; for (let i = 0; i < NS; i += 2) a.push(WXp(xs[i]), WYp(psiT[i]), zw); T3.poli(C, a, P.escada*0.6, 30); }
+  C.strokeStyle = V.cor(0.7, 1, 66); C.lineWidth = 1.2; { const a = []; for (let i = 0; i < NS; i += 2) a.push(WXp(xs[i]), WYp(base[i] + w*novo[i]), zw); T3.poli(C, a, 0.7, 30); }
+  if (P.ondas > 0 && k){ C.strokeStyle = V.cor(0.7, 1, 66); C.lineWidth = 1; const a = []; for (let i = 0; i < NS; i += 3) a.push(WXp(xs[i]), WYp(P.xMax*0.5 + novo[i]*4), zw); T3.poli(C, a, P.ondas*(1 - 0.6*w)*0.6, 30); }
+  if (O.running){ const xc = WXp(1.5 + (P.xMax - 1.5)*sweep); C.strokeStyle = 'rgb(255,255,255)'; T3.seg(C, xc, -0.75, zw, xc, 0.75, zw, 0.2); }
+}
 function frame(){
   const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t;
   if (O.running){
@@ -594,6 +805,8 @@ function frame(){
     }
   }
   const { W, H } = V, C = V.begin();
+  if (T3.on) draw3d(C, t);
+  else {
   const gx0 = 50, gx1 = W - 40, gy0 = 110, gy1 = H - 150;
   const yMax = P.xMax*1.12, X = x => gx0 + (gx1 - gx0)*(x - 1.5)/(P.xMax - 1.5), Y = y => gy1 - (gy1 - gy0)*y/yMax;
   C.globalCompositeOperation = 'lighter';
@@ -618,8 +831,10 @@ function frame(){
     C.beginPath(); C.arc(x, ly, on ? 2.2 + fl*5 : 1.2, 0, Math.PI*2); C.fill();
     if (fl > 0.02){ C.strokeStyle = V.cor(0.1, fl, 80); C.beginPath(); C.arc(x, ly, 4 + (1 - fl)*30, 0, Math.PI*2); C.stroke(); }
   }
+  }
   V.end();
-  if (!document.body.classList.contains('semtexto')){
+  if (!T3.on && !document.body.classList.contains('semtexto')){
+    const gx0 = 50, gx1 = W - 40, gy0 = 110, ly = H - 70;
     const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)';
     ctx.fillText('linha crítica Re(s) = ½ · altura γ dos zeros', gx0, ly - 12); ctx.textAlign = 'right'; ctx.fillText('ψ(x) e a soma com os zeros já tocados', gx1, gy0 - 6); ctx.textAlign = 'left';
   }

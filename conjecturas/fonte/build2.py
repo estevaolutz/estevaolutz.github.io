@@ -11,6 +11,7 @@ DESTINO = os.path.join(REPO, 'conjecturas')
 CSS = open(os.path.join(AQUI, 'core.css')).read()
 NUCLEO = open(os.path.join(AQUI, 'nucleo2.js')).read()
 BANCO = open(os.path.join(AQUI, 'banco.js')).read()
+VISTA3D = '<script>\n' + open(os.path.join(AQUI, 'vista3d.js')).read() + '</script>\n'  # câmera 3D comum (só nas obras que chamam Vista3D)
 
 OBRAS2 = {
   # matemática
@@ -63,7 +64,7 @@ MOLDE = """<!DOCTYPE html>
 <div id="nucleoVideo"></div>
 <div class="hint">{dica}<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
 </div>
-<script>
+{vista3d}<script>
 (() => {{
 'use strict';
 {nucleo}
@@ -90,7 +91,7 @@ def main():
         src = open(arq).read()
         html = MOLDE.format(titulo=nome, titulo_maiusc=nome.upper(), intro=parte(src, 'intro'), css=CSS, css_obra=parte(src, 'css'),
                             painel=parte(src, 'painel'), imagem=parte(src, 'imagem'), dica=parte(src, 'dica'),
-                            nucleo=NUCLEO, js=parte(src, 'js'), banco=BANCO)
+                            nucleo=NUCLEO, js=parte(src, 'js'), banco=BANCO, vista3d=VISTA3D if 'Vista3D(' in src else '')
         pasta = os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
         open(os.path.join(pasta, 'index.html'), 'w').write(html)
         man = {"name": nome, "short_name": nome, "description": desc, "lang": "pt-BR", "start_url": "./", "scope": "./",

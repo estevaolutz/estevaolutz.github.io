@@ -11,6 +11,7 @@ CSS = open(os.path.join(AQUI, 'core.css')).read()
 JS = open(os.path.join(AQUI, 'core.js')).read()
 SOM = open(os.path.join(AQUI, 'som.html')).read()
 BANCO = open(os.path.join(AQUI, 'banco.js')).read()  # banco de configurações, entra em todas as obras
+VISTA3D = '<script>\n' + open(os.path.join(AQUI, 'vista3d.js')).read() + '</script>'  # câmera 3D comum a todas as obras
 
 OBRAS = {
   'corredor-solitario': ('Corredor Solitário', 'A conjectura do corredor solitário em polirritmia e luz'),
@@ -95,7 +96,7 @@ def main():
     for slug, (nome, desc) in OBRAS.items():
         if not os.path.exists(os.path.join(AQUI, slug + '.html')): continue
         src = open(os.path.join(AQUI, slug + '.html')).read()
-        html = src.replace('/*CORE_CSS*/', CSS).replace('<!--SOM-->', SOM).replace('//CORE_JS', JS).replace('//BANCO_JS', BANCO)
+        html = src.replace('/*CORE_CSS*/', CSS).replace('<!--SOM-->', SOM).replace('//CORE_JS', JS).replace('//BANCO_JS', BANCO).replace('<!--VISTA3D-->', VISTA3D)
         pasta = os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
         open(os.path.join(pasta, 'index.html'), 'w').write(html)
         man = {"name": nome, "short_name": nome, "description": desc, "lang": "pt-BR", "start_url": "./", "scope": "./",
@@ -132,6 +133,8 @@ def granizo():
     bloco = a + '<script>\n' + BANCO + '</script>' + b
     if a in html: html = html[:html.index(a)] + bloco + html[html.index(b) + len(b):]
     else: i = html.rindex('</body>'); html = html[:i] + bloco + '\n' + html[i:]
+    a3, b3 = '<!--vista3d-->', '<!--/vista3d-->'
+    if a3 in html: html = html[:html.index(a3)] + a3 + VISTA3D + b3 + html[html.index(b3) + len(b3):]
     open(p, 'w').write(html)
     sw = os.path.join(DESTINO, 'granizo', 'sw.js')
     ver = hashlib.md5(html.encode()).hexdigest()[:8]

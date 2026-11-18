@@ -126,6 +126,7 @@
   <div class="hint">Para trás = nota macia e arco embaixo; para a frente = sino e arco em cima. O drone fica preso no menor número que ainda falta (o 4 só aparece no passo 131): quando ele finalmente aparece, a harmonia se resolve.<br>Cada elemento (para trás, para a frente, repetição, pulso grave, acorde, drone) tem volume próprio e envios próprios para reverb, delay, pitch delay e bit crusher; os efeitos ficam em “Efeitos”.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar.</div>
 </div>
 
+<!--VISTA3D-->
 <script>
 (() => {
 'use strict';
@@ -578,6 +579,65 @@ reset();
 
 const LOOK = 0.25;
 let shown = -1;
+// ---------- vista 3D: cada arco gira um pouco em torno da reta dos números; juntos formam uma escultura torcida ----------
+const T3 = Vista3D({ giro: 0.1, incl: 16, yaw: 0.25 });
+const TORCE = 0.045;
+function arc3(g, u0, u1, j, frac, sc){
+  const fy = P.shape === 'baixo' ? 0.45 : P.shape === 'alto' ? 1.6 : 1;
+  const x0 = u0*sc, x1 = u1*sc, cx = (x0 + x1)/2 - 1.2, r = Math.abs(x1 - x0)/2;
+  const ph = (j % 2 === 1 ? 0 : Math.PI) + j*TORCE, cy = Math.cos(ph)*fy, cz = Math.sin(ph)*fy;
+  const startA = u1 >= u0 ? Math.PI : 0, endA = u1 >= u0 ? 0 : Math.PI;
+  const N = Math.max(6, Math.min(40, r*T3.R/5 | 0));
+  T3.mv(g, cx + Math.cos(startA)*r, 0, 0);
+  for (let q = 1; q <= N*frac; q++){
+    const th = startA + (endA - startA)*(q/N), s = Math.abs(Math.sin(th))*r;
+    T3.ln(g, cx + Math.cos(th)*r, s*cy, s*cz);
+  }
+}
+function draw3d(t, n, cur, frac, vis, life){
+  T3.quadro(W, H); T3.centro(0, 35);
+  const sc = 2.4/vis;
+  ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (P.line){
+    ctx.strokeStyle = 'rgb(255,255,255)'; ctx.lineWidth = 1; T3.seg(ctx, -1.2, 0, 0, 1.2, 0, 0, 0.14*life);
+    const step = Math.max(1, Math.floor(vis/600));
+    ctx.fillStyle = 'rgb(210,230,250)';
+    for (let v = 0; v <= vis; v += step) if (seen[v]) T3.ponto(ctx, v*sc - 1.2, 0, 0, 0.9, null, 0.4*life);
+    if (mex <= vis){ const pulse = 0.5 + 0.5*Math.sin(t*2); ctx.strokeStyle = 'rgb(255,220,170)'; ctx.lineWidth = 1.2; ctx.globalAlpha = (0.45 + 0.35*pulse)*life;
+      ctx.beginPath(); T3.circulo(ctx, mex*sc - 1.2, 0, 0, 0.025 + pulse*0.01, 'x', 24); ctx.stroke(); ctx.globalAlpha = 1; }
+  }
+  const mem = P.mem;
+  const from = Math.max(1, cur - Math.min(2500, mem >= 0.999 ? cur : Math.floor(20 + mem*mem*4000)));
+  ctx.lineWidth = sc*T3.R < 0.5 ? 0.8 : 1.1;
+  for (let i = from; i < cur; i += 16){
+    const end = Math.min(cur - 1, i + 15), age = (cur - end)/Math.max(1, cur - from);
+    ctx.strokeStyle = col(i, 1, kinds[i] === 'tras' ? 'tras' : 'f');
+    const m = (i + end) >> 1; T3.p((a[m-1] + a[m])/2*sc - 1.2, 0, 0);
+    ctx.globalAlpha = Math.min(1, (0.14 + 0.4*(1 - age)*(mem < 0.999 ? 1 : 0.6))*life*(0.5 + 0.5*T3.A));
+    ctx.beginPath(); for (let j = i; j <= end; j++) arc3(ctx, a[j-1], a[j], j, 1, sc); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  for (let j = Math.max(1, cur - 6); j <= Math.min(n, cur + 1); j++){
+    const isCur = j === cur + 1, fr = isCur ? frac : 1;
+    if (j > n || (isCur && !O.running)) continue;
+    const age = isCur ? 0 : cur + 1 - j;
+    ctx.strokeStyle = col(j, (0.95 - age*0.12)*life, kinds[j]); ctx.lineWidth = 2.4 - age*0.25;
+    ctx.beginPath(); arc3(ctx, a[j-1], a[j], j, fr, sc); ctx.stroke();
+  }
+  if (O.running && cur + 1 <= n && cycleEnd == null || (cycleEnd != null && life > 0)){
+    const j = Math.min(n, cur + 1), u0 = a[j-1]*sc, u1 = a[j]*sc, cx = (u0 + u1)/2 - 1.2, r = Math.abs(u1 - u0)/2;
+    const fy = P.shape === 'baixo' ? 0.45 : P.shape === 'alto' ? 1.6 : 1, ph = (j % 2 === 1 ? 0 : Math.PI) + j*TORCE;
+    const startA = a[j] >= a[j-1] ? Math.PI : 0, endA = a[j] >= a[j-1] ? 0 : Math.PI, th = startA + (endA - startA)*(cycleEnd != null ? 1 : frac);
+    const s = Math.abs(Math.sin(th))*r*fy;
+    T3.brilho(ctx, cx + Math.cos(th)*r, s*Math.cos(ph), s*Math.sin(ph), 16, `rgba(255,255,255,${0.9*life})`);
+  }
+  fills = fills.filter(f => t - f.t < 5);
+  for (const f of fills){ if (t < f.t) continue; const k = (t - f.t)/5;
+    ctx.strokeStyle = 'rgb(255,225,180)'; ctx.lineWidth = 1; ctx.globalAlpha = 0.5*(1-k)*(1-k)*life;
+    ctx.beginPath(); T3.circulo(ctx, f.v*sc - 1.2, 0, 0, 0.02 + k*0.3, 'x', 40); ctx.stroke(); ctx.globalAlpha = 1; }
+}
+
 function frame(){
   const t = O.now();
   if (O.running){
@@ -605,6 +665,8 @@ function frame(){
   const ox = 35, oy = (H + 70)/2;
   const life = cycleEnd != null ? Math.max(0, 1 - (t - cycleEnd)/P.gap) : 1;
 
+  if (T3.on) draw3d(t, n, cur, frac, vis, life);
+  else {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'lighter';
@@ -662,6 +724,7 @@ function frame(){
     ctx.strokeStyle = `rgba(255,225,180,${0.5*(1-k)*(1-k)*life})`; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(x, oy, 4 + k*Math.min(W, H)*0.12, 0, Math.PI*2); ctx.stroke(); }
 
+  }
   // texto
   if (cur !== shown){
     shown = cur;

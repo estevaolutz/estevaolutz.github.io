@@ -77,6 +77,7 @@
   <div class="hint">Cada batida reúne alguns passos: as viradas à esquerda escolhem a nota, a direção da formiga escolhe a voz. No caos a melodia não se repete; quando a rodovia aparece (período de 104 passos) a música vira um laço.<br>“Nunca parar”: a grade dá a volta nas bordas (a formiga sai de um lado e entra do outro) e a contagem de voltas é ignorada; quando a rodovia bate no rastro antigo, volta o caos e a obra procura a próxima rodovia.<br>Efeitos: o delay acompanha o andamento (em batidas); a varredura do filtro dura 8 batidas, o compasso da rodovia; “Abre na rodovia” deixa o filtro fechado no caos e abre quando a rodovia aparece.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · ↑/↓ velocidade.</div>
 </div>
 
+<!--VISTA3D-->
 <script>
 (() => {
 'use strict';
@@ -90,6 +91,7 @@ const P = O.P;
 // ---------- grade ----------
 const G = 1024;
 const grid = new Uint8Array(G*G);
+const vis = new Uint16Array(G*G);   // quantas vezes a formiga passou por cada casa (altura na vista 3D)
 const off = document.createElement('canvas'); off.width = G; off.height = G;
 const octx = off.getContext('2d');
 const img = octx.createImageData(G, G), px = new Uint32Array(img.data.buffer);
@@ -112,9 +114,11 @@ function makePal(){
     pal[c] = rgba(col[0], col[1], col[2]);
   }
   for (let i = 0; i < G*G; i++) px[i] = pal[grid[i]];
+  for (let c = 0; c < 16; c++){ const v = pal[c], r = v & 255, g = v >> 8 & 255, b = v >> 16 & 255;
+    css3[c] = `rgb(${r},${g},${b})`; css3t[c] = `rgb(${Math.min(255, r*1.35 + 30)|0},${Math.min(255, g*1.35 + 30)|0},${Math.min(255, b*1.35 + 30)|0})`; }
   dirty = [0, 0, G-1, G-1];
 }
-let dirty = null;
+let dirty = null, css3 = [], css3t = [];
 const markDirty = (x, y) => { if (!dirty) dirty = [x, y, x, y]; else { if (x < dirty[0]) dirty[0] = x; if (y < dirty[1]) dirty[1] = y; if (x > dirty[2]) dirty[2] = x; if (y > dirty[3]) dirty[3] = y; } };
 
 // ---------- formiga ----------
@@ -122,7 +126,7 @@ let rule = 'RL', ax, ay, dir, steps, bb, turns, hw, trail, ended, endT, wrapped 
 const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];   // 0 = norte, 1 = leste, 2 = sul, 3 = oeste
 const HIST = 1 << 16;
 function reset(){
-  rule = P.rule; grid.fill(0);
+  rule = P.rule; grid.fill(0); vis.fill(0);
   ax = G/2; ay = G/2; dir = 0; steps = 0; ended = false;
   bb = [ax, ay, ax, ay];
   turns = new Uint8Array(HIST); hw = null; trail = []; wrapped = false; hwN = 0;
@@ -138,6 +142,7 @@ function step(){
   const i = ay*G + ax, c = grid[i], n = rule.length;
   const L = rule.charCodeAt(c) === 76;   // 'L'
   dir = (dir + (L ? 3 : 1)) & 3;
+  if (vis[i] < 65535) vis[i]++;
   const nc = (c + 1) % n; grid[i] = nc; px[i] = pal[nc]; markDirty(ax, ay);
   turns[steps & (HIST-1)] = L ? 1 : 0;
   ax += DX[dir]; ay += DY[dir]; steps++;
@@ -270,6 +275,54 @@ $('bFxZero').addEventListener('click', () => {
 });
 reset();
 
+// ---------- vista 3D: a grade vira um relevo; a altura de cada casa é quantas vezes a formiga passou por ela ----------
+const T3 = Vista3D({ giro: 0.08, incl: 38, yaw: 0.7 });
+function draw3d(t, pk, fade){
+  T3.quadro(W, H); T3.centro(0, 40);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.fillStyle = P.pers > 0 ? `rgba(0,0,0,${1 - P.pers})` : '#000'; ctx.fillRect(0, 0, W, H);
+  const x0 = Math.max(0, Math.floor(bbCam[0])), y0 = Math.max(0, Math.floor(bbCam[1])), x1 = Math.min(G - 1, Math.ceil(bbCam[2])), y1 = Math.min(G - 1, Math.ceil(bbCam[3]));
+  const side = Math.max(24, x1 - x0, y1 - y0), cw = 2/side*P.zoom, mx = (x0 + x1)/2, my = (y0 + y1)/2;
+  const st = Math.max(1, Math.ceil(side/150)), hk = cw*(1 + pk*0.25);
+  const WX = x => (x + 0.5 - mx)*cw, WZ = y => (y + 0.5 - my)*cw, HT = (c, v) => (c ? 1.1 : 0.12) + Math.log2(1 + v)*1.4;
+  T3.chao(ctx, 0, 1.15, 10);
+  // de trás para a frente, para as colunas se taparem direito
+  T3.p(WX(x0), 0, WZ(y0)); const zA = T3.Z; T3.p(WX(x1), 0, WZ(y0)); const zB = T3.Z; T3.p(WX(x0), 0, WZ(y1)); const zC = T3.Z;
+  const xs = zB > zA ? -st : st, ys = zC > zA ? -st : st;
+  const xi0 = xs > 0 ? x0 : x1 - ((x1 - x0) % st), yi0 = ys > 0 ? y0 : y1 - ((y1 - y0) % st);
+  for (let y = yi0; y >= y0 && y <= y1; y += ys){
+    for (let x = xi0; x >= x0 && x <= x1; x += xs){
+      const i = y*G + x, c = grid[i], v = vis[i]; if (!c && !v) continue;
+      const h = HT(c, v)*hk*Math.sqrt(st), wx = WX(x), wz = WZ(y);
+      if (!T3.p(wx, 0, wz)) continue; const bx = T3.X, by = T3.Y, bw = Math.max(0.8, cw*st*T3.R*T3.S*0.86), al = T3.A*fade;
+      T3.p(wx, h, wz); const ty = T3.Y;
+      ctx.globalAlpha = al*(c ? 0.92 : 0.35); ctx.fillStyle = c ? css3[c] : 'rgb(40,60,85)';
+      ctx.fillRect(bx - bw/2, ty, bw, Math.max(1, by - ty));
+      ctx.globalAlpha = al; ctx.fillStyle = c ? css3t[c] : 'rgb(70,95,125)';
+      ctx.fillRect(bx - bw/2, ty - bw*0.25, bw, Math.max(1, bw*0.5));
+    }
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'lighter';
+  // rodovia, rastro e formiga
+  const ah = (x, y) => HT(grid[y*G + x], vis[y*G + x])*hk + cw*1.5;
+  if (hw && P.hwGlow > 0){
+    const k = Math.min(1, (t - hw.t)/3)*fade;
+    ctx.strokeStyle = 'rgb(190,225,255)'; ctx.lineWidth = Math.max(3, cw*T3.R*4); ctx.lineCap = 'round';
+    T3.seg(ctx, WX(hw.lx), cw*3, WZ(hw.ly), WX(ax), cw*3, WZ(ay), Math.min(1, 0.3*k*P.hwGlow*(1 + pk)));
+  }
+  if (P.trail > 0 && trail.length > 1){
+    ctx.lineWidth = Math.max(1, cw*T3.R*0.5); ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgb(230,240,255)';
+    const n = trail.length, from = Math.max(1, n - Math.floor(600*P.trail));
+    for (let i = from; i < n; i++){
+      const a = trail[i-1], b = trail[i], u = (i - from)/(n - from);
+      if (Math.abs(a[0] - b[0]) > 64 || Math.abs(a[1] - b[1]) > 64) continue;
+      T3.seg(ctx, WX(a[0]), ah(a[0], a[1]), WZ(a[1]), WX(b[0]), ah(b[0], b[1]), WZ(b[1]), 0.4*u*u*fade);
+    }
+  }
+  T3.brilho(ctx, WX(ax), ah(ax, ay), WZ(ay), Math.max(10, cw*T3.R*3)*(1 + pk*1.5), `rgba(255,255,255,${0.95*fade})`);
+  if (pk > 0.01){ ctx.fillStyle = `rgba(200,225,255,${pk*0.05})`; ctx.fillRect(0, 0, W, H); }
+}
+
 // ---------- desenho ----------
 function frame(){
   const t = O.now();
@@ -292,12 +345,14 @@ function frame(){
   let pk = 0, strong = false;
   for (const p of pulses){ if (p.t <= t){ const k = Math.exp(-(t - p.t)*7); if (k > pk){ pk = k; strong = p.strong; } } }
   pk *= P.pulse*(strong ? 1.6 : 1);
+  const fade = ended && endT != null ? Math.max(0, 1 - (t - endT)/6) : 1;
+  if (T3.on) draw3d(t, pk, fade);
+  else {
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = P.pers > 0 ? `rgba(0,0,0,${1 - P.pers})` : '#000'; ctx.fillRect(0, 0, W, H);
   const bump = 1 + pk*0.012, s0 = cam.s; cam.s *= bump;
   const sx = W/2 - cam.x*cam.s, sy = cam.cy - cam.y*cam.s;
   ctx.imageSmoothingEnabled = cam.s < 1;
-  const fade = ended && endT != null ? Math.max(0, 1 - (t - endT)/6) : 1;
   ctx.globalAlpha = fade;
   ctx.drawImage(off, sx, sy, G*cam.s, G*cam.s);
   if (P.glow > 0){
@@ -333,6 +388,7 @@ function frame(){
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, r, 0, Math.PI*2); ctx.fill();
 
   cam.s = s0;
+  }
   // texto
   $('num').textContent = `passo ${O.fmt(steps)}`;
   $('op').innerHTML = hw ? `<span class="rod">${P.never && hwN > 1 ? hwN + 'ª ' : ''}rodovia · período ${hw.p} passos · desde o passo ${O.fmt(hw.at - 3*hw.p)}</span> · volta ${Math.floor((steps - hw.at)/hw.p) + 1}`

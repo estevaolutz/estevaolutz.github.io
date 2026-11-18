@@ -188,6 +188,176 @@
   <div class="hint">Par → ÷2 (o som desce). Ímpar → ×3+1 (o som sobe).<br>Todo caminho termina no 1 e no laço 4 → 2 → 1.<br>Teclas: M controles · F tela cheia · C limpar · N números · G gráfico · Espaço próximo.</div>
 </div>
 
+<!--vista3d--><script>
+// Vista 3D das Conjecturas — câmera em órbita e projeção em perspectiva desenhadas no mesmo canvas 2D da obra,
+// então o som, os efeitos de vídeo (rastro, brilho, espelho) e o banco de configurações valem também para o 3D.
+// A cena é descrita em unidades de mundo de mais ou menos −1 a 1 (y para cima). Uso:
+//   const T = Vista3D({ ligado: true, giro: 0.12, incl: 20 });
+//   if (T.on){ T.quadro(); C.beginPath(); T.mv(C, x, y, z); T.ln(C, x2, y2, z2); C.stroke(); }
+// Controles: arrastar = girar, pinça/roda = aproximar, dois toques = recentrar, tecla D = liga/desliga.
+window.Vista3D = function(opt = {}){
+  const $ = id => document.getElementById(id);
+  const cv = opt.canvas || $('cv');
+  const DEF = Object.assign({ ligado: true, giro: 0.12, incl: 22, zoom: 1, persp: 0.45, nevoa: 0.35, grade: true, yaw: 0.5 }, opt);
+  const T = { on: DEF.ligado, giro: DEF.giro, incl: DEF.incl, zoom: DEF.zoom, persp: DEF.persp, nevoa: DEF.nevoa, grade: DEF.grade,
+    X: 0, Y: 0, S: 1, A: 1, Z: 0, R: 300, W: 0, H: 0, cx: 0, cy: 0, ouvintes: [] };
+  let yaw = DEF.yaw, dPitch = 0, zMul = 1, last = 0, cy = 1, sy = 0, cp = 1, sp = 0, D = 4, F = 1, ox = 0, oy = 0;
+
+  // ---------- painel: uma seção "Vista 3D" logo antes dos efeitos de vídeo (ou da seção Imagem) ----------
+  const panel = $('panel');
+  if (panel && !$('v3d')){
+    const box = document.createElement('div'); box.id = 'vista3dBox';
+    box.innerHTML = `<h2>Vista 3D</h2>
+      <div class="row"><label>3D (tecla D)</label><input type="checkbox" id="v3d"${T.on ? ' checked' : ''}></div>
+      <div class="row"><label>Giro automático</label><input type="range" id="v3dGiro" min="-1" max="1" step="0.01" value="${T.giro}"></div>
+      <div class="row"><label>Inclinação</label><input type="range" id="v3dIncl" min="-15" max="85" step="1" value="${T.incl}"></div>
+      <div class="row"><label>Aproximar</label><input type="range" id="v3dZoom" min="0.4" max="3" step="0.01" value="${T.zoom}"></div>
+      <div class="row"><label>Perspectiva</label><input type="range" id="v3dPersp" min="0" max="1" step="0.01" value="${T.persp}"></div>
+      <div class="row"><label>Névoa ao fundo</label><input type="range" id="v3dNev" min="0" max="1" step="0.01" value="${T.nevoa}"></div>
+      <div class="row"><label>Grade do chão</label><input type="checkbox" id="v3dGrade"${T.grade ? ' checked' : ''}></div>
+      <div class="row"><button id="v3dCentro" type="button">Recentrar câmera</button></div>`;
+    const antes = opt.antes ? $(opt.antes) : ($('nucleoVideo') || [...panel.querySelectorAll('h2')].find(h => /imagem|v[ií]deo/i.test(h.textContent)) || panel.querySelector('.hint'));
+    if (antes && antes.parentNode) antes.parentNode.insertBefore(box, antes); else panel.appendChild(box);
+    const ler = () => {
+      T.on = $('v3d').checked; T.giro = +$('v3dGiro').value; T.incl = +$('v3dIncl').value; T.zoom = +$('v3dZoom').value;
+      T.persp = +$('v3dPersp').value; T.nevoa = +$('v3dNev').value; T.grade = $('v3dGrade').checked;
+      document.body.classList.toggle('em3d', T.on); const b = $('b3d'); if (b) b.classList.toggle('on', T.on);
+      for (const fn of T.ouvintes) fn(T.on);
+    };
+    box.addEventListener('input', ler); box.addEventListener('change', ler);
+    $('v3dCentro').addEventListener('click', () => T.recentrar());
+    T.ler = ler;
+  }
+  // botão rápido "3D" ao lado do ponto do painel
+  if (!$('b3d')){
+    const st = document.createElement('style');
+    st.textContent = `#b3d{position:fixed;right:50px;top:16px;height:26px;padding:0 9px;border-radius:13px;z-index:4;border:1px solid rgba(255,255,255,.25);
+      background:rgba(0,0,0,.35);color:#cfd6dd;font:500 10.5px/24px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;letter-spacing:.12em;cursor:pointer;opacity:.28;transition:opacity .4s}
+      #b3d:hover{opacity:.8} #b3d.on{opacity:.55;border-color:rgba(191,228,255,.7);color:#e8f4ff} body.em3d #cv{cursor:grab} body.em3d #cv:active{cursor:grabbing}`;
+    document.head.appendChild(st);
+    const b = document.createElement('button'); b.id = 'b3d'; b.type = 'button'; b.title = 'Vista 3D (D)'; b.textContent = '3D';
+    b.classList.toggle('on', T.on); document.body.appendChild(b);
+    b.addEventListener('click', e => { e.stopPropagation(); T.alternar(); });
+  }
+  document.body.classList.toggle('em3d', T.on);
+  T.alternar = () => { const c = $('v3d'); if (c){ c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); } else { T.on = !T.on; for (const fn of T.ouvintes) fn(T.on); } };
+  T.recentrar = () => { yaw = DEF.yaw; dPitch = 0; zMul = 1; };
+  T.mudou = fn => T.ouvintes.push(fn);
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'd' || e.key === 'D'){ e.preventDefault(); T.alternar(); }
+  });
+
+  // ---------- arrastar, pinça, roda, dois toques ----------
+  const pts = new Map(); let pinch0 = 0, zoom0 = 1, tapT = 0;
+  cv.addEventListener('pointerdown', e => {
+    if (!T.on) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 2){ const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = zMul; }
+    const agora = performance.now(); if (agora - tapT < 300 && pts.size === 1) T.recentrar(); tapT = agora;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!T.on || !pts.has(e.pointerId)) return;
+    const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 1){ yaw += dx*0.008; dPitch = Math.max(-80, Math.min(80, dPitch + dy*0.35)); }
+    else if (pts.size === 2 && pinch0 > 0){ const [a, b] = [...pts.values()]; zMul = Math.max(0.25, Math.min(6, zoom0*Math.hypot(a.x - b.x, a.y - b.y)/pinch0)); }
+  });
+  const solta = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; };
+  cv.addEventListener('pointerup', solta); cv.addEventListener('pointercancel', solta);
+  cv.addEventListener('wheel', e => { if (!T.on) return; e.preventDefault(); zMul = Math.max(0.25, Math.min(6, zMul*Math.exp(-e.deltaY*0.0012))); }, { passive: false });
+  cv.style.touchAction = 'none';
+
+  // ---------- câmera ----------
+  // chamar uma vez por quadro, antes de desenhar; dt em segundos (opcional)
+  T.quadro = (W = innerWidth, H = innerHeight, dt) => {
+    const agora = performance.now()/1000;
+    if (dt === undefined) dt = Math.min(0.1, last ? agora - last : 0); last = agora;
+    if (!pts.size) yaw += dt*T.giro*0.6;
+    const pitch = Math.max(-89, Math.min(89, T.incl + dPitch))*Math.PI/180;
+    cy = Math.cos(yaw); sy = Math.sin(yaw); cp = Math.cos(pitch); sp = Math.sin(pitch);
+    const fov = (12 + T.persp*68)*Math.PI/180; D = 1.25/Math.tan(fov/2);
+    T.W = W; T.H = H; T.cx = W/2 + ox; T.cy = H/2 + oy;
+    T.R = Math.min(W, H)*0.42*T.zoom*zMul; F = T.R*D;
+    T.yaw = yaw; T.pitch = pitch; T.D = D;
+    return T;
+  };
+  // desloca o centro da tela (por exemplo, para deixar espaço para o texto)
+  T.centro = (dx = 0, dy = 0) => { ox = dx; oy = dy; };
+  // projeta (x, y, z): grava T.X, T.Y (pixels), T.S (escala: 1 = na origem), T.A (névoa 0–1), T.Z (profundidade); false se atrás da câmera
+  T.p = (x, y, z) => {
+    const x1 = cy*x + sy*z, z1 = -sy*x + cy*z;
+    const y2 = cp*y - sp*z1, z2 = sp*y + cp*z1;
+    const zc = D - z2;
+    if (zc < 0.08) return false;
+    const k = F/zc;
+    T.X = T.cx + x1*k; T.Y = T.cy - y2*k; T.S = D/zc; T.Z = zc;
+    T.A = T.nevoa > 0 ? Math.exp(-T.nevoa*1.1*Math.max(0, zc - D + 1)) : 1;
+    return true;
+  };
+  // caminhos: mv = moveTo, ln = lineTo (pulando o que fica atrás da câmera)
+  let tem = false;
+  T.mv = (C, x, y, z) => { tem = T.p(x, y, z); if (tem) C.moveTo(T.X, T.Y); return tem; };
+  T.ln = (C, x, y, z) => { const ok = T.p(x, y, z); if (ok){ tem ? C.lineTo(T.X, T.Y) : C.moveTo(T.X, T.Y); } tem = ok; return ok; };
+  // ponto redondo com raio r (em pixels na origem), com névoa
+  T.ponto = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(0.4, r*T.S), a = alfa*T.A; if (a < 0.01) return true;
+    C.globalAlpha = Math.min(1, a); if (cor) C.fillStyle = cor;
+    if (rr < 1.6) C.fillRect(T.X - rr, T.Y - rr, rr*2, rr*2);
+    else { C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); }
+    C.globalAlpha = 1; return true;
+  };
+  // brilho redondo (gradiente) — para estrelas, cabeças, clarões
+  T.brilho = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(1, r*T.S), a = Math.min(1, alfa*T.A); if (a < 0.01) return true;
+    const g = C.createRadialGradient(T.X, T.Y, 0, T.X, T.Y, rr);
+    g.addColorStop(0, cor); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.globalAlpha = a; C.fillStyle = g; C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); C.globalAlpha = 1; return true;
+  };
+  // segmento com névoa
+  T.seg = (C, x1, y1, z1, x2, y2, z2, alfa = 1) => {
+    if (!T.p(x1, y1, z1)) return; const ax = T.X, ay = T.Y, aa = T.A;
+    if (!T.p(x2, y2, z2)) return;
+    C.globalAlpha = Math.min(1, alfa*(aa + T.A)/2); C.beginPath(); C.moveTo(ax, ay); C.lineTo(T.X, T.Y); C.stroke(); C.globalAlpha = 1;
+  };
+  // linha por vários pontos [x, y, z, x, y, z, ...], em trechos com a névoa de cada trecho
+  T.poli = (C, a, alfa = 1, trecho = 12) => {
+    const n = a.length/3 | 0; if (n < 2) return;
+    for (let i = 0; i < n - 1; i += trecho){
+      const f = Math.min(n - 1, i + trecho), m = (i + f) >> 1;
+      T.p(a[m*3], a[m*3 + 1], a[m*3 + 2]); const al = Math.min(1, alfa*T.A); if (al < 0.01) continue;
+      C.globalAlpha = al; C.beginPath(); tem = false;
+      for (let j = i; j <= f; j++) T.ln(C, a[j*3], a[j*3 + 1], a[j*3 + 2]);
+      C.stroke();
+    }
+    C.globalAlpha = 1;
+  };
+  // círculo no espaço: centro, raio, eixo 'y' (deitado), 'z' (de pé, de frente) ou 'x'
+  T.circulo = (C, x, y, z, r, eixo = 'y', n = 48, a0 = 0, a1 = Math.PI*2) => {
+    tem = false;
+    for (let i = 0; i <= n; i++){
+      const a = a0 + (a1 - a0)*i/n, c = Math.cos(a)*r, s = Math.sin(a)*r;
+      if (eixo === 'y') T.ln(C, x + c, y, z + s); else if (eixo === 'z') T.ln(C, x + c, y + s, z); else T.ln(C, x, y + c, z + s);
+    }
+  };
+  // grade do chão (y = nivel) e eixo, para dar referência de espaço
+  T.chao = (C, nivel = -1, tam = 1.2, div = 8, cor = 'rgba(150,190,230,1)', alfa = 0.07) => {
+    if (!T.grade) return;
+    C.save(); C.strokeStyle = cor; C.lineWidth = 1;
+    for (let i = 0; i <= div; i++){
+      const u = -tam + 2*tam*i/div;
+      T.seg(C, u, nivel, -tam, u, nivel, tam, alfa); T.seg(C, -tam, nivel, u, tam, nivel, u, alfa);
+    }
+    C.restore();
+  };
+  T.ler && T.ler();
+  return T;
+};
+</script><!--/vista3d-->
 <script>
 (() => {
 'use strict';
@@ -204,6 +374,7 @@ function readP(){
   for (const k of ids){ const el = $(k); P[k] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' ? el.value : parseFloat(el.value)); }
 }
 readP();
+const T3 = Vista3D({ giro: 0.1, incl: 12, yaw: 0.4 });
 for (const k of ids) $(k).addEventListener('input', () => {
   const oldSpeed = P.speed;
   readP();
@@ -241,6 +412,38 @@ function layout(seq){
   }
   return pos; // ponto j = valor seq[m-j]
 }
+// ---------- vista 3D: o coral vira uma árvore no espaço ----------
+// tartaruga com direção h, cima u e lado s: par gira em torno de u, ímpar em torno de s e torce um pouco.
+// Como o giro só depende do caminho a partir do 1, caminhos que se encontram seguem juntos (é a mesma árvore).
+function layout3(seq){
+  const m = seq.length - 1, pos = new Float32Array((m+1)*3);
+  let h = [0, 1, 0], u = [0, 0, 1], sd = [1, 0, 0], x = 0, y = 0, z = 0;
+  const gira = (a, b, ang) => { const c = Math.cos(ang), sn = Math.sin(ang);
+    return [[a[0]*c + b[0]*sn, a[1]*c + b[1]*sn, a[2]*c + b[2]*sn], [b[0]*c - a[0]*sn, b[1]*c - a[1]*sn, b[2]*c - a[2]*sn]]; };
+  const tw = 0.42 + P.tilt*0.5;
+  for (let j = 1; j <= m; j++){
+    if (seq[m-j] % 2 === 0) [h, sd] = gira(h, sd, P.aEven*0.9);
+    else { [h, u] = gira(h, u, -P.aOdd*0.75); [u, sd] = gira(u, sd, tw); }
+    x += h[0]; y += h[1]; z += h[2];
+    pos[j*3] = x; pos[j*3+1] = y; pos[j*3+2] = z;
+  }
+  return pos;
+}
+// nós do coral 3D (um por valor: caminhos que passam pelo mesmo número dividem o galho)
+const N3MAX = 45000;
+let n3 = new Map(), n3x = [], n3y = [], n3z = [], n3p = [], n3v = [], bb3 = [-1, -1, -1, 1, 1, 1];
+function coral3Reset(){ n3 = new Map(); n3x = []; n3y = []; n3z = []; n3p = []; n3v = []; bb3 = [-1, -1, -1, 1, 1, 1]; }
+function coral3Add(seq, pos3){
+  const m = seq.length - 1;
+  for (let q = m; q >= 0; q--){
+    const v = seq[q]; if (n3.has(v)) continue;
+    if (n3x.length >= N3MAX) return;
+    const j = m - q, x = pos3[j*3], y = pos3[j*3+1], z = pos3[j*3+2];
+    n3.set(v, n3x.length); n3x.push(x); n3y.push(y); n3z.push(z); n3v.push(v); n3p.push(q < m ? n3.get(seq[q+1]) : -1);
+    if (x < bb3[0]) bb3[0] = x; if (y < bb3[1]) bb3[1] = y; if (z < bb3[2]) bb3[2] = z;
+    if (x > bb3[3]) bb3[3] = x; if (y > bb3[4]) bb3[4] = y; if (z > bb3[5]) bb3[5] = z;
+  }
+}
 function bboxOf(pos, from, to, bb){
   for (let j = from; j <= to; j++){ const x = pos[j*2], y = pos[j*2+1];
     if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (x > bb[2]) bb[2] = x; if (y > bb[3]) bb[3] = y; }
@@ -277,8 +480,9 @@ function toScreen(x, y){ return [(x - cam.cx)*cam.s + W/2, (y - cam.cy)*cam.s + 
 let paths = [];   // {n, seq, pos, upto, w, t}
 function relayoutAll(){
   worldBB = [-1, -1, 1, 1];
-  for (const p of paths){ p.pos = layout(p.seq); bboxOf(p.pos, 0, p.upto, worldBB); }
-  if (cur) cur.pos = layout(cur.seq);
+  coral3Reset();
+  for (const p of paths){ p.pos = layout(p.seq); bboxOf(p.pos, 0, p.upto, worldBB); p.pos3 = layout3(p.seq); coral3Add(p.seq, p.pos3); }
+  if (cur){ cur.pos = layout(cur.seq); cur.pos3 = layout3(cur.seq); }
   redrawCoral();
 }
 function drawPathOn(g, p, alphaMul, c){
@@ -312,13 +516,14 @@ function commit(c, upto, t){
     paths = paths.filter(p => p.w > 0.03);
     cctx.globalCompositeOperation = 'destination-out'; cctx.fillStyle = `rgba(0,0,0,${fade})`; cctx.fillRect(0,0,W*MARGIN,H*MARGIN);
   }
-  const p = { n: c.seq[0], seq: c.seq, pos: c.pos, upto, w: 1, t };
+  const p = { n: c.seq[0], seq: c.seq, pos: c.pos, pos3: c.pos3, upto, w: 1, t };
+  coral3Add(c.seq, c.pos3);
   paths.push(p); if (paths.length > 4000) paths.shift();
   bboxOf(p.pos, 0, upto, worldBB);
   cctx.globalCompositeOperation = 'lighter'; cctx.lineCap = 'round'; cctx.lineJoin = 'round';
   drawPathOn(cctx, p, 1, coralView());
 }
-function clearCoral(){ rings = []; paths = []; worldBB = [-1,-1,1,1]; redrawCoral(); }
+function clearCoral(){ rings = []; paths = []; worldBB = [-1,-1,1,1]; coral3Reset(); redrawCoral(); }
 
 function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2); CDPR = Math.min(DPR, 1.5);
@@ -654,7 +859,7 @@ function begin(n){
   const t = now();
   if (cur && !cur.done) commit(cur, Math.min(cur.seq.length-1, Math.floor((t - cur.t0)*P.speed)), t);
   const seq = collatz(n);
-  cur = { seq, pos: layout(seq), t0: t + 0.08, next: 0, done: false }; lastShown = -1;
+  cur = { seq, pos: layout(seq), pos3: layout3(seq), t0: t + 0.08, next: 0, done: false }; lastShown = -1;
   if (dronePaused && droneG){ dronePaused = false; droneG.gain.cancelScheduledValues(t); droneG.gain.setTargetAtTime(P.drone*0.32, t, 0.7); }
   setHarmony(seq.length - 1, t); { const T = timbreFor(seq); if (T !== tim) setTimbre(T, t); }
 }
@@ -808,6 +1013,142 @@ function ringW(a, r, t, vib, modes){
 function ringModes(){ return waves.r.map(r => Math.max(2, Math.round(r*4))); }
 function ringVib(f){ return specE.map(e => (0.008 + e*0.05) * f); }
 
+function mostraTexto(c, si){
+    if (si === lastShown) return;
+      lastShown = si; const i = si;
+      $('num').textContent = c.seq[i].toLocaleString('pt-BR');
+      const v = fmt(c.seq[i]);
+      if (i === 0) $('op').innerHTML = `${v} é ${c.seq[0] % 2 ? '<span class="imp">ímpar</span>' : '<span class="par">par</span>'}`;
+      else { const pv = c.seq[i-1], a = fmt(pv);
+        $('op').innerHTML = pv % 2 ? `<span class="imp">${a} × 3 + 1</span> = ${v}` : `<span class="par">${a} ÷ 2</span> = ${v}`; }
+      // todas as contas da sequência, sem cortes; as mais novas ficam sempre à vista
+      const parts = [];
+      for (let q = 1; q <= i; q++){
+        const pv = c.seq[q-1], up = pv % 2 === 1, txt = up ? `${fmt(pv)} × 3 + 1 = ${fmt(c.seq[q])}` : `${fmt(pv)} ÷ 2 = ${fmt(c.seq[q])}`;
+        parts.push(q === i ? `<span class="o"><b${up ? ' class="up"' : ''}>${txt}</b></span>` : `<span class="o${up ? ' up' : ''}">${txt}</span>`);
+      }
+      const el = $('seq'); el.innerHTML = parts.join('');
+      el.style.maxHeight = Math.max(60, H - GH - (22 + 74*P.txtS) - 40) + 'px';
+      el.scrollTop = el.scrollHeight;
+      el.classList.toggle('cheio', el.scrollHeight > el.clientHeight + 2);
+    }
+
+// ---------- desenho 3D ----------
+const c3 = { x: 0, y: 0, z: 0, s: 0.2 };
+let p3x = new Float32Array(0), p3y = new Float32Array(0), p3a = new Float32Array(0);
+function frame3d(t){
+  const T = T3.quadro(W, H); T3.centro(0, -GH/2 + 10);
+  // enquadramento: caixa do coral e do caminho atual, suavizada
+  const bb = bb3.slice();
+  if (cur){ const q = cur.pos3; for (let j = 0; j < q.length; j += 3){ const x = q[j], y = q[j+1], z = q[j+2];
+    if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (z < bb[2]) bb[2] = z; if (x > bb[3]) bb[3] = x; if (y > bb[4]) bb[4] = y; if (z > bb[5]) bb[5] = z; } }
+  const ext = Math.max(4, bb[3]-bb[0], bb[4]-bb[1], bb[5]-bb[2]), k = 0.035;
+  c3.x += ((bb[0]+bb[3])/2 - c3.x)*k; c3.y += ((bb[1]+bb[4])/2 - c3.y)*k; c3.z += ((bb[2]+bb[5])/2 - c3.z)*k;
+  c3.s = Math.exp(Math.log(c3.s) + (Math.log(1.4/ext*P.zoom) - Math.log(c3.s))*k);
+  const sc = c3.s, X = x => (x - c3.x)*sc, Y = y => (y - c3.y)*sc, Z = z => (z - c3.z)*sc;
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const ry0 = Y(0);
+  T3.chao(ctx, Math.min(ry0, Y(bb[1])) - 0.04, 1.3, 10);
+  // coral: projeta cada nó uma vez e junta os galhos por cor e névoa
+  const N = n3x.length;
+  if (p3x.length < N){ p3x = new Float32Array(N + 4096); p3y = new Float32Array(N + 4096); p3a = new Float32Array(N + 4096); }
+  for (let i = 0; i < N; i++){ if (T3.p(X(n3x[i]), Y(n3y[i]), Z(n3z[i]))){ p3x[i] = T3.X; p3y[i] = T3.Y; p3a[i] = T3.A; } else p3a[i] = -1; }
+  if (N > 1 && P.coralA > 0){
+    const B = new Map();
+    for (let i = 0; i < N; i++){ const pi = n3p[i]; if (pi < 0 || p3a[i] < 0 || p3a[pi] < 0) continue;
+      const key = Math.min(40, Math.floor(Math.log2(n3v[i] + 1)))*4 + Math.min(3, Math.floor(p3a[i]*4));
+      let l = B.get(key); if (!l){ l = []; B.set(key, l); } l.push(i); }
+    ctx.lineWidth = 1.1*P.coralW*Math.max(0.6, Math.min(1.6, T3.R/400));
+    for (const [key, l] of B){
+      const cb = key >> 2, fog = ((key & 3) + 0.5)/4;
+      ctx.strokeStyle = colorFor(Math.pow(2, cb + 0.5), 0, Math.min(1, 0.4*P.coralA*fog)); ctx.beginPath();
+      for (const i of l){ const pi = n3p[i]; ctx.moveTo(p3x[pi], p3y[pi]); ctx.lineTo(p3x[i], p3y[i]); }
+      ctx.stroke();
+    }
+  }
+  // caminho atual
+  if (cur){
+    const c = cur, m = c.seq.length - 1, q = c.pos3;
+    const p = c.done ? m : Math.max(0, (t - c.t0)*P.speed);
+    const i = Math.min(m, Math.floor(p)), frac = c.done ? 0 : p - i;
+    mostraTexto(c, c.done ? m : i);
+    const pt = j => [X(q[j*3]), Y(q[j*3+1]), Z(q[j*3+2])];
+    if (!c.done && i < m && P.ghostA > 0){
+      ctx.strokeStyle = colorFor(c.seq[i], t*0.02, Math.min(1, 0.08*P.ghostA)); ctx.lineWidth = P.pathW;
+      const a = []; for (let j = m - i; j >= 0; j--) a.push(...pt(j)); T3.poli(ctx, a, 1, 16);
+    }
+    const life = c.done ? Math.max(0, 1 - (t - c.tDone)/(P.gap + 1.8)) : 1;
+    if (life > 0.01 && i >= 1){
+      for (let s2 = Math.max(1, i - 40); s2 <= i; s2++){
+        const A = pt(m - s2 + 1), Bq = pt(m - s2), age = i - s2;
+        ctx.strokeStyle = colorFor(c.seq[s2], t*0.02, 1); ctx.lineWidth = (1 + 2.6*Math.exp(-age/10))*P.pathW;
+        T3.seg(ctx, A[0], A[1], A[2], Bq[0], Bq[1], Bq[2], Math.min(1, (0.3 + 0.7*Math.exp(-age/14))*life*P.pathA));
+      }
+      if (i > 41){ ctx.strokeStyle = colorFor(c.seq[i - 41], t*0.02, Math.min(1, 0.3*life*P.pathA)); ctx.lineWidth = P.pathW;
+        const a = []; for (let s2 = 0; s2 <= i - 40; s2++) a.push(...pt(m - s2)); T3.poli(ctx, a, 1, 20); }
+    }
+    if (!c.done){
+      const A = pt(m - i), Bq = pt(Math.max(0, m - i - 1)), e = frac*frac*(3-2*frac);
+      const r = Math.max(0.1, (14 + Math.log2(c.seq[i])*1.4)*P.headR);
+      T3.brilho(ctx, A[0] + (Bq[0]-A[0])*e, A[1] + (Bq[1]-A[1])*e, A[2] + (Bq[2]-A[2])*e, r, colorFor(c.seq[i], t*0.02, 0.95));
+    }
+    if (P.graph && GH > 20) drawGraph(c, i, frac, t);
+    ctx.globalCompositeOperation = 'lighter';
+  }
+  // anéis: cada chegada ao 1 deixa um círculo deitado no chão em volta da raiz
+  const rx = X(0), rz = Z(0);
+  if (rings.length){
+    const NR = rings.length; let maxM = 1; for (const r of rings) if (r.m > maxM) maxM = r.m;
+    const modes = ringModes(), vibBase = specE.map(e => 0.008 + e*0.05);
+    for (let ri = 0; ri < NR; ri++){
+      const r = rings[ri], fromNewest = NR - 1 - ri, fade = fromNewest > 60 ? Math.max(0, 1 - (fromNewest - 60)/40) : 1;
+      const Rfull = (0.1 + 0.85*Math.sqrt(r.m/maxM))*P.ringS;
+      for (let kk = 3; kk >= 0; kk--){
+        const born = r.born + (kk ? (kk - 1)*(r.iv || 0.5) + 0.05 : 0); if (t < born) continue;
+        const age = t - born, R0 = Rfull*(1 + 0.085*kk*P.echoGap)*(1 - Math.exp(-age*1.4));
+        const sd = r.seed + kk*0.9, rr0 = { seed: sd, dir: r.dir }, breath = 1 + 0.035*P.ringB*Math.sin(t*0.5 + sd);
+        const LF = 3*P.ringLife, al = Math.min(1, (0.09 + 0.55*Math.exp(-age/LF))*fade*(kk ? (0.62 - kk*0.1)*P.echoA : 1)*P.ringA);
+        if (al < 0.01) continue;
+        const vib = vibBase.map(b => b*(0.55 + 1.2*Math.exp(-age/(5*P.ringLife)))*P.ringV);
+        ctx.strokeStyle = `hsla(${r.hue},70%,${66 + 10*Math.exp(-age/LF) - kk*4}%,1)`;
+        ctx.lineWidth = (1 + 1.5*Math.exp(-age/(2.5*P.ringLife)))*(kk ? 0.8 : 1)*P.ringW;
+        // a vibração também levanta o anel um pouco do chão
+        const pts = [];
+        for (let qq = 0; qq <= 96; qq++){ const a = qq/96*Math.PI*2, w = ringW(a, rr0, t, vib, modes), rr = R0*breath*(1 + w);
+          pts.push(rx + Math.cos(a)*rr, ry0 + w*0.6*R0, rz + Math.sin(a)*rr); }
+        T3.poli(ctx, pts, al, 24);
+      }
+    }
+  }
+  // faíscas nas subidas
+  sparks = sparks.filter(sp => t - sp.t < 1.6);
+  ctx.lineWidth = 1;
+  for (const sp of sparks){
+    if (t < sp.t || !sp.c.pos3) continue;
+    const k2 = (t - sp.t)/1.6, q = sp.c.pos3;
+    if (!T3.p(X(q[sp.i*3]), Y(q[sp.i*3+1]), Z(q[sp.i*3+2]))) continue;
+    ctx.strokeStyle = colorFor(sp.n, t*0.02, Math.min(1, 0.5*(1-k2)*P.sparkA*T3.A));
+    ctx.beginPath(); ctx.arc(T3.X, T3.Y, (4 + k2*26)*T3.S, 0, Math.PI*2); ctx.stroke();
+  }
+  // ondas do laço 4-2-1 abrindo no chão
+  ripples = ripples.filter(r => t - r.t < 6);
+  ctx.lineWidth = 1.2;
+  for (const r of ripples){
+    if (t < r.t) continue;
+    const k2 = (t - r.t)/6, rad = 0.03 + Math.pow(k2, 0.6)*(1.4 - r.k*0.3);
+    ctx.strokeStyle = `hsla(${r.hue},75%,${68 - r.k*8}%,1)`; ctx.globalAlpha = 0.45*(1 - k2);
+    ctx.beginPath(); T3.circulo(ctx, rx, ry0, rz, rad, 'y', 72); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  if (running){
+    const pulse = 0.5 + 0.5*Math.sin(t*1.3);
+    rootSat += ((arrivals ? 70 : 0) - rootSat)*0.05;
+    T3.brilho(ctx, rx, ry0, rz, 24, `hsla(${rootHue},${rootSat}%,82%,${Math.min(1, (0.4 + pulse*0.25)*P.rootA)})`);
+    if (T3.p(rx, ry0, rz)){ ctx.font = '300 13px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillStyle = `hsla(${rootHue},${rootSat}%,85%,${Math.min(1, 0.7*P.rootA)})`; ctx.fillText('1', T3.X, T3.Y + 16); }
+  }
+}
+
 // ---------- desenho ----------
 function frame(){
   const t = now();
@@ -821,6 +1162,7 @@ function frame(){
 
   const ghT = P.graph ? H*P.gH : 0;
   GH += (ghT - GH)*0.08; CY = (H - GH)/2;
+  if (T3.on){ frame3d(t); requestAnimationFrame(frame); return; }
   if (Math.abs(CY - camR.CY) > 3 && Math.abs(ghT - GH) < 0.5) redrawCoral();
   // câmera: aproxima no começo e abre a cada expansão
   const tg = camTarget(), k = 0.035;
@@ -844,24 +1186,7 @@ function frame(){
     const i = Math.min(m, Math.floor(p)), frac = c.done ? 0 : p - i;
     const P2 = j => toScreen(c.pos[j*2], c.pos[j*2+1]);
     const si = c.done ? m : i;
-    if (si !== lastShown){
-      lastShown = si; const i = si;
-      $('num').textContent = c.seq[i].toLocaleString('pt-BR');
-      const v = fmt(c.seq[i]);
-      if (i === 0) $('op').innerHTML = `${v} é ${c.seq[0] % 2 ? '<span class="imp">ímpar</span>' : '<span class="par">par</span>'}`;
-      else { const pv = c.seq[i-1], a = fmt(pv);
-        $('op').innerHTML = pv % 2 ? `<span class="imp">${a} × 3 + 1</span> = ${v}` : `<span class="par">${a} ÷ 2</span> = ${v}`; }
-      // todas as contas da sequência, sem cortes; as mais novas ficam sempre à vista
-      const parts = [];
-      for (let q = 1; q <= i; q++){
-        const pv = c.seq[q-1], up = pv % 2 === 1, txt = up ? `${fmt(pv)} × 3 + 1 = ${fmt(c.seq[q])}` : `${fmt(pv)} ÷ 2 = ${fmt(c.seq[q])}`;
-        parts.push(q === i ? `<span class="o"><b${up ? ' class="up"' : ''}>${txt}</b></span>` : `<span class="o${up ? ' up' : ''}">${txt}</span>`);
-      }
-      const el = $('seq'); el.innerHTML = parts.join('');
-      el.style.maxHeight = Math.max(60, H - GH - (22 + 74*P.txtS) - 40) + 'px';
-      el.scrollTop = el.scrollHeight;
-      el.classList.toggle('cheio', el.scrollHeight > el.clientHeight + 2);
-    }
+    mostraTexto(c, si);
     if (P.graph && GH > 20) drawGraph(c, i, frac, t);
     // fantasma do caminho que falta
     if (!c.done && i < m){

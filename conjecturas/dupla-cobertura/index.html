@@ -55,11 +55,9 @@
 <div id="dot" title="Controles (M)"></div>
 <div id="panel">
   <h2>Grafo</h2>
-  <div class="row"><label>Grafo</label><select id="grafo">
-    <option value="petersen" selected>Petersen (snark)</option><option value="cubo">Cubo</option><option value="tetra">Tetraedro</option>
-    <option value="prisma">Prisma pentagonal</option><option value="dodeca">Dodecaedro</option><option value="k33">K3,3</option><option value="icosa">Icosaedro</option></select></div>
+  <div class="row"><label>Grafo</label><select id="grafo"><option value="diamante" selected>Diamante</option><option value="tetra">Tetraedro</option><option value="prisma3">Prisma triangular</option><option value="k33">K3,3</option><option value="k5">K5</option><option value="octa">Octaedro</option><option value="cubo">Cubo</option><option value="prisma">Prisma pentagonal</option><option value="petersen">Grafo de Petersen (snark)</option><option value="tetratrunc">Tetraedro truncado</option><option value="heawood">Grafo de Heawood</option><option value="cubocta">Cuboctaedro</option><option value="mobius">Möbius–Kantor</option><option value="icosa">Icosaedro</option><option value="dodeca">Dodecaedro</option><option value="desargues">Grafo de Desargues</option><option value="flor">Snark flor J5</option><option value="hiper">Hipercubo (4D)</option><option value="icosidodeca">Icosidodecaedro</option></select></div>
   <div class="row"><label>Trocar sozinho</label><input type="checkbox" id="auto" checked></div>
-  <div class="row"><label>Tempo por grafo (s)</label><input type="range" id="tempoG" min="20" max="240" step="5" value="70"></div>
+  <div class="row"><label>Tempo por grafo (s)</label><input type="range" id="tempoG" min="10" max="240" step="5" value="40"></div>
   <div class="row"><label>Velocidade das luzes</label><input type="range" id="speed" min="0.2" max="6" step="0.05" value="1.4"></div>
   <div class="row"><label>Novo ciclo a cada (s)</label><input type="range" id="gap" min="0.5" max="10" step="0.1" value="3"></div>
   <div class="row"><label>Giro 3D</label><input type="range" id="giro" min="0" max="1" step="0.01" value="0.25"></div>
@@ -70,7 +68,7 @@
   <div class="row"><label>Espessura</label><input type="range" id="lw" min="0.5" max="5" step="0.05" value="1.8"></div>
   <div class="row"><label>Rastro das luzes</label><input type="range" id="cauda" min="0" max="1" step="0.01" value="0.5"></div>
 <div id="nucleoVideo"></div>
-<div class="hint">A cobertura é calculada na hora: a obra procura ciclos simples (dos menores para os maiores) até cada aresta ficar com exatamente duas cores. No Petersen são seis pentágonos. Nos poliedros aparecem as faces.<br>Cada ciclo tem um grau da escala; cada vértice soma um passo. Ciclos de tamanhos diferentes dão voltas em tempos diferentes, e é isso que vira polirritmia. Quando duas luzes chegam ao mesmo vértice juntas, toca o sino do encontro.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
+<div class="hint">A cobertura é calculada na hora: a obra procura ciclos simples (dos menores para os maiores) até cada aresta ficar com exatamente duas cores. Os grafos vão do mais simples (o diamante, com 5 arestas) ao mais complexo (o icosidodecaedro, com 60), e o “Trocar sozinho” segue essa ordem. No Petersen são seis pentágonos; nos poliedros aparecem as faces; o hipercubo é o cubo de 4 dimensões em perspectiva; Petersen e a flor J5 são snarks, os casos mais difíceis da conjectura.<br>Cada ciclo tem um grau da escala; cada vértice soma um passo. Ciclos de tamanhos diferentes dão voltas em tempos diferentes, e é isso que vira polirritmia. Quando duas luzes chegam ao mesmo vértice juntas, toca o sino do encontro.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
 </div>
 <script>
 (() => {
@@ -521,25 +519,53 @@ const O = Nucleo({
 });
 const P = O.P, V = O.V;
 
-// ---------- grafos ----------
+// ---------- grafos (do mais simples ao mais complexo: menos arestas primeiro) ----------
 const PHI = (1 + Math.sqrt(5))/2;
+const GRAFOS = [
+  ['diamante', 'Diamante'], ['tetra', 'Tetraedro'], ['prisma3', 'Prisma triangular'], ['k33', 'K3,3'], ['k5', 'K5'],
+  ['octa', 'Octaedro'], ['cubo', 'Cubo'], ['prisma', 'Prisma pentagonal'], ['petersen', 'Grafo de Petersen (snark)'],
+  ['tetratrunc', 'Tetraedro truncado'], ['heawood', 'Grafo de Heawood'], ['cubocta', 'Cuboctaedro'], ['mobius', 'Möbius–Kantor'],
+  ['icosa', 'Icosaedro'], ['dodeca', 'Dodecaedro'], ['desargues', 'Grafo de Desargues'], ['flor', 'Snark flor J5'],
+  ['hiper', 'Hipercubo (4D)'], ['icosidodeca', 'Icosidodecaedro']
+];
 function byDist(vs, d){ const E = []; for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++){ const [a, b] = [vs[i], vs[j]]; if (Math.abs(Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]) - d) < 1e-6) E.push([i, j]); } return E; }
+function circ(n, r, off = 0){ const vs = []; for (let i = 0; i < n; i++){ const a = -Math.PI/2 + (i + off)*2*Math.PI/n; vs.push([r*Math.cos(a), r*Math.sin(a), 0]); } return vs; }
+// Petersen generalizado GP(n, k): anel de fora, estrela de dentro
+function gp(n, k, ri = 0.5){ const vs = circ(n, 1).concat(circ(n, ri)), E = [];
+  for (let i = 0; i < n; i++){ E.push([i, (i + 1) % n]); E.push([i, n + i]); const j = (i + k) % n; E.push([n + Math.min(i, j), n + Math.max(i, j)]); }
+  return { vs, E, d3: false }; }
+// todas as permutações (pares ou todas) de um vetor, com todas as combinações de sinais
+function perms(v, soPares){ const P3 = [[0,1,2],[1,2,0],[2,0,1]].concat(soPares ? [] : [[0,2,1],[2,1,0],[1,0,2]]), out = [], seen = new Set();
+  for (const p of P3) for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]){
+    const w = [v[p[0]]*sx, v[p[1]]*sy, v[p[2]]*sz], k = w.map(x => x.toFixed(5)).join(); if (!seen.has(k)){ seen.add(k); out.push(w); } }
+  return out; }
 function grafo(nome){
-  if (nome === 'petersen'){
-    const vs = []; for (let i = 0; i < 5; i++){ const a = -Math.PI/2 + i*2*Math.PI/5; vs.push([Math.cos(a), Math.sin(a), 0]); }
-    for (let i = 0; i < 5; i++){ const a = -Math.PI/2 + i*2*Math.PI/5; vs.push([0.45*Math.cos(a), 0.45*Math.sin(a), 0]); }
-    const E = []; for (let i = 0; i < 5; i++){ E.push([i, (i + 1) % 5]); E.push([i, i + 5]); E.push([5 + i, 5 + (i + 2) % 5]); }
-    return { vs, E, d3: false };
+  if (nome === 'diamante'){ const vs = [[0,-1,0],[-0.8,0,0],[0.8,0,0],[0,1,0]]; return { vs, E: [[0,1],[0,2],[1,2],[1,3],[2,3]], d3: false }; }
+  if (nome === 'k5'){ const vs = circ(5, 1), E = []; for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) E.push([i, j]); return { vs, E, d3: false }; }
+  if (nome === 'petersen') return gp(5, 2, 0.45);
+  if (nome === 'mobius') return gp(8, 3, 0.55);
+  if (nome === 'desargues') return gp(10, 3, 0.6);
+  if (nome === 'heawood'){ const vs = circ(14, 1), E = []; for (let i = 0; i < 14; i++){ E.push([i, (i + 1) % 14].sort((a, b) => a - b)); if (i % 2 === 0){ const j = (i + 5) % 14; E.push([Math.min(i, j), Math.max(i, j)]); } } return { vs, E, d3: false }; }
+  if (nome === 'flor'){ // snark flor J5: centros c, anel a (5), e o ciclo de 10 que passa por b e d
+    const vs = circ(5, 0.28).concat(circ(5, 0.6), circ(5, 1, -0.18), circ(5, 1, 0.18)), E = [];
+    for (let i = 0; i < 5; i++){ const c = 5 + i, a = i, b = 10 + i, d = 15 + i; E.push([a, c], [c, b], [c, d], [a, (i + 1) % 5].sort((x, y) => x - y)); }
+    for (let i = 0; i < 4; i++){ E.push([10 + i, 10 + i + 1]); E.push([15 + i, 15 + i + 1]); }
+    E.push([14, 15], [10, 19]); return { vs, E, d3: false };
   }
-  if (nome === 'k33'){
-    const vs = []; for (let i = 0; i < 6; i++){ const a = -Math.PI/2 + i*Math.PI/3; vs.push([Math.cos(a), Math.sin(a), 0]); }
-    const E = []; for (const i of [0, 2, 4]) for (const j of [1, 3, 5]) E.push([Math.min(i, j), Math.max(i, j)]);
-    return { vs, E, d3: false };
-  }
+  if (nome === 'k33'){ const vs = circ(6, 1), E = []; for (const i of [0, 2, 4]) for (const j of [1, 3, 5]) E.push([Math.min(i, j), Math.max(i, j)]); return { vs, E, d3: false }; }
   if (nome === 'cubo'){ const vs = []; for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) vs.push([x, y, z]); return { vs, E: byDist(vs, 2), d3: true }; }
   if (nome === 'tetra'){ const vs = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]]; return { vs, E: byDist(vs, Math.sqrt(8)), d3: true }; }
-  if (nome === 'prisma'){ const vs = []; for (const z of [-0.6, 0.6]) for (let i = 0; i < 5; i++){ const a = i*2*Math.PI/5; vs.push([Math.cos(a), Math.sin(a), z]); }
-    const E = []; for (let i = 0; i < 5; i++){ E.push([i, (i + 1) % 5]); E.push([5 + i, 5 + (i + 1) % 5]); E.push([i, i + 5]); } return { vs, E, d3: true }; }
+  if (nome === 'octa'){ const vs = perms([1.3, 0, 0], true); return { vs, E: byDist(vs, 1.3*Math.SQRT2), d3: true }; }
+  if (nome === 'prisma3' || nome === 'prisma'){ const m = nome === 'prisma' ? 5 : 3, vs = [];
+    for (const z of [-0.6, 0.6]) for (let i = 0; i < m; i++){ const a = i*2*Math.PI/m; vs.push([Math.cos(a), Math.sin(a), z]); }
+    const E = []; for (let i = 0; i < m; i++){ E.push([i, (i + 1) % m].sort((a, b) => a - b)); E.push([m + i, m + (i + 1) % m].sort((a, b) => a - b)); E.push([i, i + m]); } return { vs, E, d3: true }; }
+  if (nome === 'tetratrunc'){ const vs = []; for (const v of perms([3, 1, 1], false)) if (v.filter(x => x < 0).length % 2 === 0) vs.push(v.map(x => x/2.5)); return { vs, E: byDist(vs, Math.sqrt(8)/2.5), d3: true }; }
+  if (nome === 'cubocta'){ const vs = perms([1, 1, 0], true); return { vs, E: byDist(vs, Math.SQRT2), d3: true }; }
+  if (nome === 'hiper'){ // tesserato: o cubo de dentro é a quarta dimensão vista em perspectiva
+    const v4 = []; for (let m = 0; m < 16; m++) v4.push([m & 1, m >> 1 & 1, m >> 2 & 1, m >> 3 & 1].map(b => b*2 - 1));
+    const vs = v4.map(p => { const f = p[3] > 0 ? 0.95 : 0.45; return [p[0]*f, p[1]*f, p[2]*f]; }), E = [];
+    for (let i = 0; i < 16; i++) for (let b = 0; b < 4; b++){ const j = i ^ (1 << b); if (j > i) E.push([i, j]); } return { vs, E, d3: true }; }
+  if (nome === 'icosidodeca'){ const vs = perms([0, 0, PHI], true).concat(perms([0.5, PHI/2, PHI*PHI/2], true)).map(v => v.map(x => x*1.3/PHI)); return { vs, E: byDist(vs, 1.3/PHI), d3: true }; }
   if (nome === 'dodeca'){
     const vs = []; for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) vs.push([x, y, z]);
     for (const a of [-1, 1]) for (const b of [-1, 1]){ vs.push([0, a/PHI, b*PHI]); vs.push([a/PHI, b*PHI, 0]); vs.push([a*PHI, 0, b/PHI]); }
@@ -552,7 +578,8 @@ function grafo(nome){
 function cdc(G){
   const n = G.vs.length, adj = Array.from({ length: n }, () => []), eid = new Map();
   G.E.forEach(([a, b], k) => { adj[a].push(b); adj[b].push(a); eid.set(a*100 + b, k); eid.set(b*100 + a, k); });
-  for (let LMAX = 3; LMAX <= Math.min(n, 12); LMAX++){
+  // primeiro procura uma cobertura com ciclos todos diferentes; só se não houver aceita repetir um ciclo
+  for (const repete of [false, true]) for (let LMAX = 3; LMAX <= Math.min(n, 12); LMAX++){
     const cyc = [], seen = new Set();
     for (let s = 0; s < n && cyc.length < 20000; s++){
       const path = [s], used = new Set([s]);
@@ -577,7 +604,7 @@ function cdc(G){
       if (e < 0){ found = pick.slice(); return; }
       for (const ci of byEdge[e]){
         const c = cyc[ci];
-        if (c.es.some(x => cover[x] >= 2)) continue;
+        if ((!repete && pick.includes(ci)) || c.es.some(x => cover[x] >= 2)) continue;
         c.es.forEach(x => cover[x]++); pick.push(ci); go(); pick.pop(); c.es.forEach(x => cover[x]--);
         if (found || budget < 0) return;
       }
@@ -589,7 +616,7 @@ function cdc(G){
 
 // ---------- estado ----------
 let G = null, cycles = [], active = [], nextAdd = 0, startT = 0, rot = 0, ang = 0, done = false, doneT = 0, lastF = 0, info = null;
-const ORDEM = ['petersen', 'cubo', 'dodeca', 'k33', 'prisma', 'tetra', 'icosa'];
+const ORDEM = GRAFOS.map(g => g[0]);
 function reset(){
   G = grafo(P.grafo); cycles = cdc(G); active = []; nextAdd = O.now() + 0.8; startT = O.now(); done = false; doneT = 0;
   info = { shown: false };
@@ -665,8 +692,8 @@ function frame(){
   if (info && !info.shown && G){
     info.shown = true;
     const cv = edgeCover(), cob = cv.filter(x => x === 2).length;
-    const nomes = { petersen: 'Grafo de Petersen', cubo: 'Cubo', tetra: 'Tetraedro', prisma: 'Prisma pentagonal', dodeca: 'Dodecaedro', k33: 'K3,3', icosa: 'Icosaedro' };
-    $('num').textContent = nomes[P.grafo];
+    const nomes = Object.fromEntries(GRAFOS);
+    $('num').textContent = `${ORDEM.indexOf(P.grafo) + 1}/${ORDEM.length} · ${nomes[P.grafo]}`;
     $('op').textContent = `${active.length} de ${cycles.length} ciclos · ${cob} de ${G.E.length} arestas com duas cores` + (done ? ' · cobertura dupla completa' : '');
     $('seq').innerHTML = `<span class="o">${active.map(a => `ciclo de ${a.c.vs.length}`).join(' · ')}</span>`;
   }

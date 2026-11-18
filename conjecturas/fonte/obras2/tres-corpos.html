@@ -4,11 +4,19 @@
   <h2>Estrelas</h2>
   <div class="row"><label>Começo</label><select id="ini">
     <option value="oito" selected>Oito (Chenciner–Montgomery)</option><option value="borboleta">Borboleta (Šuvakov–Dmitrašinović)</option>
-    <option value="lagrange">Triângulo de Lagrange</option><option value="pitagoras">Pitágoras (massas 3, 4, 5)</option></select></div>
+    <option value="lagrange">Triângulo de Lagrange</option><option value="pitagoras">Pitágoras (massas 3, 4, 5)</option><option value="livre">Posição livre (arrumada por você)</option></select></div>
   <div class="row"><label>Empurrão</label><input type="range" id="pert" min="0" max="0.08" step="0.0005" value="0"></div>
   <div class="row"><label>Velocidade</label><input type="range" id="speed" min="0.05" max="3" step="0.01" value="0.6"></div>
   <div class="row"><label>Recomeçar se alguém fugir</label><input type="checkbox" id="volta" checked></div>
   <div class="row"><label>Distância de encontro</label><input type="range" id="dEnc" min="0.05" max="1" step="0.01" value="0.35"></div>
+  <h2>Posição livre</h2>
+  <div class="row"><button id="bPos" type="button">Posicionar as estrelas (P)</button></div>
+  <div class="row"><label>Massa da estrela 1</label><input type="range" id="m1" min="0.1" max="6" step="0.05" value="1"></div>
+  <div class="row"><label>Massa da estrela 2</label><input type="range" id="m2" min="0.1" max="6" step="0.05" value="1"></div>
+  <div class="row"><label>Massa da estrela 3</label><input type="range" id="m3" min="0.1" max="6" step="0.05" value="1"></div>
+  <div class="row"><label>Mostrar a prévia</label><input type="checkbox" id="prevOn" checked></div>
+  <div class="row"><label>Tempo da prévia</label><input type="range" id="tPrev" min="1" max="40" step="0.5" value="10"></div>
+  <input type="text" id="livre" value="" style="display:none">
 </painel>
 
 <imagem>
@@ -19,7 +27,7 @@
   <div class="row"><label>Câmera segue</label><select id="cam"><option value="cm" selected>Centro de massa</option><option value="fixa">Fixa</option></select></div>
 </imagem>
 
-<dica>Gravidade de Newton entre três corpos, integrada com passos que encolhem quando as estrelas se aproximam. O oito e a borboleta são órbitas periódicas: as três estrelas percorrem a mesma curva. O triângulo de Lagrange gira rígido, mas é instável e se desfaz. No problema de Pitágoras (Burrau, 1913), três estrelas paradas nos cantos de um triângulo 3-4-5 dançam caoticamente até uma ser expulsa.<br>Som: cada estrela é uma voz cuja nota sobe com a velocidade; quando uma estrela passa mais perto do centro, toca uma nota; encontros próximos tocam um sino (mais forte quanto mais perto); uma fuga toca o baixo. Use o empurrão no oito para ouvir a ordem se desfazer.</dica>
+<dica>Gravidade de Newton entre três corpos, integrada com passos que encolhem quando as estrelas se aproximam. O oito e a borboleta são órbitas periódicas: as três estrelas percorrem a mesma curva. O triângulo de Lagrange gira rígido, mas é instável e se desfaz. No problema de Pitágoras (Burrau, 1913), três estrelas paradas nos cantos de um triângulo 3-4-5 dançam caoticamente até uma ser expulsa.<br>Posição livre: “Posicionar as estrelas” (ou a tecla P) congela o movimento na vista plana. Arraste cada estrela para mudar o lugar e a ponta da seta para mudar a velocidade; as massas ficam nos controles. A linha tracejada é a prévia do que vai acontecer (os círculos são os encontros próximos, e aparece “foge” se uma estrela for expulsa). “Soltar” começa dali; a soma dos movimentos é zerada para o conjunto não sair andando. A posição fica guardada no banco de configurações.<br>Som: cada estrela é uma voz cuja nota sobe com a velocidade; quando uma estrela passa mais perto do centro, toca uma nota; encontros próximos tocam um sino (mais forte quanto mais perto); uma fuga toca o baixo. Use o empurrão no oito para ouvir a ordem se desfazer.</dica>
 
 <js>
 const O = Nucleo({
@@ -45,14 +53,20 @@ function reset(){
   } else if (P.ini === 'lagrange'){
     m = [1, 1, 1]; s = []; const w = Math.pow(1/Math.sqrt(3), 0.5);
     for (let i = 0; i < 3; i++){ const a = Math.PI/2 + i*2*Math.PI/3; s.push(Math.cos(a), Math.sin(a), -Math.sin(a)*w*(1 + (i ? 0 : e*5)), Math.cos(a)*w); }
+  } else if (P.ini === 'livre'){
+    let L = null; try { L = JSON.parse(P.livre || ''); } catch (_) {}
+    if (L && Array.isArray(L.s) && L.s.length === 12){ s = L.s.slice(); } else { s = [0.97, -0.243, 0.466, 0.432, -0.97, 0.243, 0.466, 0.432, 0, 0, -0.932, -0.865]; }
+    massas(); if (e) s[2] += e;
   } else {
     m = [3, 4, 5]; s = [1, 3, 0, 0, -2, -1, 0, 0, 1, -1, 0, 0];
     if (e) s[2] += e;
   }
-  // centro de massa parado na origem
+  // centro de massa parado (na posição livre ele fica onde você pôs as estrelas; nas outras, na origem)
   let M = m[0] + m[1] + m[2], cx = 0, cy = 0, px = 0, py = 0;
   for (let i = 0; i < 3; i++){ cx += m[i]*s[4*i]; cy += m[i]*s[4*i + 1]; px += m[i]*s[4*i + 2]; py += m[i]*s[4*i + 3]; }
+  if (P.ini === 'livre'){ cx = 0; cy = 0; }
   for (let i = 0; i < 3; i++){ s[4*i] -= cx/M; s[4*i + 1] -= cy/M; s[4*i + 2] -= px/M; s[4*i + 3] -= py/M; }
+  if (typeof edita !== 'undefined' && edita){ edita = false; $('bPos').textContent = 'Posicionar as estrelas (P)'; }
   trails = [[], [], []]; tSim = 0; fled = false; startT = O.now(); rPrev = [0, 0, 0]; dPrev = [9, 9, 9]; info = { shown: false };
 }
 function f(y){
@@ -96,11 +110,107 @@ function draw3d(C, t){
     T3.brilho(C, x, y0, z, R*3, V.cor(i/3, 0.85, 75)); T3.ponto(C, x, y0, z, R*0.5, 'rgb(255,255,255)', 0.95);
   }
 }
+// ---------- posição livre: o usuário arrasta as três estrelas e as setas de velocidade; uma prévia mostra o que vai acontecer ----------
+let edita = false, voltar3d = false, arrasto = null, prev = null, prevSujo = true;
+const ES = () => Math.min(V.W, V.H - 120)*0.45/2.4, ECX = () => V.W/2, ECY = () => 60 + (V.H - 60)/2, KV = 0.6;
+const eX = x => ECX() + x*ES(), eY = y => ECY() - y*ES();
+function massas(){ m = [P.m1, P.m2, P.m3].map(v => Math.max(0.05, +v || 1)); }
+function entraEdicao(){
+  if (edita) return;
+  if (T3.on){ voltar3d = true; T3.alternar(); }
+  // começa da foto do momento (ou do começo escolhido)
+  ['m1', 'm2', 'm3'].forEach((id, i) => { $(id).value = m[i]; }); O.readP();
+  edita = true; prevSujo = true; trails = [[], [], []]; fled = false;
+  $('bPos').textContent = 'Soltar as estrelas (P)';
+  vozes.forEach(vz => vz && vz.set(0, 0));
+}
+function saiEdicao(){
+  if (!edita) return;
+  edita = false; arrasto = null;
+  $('livre').value = JSON.stringify({ m, s: s.map(v => +v.toFixed(5)) });
+  const el = $('ini'); el.value = 'livre'; el.dispatchEvent(new Event('input', { bubbles: true }));
+  if (P.ini !== 'livre'){ O.readP(); reset(); }
+  $('bPos').textContent = 'Posicionar as estrelas (P)';
+  if (voltar3d){ voltar3d = false; if (!T3.on) T3.alternar(); }
+}
+function alternaEdicao(){ edita ? saiEdicao() : entraEdicao(); }
+function rk4p(y, h){
+  const k1 = f(y), y2 = y.map((v, i) => v + h/2*k1[i]), k2 = f(y2), y3 = y.map((v, i) => v + h/2*k2[i]), k3 = f(y3), y4 = y.map((v, i) => v + h*k3[i]), k4 = f(y4);
+  return y.map((v, i) => v + h/6*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]));
+}
+// simula sem som, a partir do estado arrumado (com o centro de massa sem andar, como vai ser ao soltar)
+function prever(){
+  let y = s.slice(); const M = m[0] + m[1] + m[2]; let px = 0, py = 0;
+  for (let i = 0; i < 3; i++){ px += m[i]*y[4*i + 2]; py += m[i]*y[4*i + 3]; }
+  for (let i = 0; i < 3; i++){ y[4*i + 2] -= px/M; y[4*i + 3] -= py/M; }
+  const cx0 = (m[0]*y[0] + m[1]*y[4] + m[2]*y[8])/M, cy0 = (m[0]*y[1] + m[1]*y[5] + m[2]*y[9])/M;
+  const cam = [[], [], []], T = P.tPrev, enc = []; let tt = 0, guard = 0, nextRec = 0, fuga = null, perto = { d: 9, t: 0, i: 0, j: 1 };
+  const dPrevP = [9, 9, 9], trP = [0, 0, 0];
+  while (tt < T && guard++ < 60000){
+    const d = PAIRS.map(([i, j]) => Math.hypot(y[4*j] - y[4*i], y[4*j + 1] - y[4*i + 1]));
+    const h = Math.min(0.004, 0.01*Math.pow(Math.min(...d), 1.5));
+    y = rk4p(y, h); tt += h;
+    PAIRS.forEach(([i, j], q) => { const dd = Math.hypot(y[4*j] - y[4*i], y[4*j + 1] - y[4*i + 1]), tr = Math.sign(dd - dPrevP[q]);
+      if (trP[q] < 0 && tr > 0 && dd < P.dEnc && enc.length < 40) enc.push({ x: (y[4*i] + y[4*j])/2, y: (y[4*i + 1] + y[4*j + 1])/2, d: dd, t: tt, i, j });
+      if (dd < perto.d) perto = { d: dd, t: tt, i, j };
+      if (tr) trP[q] = tr; dPrevP[q] = dd; });
+    if (tt >= nextRec){ nextRec += 0.02; for (let i = 0; i < 3; i++) cam[i].push(y[4*i], y[4*i + 1]); }
+    if (!fuga) for (let i = 0; i < 3; i++) if (Math.hypot(y[4*i] - cx0, y[4*i + 1] - cy0) > 7){ fuga = { i, t: tt }; }
+    if (fuga && tt > fuga.t + 1) break;
+  }
+  prev = { cam, enc, fuga, perto, T: tt };
+  const f2 = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+  $('num').textContent = 'Posição livre · arrumando';
+  $('op').textContent = `prévia de ${f2(tt)} de tempo: ${enc.length} ${enc.length === 1 ? 'encontro' : 'encontros'} · mais perto: estrelas ${perto.i + 1} e ${perto.j + 1} a ${f2(perto.d)} no tempo ${f2(perto.t)}` + (fuga ? ` · a estrela ${fuga.i + 1} foge no tempo ${f2(fuga.t)}` : ' · ninguém foge');
+  $('seq').innerHTML = '<span class="o">arraste uma estrela para mudar o lugar e a ponta da seta para mudar a velocidade; “Soltar” começa daí</span>';
+}
+function drawEdit(C){
+  C.globalCompositeOperation = 'lighter'; C.lineCap = 'round';
+  // grade de referência
+  C.strokeStyle = 'rgba(255,255,255,0.05)'; C.lineWidth = 1;
+  for (let g = -4; g <= 4; g++){ C.beginPath(); C.moveTo(eX(g), eY(-3)); C.lineTo(eX(g), eY(3)); C.stroke(); C.beginPath(); C.moveTo(eX(-4), eY(g*0.75)); C.lineTo(eX(4), eY(g*0.75)); C.stroke(); }
+  if (prev && P.prevOn){
+    C.setLineDash([4, 5]); C.lineWidth = 1.2;
+    prev.cam.forEach((a, i) => { C.strokeStyle = V.cor(i/3, 0.55, 66); C.beginPath(); for (let q = 0; q < a.length; q += 2) q ? C.lineTo(eX(a[q]), eY(a[q + 1])) : C.moveTo(eX(a[q]), eY(a[q + 1])); C.stroke(); });
+    C.setLineDash([]);
+    prev.enc.forEach(e => { const r = 6 + 20*(1 - e.d/P.dEnc); C.strokeStyle = 'rgba(255,255,255,0.55)'; C.lineWidth = 1; C.beginPath(); C.arc(eX(e.x), eY(e.y), r, 0, Math.PI*2); C.stroke(); });
+    if (prev.fuga){ const a = prev.cam[prev.fuga.i], n = a.length - 2; if (n > 0){ C.fillStyle = 'rgba(255,90,80,0.9)'; C.font = '300 12px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; C.fillText(`foge →`, eX(a[n]) + 8, eY(a[n + 1])); } }
+  }
+  for (let i = 0; i < 3; i++){
+    const x = eX(s[4*i]), y = eY(s[4*i + 1]), R = 6 + 3*Math.sqrt(m[i]), tx = eX(s[4*i] + s[4*i + 2]*KV), ty = eY(s[4*i + 1] + s[4*i + 3]*KV);
+    C.strokeStyle = V.cor(i/3, 0.9, 72); C.lineWidth = 1.6; C.beginPath(); C.moveTo(x, y); C.lineTo(tx, ty); C.stroke();
+    const an = Math.atan2(ty - y, tx - x); if (Math.hypot(tx - x, ty - y) > 8){ C.beginPath(); C.moveTo(tx, ty); C.lineTo(tx - 9*Math.cos(an - 0.4), ty - 9*Math.sin(an - 0.4)); C.moveTo(tx, ty); C.lineTo(tx - 9*Math.cos(an + 0.4), ty - 9*Math.sin(an + 0.4)); C.stroke(); }
+    C.strokeStyle = 'rgba(255,255,255,0.6)'; C.lineWidth = 1; C.beginPath(); C.arc(tx, ty, 7, 0, Math.PI*2); C.stroke();
+    const g = C.createRadialGradient(x, y, 0, x, y, R*3); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.25, V.cor(i/3, 0.8, 75)); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.fillStyle = g; C.beginPath(); C.arc(x, y, R*3, 0, Math.PI*2); C.fill();
+    C.fillStyle = 'rgba(230,238,246,0.85)'; C.font = '300 11px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; C.fillText(`${i + 1} · massa ${(+m[i]).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`, x + R + 8, y - R - 4);
+  }
+}
+V.cv.addEventListener('pointerdown', e => {
+  if (!edita) return;
+  const px = e.clientX, py = e.clientY; let best = null, bd = 26;
+  for (let i = 0; i < 3; i++){
+    const tx = eX(s[4*i] + s[4*i + 2]*KV), ty = eY(s[4*i + 1] + s[4*i + 3]*KV), dv = Math.hypot(px - tx, py - ty);
+    const dc = Math.hypot(px - eX(s[4*i]), py - eY(s[4*i + 1]));
+    if (dv < bd){ bd = dv; best = { i, tipo: 'v' }; } if (dc < bd){ bd = dc; best = { i, tipo: 'p' }; }
+  }
+  if (best){ arrasto = best; try { V.cv.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); }
+});
+V.cv.addEventListener('pointermove', e => {
+  if (!edita || !arrasto) return;
+  const wx = (e.clientX - ECX())/ES(), wy = -(e.clientY - ECY())/ES(), i = arrasto.i;
+  if (arrasto.tipo === 'p'){ s[4*i] = wx; s[4*i + 1] = wy; }
+  else { s[4*i + 2] = (wx - s[4*i])/KV; s[4*i + 3] = (wy - s[4*i + 1])/KV; }
+  prevSujo = true;
+});
+const solta = () => { arrasto = null; };
+V.cv.addEventListener('pointerup', solta); V.cv.addEventListener('pointercancel', solta);
 const dist = (i, j) => Math.hypot(s[4*j] - s[4*i], s[4*j + 1] - s[4*i + 1]);
 const PAIRS = [[0, 1], [0, 2], [1, 2]];
 function frame(){
   const t = O.now(), dt = Math.min(0.05, Math.max(0, t - (lastF || t))); lastF = t;
-  if (O.running && s.length){
+  if (edita){ if (prevSujo && P.prevOn){ prevSujo = false; prever(); } else if (!P.prevOn){ prev = null; } }
+  if (O.running && s.length && !edita){
     let left = dt*P.speed*2, guard = 0;
     while (left > 0 && guard++ < 4000){
       const dmin = Math.min(dist(0, 1), dist(0, 2), dist(1, 2));
@@ -130,7 +240,8 @@ function frame(){
     if (fled && P.volta && Math.max(...[0, 1, 2].map(i => Math.hypot(s[4*i], s[4*i + 1]))) > 14) reset();
   }
   const { W, H } = V, C = V.begin();
-  if (T3.on){ if (s.length) draw3d(C, t); }
+  if (edita) drawEdit(C);
+  else if (T3.on){ if (s.length) draw3d(C, t); }
   else {
   // câmera
   let ex = 1.1, mx = 0, my = 0;
@@ -158,8 +269,8 @@ function frame(){
   }
   }
   V.end();
-  if (O.running && (!info || !info.shown || (t*3 | 0) !== info.k)){
-    const nomes = { oito: 'Oito', borboleta: 'Borboleta', lagrange: 'Triângulo de Lagrange', pitagoras: 'Problema de Pitágoras' };
+  if (O.running && !edita && (!info || !info.shown || (t*3 | 0) !== info.k)){
+    const nomes = { oito: 'Oito', borboleta: 'Borboleta', lagrange: 'Triângulo de Lagrange', pitagoras: 'Problema de Pitágoras', livre: 'Posição livre' };
     $('num').textContent = nomes[P.ini] + (P.pert ? ` · empurrão ${P.pert}` : '');
     $('op').textContent = fled ? 'uma estrela foi expulsa' : `tempo ${tSim.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} · menor distância ${Math.min(dist(0, 1), dist(0, 2), dist(1, 2)).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}`;
     $('seq').innerHTML = '';
@@ -167,8 +278,13 @@ function frame(){
   }
   requestAnimationFrame(frame);
 }
-O.on(k => { if (k === 'ini' || k === 'pert') reset(); });
-O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset });
+O.on(k => {
+  if (k === 'ini' || k === 'pert' || (k === 'livre' && P.ini === 'livre' && !edita)) reset();
+  if (['m1', 'm2', 'm3'].includes(k)){ if (edita){ massas(); prevSujo = true; } else if (P.ini === 'livre') reset(); }
+  if (k === 'tPrev' || k === 'dEnc' || k === 'prevOn') prevSujo = true;
+});
+$('bPos').addEventListener('click', () => { if (O.running) alternaEdicao(); });
+O.setup(() => { reset(); O.setDrone(0, 7, 0.1); }, { r: reset, p: alternaEdicao });
 reset();
 requestAnimationFrame(frame);
 </js>

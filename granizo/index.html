@@ -17,6 +17,10 @@
   #start.hide{opacity:0;pointer-events:none}
   #num{position:fixed;left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:0;transition:opacity .6s;pointer-events:none;font-variant-numeric:tabular-nums;z-index:2}
   #num.on{opacity:.55}
+  #seq{position:fixed;left:30px;top:60px;right:60px;font-weight:300;font-size:13px;letter-spacing:.04em;opacity:0;transition:opacity .6s;pointer-events:none;font-variant-numeric:tabular-nums;z-index:2;white-space:nowrap;overflow:hidden}
+  #seq.on{opacity:.45}
+  #seq b{font-weight:500;opacity:1}
+  #seq .up{color:#bfe4ff}
   #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
   #dot:hover{opacity:.7}
   #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
@@ -36,7 +40,7 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div id="num" class="on"></div>
+<div id="num" class="on"></div><div id="seq" class="on"></div>
 <div id="start"><h1>GRANIZO</h1><p>toque para começar</p></div>
 <div id="dot" title="Controles (M)"></div>
 <div id="panel">
@@ -76,11 +80,12 @@
       <option value="branco">Branco</option>
     </select></div>
   <div class="row"><label>Mostrar número</label><input type="checkbox" id="showNum" checked></div>
+  <div class="row"><label>Gráfico</label><input type="checkbox" id="graph" checked></div>
   <div class="btns">
     <button id="bClear">Limpar coral</button>
     <button id="bFull">Tela cheia</button>
   </div>
-  <div class="hint">Par → ÷2 (o som desce). Ímpar → ×3+1 (o som sobe).<br>Todo caminho termina no 1 e no laço 4 → 2 → 1.<br>Teclas: M controles · F tela cheia · C limpar · N mostrar número · Espaço próximo.</div>
+  <div class="hint">Par → ÷2 (o som desce). Ímpar → ×3+1 (o som sobe).<br>Todo caminho termina no 1 e no laço 4 → 2 → 1.<br>Teclas: M controles · F tela cheia · C limpar · N números · G gráfico · Espaço próximo.</div>
 </div>
 
 <script>
@@ -94,7 +99,7 @@ const MARGIN = 1.6;           // o coral é desenhado numa área maior que a tel
 
 // ---------- parâmetros ----------
 const P = {};
-const ids = ['mode','speed','gap','scale','vol','drone','verb','aEven','aOdd','tilt','zoom','mem','color','showNum'];
+const ids = ['mode','speed','gap','scale','vol','drone','verb','aEven','aOdd','tilt','zoom','mem','color','showNum','graph'];
 function readP(){
   for (const k of ids){ const el = $(k); P[k] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' ? el.value : parseFloat(el.value)); }
 }
@@ -104,7 +109,7 @@ for (const k of ids) $(k).addEventListener('input', () => {
   readP();
   if (k === 'speed' && cur && !cur.done){ const p = (now() - cur.t0) * oldSpeed; cur.t0 = now() - p / P.speed; cur.next = Math.max(cur.next, Math.floor(p) + 1); }
   if (['aEven','aOdd','tilt'].includes(k)) relayoutAll();
-  if (k === 'showNum') $('num').classList.toggle('on', P.showNum);
+  if (k === 'showNum') { $('num').classList.toggle('on', P.showNum); $('seq').classList.toggle('on', P.showNum); }
   applyMix();
 });
 
@@ -158,10 +163,11 @@ function camTarget(){
   if (cur) bboxOf(cur.pos, 0, cur.seq.length - 1, bb);
   const bw = Math.max(bb[2]-bb[0], 1), bh = Math.max(bb[3]-bb[1], 1);
   const maxS = Math.min(W, H) / 7;                  // começa bem perto
-  const s = Math.min(maxS, W*0.84/bw, H*0.8/bh) * P.zoom;
+  const s = Math.min(maxS, W*0.84/bw, (H - GH)*0.78/bh) * P.zoom;
   return { s, cx: (bb[0]+bb[2])/2, cy: (bb[1]+bb[3])/2 };
 }
-function toScreen(x, y){ return [(x - cam.cx)*cam.s + W/2, (y - cam.cy)*cam.s + H/2]; }
+let CY = 0, GH = 0;   // centro vertical do coral e altura do gráfico (suavizados)
+function toScreen(x, y){ return [(x - cam.cx)*cam.s + W/2, (y - cam.cy)*cam.s + CY]; }
 
 // ---------- coral (memória dos caminhos) ----------
 let paths = [];   // {n, seq, pos, upto, w, t}
@@ -185,9 +191,9 @@ function drawPathOn(g, p, alphaMul, c){
     g.stroke(); i = end + 1;
   }
 }
-function coralView(){ return { s: camR.s, cx: camR.cx, cy: camR.cy, ox: W*MARGIN/2, oy: H*MARGIN/2 }; }
+function coralView(){ return { s: camR.s, cx: camR.cx, cy: camR.cy, ox: W*MARGIN/2, oy: H*MARGIN/2 + (camR.CY - H/2) }; }
 function redrawCoral(){
-  camR.s = cam.s; camR.cx = cam.cx; camR.cy = cam.cy;
+  camR.s = cam.s; camR.cx = cam.cx; camR.cy = cam.cy; camR.CY = CY;
   cctx.setTransform(CDPR,0,0,CDPR,0,0);
   cctx.globalCompositeOperation = 'source-over'; cctx.clearRect(0, 0, W*MARGIN, H*MARGIN);
   cctx.globalCompositeOperation = 'lighter'; cctx.lineCap = 'round'; cctx.lineJoin = 'round';
@@ -235,21 +241,23 @@ function initAudio(){
   // reverb leve: filtros de pente com amortecimento (bem mais barato que convolução)
   verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
   const merger = AC.createChannelMerger(2); merger.connect(verbOut);
-  const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 3800; verbIn.connect(pre);
-  [0.0353,0.0411,0.0467,0.0521,0.0579,0.0631].forEach((dt, i) => {
-    const d = AC.createDelay(0.2); d.delayTime.value = dt * 1.9;
-    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
-    const fb = AC.createGain(); fb.gain.value = 0.84;
-    const o = AC.createGain(); o.gain.value = 0.16;
+  const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 3200; pre.Q.value = -12;
+  const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220; hp.Q.value = -12;
+  verbIn.connect(hp); hp.connect(pre);
+  [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373].forEach((dt, i) => {
+    const d = AC.createDelay(0.3); d.delayTime.value = dt;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800; lp.Q.value = -12;
+    const fb = AC.createGain(); fb.gain.value = 0.68;
+    const o = AC.createGain(); o.gain.value = 0.2;
     pre.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
   });
   delay = AC.createDelay(2); delay.delayTime.value = 0.42;
-  const fb = AC.createGain(); fb.gain.value = 0.33;
-  const dLp = AC.createBiquadFilter(); dLp.type = 'lowpass'; dLp.frequency.value = 2200;
+  const fb = AC.createGain(); fb.gain.value = 0.28;
+  const dLp = AC.createBiquadFilter(); dLp.type = 'lowpass'; dLp.frequency.value = 2200; dLp.Q.value = -12;
   delay.connect(dLp); dLp.connect(fb); fb.connect(delay); dLp.connect(verbIn); dLp.connect(dryBus);
   droneG = AC.createGain(); droneG.gain.value = 0;
   droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 220; droneF.Q.value = 0.7;
-  droneF.connect(droneG); droneG.connect(dryBus); droneG.connect(verbIn);
+  droneF.connect(droneG); droneG.connect(dryBus);
   [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f,type,g]) => {
     const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
     const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start();
@@ -345,6 +353,56 @@ function scheduleStep(i, t){
   }
 }
 
+// ---------- gráfico da sequência (voo do granizo) ----------
+function fmt(v){ return v.toLocaleString('pt-BR'); }
+function drawGraph(c, i, frac, t){
+  const m = c.seq.length - 1, x0 = 30, x1 = W - 30, y1 = H - 26, y0 = H - GH + 34;
+  if (y1 - y0 < 30) return;
+  let peak = 1, pk = 0; for (let q = 0; q <= m; q++) if (c.seq[q] > peak){ peak = c.seq[q]; pk = q; }
+  const lp = Math.log2(Math.max(peak, 2));
+  const X = q => x0 + (x1 - x0) * (m ? q/m : 0);
+  const Y = v => y1 - (y1 - y0) * (Math.log2(v) / lp);
+  const life = c.done ? Math.max(0, 1 - (t - c.tDone)/(P.gap + 1.8)) : 1;
+  ctx.save(); ctx.globalCompositeOperation = 'source-over';
+  // fundo e linha do 1
+  const bg = ctx.createLinearGradient(0, H - GH, 0, H);
+  bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(0.25, 'rgba(0,0,0,0.75)'); bg.addColorStop(1, 'rgba(0,0,0,0.9)');
+  ctx.fillStyle = bg; ctx.fillRect(0, H - GH, W, GH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, y1 + 0.5); ctx.lineTo(x1, y1 + 0.5); ctx.stroke();
+  ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(x0, Y(peak) + 0.5); ctx.lineTo(x1, Y(peak) + 0.5); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalCompositeOperation = 'lighter';
+  // caminho todo, apagado
+  ctx.strokeStyle = colorFor(c.seq[0], t*0.02, 0.18*Math.max(life, 0.3)); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(X(0), Y(c.seq[0])); for (let q = 1; q <= m; q++) ctx.lineTo(X(q), Y(c.seq[q])); ctx.stroke();
+  // trecho percorrido: subidas mais claras e grossas
+  const upto = c.done ? m : i;
+  for (let q = 1; q <= upto; q++){
+    const up = c.seq[q-1] % 2 === 1;
+    ctx.strokeStyle = colorFor(c.seq[q], t*0.02, (up ? 0.95 : 0.6)*life);
+    ctx.lineWidth = up ? 1.8 : 1.2;
+    ctx.beginPath(); ctx.moveTo(X(q-1), Y(c.seq[q-1])); ctx.lineTo(X(q), Y(c.seq[q])); ctx.stroke();
+  }
+  // ponto atual
+  if (!c.done){
+    const v0 = c.seq[i], v1 = c.seq[Math.min(m, i+1)], e = frac*frac*(3-2*frac);
+    const hx = X(i + e*(i < m ? 1 : 0)), hy = Y(v0) + (Y(v1) - Y(v0))*e;
+    const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 12);
+    g.addColorStop(0, colorFor(v0, t*0.02, 0.95)); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI*2); ctx.fill();
+  }
+  // legendas
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.font = '300 11px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif';
+  ctx.fillStyle = `rgba(207,214,221,${0.55*Math.max(life, 0.4)})`;
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillText(`${fmt(c.seq[0])}  ·  passo ${c.done ? m : i} de ${m}`, x0, H - GH + 22);
+  ctx.textAlign = 'right';
+  ctx.fillText(`pico ${fmt(peak)} (passo ${pk})`, x1, H - GH + 22);
+  ctx.textAlign = 'left'; ctx.fillText('1', x0 - 14, y1 + 4);
+  ctx.restore();
+}
+
 // ---------- desenho ----------
 function frame(){
   const t = now();
@@ -356,6 +414,9 @@ function frame(){
     } else if (t >= nextAt) begin(nextSeed());
   }
 
+  const ghT = P.graph ? Math.min(190, H*0.24) : 0;
+  GH += (ghT - GH)*0.08; CY = (H - GH)/2;
+  if (Math.abs(CY - camR.CY) > 3 && Math.abs(ghT - GH) < 0.5) redrawCoral();
   // câmera: aproxima no começo e abre a cada expansão
   const tg = camTarget(), k = 0.035;
   cam.s = Math.exp(Math.log(cam.s) + (Math.log(tg.s) - Math.log(cam.s))*k);
@@ -368,7 +429,7 @@ function frame(){
   ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
   ctx.globalCompositeOperation = 'lighter';
   { const r = cam.s / camR.s, bw = W*MARGIN, bh = H*MARGIN;
-    const ox = W/2 - bw/2*r + (camR.cx - cam.cx)*cam.s, oy = H/2 - bh/2*r + (camR.cy - cam.cy)*cam.s;
+    const ox = W/2 - bw/2*r + (camR.cx - cam.cx)*cam.s, oy = CY - (H*MARGIN/2 + (camR.CY - H/2))*r + (camR.cy - cam.cy)*cam.s;
     ctx.drawImage(coral, ox, oy, bw*r, bh*r); }
 
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -377,7 +438,16 @@ function frame(){
     const p = c.done ? m : Math.max(0, (t - c.t0)*P.speed);
     const i = Math.min(m, Math.floor(p)), frac = c.done ? 0 : p - i;
     const P2 = j => toScreen(c.pos[j*2], c.pos[j*2+1]);
-    if (i !== lastShown && !c.done){ lastShown = i; $('num').textContent = c.seq[i].toLocaleString('pt-BR'); }
+    if (i !== lastShown && !c.done){
+      lastShown = i; $('num').textContent = c.seq[i].toLocaleString('pt-BR');
+      const a0 = Math.max(0, i - 9), parts = [];
+      for (let q = a0; q <= i; q++){
+        const v = c.seq[q].toLocaleString('pt-BR'), up = q > 0 && c.seq[q-1] % 2 === 1;
+        parts.push(q === i ? `<b${up ? ' class="up"' : ''}>${v}</b>` : (up ? `<span class="up">${v}</span>` : v));
+      }
+      $('seq').innerHTML = (a0 > 0 ? '… ' : '') + parts.join('  →  ');
+    }
+    if (P.graph && GH > 20) drawGraph(c, i, frac, t);
     // fantasma do caminho que falta
     if (!c.done && i < m){
       ctx.strokeStyle = colorFor(c.seq[i], t*0.02, 0.07); ctx.lineWidth = 1;
@@ -465,12 +535,13 @@ addEventListener('keydown', e => {
   if (k === 'm') $('panel').classList.toggle('on');
   else if (k === 'f') toggleFull();
   else if (k === 'c') clearCoral();
-  else if (k === 'n') { $('showNum').checked = !$('showNum').checked; readP(); $('num').classList.toggle('on', P.showNum); }
+  else if (k === 'n') { $('showNum').checked = !$('showNum').checked; readP(); $('num').classList.toggle('on', P.showNum); $('seq').classList.toggle('on', P.showNum); }
+  else if (k === 'g') { $('graph').checked = !$('graph').checked; readP(); }
   else if (k === ' ') { e.preventDefault(); if (!running) startPiece(); else begin(nextSeed()); }
 });
 
 resize();
-cam.s = camR.s = Math.min(W, H)/7;
+cam.s = camR.s = Math.min(W, H)/7; GH = P.graph ? Math.min(190, H*0.24) : 0; CY = camR.CY = (H - GH)/2; redrawCoral();
 requestAnimationFrame(frame);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

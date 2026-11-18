@@ -114,7 +114,7 @@ const O = (() => {
   }
 
   // ---------- áudio ----------
-  let AC = null, master, comp, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  let AC = null, master, comp, fxF, fxDrive, fxCrush, dFb, dRet, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
   const SCALES = {
     jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
     mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
@@ -132,7 +132,10 @@ const O = (() => {
     try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
     master = AC.createGain();
     comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
-    master.connect(comp); comp.connect(AC.destination);
+    // efeitos de saída (neutros por padrão): filtro → saturação → redução de bits → compressor
+    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
+    fxDrive = AC.createWaveShaper(); fxCrush = AC.createWaveShaper(); fxDrive.oversample = '2x';
+    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(fxCrush); fxCrush.connect(comp); comp.connect(AC.destination);
     dryBus = AC.createGain(); dryBus.connect(master);
     verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
     const merger = AC.createChannelMerger(2); merger.connect(verbOut);
@@ -147,9 +150,9 @@ const O = (() => {
       pre.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
     });
     delay = AC.createDelay(2); delay.delayTime.value = 0.42;
-    const fb = AC.createGain(); fb.gain.value = 0.3;
+    const fb = AC.createGain(); fb.gain.value = 0.3; dFb = fb; dRet = AC.createGain(); dRet.gain.value = 1;
     const dLp = AC.createBiquadFilter(); dLp.type = 'lowpass'; dLp.frequency.value = 2200;
-    delay.connect(dLp); dLp.connect(fb); fb.connect(delay); dLp.connect(verbIn); dLp.connect(dryBus);
+    delay.connect(dLp); dLp.connect(fb); fb.connect(delay); dLp.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
     droneG = AC.createGain(); droneG.gain.value = 0;
     droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
     droneF.connect(droneG); droneG.connect(dryBus); droneG.connect(verbIn);
@@ -190,7 +193,7 @@ const O = (() => {
 
   function out(node, pan, send, dly, t, end){
     let last = node;
-    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); node.connect(p); last = p; }
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
     last.connect(dryBus);
     const s = AC.createGain(); s.gain.value = send; last.connect(s); s.connect(verbIn);
     if (dly > 0){ const d = AC.createGain(); d.gain.value = dly; last.connect(d); d.connect(delay); }
@@ -289,7 +292,21 @@ const O = (() => {
     if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   }
   const fmt = v => v.toLocaleString('pt-BR');
-  return { P, bind, readP, now, initAudio, applyMix, setDrone, freq, semi, chord, chordName, scale, SCALES, NOTAS, ROOT,
+  // ---------- controles de efeitos ----------
+  const fx = {
+    delay(time, feedback, mix){ if (!AC) return; const t = AC.currentTime;
+      if (time > 0) delay.delayTime.setTargetAtTime(Math.min(1.95, time), t, 0.05);
+      dFb.gain.setTargetAtTime(Math.min(0.92, feedback), t, 0.05); dRet.gain.setTargetAtTime(time > 0 ? mix : 0, t, 0.05); },
+    filter(freq, q){ if (!AC) return; const t = AC.currentTime; fxF.frequency.setTargetAtTime(freq, t, 0.08); fxF.Q.setTargetAtTime(q, t, 0.08); },
+    drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
+      const n = 2048, c = new Float32Array(n), k = 1 + a*30;
+      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; },
+    crush(a){ if (!AC) return; if (a <= 0.001){ fxCrush.curve = null; return; }
+      const bits = 16 - a*14, steps = Math.pow(2, bits)/2, n = 8192, c = new Float32Array(n);
+      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.round(x*steps)/steps; } fxCrush.curve = c; },
+    width(w){ width = w; }
+  };
+  return { fx, P, bind, readP, now, initAudio, applyMix, setDrone, freq, semi, chord, chordName, scale, SCALES, NOTAS, ROOT,
     bell, soft, pluck, pad, sine, kick, tick, setup, toggleFull, fmt,
     get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; } };
 })();

@@ -333,26 +333,50 @@ function out(node, x, send, dly){
 }
 // a cauda das notas encurta quando a velocidade sobe (menos vozes ao mesmo tempo)
 const tail = base => Math.min(base, 0.5 + 5/P.speed);
-function bell(f, x, vel, t){       // subida (×3+1)
-  const dur = tail(3.2);
-  const c = AC.createOscillator(), m = AC.createOscillator(), mg = AC.createGain(), g = AC.createGain();
-  c.frequency.value = f; m.frequency.value = f*2.76;
-  mg.gain.setValueAtTime(0.5, t); mg.gain.exponentialRampToValueAtTime(0.001, t+Math.min(0.9, dur));
-  m.connect(mg); mg.connect(g);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-  c.connect(g); out(g, x, 0.6, 0.3);
-  c.start(t); m.start(t); c.stop(t+dur+0.05); m.stop(t+dur+0.05);
+// ---------- timbres: cada número escolhe uma família, e o tamanho de cada valor muda o brilho ----------
+// up = subida (×3+1), dn = descida (÷2): onda, parcial (razão, ganho), filtro (× freq), ataque, duração
+const TIMBRES = [
+  { nome: 'vidro',   up: { w:'sine',     r:2.76, pg:0.5,  cut:0,  a:0.006, d:3.2 }, dn: { w:'triangle', r:0,    pg:0,    cut:6, a:0.025, d:1.6 } },
+  { nome: 'marimba', up: { w:'sine',     r:4.0,  pg:0.45, cut:0,  a:0.003, d:1.3 }, dn: { w:'sine',     r:4.0,  pg:0.2,  cut:0, a:0.004, d:0.9 } },
+  { nome: 'celesta', up: { w:'sine',     r:3.0,  pg:0.4,  cut:0,  a:0.004, d:2.4 }, dn: { w:'triangle', r:2.0,  pg:0.15, cut:8, a:0.01,  d:1.3 } },
+  { nome: 'kalimba', up: { w:'sine',     r:5.4,  pg:0.35, cut:0,  a:0.002, d:1.7 }, dn: { w:'sine',     r:2.0,  pg:0.25, cut:0, a:0.003, d:1.0 } },
+  { nome: 'corda',   up: { w:'sawtooth', r:0,    pg:0,    cut:7,  a:0.004, d:2.2 }, dn: { w:'sawtooth', r:0,    pg:0,    cut:3, a:0.006, d:1.4 } },
+  { nome: 'sopro',   up: { w:'triangle', r:2.0,  pg:0.22, cut:5,  a:0.09,  d:2.0 }, dn: { w:'sine',     r:3.0,  pg:0.1,  cut:0, a:0.07,  d:1.6 } },
+  { nome: 'sino grave', up: { w:'sine',  r:1.48, pg:0.55, cut:0,  a:0.005, d:3.6 }, dn: { w:'sine',     r:2.0,  pg:0.3,  cut:0, a:0.02,  d:2.0 } },
+  { nome: 'harpa',   up: { w:'square',   r:0,    pg:0,    cut:4,  a:0.003, d:2.0 }, dn: { w:'triangle', r:0,    pg:0,    cut:4, a:0.004, d:1.2 } }
+];
+let tim = TIMBRES[0];
+function timbreFor(seq){
+  let odd = 0; for (let q = 0; q < seq.length - 1; q++) if (seq[q] % 2) odd++;
+  return TIMBRES[(odd + Math.floor(Math.log2(seq[0]))) % TIMBRES.length];   // subidas do caminho + tamanho do número
 }
-function soft(f, x, vel, t){       // descida (÷2)
-  const dur = tail(1.6);
-  const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
-  o.type = 'triangle'; o.frequency.value = f;
-  lp.type = 'lowpass'; lp.frequency.setValueAtTime(f*6, t); lp.frequency.exponentialRampToValueAtTime(f*1.2, t+Math.min(0.9, dur));
-  o.connect(lp); lp.connect(g);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+0.025); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-  out(g, x, 0.45, 0.15);
-  o.start(t); o.stop(t+dur+0.05);
+function voice(spec, f, x, vel, t, v, send, dly, gain){
+  const dur = tail(spec.d);
+  const bright = Math.min(1, Math.log2(Math.max(2, v)) / 22);          // valores grandes soam mais brilhantes
+  const g = AC.createGain();
+  const o = AC.createOscillator(); o.type = spec.w; o.frequency.value = f;
+  let head = o;
+  if (spec.cut){
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5;
+    const c0 = Math.min(16000, f*spec.cut*(0.7 + bright*2.2));
+    lp.frequency.setValueAtTime(c0, t); lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1), t + Math.min(0.9, dur));
+    o.connect(lp); head = lp;
+  }
+  head.connect(g);
+  let p = null;
+  if (spec.r){
+    p = AC.createOscillator(); p.frequency.value = f*spec.r;
+    const pg = AC.createGain();
+    pg.gain.setValueAtTime(spec.pg*(0.6 + bright), t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, dur));
+    p.connect(pg); pg.connect(g);
+  }
+  const lvl = gain * vel * (spec.w === 'sawtooth' || spec.w === 'square' ? 0.55 : 1);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + spec.a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  out(g, x, send, dly);
+  o.start(t); o.stop(t + dur + 0.05); if (p){ p.start(t); p.stop(t + dur + 0.05); }
 }
+function bell(f, x, vel, t, v){ voice(tim.up, f, x, vel, t, v || f, 0.6, 0.3, 0.16); }   // subida (×3+1)
+function soft(f, x, vel, t, v){ voice(tim.dn, f, x, vel, t, v || f, 0.45, 0.15, 0.14); } // descida (÷2)
 function resolveChord(x, t){       // chegada ao 1
   harm.chord.forEach((semi,i) => {
     const f = ROOT*2 * Math.pow(2, semi/12), ti = t + i*0.09;
@@ -382,16 +406,16 @@ function begin(n){
   if (cur && !cur.done) commit(cur, Math.min(cur.seq.length-1, Math.floor((t - cur.t0)*P.speed)), t);
   const seq = collatz(n);
   cur = { seq, pos: layout(seq), t0: t + 0.08, next: 0, done: false }; lastShown = -1;
-  setHarmony(seq.length - 1, t);
+  setHarmony(seq.length - 1, t); tim = timbreFor(seq);
 }
 function scheduleStep(i, t){
   const c = cur, m = c.seq.length - 1, v = c.seq[i];
   const [x] = toScreen(c.pos[(m-i)*2], c.pos[(m-i)*2+1]);
   droneF.frequency.setTargetAtTime(160 + Math.log2(v)**2 * 7, t, 0.6);
   const f = freqForDegree(degreeFor(v), ROOT*2);
-  if (i === 0) { bell(f, x, 0.9, t); soft(f/2, x, 0.7, t); }
-  else if (c.seq[i-1] % 2 === 1) { bell(f, x, 0.75, t); sparks.push({ i: m-i, c, t, n: v }); }
-  else soft(f, x, 0.8, t);
+  if (i === 0) { bell(f, x, 0.9, t, v); soft(f/2, x, 0.7, t, v); }
+  else if (c.seq[i-1] % 2 === 1) { bell(f, x, 0.75, t, v); sparks.push({ i: m-i, c, t, n: v }); }
+  else soft(f, x, 0.8, t, v);
   if (i === m){
     resolveChord(x, t + 0.02);
     const iv = Math.max(0.4, 1.6/P.speed);
@@ -487,7 +511,7 @@ function drawGraph(c, i, frac, t){
   ctx.font = '300 11px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif';
   ctx.fillStyle = `rgba(207,214,221,${0.55*Math.max(life, 0.4)})`;
   ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
-  ctx.fillText(`${fmt(c.seq[0])}  ·  passo ${c.done ? m : i} de ${m}  ·  acorde de ${harm.name}`, x0, H - GH + 22);
+  ctx.fillText(`${fmt(c.seq[0])}  ·  passo ${c.done ? m : i} de ${m}  ·  acorde de ${harm.name}  ·  timbre ${tim.nome}`, x0, H - GH + 22);
   ctx.textAlign = 'right';
   ctx.fillText(`pico ${fmt(peak)} (passo ${pk})`, x1, H - GH + 22);
   ctx.textAlign = 'left'; ctx.fillText('1', x0 - 14, y1 + 4);

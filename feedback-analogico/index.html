@@ -13,6 +13,9 @@ body.calmo #gear{opacity:0}
 #rec i{width:11px;height:11px;border-radius:50%;background:#ff3b3b;animation:pisca 1s steps(2) infinite}
 body.gravando #rec{display:flex}
 body.gravando.calmo #rec{opacity:.45}
+#lentaTag{position:fixed;bottom:14px;left:14px;display:none;padding:5px 11px;border-radius:16px;background:#000a;color:#e8e8ee;font:600 12px system-ui;z-index:3;font-variant-numeric:tabular-nums;transition:opacity .4s}
+body.lenta #lentaTag{display:block}
+body.lenta.calmo #lentaTag{opacity:0}
 @keyframes pisca{50%{opacity:.2}}
 #bGravar.on{background:#ff3b3b33;border-color:#ff3b3b}
 #panel{position:fixed;top:60px;right:12px;width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 80px);overflow:auto;padding:14px 16px;border-radius:14px;background:#0b0b0fe0;border:1px solid #ffffff1a;color:#e8e8ee;font:13px/1.35 system-ui,sans-serif;z-index:3;transform:translateX(120%);transition:transform .25s;backdrop-filter:blur(10px)}
@@ -41,12 +44,13 @@ body.gravando.calmo #rec{opacity:.45}
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="gear" title="Controles (H)">⚙</div>
+<div id="lentaTag" title="Câmera lenta (L)">🐢 <span id="lentaV">25%</span></div>
 <div id="rec" title="Parar e salvar (R)"><i></i><span id="recT">0:00</span></div>
 <div id="panel">
   <h1>FEEDBACK ANALÓGICO</h1>
   <p class="sub">Uma câmera virtual apontada para o próprio monitor. Só a realimentação desenha: cada quadro é o anterior visto pela câmera, dobrado em simetria e realçado.</p>
   <div class="row"><select id="receita"></select><button id="bAplicar">Aplicar receita</button></div>
-  <div class="row"><button id="bFlash">Flash</button><button id="bLimpar">Limpar</button></div>
+  <div class="row"><button id="bFlash">Flash</button><button id="bLimpar">Limpar</button><button id="bLenta">🐢 Câmera lenta</button></div>
   <details id="banco" open><summary>Banco de configurações</summary>
     <div class="row"><input id="bNome" type="text" placeholder="Nome da configuração" maxlength="40"><button id="bSalvar">Salvar atual</button></div>
     <div id="lista"></div>
@@ -63,12 +67,17 @@ body.gravando.calmo #rec{opacity:.45}
   </details>
   <div class="row"><button id="bCam">📷 Câmera invisível</button><button id="bFs">Tela cheia</button></div>
   <div class="row"><button id="bReset">Restaurar padrões</button></div>
-  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · 1–9 = banco · R = gravar · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = saturação (X, para a direita = mais) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 (START) = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.<br>Segurando START: direcional ←/→ = velocidade da imagem −/+, ↑ = começa/para a gravação.</p>
+  <p class="hint">Toque ou clique = flash de luz. Arrastar = gira (para os lados) e aproxima/afasta (para cima e para baixo).<br>Espaço = flash · C = limpar · L = câmera lenta · [ ] = mais lenta / mais rápida · 1–9 = banco · R = gravar · H = painel · F = tela cheia.<br>Joystick USB: alavanca esquerda = rotação (X) e zoom (Y), direcional = mira, 1 = flash, 2 = limpar, 3/4 = ganho +/−, 5/6 = giro de cor −/+.<br>Mandala: alavanca direita = saturação (X, para a direita = mais) e nitidez (Y, para cima = mais), 7/8 = simetria −/+ (menos/mais pétalas), 9 = dobra liga/desliga, 10 (START) = próxima receita, 11/12 (apertar as alavancas) = autodeslocamento −/+.<br>Segurando START: direcional ←/→ = velocidade da imagem −/+ (com a câmera lenta ligada, ajusta a velocidade da câmera lenta), ↓ = liga/desliga a câmera lenta, ↑ = começa/para a gravação.</p>
 </div>
 <script>
 'use strict';
 // ===== parâmetros (os mesmos do componente "controles" do .toe) =====
 const SPEC = [
+  ['Câmera lenta', [
+    ['Camlenta', 'Câmera lenta ligada (tecla L)', 0, 0, 1, 1, 'toggle'],
+    ['Lentidao', 'Velocidade na câmera lenta (1 = normal, teclas [ e ])', .25, .02, 1, .01],
+    ['Rampa', 'Suavidade da entrada/saída (segundos)', 1.5, 0, 6, .1],
+  ]],
   ['Realimentação', [
     ['Nitidez', 'Nitidez no loop (padrões)', 1.2, 0, 6, .01],
     ['Simetria', 'Simetria (0 = desligada, 2 a 12 dobras)', 6, 0, 12, 1],
@@ -389,9 +398,9 @@ function lerJoystick(dt) {
   }
   const par = PARES_DIREITA[P.Joydireita | 0] || (gp.mapping === 'standard' || ax.length < 6 ? [2, 3] : [2, 5]);
   // segurando START (botão 10): direcional ←→ = velocidade da imagem; a mira fica parada
-  const shift = bt(9); let sx = 0;
+  const shift = bt(9); let sx = 0; const hyOrig = hy;
   if (shift) { sx = hx; if (hx || hy) joyShiftUsou = true; if (hy < 0 && !joyAntes.recUp) gravar(); hx = 0; hy = 0; }
-  joyAntes.recUp = shift && hy < 0;
+  joyAntes.recUp = shift && hyOrig < 0;
   const v = { x: ax[0] || 0, y: ax[1] || 0, hx, hy, rx: ax[par[0]] || 0, ry: ax[par[1]] || 0 }; // y positivo = para baixo, como no TD
   joyEstado = { ax, bt: gp.buttons.map((b, i) => b.pressed ? i + 1 : 0).filter(Boolean), par };
   const passo = Math.min(.1, dt) * P.Joyvel, zona = Math.min(.9, P.Joyzona), curva = Math.max(.1, P.Joycurva), k = P.Joyalcance;
@@ -414,7 +423,11 @@ function lerJoystick(dt) {
   for (const [b, nome, d, vel, lo, hi] of SEGURAR_MANDALA) if (bt(b)) {
     P[nome] = Math.max(lo, Math.min(hi, P[nome] + d * vel * P.Joymandala * passo)); mudou = true;
   }
-  if (sx) { P.Velocidade = Math.max(0, Math.min(3, P.Velocidade + sx * .8 * P.Joysat * passo)); mudou = true; }
+  if (sx) { if (P.Camlenta) P.Lentidao = Math.max(.02, Math.min(1, P.Lentidao * Math.exp(sx * 1.2 * P.Joysat * passo)));
+    else P.Velocidade = Math.max(0, Math.min(3, P.Velocidade + sx * .8 * P.Joysat * passo)); mudou = true; }
+  // START + ↓ = liga/desliga a câmera lenta
+  if (shift && hyOrig > 0 && !joyAntes.lentaDn) camLenta();
+  joyAntes.lentaDn = shift && hyOrig > 0;
   // START sozinho (sem mexer no direcional) = próxima receita, ao soltar
   if (shift && !joyAntes.start) joyShiftUsou = false;
   if (!shift && joyAntes.start && !joyShiftUsou) proximaReceita();
@@ -444,7 +457,7 @@ const panel = document.getElementById('panel');
 document.getElementById('gear').onclick = () => panel.classList.toggle('open');
 const sec = document.getElementById('sec'), ctrls = {};
 SPEC.forEach(([titulo, ps], i) => {
-  const d = document.createElement('details'); if (i === 0) d.open = true;
+  const d = document.createElement('details'); if (i <= 1) d.open = true;
   d.innerHTML = `<summary>${titulo}</summary>`;
   if (titulo === 'Joystick') { const j = document.createElement('div'); j.id = 'joy'; d.appendChild(j); }
   ps.forEach(([k, label, , min, max, step, tipo]) => {
@@ -452,16 +465,23 @@ SPEC.forEach(([titulo, ps], i) => {
     if (tipo === 'menu') { const ops = INFO[k][7]; l.innerHTML = `${label}<select style="grid-column:1/3">${ops.map((o, i) => `<option value="${i}">${o}</option>`).join('')}</select>`;
       const m = l.querySelector('select'); m.onchange = () => { P[k] = +m.value; save(); }; ctrls[k] = { set: v => m.value = v }; }
     else if (tipo === 'toggle') { l.className = 'tg'; l.innerHTML = `<input type="checkbox"><span>${label}</span>`; const c = l.querySelector('input');
-      c.onchange = () => { P[k] = c.checked ? 1 : 0; save(); }; ctrls[k] = { set: v => c.checked = !!v }; }
+      c.onchange = () => { P[k] = c.checked ? 1 : 0; save(); syncLenta(); }; ctrls[k] = { set: v => c.checked = !!v }; }
     else { l.innerHTML = `${label} <output></output><input type="range" min="${min}" max="${max}" step="${step}">`;
       const r = l.querySelector('input'), o = l.querySelector('output'); const dec = step >= 1 ? 0 : step >= .1 ? 1 : step >= .01 ? 2 : 3;
-      r.oninput = () => { P[k] = +r.value; o.textContent = (+r.value).toFixed(dec); save(); };
+      r.oninput = () => { P[k] = +r.value; o.textContent = (+r.value).toFixed(dec); save(); syncLenta(); };
       ctrls[k] = { set: v => { r.value = v; o.textContent = (+v).toFixed(dec); } }; }
     d.appendChild(l);
   });
   sec.appendChild(d);
 });
-function syncPanel() { for (const k in ctrls) ctrls[k].set(P[k]); }
+function syncPanel() { for (const k in ctrls) ctrls[k].set(P[k]); syncLenta(); }
+function syncLenta() {
+  const b = document.getElementById('bLenta'); if (b) b.classList.toggle('on', !!P.Camlenta);
+  document.body.classList.toggle('lenta', !!P.Camlenta);
+  const v = document.getElementById('lentaV'); if (v) v.textContent = Math.round(P.Lentidao * Math.max(0, P.Velocidade) * 100) + '%';
+}
+function camLenta(on) { P.Camlenta = on === undefined ? (P.Camlenta ? 0 : 1) : on; syncPanel(); save(); acordar(); }
+function ajustaLenta(f) { P.Lentidao = Math.max(.02, Math.min(1, +(P.Lentidao * f).toFixed(3))); if (!P.Camlenta) P.Camlenta = 1; syncPanel(); save(); acordar(); }
 syncPanel();
 const sel = document.getElementById('receita');
 // ---- banco de configurações (fica no aparelho; exporta/importa em arquivo) ----
@@ -526,6 +546,7 @@ function aplicar() {
 }
 document.getElementById('bAplicar').onclick = aplicar;
 document.getElementById('bFlash').onclick = flash;
+document.getElementById('bLenta').onclick = () => camLenta();
 document.getElementById('bLimpar').onclick = limpar;
 document.getElementById('bReset').onclick = () => { P = Object.assign({}, DEF); syncPanel(); save(); limpar(); flash(); };
 document.getElementById('bCam').onclick = async e => { if (await startCam()) e.target.classList.add('on'); };
@@ -579,12 +600,13 @@ addEventListener('keydown', e => {
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' && e.target.type === 'text') return;
   const k = e.key.toLowerCase();
   if (k === 'h') panel.classList.toggle('open'); else if (k === 'f') fullscreen(); else if (k === 'c') limpar(); else if (k === 'r') gravar();
+  else if (k === 'l') camLenta(); else if (e.key === '[') ajustaLenta(1 / 1.25); else if (e.key === ']') ajustaLenta(1.25);
   else if (e.key === ' ') { e.preventDefault(); flash(); }
   else if (/^[1-9]$/.test(e.key) && BANCO[+e.key - 1]) { carregarConfig(BANCO[+e.key - 1]); sel.value = 'b:' + (+e.key - 1); }
 });
 
 // ===== laço =====
-const t0 = performance.now(); let tAnt = t0, joyT = 0, acum = 0, tSim = 0;
+const t0 = performance.now(); let tAnt = t0, joyT = 0, acum = 0, tSim = 0, fatorLenta = 1;
 function frame(now) {
   const t = (now - t0) / 1000, dt = Math.min(.1, (now - tAnt) / 1000); tAnt = now;
   lerJoystick(dt);
@@ -594,11 +616,15 @@ function frame(now) {
       '<br>Alavanca direita lendo eixos ' + joyEstado.par.join(' e ') + ' · Botões apertados: ' + (joyEstado.bt.join(', ') || 'nenhum') : ''); }
   // velocidade: quantos passos do laço por quadro (60 por segundo = 1). Abaixo de 1, a tela
   // mistura o passo anterior com o atual para a imagem andar devagar sem engasgar.
-  acum += Math.max(0, P.Velocidade) * dt * 60 * TURBO;
+  const alvoLenta = P.Camlenta ? P.Lentidao : 1;
+  fatorLenta = P.Rampa > .01 ? fatorLenta * Math.pow(alvoLenta / fatorLenta, Math.min(1, dt * 3 / P.Rampa)) : alvoLenta; // rampa em escala logarítmica
+  if (Math.abs(fatorLenta - alvoLenta) < 1e-4) fatorLenta = alvoLenta;
+  const vel = Math.max(0, P.Velocidade) * fatorLenta;
+  acum += vel * dt * 60 * TURBO;
   let n = 0;
   while (acum >= 1 && n < 4 * TURBO) { tSim += 1 / 60; passo(tSim, 1 / 60); acum -= 1; n++; }
   if (n >= 4 * TURBO) acum = Math.min(acum, 1);
-  const lento = P.Velocidade < .999;
+  const lento = vel < .999;
   use(pShow, { src: loopA.tex, ant: lento ? loopB.tex : loopA.tex, nivel: P.Saidanivel, mistura: lento ? Math.min(1, acum) : 1 }, null);
   window.__frames++;
   requestAnimationFrame(frame);

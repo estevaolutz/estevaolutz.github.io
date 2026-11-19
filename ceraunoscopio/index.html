@@ -66,9 +66,9 @@ kbd{border:1px solid #ffffff30;border-radius:3px;padding:0 4px;font-size:11px;co
  <div>
   <h1>CERAUNOSCÓPIO</h1>
   <p>Uma máquina de relâmpagos. Cada raio é simulado pela física da descarga: o líder desce em degraus, a descarga de retorno sobe pelo canal, as descargas seguintes repetem o caminho, a corrente contínua mantém o canal aceso — e o trovão nasce da forma de cada raio.</p>
-  <p>Toque ou clique no céu para disparar. Controle tudo pelo painel ou pelo MIDI (Korg nanoPAD2 e Moog Sub Phatty já mapeados; qualquer controle pode ser aprendido).</p>
+  <p>Toque ou clique para disparar; arraste para girar o raio em 3D. Controle tudo pelo painel ou pelo MIDI (Korg nanoPAD2 e Moog Sub Phatty já mapeados; qualquer controle pode ser aprendido).</p>
   <button id="go">COMEÇAR</button>
-  <div class="k"><kbd>espaço</kbd> raio · <kbd>1</kbd>–<kbd>0</kbd> <kbd>-</kbd> <kbd>=</kbd> tipos · <kbd>S</kbd> câmera lenta · <kbd>O</kbd> obturador · <kbd>T</kbd> tempestade<br><kbd>P</kbd> pausa · <kbd>.</kbd> quadro a quadro · <kbd>L</kbd> linha do tempo · <kbd>M</kbd> painel · <kbd>H</kbd> legenda · <kbd>F</kbd> tela cheia · <kbd>R</kbd> gravar · <kbd>X</kbd> limpar · <kbd>B</kbd> cenário</div>
+  <div class="k"><kbd>espaço</kbd> raio · <kbd>1</kbd>–<kbd>0</kbd> <kbd>-</kbd> <kbd>=</kbd> tipos · <kbd>S</kbd> câmera lenta · <kbd>O</kbd> obturador · <kbd>T</kbd> tempestade<br><kbd>P</kbd> pausa · <kbd>.</kbd> quadro a quadro · <kbd>L</kbd> linha do tempo · <kbd>M</kbd> painel · <kbd>H</kbd> legenda · <kbd>F</kbd> tela cheia · <kbd>R</kbd> gravar · <kbd>X</kbd> limpar · <kbd>D</kbd> vista 3D</div>
  </div>
 </div>
 <script>
@@ -129,13 +129,14 @@ const SPEC=[
  ['expObt','Exposição do obturador',.5,30,6,{log:1,fmt:v=>v.toFixed(1)+' s',sec:'Tempo'}],
  ['pan','Movimento da câmera (obturador)',-400,400,0,{fmt:v=>v.toFixed(0)+' px/s',sec:'Tempo'}],
  ['tempestade','Tempestade automática',0,60,12,{fmt:v=>v.toFixed(0)+' raios/min',sec:'Tempo'}],
- ['dist','Distância',.3,20,4,{log:1,fmt:v=>v.toFixed(v<1?2:1)+' km',sec:'Cena'}],
- ['base','Base da nuvem',500,4000,1800,{fmt:v=>v.toFixed(0)+' m',sec:'Cena'}],
- ['chuva','Chuva',0,1,.45,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
- ['vento','Vento',0,60,8,{fmt:v=>v.toFixed(0)+' m/s',sec:'Cena'}],
- ['umidade','Umidade (cor H-alfa)',0,1,.35,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
- ['nevoa','Névoa',0,1,.4,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
- ['luzCidade','Brilho do céu à noite',0,1,.45,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
+ ['giro3d','Giro automático (3D)',-60,60,8,{fmt:v=>v.toFixed(0)+'°/s',sec:'Vista'}],
+ ['dist','Distância',.3,20,4,{log:1,fmt:v=>v.toFixed(v<1?2:1)+' km',sec:'Vista'}],
+ ['base','Base da nuvem',500,4000,1800,{fmt:v=>v.toFixed(0)+' m',sec:'Vista'}],
+ ['chuva','Chuva',0,1,.45,{fmt:v=>(v*100|0)+'%',sec:'_'}],
+ ['vento','Vento',0,60,8,{fmt:v=>v.toFixed(0)+' m/s',sec:'Vista'}],
+ ['umidade','Umidade (cor H-alfa)',0,1,.35,{fmt:v=>(v*100|0)+'%',sec:'Vista'}],
+ ['nevoa','Névoa',0,1,.4,{fmt:v=>(v*100|0)+'%',sec:'_'}],
+ ['luzCidade','Brilho do céu à noite',0,1,.45,{fmt:v=>(v*100|0)+'%',sec:'_'}],
  ['expo','Exposição',.1,10,1,{log:1,fmt:v=>v.toFixed(2)+'×',sec:'Imagem'}],
  ['halo','Halo',0,2.5,.6,{fmt:v=>v.toFixed(2),sec:'Imagem'}],
  ['persist','Persistência na retina',0,800,110,{fmt:v=>v.toFixed(0)+' ms',sec:'Imagem'}],
@@ -145,17 +146,17 @@ const SPEC=[
  ['volTrovao','Volume do trovão',0,1.5,.9,{fmt:v=>(v*100|0)+'%',sec:'Trovão'}],
  ['graves','Graves do trovão',0,1,.55,{fmt:v=>(v*100|0)+'%',sec:'Trovão'}],
  ['ambiente','Eco do ambiente',0,1,.4,{fmt:v=>(v*100|0)+'%',sec:'Trovão'}],
- ['volChuva','Som da chuva',0,1,.3,{fmt:v=>(v*100|0)+'%',sec:'Trovão'}],
+ ['volChuva','Som da chuva',0,1,.3,{fmt:v=>(v*100|0)+'%',sec:'_'}],
 ];
 function fmtN(n){return n>=1e6?(n/1e6).toFixed(1)+' mi':n>=1e3?Math.round(n/1e3)+' mil':Math.round(n)+'';}
 const PS=Object.fromEntries(SPEC.map(s=>[s[0],{id:s[0],l:s[1],min:s[2],max:s[3],def:s[4],...s[5]}]));
-const P={tipo:'neg',cenario:'mar',verCenario:false,lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
+const P={tipo:'neg',cenario:'mar',verCenario:false,v3:true,lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
  ...Object.fromEntries(SPEC.map(s=>[s[0],s[4]]))};
 P.tempestade=0; // começa desligada; o padrão 12 vale ao ligar
 let stormRate=12;
 const SAVEKEY='ceraunoscopio-v1';
 try{const s=JSON.parse(localStorage.getItem(SAVEKEY)||'{}');for(const k in s)if(k in P)P[k]=s[k];}catch(e){}
-P.tempestade=0;P.lenta=false;P.obturador=false;P.cenario='mar';P.verCenario=false;
+P.tempestade=0;P.lenta=false;P.obturador=false;P.cenario='mar';P.verCenario=false;if(P.v3==null)P.v3=true;
 let saveT=0;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(SAVEKEY,JSON.stringify(P));}catch(e){}},300);}
 const toU=(s,v)=>s.log?Math.log(v/s.min)/Math.log(s.max/s.min):(v-s.min)/(s.max-s.min);
 const fromU=(s,u)=>{u=clamp(u,0,1);return s.log?s.min*Math.pow(s.max/s.min,u):s.min+(s.max-s.min)*u;};
@@ -440,7 +441,10 @@ function finalize(G,d){
  F.dur=end+F.c.tLG*4+.05;
  let tv=1e9;for(let i=0;i<n;i++)if(F.vis[i]>.5&&F.P[i]>=0)tv=Math.min(tv,F.TL[i]);F.tVis=tv<1e9?tv:0;
  F.tSnd=F.strokes.length?F.strokes[0].t:(F.cc.length?F.cc[0].t0:F.tVis);
- F.lum=new Float32Array(n);F.sx=new Float32Array(n);F.sy=new Float32Array(n);
+ F.lum=new Float32Array(n);F.sx=new Float32Array(n);F.sy=new Float32Array(n);F.dz=new Float32Array(n);
+ {const lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];for(let i=0;i<n;i++){if(F.Y[i]>P.base+400)continue;const v=[F.X[i],F.Y[i],F.Z[i]];for(let a=0;a<3;a++){if(v[a]<lo[a])lo[a]=v[a];if(v[a]>hi[a])hi[a]=v[a];}}
+  if(lo[0]>hi[0]){lo[0]=hi[0]=F.X[0];lo[1]=hi[1]=F.Y[0];lo[2]=hi[2]=F.Z[0];}
+  F.ctr=[(lo[0]+hi[0])/2,(lo[1]+hi[1])/2,(lo[2]+hi[2])/2];F.top=Math.max(hi[1]-lo[1],(hi[0]-lo[0])*.6,(hi[2]-lo[2])*.6,300);}
  F.done={};
  return F;
 }
@@ -642,7 +646,7 @@ function full(){gl.bindVertexArray(fsVAO);gl.drawArrays(gl.TRIANGLES,0,3);}
 
 /* ============================================================ ESTADO DA SIMULAÇÃO */
 let flashes=[],simT=0,lastWin=1/60,paused=false,stepOnce=false,persIdx=0,accIdx=0,accClear=true,lastFlash=null;
-const LCAP=45;const lights=new Float32Array(32),lightR=new Float32Array(8);let flashG=0,nInst=0;
+const LCAP=32;const lights=new Float32Array(32),lightR=new Float32Array(8);let flashG=0,nInst=0;
 function lightColor(D){
  const h=P.umidade;let c=[lerp(.70,1.0,h*.75),lerp(.70,.6,h),lerp(1.0,.9,h)];
  const k=D/1000/14;c=[c[0]*Math.exp(-k*.25),c[1]*Math.exp(-k*.55),c[2]*Math.exp(-k*1.1)];
@@ -655,14 +659,18 @@ function buildFrame(ta,tb,win){
   const a=ta-F.t0,b=tb-F.t0;if(b<0)continue;if(a>F.dur){flashes.splice(fi,1);continue;}
   flashLum(F,Math.max(a,0),b);
   const drift=P.vento*Math.max(0,b)*.6;
-  for(let i=0;i<F.n;i++){const Z=Math.max(F.Z[i],30),dx=F.Y[i]<P.base?drift:0;F.sx[i]=cw/2+FL*(F.X[i]+dx)/Z;F.sy[i]=HY-FL*(F.Y[i]-camH)/Z;}
+  if(P.v3){const cY=Math.cos(V3.yaw),sY=Math.sin(V3.yaw),cP=Math.cos(V3.pitch),sP=Math.sin(V3.pitch),fl=FL*.9;
+   for(let i=0;i<F.n;i++){const dx=F.X[i]+(F.Y[i]<P.base?drift:0)-V3.t[0],dy=F.Y[i]-V3.t[1],dz=F.Z[i]-V3.t[2];
+    const x1=cY*dx-sY*dz,z1=sY*dx+cY*dz,y2=cP*dy-sP*z1,z2=sP*dy+cP*z1+V3.dist;F.dz[i]=z2;
+    if(z2<40){F.sx[i]=NaN;continue;}F.sx[i]=cw/2+fl*x1/z2;F.sy[i]=ch*.5-fl*y2/z2;}}
+  else for(let i=0;i<F.n;i++){const Z=Math.max(F.Z[i],30),dx=F.Y[i]<P.base?drift:0;F.dz[i]=Z;F.sx[i]=cw/2+FL*(F.X[i]+dx)/Z;F.sy[i]=HY-FL*(F.Y[i]-camH)/Z;}
   for(let i=0;i<F.n;i++){const p=F.P[i];if(p<0)continue;const L0=F.lum[i]*G;if(L0<4e-4)continue;const L=L0/(1+L0/LCAP);
    const w=L*F.len[i];const bx=clamp(Math.floor((F.sx[i]/cw)*8),0,7),o=bx*5;
    acc[o]+=w;acc[o+1]+=w*F.X[i];acc[o+2]+=w*F.Y[i];acc[o+3]+=w*F.Z[i];acc[o+4]+=w*(F.X[i]*F.X[i]+F.Y[i]*F.Y[i]*.6);
    flashG+=w/(F.Z[i]*F.Z[i]+1e5);
-   const Lv=L*(P.verCenario?F.vis[i]:Math.max(F.vis[i],.3));if(Lv<2.5e-3||ni>=MAXI)continue;
-   const Z=Math.max(F.Z[i],30),wm=(.2+.95*F.Q[i]*F.Q[i])*(1+.35*Math.log(1+Lv)),wt=FL*wm/Z,wp=Math.max(.8,wt);
-   const I=Lv*Math.min(1,Math.sqrt(wt/.8)*1.1)*F.jit[i];
+   const vis=F.vis[i],Lv=L*(.4+.6*vis);if(Lv<2.5e-3||ni>=MAXI||F.sx[i]!==F.sx[i]||F.sx[p]!==F.sx[p])continue;
+   const Z=Math.max(F.dz[i],30),wm=(.2+.95*F.Q[i]*F.Q[i])*(1+.35*Math.log(1+Lv))*(1+3.5*(1-vis)),wt=FL*wm/Z,wp=Math.max(.8,wt);
+   const I=Lv*Math.min(1,Math.sqrt(wt/.8)*1.1)*F.jit[i]*(1-.35*(1-vis))*(P.v3?clamp(1.35-.35*Z/V3.dist,.45,1.4):1);
    const k=ni*8;instData[k]=F.sx[p];instData[k+1]=F.sy[p];instData[k+2]=F.sx[i];instData[k+3]=F.sy[i];
    instData[k+4]=wp;instData[k+5]=I;instData[k+6]=1/Z;instData[k+7]=0;ni++;}
  }
@@ -678,7 +686,7 @@ function render(dtReal){
  bindOut(T.bolt);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
  const D=(lastFlash?lastFlash.Z[0]:P.dist*1000),lc=lightColor(Math.min(D,P.dist*1000*3)),core=[lerp(1,lc[0],.18),lerp(1,lc[1],.18),lerp(1,lc[2],.18)];
  if(nInst){gl.enable(gl.BLEND);gl.blendEquation(gl.MAX);gl.useProgram(pSeg.p);gl.uniform2f(pSeg.u.res,cw,ch);gl.uniform3fv(pSeg.u.core,core);gl.uniform3fv(pSeg.u.sheath,[lc[0]*.85,lc[1]*.7,lc[2]*1.15]);
-  gl.uniform1f(pSeg.u.HY,HY);gl.uniform1f(pSeg.u.FL,FL);gl.uniform1f(pSeg.u.camH,camH);gl.uniform1i(pSeg.u.skyT,4);gl.uniform1f(pSeg.u.city,P.cenario==='cidade'?1:0);gl.uniform1f(pSeg.u.bare,P.verCenario?0:1);tex(4,skyTex);
+  gl.uniform1f(pSeg.u.HY,HY);gl.uniform1f(pSeg.u.FL,FL);gl.uniform1f(pSeg.u.camH,camH);gl.uniform1i(pSeg.u.skyT,4);gl.uniform1f(pSeg.u.city,P.cenario==='cidade'?1:0);gl.uniform1f(pSeg.u.bare,1);tex(4,skyTex);
   gl.bindVertexArray(segVAO);gl.bindBuffer(gl.ARRAY_BUFFER,iB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instData,0,nInst*8);
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,nInst);gl.disable(gl.BLEND);gl.blendEquation(gl.FUNC_ADD);}
  gl.useProgram(pDown.p);gl.uniform1i(pDown.u.t,0);
@@ -693,7 +701,7 @@ function render(dtReal){
  gl.uniform2f(s.res,cw,ch);gl.uniform1f(s.HY,HY);gl.uniform1f(s.FL,FL);gl.uniform1f(s.camH,camH);gl.uniform1f(s.Hc,P.base);
  gl.uniform1f(s.time,performance.now()/1000);gl.uniform1f(s.rain,P.chuva);gl.uniform1f(s.fog,P.nevoa);gl.uniform1f(s.cityGlow,P.luzCidade);
  gl.uniform1f(s.flashG,flashG);gl.uniform1f(s.windX,P.vento*.1);gl.uniform1f(s.scen,['mar','campo','cidade','morros'].indexOf(P.cenario));
- gl.uniform1f(s.bloomAmt,P.halo);gl.uniform1f(s.bare,P.verCenario?0:1);gl.uniform1f(s.persAmt,P.persist>0?.55:0);
+ gl.uniform1f(s.bloomAmt,P.halo);gl.uniform1f(s.bare,1);gl.uniform1f(s.persAmt,P.persist>0?.55:0);
  gl.uniform4fv(s.Lp,lights);gl.uniform1fv(s.Lr,lightR);gl.uniform3fv(s.lCol,lc);gl.uniform3fv(s.core,core);
  gl.uniform1i(s.boltT,0);gl.uniform1i(s.bloomT,1);gl.uniform1i(s.bloomLo,2);gl.uniform1i(s.persT,3);gl.uniform1i(s.skyT,4);
  tex(0,T.bolt.t);tex(1,T.up[0].t);tex(2,T.up[4].t);tex(3,T.pers[persIdx].t);tex(4,skyTex);full();
@@ -710,6 +718,9 @@ function render(dtReal){
 
 /* ============================================================ DISPARO */
 let panBend=0,heldKeys=new Set(),holdFlash=null;
+const V3={yaw:0,pitch:.12,dist:5200,t:[0,900,4000],goal:[0,900,4000],gdist:5200,drag:null,pts:new Map(),pinch:0};
+function recenter(snap){const F=lastFlash;if(F){V3.goal=F.ctr.slice();V3.gdist=clamp(FL*.9*F.top/(.7*Math.min(ch,cw*.75))+F.top*.25,900,40000);}else{V3.goal=[0,P.base*.5,P.dist*1000];V3.gdist=P.base*2.6;}
+ if(snap){V3.t=V3.goal.slice();V3.dist=V3.gdist;}}
 function fire(type,opt={}){
  type=type||P.tipo;
  const D=(opt.D??P.dist*(type==='perto'?.12:1)*(opt.Dmul||1))*1000;
@@ -720,7 +731,7 @@ function fire(type,opt={}){
  if(!F)return null;
  F.type=type;F.D=Z;F.xs=xs;
  const skip=(P.lenta&&P.lentaFator<.2)?Math.max(0,F.tVis-.0015):0;F.t0=simT-skip;
- flashes.push(F);lastFlash=F;if(flashes.length>14)flashes.shift();
+ flashes.push(F);lastFlash=F;if(P.v3&&!V3.drag)recenter(false);if(flashes.length>14)flashes.shift();
  thunder(F);hudFlash(F);
  return F;
 }
@@ -775,7 +786,7 @@ function initAudio(){
 function audioParams(){if(!AC)return;const t=AC.currentTime;
  thBus.gain.setTargetAtTime(P.volTrovao,t,.05);shelf.gain.setTargetAtTime(-4+P.graves*16,t,.05);
  wetG.gain.setTargetAtTime(P.ambiente*1.3,t,.05);dryG.gain.setTargetAtTime(1-P.ambiente*.35,t,.05);
- rainG.gain.setTargetAtTime(P.verCenario?P.volChuva*P.chuva*.22:0,t,.3);}
+ rainG.gain.setTargetAtTime(0,t,.3);}
 function makeIR(){if(!AC)return;const sr=AC.sampleRate,len=Math.floor(sr*4.5),b=AC.createBuffer(2,len,sr),sc=P.cenario;
  const tau={mar:1.9,campo:.9,cidade:1.5,morros:2.2}[sc];
  const echoes={mar:[],campo:[[.18,.25]],cidade:[[.03,.5],[.07,.4],[.11,.35],[.16,.3],[.23,.25],[.31,.2],[.45,.15]],morros:[[.6,.45],[1.15,.35],[1.8,.25],[2.6,.15]]}[sc];
@@ -875,9 +886,9 @@ function buildPanel(){
  <div class="btns"><button id="bFire">⚡ Raio (espaço)</button><button id="bClear">Limpar (X)</button><button id="bPause">Pausa (P)</button><button id="bStep">Quadro → (.)</button></div>`;
  const extra={Tempo:`<label class="chk"><input type="checkbox" id="chk_lenta"> Câmera lenta (S)</label><label class="chk"><input type="checkbox" id="chk_obturador"> Obturador — longa exposição (O)</label><label class="chk"><input type="checkbox" id="chk_tempestade"> Tempestade automática (T)</label><label class="chk"><input type="checkbox" id="chk_tl"> Linha do tempo do raio (L)</label>`,
   CenaX:`<div class="row"><label>Cenário</label><span></span><span></span><select id="sel_cenario">${Object.entries(SCN).map(([k,v])=>`<option value="${k}">${v.n}</option>`).join('')}</select></div>`,
-  Cena:`<label class="chk"><input type="checkbox" id="chk_cen"> Mostrar cenário — céu, mar e chuva (B)</label><p class="note">Desligado: só os relâmpagos, sobre fundo preto.</p>`,
+  Vista:`<label class="chk"><input type="checkbox" id="chk_v3"> Vista 3D — arraste para girar, roda/pinça para aproximar (D)</label><div class="btns"><button id="bRec3">Recentrar no último raio</button></div><p class="note">Toque sem arrastar dispara um raio. Duplo clique recentra.</p>`,
   'Trovão':`<p class="note">O trovão chega com o atraso real: ~3 s por km (a 4 km, uns 12 s — a legenda mostra a contagem).</p><div class="btns"><button id="bTestTh">Ouvir um trovão agora (raio a 600 m)</button></div><label class="chk"><input type="checkbox" id="chk_atraso"> Atraso real do som (343 m/s)</label>`};
- for(const sec of['Raio','Tempo','Cena','Imagem','Trovão']){
+ for(const sec of['Raio','Vista','Tempo','Imagem','Trovão']){
   h+=`<details ${sec==='Raio'?'open':''}><summary>${sec}</summary>${extra[sec]||''}`;
   for(const id of secs[sec]){const s=PS[id];h+=`<div class="row" data-id="${id}"><label>${s.l}</label><span class="v" id="v_${id}"></span><button class="lrn" data-l="${id}">MIDI</button><input type="range" min="0" max="1000" id="r_${id}"></div>`;}
   h+='</details>';}
@@ -893,7 +904,7 @@ function buildPanel(){
  <details><summary>Sobre a física</summary><p class="note">O líder escalonado cresce como no modelo de ruptura dielétrica: as pontas mais perto do chão (onde o campo é maior) avançam mais (η alto = um canal dominante; η baixo = arbusto). Cada segmento desvia ~16° do anterior (Hill). A distância de impacto é 10·I^0,65 m; daí saem líderes ascendentes do chão e dos prédios. A descarga de retorno sobe a ~1/3 da velocidade da luz e acende os ramos; a luz cresce com I^1,75. Descargas seguintes vêm a cada ~60 ms por um líder contínuo (~10^7 m/s), às vezes abrindo uma nova terminação. Corrente contínua e componentes M reacendem o canal. A câmera integra a luz em cada quadro: em tempo real você vê o pisca-pisca; em câmera lenta, os degraus.</p>
  <p class="note">O trovão soma ondas N emitidas por cada pedaço do canal: pedaços perpendiculares à sua linha de visada chegam juntos (estalo), os oblíquos se espalham (ronco). O atraso é a distância ÷ 343 m/s, com eco do chão e do ambiente.</p></details>`;
  panel.innerHTML=h;
- for(const id in PS){const r=$('#r_'+id);r.addEventListener('input',()=>setP(id,fromU(PS[id],r.value/1000),true));}
+ for(const id in PS){const r=$('#r_'+id);if(r)r.addEventListener('input',()=>setP(id,fromU(PS[id],r.value/1000),true));}
  panel.querySelectorAll('.lrn').forEach(b=>{b.onclick=()=>{learn=learn===b.dataset.l?null:b.dataset.l;refreshLearn();};
   b.oncontextmenu=e=>{e.preventDefault();for(const k in MAP)if(MAP[k]===b.dataset.l)delete MAP[k];localStorage.setItem('ceraunoscopio-midi',JSON.stringify(MAP));refreshLearn();};});
  $('#sel_tipo').onchange=e=>setP('tipo',e.target.value);
@@ -901,7 +912,7 @@ function buildPanel(){
  $('#r_compOp').oninput=e=>{P.compOp=e.target.value/1000;compUI();};
  $('#chk_lenta').onchange=e=>setP('lenta',e.target.checked);$('#chk_obturador').onchange=e=>setP('obturador',e.target.checked);
  $('#chk_tempestade').onchange=e=>setP('tempestade',e.target.checked?stormRate:0);$('#chk_tl').onchange=e=>{tlOn=e.target.checked;tlc.style.display=tlOn?'block':'none';};
- $('#chk_atraso').onchange=e=>setP('atrasoReal',e.target.checked);$('#chk_cen').onchange=e=>setP('verCenario',e.target.checked);
+ $('#chk_atraso').onchange=e=>setP('atrasoReal',e.target.checked);$('#chk_v3').onchange=e=>setP('v3',e.target.checked);$('#bRec3').onclick=()=>recenter(true);
  $('#bTestTh').onclick=()=>{if(AC&&AC.state!=='running')AC.resume();fire('neg',{xs:.5,D:.6});};
  $('#pads').onclick=e=>{const b=e.target.closest('button');if(b)padAction(+b.dataset.i,.6);};
  $('#bFire').onclick=()=>fire();$('#bClear').onclick=clearAll;$('#bPause').onclick=()=>{paused=!paused;};$('#bStep').onclick=()=>{paused=true;stepOnce=true;};
@@ -914,7 +925,7 @@ function buildPanel(){
 function syncUI(){
  for(const id in PS){const r=$('#r_'+id),v=$('#v_'+id);if(r){r.value=Math.round(toU(PS[id],P[id])*1000);v.textContent=PS[id].fmt(P[id]);}}
  $('#sel_tipo').value=P.tipo;$('#chk_lenta').checked=P.lenta;$('#chk_obturador').checked=P.obturador;
- $('#chk_tempestade').checked=P.tempestade>0;$('#chk_atraso').checked=P.atrasoReal;$('#chk_cen').checked=P.verCenario;$('#sel_comp').value=P.comp;
+ $('#chk_tempestade').checked=P.tempestade>0;$('#chk_atraso').checked=P.atrasoReal;$('#chk_v3').checked=P.v3;$('#sel_comp').value=P.comp;
  $('#r_compOp').value=P.compOp*1000;$('#v_compOp').textContent=(P.compOp*100|0)+'%';
  panel.querySelectorAll('.pads button').forEach((b,i)=>b.classList.toggle('act',PADS[i]===P.tipo||(PADS[i]==='#tempestade'&&P.tempestade>0)||(PADS[i]==='#obturador'&&P.obturador)||(PADS[i]==='#lenta'&&P.lenta)));
 }
@@ -926,7 +937,7 @@ function setP(id,v,fromUI){
  if(id==='cenario'){TOWERS.length=0;computeSkyline();makeIR();}
  if(id==='obturador'&&v)accClear=true;
  if(['volTrovao','graves','ambiente','volChuva','chuva','verCenario'].includes(id))audioParams();
- if(id==='verCenario')syncUI();
+ if(id==='verCenario'||id==='v3')syncUI();if(id==='v3'&&v)recenter(true);
  if(id==='lenta'||id==='obturador'||id==='tempestade')syncUI();
  if(id!=='tempestade')save();
  showToast(id,v);
@@ -942,8 +953,8 @@ function refreshLearn(){panel.querySelectorAll('.lrn').forEach(b=>{const id=b.da
  const t=$('#mapT');if(t)t.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');}
 function padUI(){const b=$('#bPadLearn');if(b)b.textContent=padLearn>=0?`Toque o pad ${padLearn+1} de 16…`:'Aprender os 16 pads';}
 function flashPad(i){const b=panel.querySelectorAll('.pads button')[i];if(b){b.style.background='#3a2a66';setTimeout(()=>b.style.background='',160);}}
-let toastT=0;function showToast(id,v){if(!PS[id]&&!['tipo','cenario','lenta','obturador','tempestade','verCenario'].includes(id))return;
- const s=PS[id]?PS[id].l+': '+PS[id].fmt(v):id==='tipo'?TNAME[v]:id==='cenario'?'Cenário: '+SCN[v].n:id==='tempestade'?(v?'Tempestade automática: '+v.toFixed(0)+'/min':'Tempestade desligada'):id==='verCenario'?(v?'Cenário ligado':'Só os relâmpagos'):(id==='lenta'?'Câmera lenta':'Obturador')+(v?' ligado':' desligado');
+let toastT=0;function showToast(id,v){if(!PS[id]&&!['tipo','cenario','lenta','obturador','tempestade','verCenario','v3'].includes(id))return;
+ const s=PS[id]?PS[id].l+': '+PS[id].fmt(v):id==='tipo'?TNAME[v]:id==='cenario'?'Cenário: '+SCN[v].n:id==='tempestade'?(v?'Tempestade automática: '+v.toFixed(0)+'/min':'Tempestade desligada'):id==='v3'?(v?'Vista 3D':'Vista da câmera fixa'):id==='verCenario'?(v?'Cenário ligado':'Só os relâmpagos'):(id==='lenta'?'Câmera lenta':'Obturador')+(v?' ligado':' desligado');
  hudMsg(s);}
 
 /* ============================================================ HUD, LINHA DO TEMPO, COMPARAÇÃO, GRAVAÇÃO */
@@ -954,7 +965,7 @@ function hudFlash(F){const ns=F.strokes.length;
  F.thAt=performance.now()+(F.tSnd/((P.lenta?P.lentaFator:1)))*1000+F.D/343*(P.atrasoReal?1:.15)*1000;hudDraw();}
 function hudDraw(){if(!hudOn){hud.style.opacity=0;return;}
  let th='';if(lastFlash&&lastFlash.thAt){const r=(lastFlash.thAt-performance.now())/1000;if(r>.05)th=`\ntrovão em ${r.toFixed(1)} s`;}
- const mode=(P.lenta?`câmera lenta 1/${Math.round(1/P.lentaFator)} · `:'')+(P.obturador?'obturador · ':'')+(paused?'PAUSA · ':'')+(P.tempestade?'tempestade · ':'');
+ const mode=(P.v3?'3D · ':'')+(P.lenta?`câmera lenta 1/${Math.round(1/P.lentaFator)} · `:'')+(P.obturador?'obturador · ':'')+(paused?'PAUSA · ':'')+(P.tempestade?'tempestade · ':'');
  hud.textContent=(hudLines[0]||'')+th+(mode?'\n'+mode.replace(/ · $/,''):'')+(hudLines[1]?'\n'+hudLines[1]:'');hud.style.opacity=1;clearTimeout(hudT);hudT=setTimeout(()=>{hudLines[1]='';if(!paused&&!P.lenta)hud.style.opacity=.0;},4500);}
 const tlc=$('#tl'),tx=tlc.getContext('2d');let tlOn=false;
 function drawTL(){if(!tlOn||!lastFlash)return;const F=lastFlash,dpr=Math.min(2,devicePixelRatio||1),W=tlc.clientWidth*dpr,H=96*dpr;if(tlc.width!==W){tlc.width=W;tlc.height=H;}
@@ -998,6 +1009,7 @@ function loop(now){
    if(!F.thPlayed&&simT>=F.t0+F.tSnd){if(F.thBuf)playThunder(F);else{F.thWant=true;F.thLate=performance.now();}}
    for(let k=0;k<F.strokes.length;k++){const S=F.strokes[k];if(!F.done[k]&&simT>=F.t0+S.t){F.done[k]=1;midiStroke(F,S);}}}
  }
+ if(P.v3){if(!V3.drag)V3.yaw+=(P.giro3d+panBend*.15)*DEG*dtReal;const k=Math.min(1,dtReal*1.8);for(let a=0;a<3;a++)V3.t[a]+=(V3.goal[a]-V3.t[a])*k;V3.dist+=(V3.gdist-V3.dist)*k;}
  buildFrame(t0,t1,win);render(paused?0:dtReal);drawTL();
  if(lastFlash&&lastFlash.thAt&&now<lastFlash.thAt+300&&hudOn&&(now|0)%5===0)hudDraw();
  requestAnimationFrame(loop);
@@ -1006,7 +1018,19 @@ function pickStorm(){const r=rnd();return r<.32?'ic':r<.42?'aranha':r<.5?'horiz'
 
 /* ============================================================ ENTRADAS */
 addEventListener('resize',()=>{resize();accClear=true;});
-cv.addEventListener('pointerdown',e=>{if(panel.classList.contains('on')&&e.clientX>innerWidth-panel.offsetWidth)return;fireAt(e.clientX,e.clientY,P.tipo);});
+cv.addEventListener('pointerdown',e=>{if(panel.classList.contains('on')&&e.clientX>innerWidth-panel.offsetWidth)return;
+ if(!P.v3){fireAt(e.clientX,e.clientY,P.tipo);return;}
+ cv.setPointerCapture(e.pointerId);V3.pts.set(e.pointerId,[e.clientX,e.clientY]);
+ if(V3.pts.size===2){const[a,b]=[...V3.pts.values()];V3.pinch=Math.hypot(a[0]-b[0],a[1]-b[1]);V3.drag={moved:true};return;}
+ V3.drag={x:e.clientX,y:e.clientY,moved:false};});
+cv.addEventListener('pointermove',e=>{if(!P.v3||!V3.drag||!V3.pts.has(e.pointerId))return;V3.pts.set(e.pointerId,[e.clientX,e.clientY]);
+ if(V3.pts.size===2){const[a,b]=[...V3.pts.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(V3.pinch)V3.gdist=clamp(V3.gdist*V3.pinch/d,600,30000);V3.pinch=d;return;}
+ const dx=e.clientX-V3.drag.x,dy=e.clientY-V3.drag.y;if(Math.abs(dx)+Math.abs(dy)>4)V3.drag.moved=true;
+ if(V3.drag.moved){V3.yaw+=dx*.006;V3.pitch=clamp(V3.pitch+dy*.005,-1.35,1.45);V3.drag.x=e.clientX;V3.drag.y=e.clientY;}});
+const endDrag=e=>{if(!P.v3||!V3.drag)return;V3.pts.delete(e.pointerId);if(V3.pts.size)return;if(!V3.drag.moved&&e.type==='pointerup')fire(P.tipo);V3.drag=null;V3.pinch=0;};
+cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
+cv.addEventListener('wheel',e=>{if(!P.v3)return;e.preventDefault();V3.gdist=clamp(V3.gdist*Math.exp(e.deltaY*.0012),600,30000);},{passive:false});
+cv.addEventListener('dblclick',()=>{if(P.v3)recenter(false);});
 $('#dot').onclick=()=>panel.classList.toggle('on');
 addEventListener('keydown',e=>{
  if(e.target.tagName==='INPUT'&&e.target.type!=='range'||e.target.tagName==='SELECT')return;
@@ -1019,13 +1043,13 @@ addEventListener('keydown',e=>{
  else if(k==='m')panel.classList.toggle('on');else if(k==='h'){hudOn=!hudOn;hudDraw();}
  else if(k==='l'){tlOn=!tlOn;tlc.style.display=tlOn?'block':'none';const c=$('#chk_tl');if(c)c.checked=tlOn;}
  else if(k==='f'){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{});}
- else if(k==='r')toggleRec();else if(k==='b')toggle('verCenario');else if(k==='x')clearAll();
+ else if(k==='r')toggleRec();else if(k==='d')toggle('v3');else if(k==='x')clearAll();
  else if(k==='c'){P.comp=P.comp==='off'?'cortina':P.comp==='cortina'?'sobre':'off';const s=$('#sel_comp');if(s)s.value=P.comp;compUI();}
 });
 $('#go').onclick=()=>{$('#intro').style.display='none';initAudio();initMIDI();if(AC.state!=='running')AC.resume();setTimeout(()=>fire('neg',{xs:.5}),350);};
 
 resize();buildPanel();requestAnimationFrame(loop);
-window.__cera={fire,P,setP,flashes:()=>flashes,get simT(){return simT;},pause:v=>{paused=v;},initAudio,
+window.__cera={V3,recenter,fire,P,setP,flashes:()=>flashes,get simT(){return simT;},pause:v=>{paused=v;},initAudio,
  bf:(a,b,w)=>{const t=performance.now();buildFrame(a,b,w);return [performance.now()-t,nInst];},
  at:(F,t,win)=>{paused=true;lastWin=win||1/60;simT=F.t0+t;for(const p of T.pers){bindOut(p);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);}}};
 </script>

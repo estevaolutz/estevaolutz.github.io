@@ -100,7 +100,7 @@ const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
 const TYPES=[
  ['neg','Negativo nuvem-solo'],['ram','Negativo muito ramificado'],['pos','Positivo'],
  ['aranha','Aranha (rastejador de bigorna)'],['aranhapos','Aranha + positivo'],['ic','Intranuvem (clarão)'],
- ['asc','Ascendente (de prédio/torre)'],['horiz','Horizontal sob a nuvem'],['azul','Do céu azul (diagonal)'],
+ ['asc','Ascendente (do chão para a nuvem)'],['horiz','Horizontal sob a nuvem'],['azul','Do céu azul (diagonal)'],
  ['estrobo','Estroboscópio (muitas descargas)'],['perto','Muito perto'],['contas','Em contas']];
 const TNAME=Object.fromEntries(TYPES);
 const PADS=[...TYPES.map(t=>t[0]),'#tempestade','#obturador','#lenta','#foto'];
@@ -135,7 +135,7 @@ const SPEC=[
  ['vento','Vento',0,60,8,{fmt:v=>v.toFixed(0)+' m/s',sec:'Cena'}],
  ['umidade','Umidade (cor H-alfa)',0,1,.35,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
  ['nevoa','Névoa',0,1,.4,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
- ['luzCidade','Luz da cidade no céu',0,1,.45,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
+ ['luzCidade','Brilho do céu à noite',0,1,.45,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
  ['expo','Exposição',.1,10,1,{log:1,fmt:v=>v.toFixed(2)+'×',sec:'Imagem'}],
  ['halo','Halo',0,2.5,.8,{fmt:v=>v.toFixed(2),sec:'Imagem'}],
  ['persist','Persistência na retina',0,800,110,{fmt:v=>v.toFixed(0)+' ms',sec:'Imagem'}],
@@ -149,13 +149,13 @@ const SPEC=[
 ];
 function fmtN(n){return n>=1e6?(n/1e6).toFixed(1)+' mi':n>=1e3?Math.round(n/1e3)+' mil':Math.round(n)+'';}
 const PS=Object.fromEntries(SPEC.map(s=>[s[0],{id:s[0],l:s[1],min:s[2],max:s[3],def:s[4],...s[5]}]));
-const P={tipo:'neg',cenario:'cidade',lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
+const P={tipo:'neg',cenario:'campo',lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
  ...Object.fromEntries(SPEC.map(s=>[s[0],s[4]]))};
 P.tempestade=0; // começa desligada; o padrão 12 vale ao ligar
 let stormRate=12;
 const SAVEKEY='ceraunoscopio-v1';
 try{const s=JSON.parse(localStorage.getItem(SAVEKEY)||'{}');for(const k in s)if(k in P)P[k]=s[k];}catch(e){}
-P.tempestade=0;P.lenta=false;P.obturador=false;
+P.tempestade=0;P.lenta=false;P.obturador=false;P.cenario='campo';
 let saveT=0;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(SAVEKEY,JSON.stringify(P));}catch(e){}},300);}
 const toU=(s,v)=>s.log?Math.log(v/s.min)/Math.log(s.max/s.min):(v-s.min)/(s.max-s.min);
 const fromU=(s,u)=>{u=clamp(u,0,1);return s.log?s.min*Math.pow(s.max/s.min,u):s.min+(s.max-s.min)*u;};
@@ -172,6 +172,7 @@ const TOWERS=[];
 const DOMES=[];for(let k=0;k<22;k++){const r1=hash2(k,77),r2=hash2(k,91),r3=hash2(k,13),r4=hash2(k,29);
  DOMES.push({x:(r1-.5)*16000,z:1800+r2*7000,r:220+r3*520,h:(180+Math.pow(r4,1.2)*720)*(.7+.3*r3),p:.38+r4*.4});}
 function groundH(x,z){
+ return 0;
  let h=0;
  switch(P.cenario){
   case 'mar':h=0;break;
@@ -400,7 +401,7 @@ function genHz(o,kind){
 function genAsc(o){
  const Hc=P.base;let bx=o.x,bz=o.z,bh=-1;
  for(let k=0;k<40;k++){const x=o.x+gauss()*450,z=o.z+gauss()*350,h=groundH(x,z);if(h>bh){bh=h;bx=x;bz=z;}}
- if(bh<90){const t={x:bx,z:bz,w:5,h:Math.max(bh,0)+110+rnd()*90};TOWERS.push(t);if(TOWERS.length>8)TOWERS.shift();computeSkyline();bh=t.h;}
+ bh=Math.max(bh,0);
  const G=newTree(),root=addN(G,bx,bh,bz,-1,0,1);
  const o2={root,h:[gauss()*.1,1,gauss()*.1],mode:'up',t0:0,L:P.degrau*.8,v:1.5e5,tort:P.tort,pBr:.45*P.ram,eta:1.3,grav:1,persist:1.1,brGrav:.25,decay:.995,
   maxN:6000,maxStall:30,tMax:.12,H0:Hc,stopY:Hc+150,bounds:tp=>tp.y>bh-40};
@@ -703,13 +704,19 @@ self.onmessage=e=>{const d=e.data,sr=d.sr,N=Math.ceil(d.len*sr),L=new Float32Arr
  for(let i=0;i<S.length;i+=9){const mx=S[i],my=S[i+1],mz=S[i+2],ln=S[i+3],ux=S[i+4],uy=S[i+5],uz=S[i+6],E=S[i+7],t0=S[i+8];
   for(let rf=0;rf<2;rf++){const yy=rf?-my:my,dx=mx,dy=yy-oy,dz=mz,r=Math.sqrt(dx*dx+dy*dy+dz*dz)+1,nx=dx/r,ny=dy/r,nz=dz/r;
    const cs=Math.abs(ux*nx+(rf?-uy:uy)*ny+uz*nz),dT=ln*cs/c;
-   const R0=Math.min(9,Math.max(.6,3.4*Math.sqrt(E))),T0=1.3*R0/c,Tn=T0*(1+.12*Math.log(1+r/50)),Tt=Tn+dT,tr=4e-5+r*8e-7+dT*.25;
+   const R0=Math.min(6,Math.max(.4,1.8*Math.sqrt(E))),T0=1.3*R0/c,Tn=T0*(1+.12*Math.log(1+r/50)),Tt=Tn+dT,tr=2e-5+r*1.4e-7+dT*.12;
    let a=d.K*Math.sqrt(E)*ln/r*Tn/Tt*(rf?.5:1)*Math.exp(-r/d.att);
    const pan=Math.max(-1,Math.min(1,Math.atan2(mx,mz)/.9)),gl=Math.cos((pan+1)*Math.PI/4),gr=Math.sin((pan+1)*Math.PI/4);
    const st=Math.floor((t0+r/c*d.dk)*sr)-Math.floor(tr*sr),ns=Math.ceil((Tt+2*tr)*sr);
    for(let n=0;n<ns;n++){const idx=st+n;if(idx<0)continue;if(idx>=N)break;const t=n/sr-tr;
     let v=t<0?1:t>Tt?-1:1-2*t/Tt;const env=t<0?.5-.5*Math.cos(Math.PI*(t+tr)/tr):t>Tt?.5+.5*Math.cos(Math.PI*(t-Tt)/tr):1;v*=env*a;
-    L[idx]+=v*gl;R[idx]+=v*gr;}}}
+    L[idx]+=v*gl;R[idx]+=v*gr;}
+   if(rf)continue;
+   // estalido: micro-tortuosidade abaixo da escala do segmento (ruído em banda 150 Hz–3 kHz, perde agudos com a distância)
+   const ca=a*d.crack,fc=Math.max(350,3200*Math.exp(-r/3500)),k1=1-Math.exp(-2*Math.PI*fc/sr),k2=1-Math.exp(-2*Math.PI*140/sr),cl=Math.ceil((Tt*2.5+.004)*sr);
+   let l1=0,l2=0;const s0=st+Math.floor(tr*sr);
+   for(let n=0;n<cl;n++){const idx=s0+n;if(idx<0)continue;if(idx>=N)break;const w=Math.random()*2-1;l1+=(w-l1)*k1;l2+=(l1-l2)*k2;
+    const t=n/sr,env=Math.min(1,t/.0015)*Math.exp(-t/(Tt*.9+.002));const v=(l1-l2)*env*ca;L[idx]+=v*gl;R[idx]+=v*gr;}}}
  for(let n=0;n<N;n++){L[n]=Math.tanh(L[n]);R[n]=Math.tanh(R[n]);}
  self.postMessage({id:d.id,L,R},[L.buffer,R.buffer]);};`;
 let worker=null,wid=0;const pending={};
@@ -757,7 +764,7 @@ function thunder(F){
  if(!src.length)return;
  const dk=P.atrasoReal?1:.15;let maxR=0;for(let i=0;i<src.length;i+=9)maxR=Math.max(maxR,Math.hypot(src[i],src[i+1],src[i+2]));
  const len=Math.min(45,F.dur+maxR*1.15/343*dk+4),id=++wid;pending[id]={F};
- const arr=Float32Array.from(src);worker.postMessage({id,sr:AC.sampleRate,len,src:arr,camH,K:16,att:14000,dk},[arr.buffer]);
+ const arr=Float32Array.from(src);worker.postMessage({id,sr:AC.sampleRate,len,src:arr,camH,K:40,crack:3.2,att:16000,dk},[arr.buffer]);
 }
 function playThunder(F){if(!AC||!F.thBuf||F.thPlayed)return;F.thPlayed=true;const s=AC.createBufferSource();s.buffer=F.thBuf;s.connect(thBus);
  const off=Math.min(F.tSnd,F.thBuf.duration-.1)+(F.thLate?(performance.now()-F.thLate)/1000:0);s.start(AC.currentTime+.005,Math.max(0,off));}
@@ -798,7 +805,7 @@ function applyCC(inp,cc,u,hi){
  const kind=devKind(inp.name),key=inp.name+'|'+cc;let id=MAP[key];
  if(!id)id=kind==='phatty'?PHATTY[cc]:kind==='nano'?NANO[cc]:null;
  if(!id)return;
- if(id==='#cenario'){const sc=['morros','campo','cidade','mar'][Math.min(3,Math.floor(u*4))];if(sc!==P.cenario)setP('cenario',sc);return;}
+ if(id==='#cenario')return;
  if(id==='#lentaFator'){setP('lentaFator',fromU(PS.lentaFator,1-u));return;}
  if(id==='pan'&&kind==='phatty'&&!MAP[key]){setP('pan',fromU(PS.pan,.5+u*.5));return;}
  if(PS[id])setP(id,fromU(PS[id],u));
@@ -834,8 +841,8 @@ function buildPanel(){
  <div class="pads" id="pads">${PADS.map((p,i)=>`<button data-i="${i}">${i+1}. ${PADLABEL[p]||TNAME[p]}</button>`).join('')}</div>
  <div class="btns"><button id="bFire">⚡ Raio (espaço)</button><button id="bClear">Limpar (X)</button><button id="bPause">Pausa (P)</button><button id="bStep">Quadro → (.)</button></div>`;
  const extra={Tempo:`<label class="chk"><input type="checkbox" id="chk_lenta"> Câmera lenta (S)</label><label class="chk"><input type="checkbox" id="chk_obturador"> Obturador — longa exposição (O)</label><label class="chk"><input type="checkbox" id="chk_tempestade"> Tempestade automática (T)</label><label class="chk"><input type="checkbox" id="chk_tl"> Linha do tempo do raio (L)</label>`,
-  Cena:`<div class="row"><label>Cenário</label><span></span><span></span><select id="sel_cenario">${Object.entries(SCN).map(([k,v])=>`<option value="${k}">${v.n}</option>`).join('')}</select></div>`,
-  'Trovão':`<label class="chk"><input type="checkbox" id="chk_atraso"> Atraso real do som (343 m/s)</label>`};
+  CenaX:`<div class="row"><label>Cenário</label><span></span><span></span><select id="sel_cenario">${Object.entries(SCN).map(([k,v])=>`<option value="${k}">${v.n}</option>`).join('')}</select></div>`,
+  'Trovão':`<p class="note">O trovão chega com o atraso real: ~3 s por km (a 4 km, uns 12 s — a legenda mostra a contagem).</p><div class="btns"><button id="bTestTh">Ouvir um trovão agora (raio a 600 m)</button></div><label class="chk"><input type="checkbox" id="chk_atraso"> Atraso real do som (343 m/s)</label>`};
  for(const sec of['Raio','Tempo','Cena','Imagem','Trovão']){
   h+=`<details ${sec==='Raio'?'open':''}><summary>${sec}</summary>${extra[sec]||''}`;
   for(const id of secs[sec]){const s=PS[id];h+=`<div class="row" data-id="${id}"><label>${s.l}</label><span class="v" id="v_${id}"></span><button class="lrn" data-l="${id}">MIDI</button><input type="range" min="0" max="1000" id="r_${id}"></div>`;}
@@ -855,12 +862,13 @@ function buildPanel(){
  for(const id in PS){const r=$('#r_'+id);r.addEventListener('input',()=>setP(id,fromU(PS[id],r.value/1000),true));}
  panel.querySelectorAll('.lrn').forEach(b=>{b.onclick=()=>{learn=learn===b.dataset.l?null:b.dataset.l;refreshLearn();};
   b.oncontextmenu=e=>{e.preventDefault();for(const k in MAP)if(MAP[k]===b.dataset.l)delete MAP[k];localStorage.setItem('ceraunoscopio-midi',JSON.stringify(MAP));refreshLearn();};});
- $('#sel_tipo').onchange=e=>setP('tipo',e.target.value);$('#sel_cenario').onchange=e=>setP('cenario',e.target.value);
+ $('#sel_tipo').onchange=e=>setP('tipo',e.target.value);
  $('#sel_comp').onchange=e=>{P.comp=e.target.value;compUI();};
  $('#r_compOp').oninput=e=>{P.compOp=e.target.value/1000;compUI();};
  $('#chk_lenta').onchange=e=>setP('lenta',e.target.checked);$('#chk_obturador').onchange=e=>setP('obturador',e.target.checked);
  $('#chk_tempestade').onchange=e=>setP('tempestade',e.target.checked?stormRate:0);$('#chk_tl').onchange=e=>{tlOn=e.target.checked;tlc.style.display=tlOn?'block':'none';};
  $('#chk_atraso').onchange=e=>setP('atrasoReal',e.target.checked);
+ $('#bTestTh').onclick=()=>{if(AC&&AC.state!=='running')AC.resume();fire('neg',{xs:.5,D:.6});};
  $('#pads').onclick=e=>{const b=e.target.closest('button');if(b)padAction(+b.dataset.i,.6);};
  $('#bFire').onclick=()=>fire();$('#bClear').onclick=clearAll;$('#bPause').onclick=()=>{paused=!paused;};$('#bStep').onclick=()=>{paused=true;stepOnce=true;};
  $('#midiOutSel').onchange=e=>{P.midiOut=e.target.value;midiOut=MIDI&&P.midiOut?MIDI.outputs.get(P.midiOut):null;save();};
@@ -871,7 +879,7 @@ function buildPanel(){
 }
 function syncUI(){
  for(const id in PS){const r=$('#r_'+id),v=$('#v_'+id);if(r){r.value=Math.round(toU(PS[id],P[id])*1000);v.textContent=PS[id].fmt(P[id]);}}
- $('#sel_tipo').value=P.tipo;$('#sel_cenario').value=P.cenario;$('#chk_lenta').checked=P.lenta;$('#chk_obturador').checked=P.obturador;
+ $('#sel_tipo').value=P.tipo;$('#chk_lenta').checked=P.lenta;$('#chk_obturador').checked=P.obturador;
  $('#chk_tempestade').checked=P.tempestade>0;$('#chk_atraso').checked=P.atrasoReal;$('#sel_comp').value=P.comp;
  $('#r_compOp').value=P.compOp*1000;$('#v_compOp').textContent=(P.compOp*100|0)+'%';
  panel.querySelectorAll('.pads button').forEach((b,i)=>b.classList.toggle('act',PADS[i]===P.tipo||(PADS[i]==='#tempestade'&&P.tempestade>0)||(PADS[i]==='#obturador'&&P.obturador)||(PADS[i]==='#lenta'&&P.lenta)));
@@ -894,7 +902,7 @@ function refreshLearn(){panel.querySelectorAll('.lrn').forEach(b=>{const id=b.da
  b.textContent=learn===id?'gire…':k?'CC'+k.split('|')[1]:def?'SP '+def:(NANO[1]===id?'XY X':NANO[2]===id?'XY Y':'MIDI');});
  const rows=[['Pads 1–16 (nanoPAD2)','Tipos de raio (velocity = corrente); 13 tempestade, 14 obturador, 15 câmera lenta, 16 foto'],['XY pad X / Y (CC1 / CC2)','Ponto de impacto / distância'],
   ['Teclas do Sub Phatty','Raio na posição da nota (grave à esquerda); segurar mantém a corrente contínua; outra tecla com uma segurada = componente M'],['Pitch bend (Sub Phatty)','Movimento da câmera no obturador (raio em fita)'],
-  ['Chave de oitava Osc 1 (CC74)','Cenário'],...Object.entries(PHATTY).filter(([c,id])=>!['74'].includes(c)).map(([c,id])=>['CC'+c+' Sub Phatty',(PS[id.replace('#','')]||{l:id}).l]),
+  ...Object.entries(PHATTY).filter(([c,id])=>!['74'].includes(c)).map(([c,id])=>['CC'+c+' Sub Phatty',(PS[id.replace('#','')]||{l:id}).l]),
   ...Object.entries(MAP).map(([k,id])=>[k.replace('|',' · CC'),(PS[id]||{l:id}).l+' (aprendido)'])];
  const t=$('#mapT');if(t)t.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');}
 function padUI(){const b=$('#bPadLearn');if(b)b.textContent=padLearn>=0?`Toque o pad ${padLearn+1} de 16…`:'Aprender os 16 pads';}

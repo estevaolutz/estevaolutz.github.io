@@ -713,13 +713,15 @@ function render(dtReal){
   gl.useProgram(pAcc.p);bindOut(T.acc[1-accIdx]);tex(0,T.acc[accIdx].t);tex(1,T.scene.t);gl.uniform1i(pAcc.u.old,0);gl.uniform1i(pAcc.u.cur,1);
   gl.uniform1f(pAcc.u.k,k);gl.uniform1f(pAcc.u.g,g);gl.uniform2f(pAcc.u.sh,paused?0:(P.pan+panBend)*dtReal/innerWidth,0);full();accIdx=1-accIdx;outT=T.acc[accIdx].t;
  }
- gl.useProgram(pFinal.p);bindOut(null);tex(0,outT);gl.uniform1i(pFinal.u.t,0);gl.uniform1f(pFinal.u.expo,1);gl.uniform1f(pFinal.u.sat,P.sat);
+ gl.useProgram(pFinal.p);bindOut(null);tex(0,outT);gl.uniform1i(pFinal.u.t,0);gl.uniform1f(pFinal.u.expo,seqFade());gl.uniform1f(pFinal.u.sat,P.sat);
  gl.uniform1f(pFinal.u.hue,P.matiz*DEG);gl.uniform1f(pFinal.u.grain,P.grao);gl.uniform1f(pFinal.u.time,performance.now()/1000);gl.uniform2f(pFinal.u.res,cw,ch);full();
 }
 
 /* ============================================================ DISPARO */
 let panBend=0,heldKeys=new Set(),holdFlash=null,SEQ=null;
 /* espaço: o raio se forma em câmera lenta, congela no ápice e gira em 3D */
+function seqFade(){if(!SEQ||SEQ.fade==null)return 1;const u=(performance.now()-SEQ.fade)/1600;
+ if(u>=1){SEQ=null;clearAll();paused=false;hudDraw();return 0;}return Math.pow(1-u,1.6);}
 function startSeq(type){
  SEQ=null;clearAll();paused=false;if(!P.v3)setP('v3',true);
  const F=fire(type||P.tipo,{xs:.5,_seq:1});if(!F)return;
@@ -1021,7 +1023,8 @@ function loop(now){
    if(!F.thPlayed&&simT>=F.t0+F.tSnd){if(F.thBuf)playThunder(F);else{F.thWant=true;F.thLate=performance.now();}}
    for(let k=0;k<F.strokes.length;k++){const S=F.strokes[k];if(!F.done[k]&&simT>=F.t0+S.t){F.done[k]=1;midiStroke(F,S);}}}
  }
- if(P.v3){if(!V3.drag){if(SEQ&&SEQ.phase==='apex'){const ts=(now-SEQ.since)/1000,ramp=Math.min(1,ts/1.2);V3.yaw+=(P.giro3d*ramp+panBend*.15)*DEG*dtReal;V3.pitch=.1+.22*Math.sin(ts*.45)*ramp;}
+ if(P.v3){if(!V3.drag){if(SEQ&&SEQ.phase==='apex'){const ts=(now-SEQ.since)/1000,ramp=Math.min(1,ts/1.2);const dy=(P.giro3d*ramp+panBend*.15)*DEG*dtReal;V3.yaw+=dy;SEQ.acc=(SEQ.acc||0)+Math.abs(dy);V3.pitch=.1+.22*Math.sin(ts*.45)*ramp;
+   if(SEQ.fade==null&&(SEQ.acc>=TAU||ts>40))SEQ.fade=now;}
   else if(!SEQ)V3.yaw+=(P.giro3d*.25+panBend*.15)*DEG*dtReal;}const k=Math.min(1,dtReal*1.8);for(let a=0;a<3;a++)V3.t[a]+=(V3.goal[a]-V3.t[a])*k;V3.dist+=(V3.gdist-V3.dist)*k;}
  buildFrame(t0,t1,win);render(paused?0:dtReal);drawTL();
  if(lastFlash&&lastFlash.thAt&&now<lastFlash.thAt+300&&hudOn&&(now|0)%5===0)hudDraw();

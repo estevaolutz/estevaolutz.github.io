@@ -31,6 +31,8 @@ OBRAS2 = {
   # química
   'liesegang': ('Anéis de Liesegang', 'Anéis de precipitado cada vez mais espaçados: um ritardando químico'),
   'belousov-zhabotinsky': ('Belousov–Zhabotinsky', 'O relógio químico: espirais que giram e batem como um coração'),
+  # obras audiovisuais feitas com o mesmo núcleo, publicadas fora de conjecturas/ (terceiro valor = pasta na raiz do site)
+  'micelio': ('Micélio', 'Colônias de fungos crescendo numa placa de Petri: cada espécie é uma voz', 'micelio'),
 }
 
 MOLDE = """<!DOCTYPE html>
@@ -84,7 +86,7 @@ def parte(src, nome):
 
 def main():
     so = [a for a in sys.argv[1:] if not a.startswith('-') and a in OBRAS2]
-    for slug, (nome, desc) in OBRAS2.items():
+    for slug, (nome, desc, *fora) in OBRAS2.items():
         if so and slug not in so: continue
         arq = os.path.join(AQUI, 'obras2', slug + '.html')
         if not os.path.exists(arq): continue
@@ -92,7 +94,7 @@ def main():
         html = MOLDE.format(titulo=nome, titulo_maiusc=nome.upper(), intro=parte(src, 'intro'), css=CSS, css_obra=parte(src, 'css'),
                             painel=parte(src, 'painel'), imagem=parte(src, 'imagem'), dica=parte(src, 'dica'),
                             nucleo=NUCLEO, js=parte(src, 'js'), banco=BANCO, vista3d=VISTA3D if 'Vista3D(' in src else '')
-        pasta = os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
+        pasta = os.path.join(REPO, fora[0]) if fora else os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
         open(os.path.join(pasta, 'index.html'), 'w').write(html)
         man = {"name": nome, "short_name": nome, "description": desc, "lang": "pt-BR", "start_url": "./", "scope": "./",
                "display": "standalone", "orientation": "any", "background_color": "#000000", "theme_color": "#000000",

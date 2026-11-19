@@ -1,0 +1,406 @@
+<intro>Um fungo cresce pelas pontas: cada hifa avança, se ramifica e, atrás da frente, a colônia amadurece e solta esporos com a cor da sua espécie. Seis espécies dividem o mesmo ágar e disputam o espaço até se encontrarem. Cada espécie é uma voz: as ramificações tocam notas que sobem à medida que a colônia se abre, os esporos caem como chuva e os encontros entre colônias soam no grave.</intro>
+
+<painel>
+  <h2>Placa</h2>
+  <div class="row"><label>Inóculo</label><select id="inoc"><option value="acaso" selected>Ao acaso (2 a 5 colônias)</option><option value="cada">Uma de cada espécie</option><option value="centro">Uma só, no centro</option><option value="duelo">Duelo (duas frente a frente)</option><option value="vazia">Placa vazia (só toque)</option></select></div>
+  <div class="row"><label>Espécie</label><select id="esp"><option value="acaso" selected>Todas, ao acaso</option><option value="penicillium">Penicillium (verde-azulado)</option><option value="aspergillus">Aspergillus (negro)</option><option value="rhizopus">Rhizopus (bolor do pão)</option><option value="fusarium">Fusarium (rosa)</option><option value="trichoderma">Trichoderma (anéis verdes)</option><option value="neurospora">Neurospora (laranja)</option></select></div>
+  <div class="row"><label>Velocidade (horas por segundo)</label><input type="range" id="speed" min="0.05" max="4" step="0.05" value="0.35"></div>
+  <div class="row"><label>Nutrientes do ágar</label><input type="range" id="nutr" min="0.25" max="1.5" step="0.01" value="1"></div>
+  <div class="row"><label>Ramificação</label><input type="range" id="ramif" min="0.3" max="2.2" step="0.01" value="1"></div>
+  <div class="row"><label>Pontas por colônia</label><input type="range" id="maxT" min="80" max="1400" step="10" value="650"></div>
+  <div class="row"><label>Resolução</label><select id="res"><option value="192">Grossa</option><option value="256" selected>Média</option><option value="340">Fina</option></select></div>
+  <div class="row"><label>Toque semeia</label><input type="checkbox" id="toque" checked></div>
+  <div class="row"><label>Semear sozinho</label><input type="checkbox" id="semAuto" checked></div>
+  <div class="row"><label>Recomeçar sozinho</label><input type="checkbox" id="auto" checked></div>
+  <h2>Música</h2>
+  <div class="row"><label>Pulso (BPM)</label><input type="range" id="bpm" min="36" max="120" step="1" value="62"></div>
+  <div class="row"><label>Densidade das notas</label><input type="range" id="dens" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Vozes por pulso</label><input type="range" id="vozes" min="1" max="4" step="1" value="2"></div>
+  <div class="row"><label>Acorde muda a cada (tempos)</label><input type="range" id="acStep" min="4" max="32" step="1" value="16"></div>
+  <div class="row"><label>Chuva de esporos</label><input type="range" id="chuva" min="0" max="12" step="1" value="5"></div>
+</painel>
+
+<imagem>
+  <h2>Imagem</h2>
+  <div class="row"><label>Iluminação</label><select id="luz"><option value="escuro" selected>Campo escuro</option><option value="fundo">Luz de fundo (ágar âmbar)</option><option value="clara">Placa clara</option></select></div>
+  <div class="row"><label>Tamanho da placa</label><input type="range" id="tam" min="0.5" max="1.15" step="0.01" value="0.9"></div>
+  <div class="row"><label>Espessura das hifas</label><input type="range" id="espess" min="0.3" max="2.5" step="0.01" value="1"></div>
+  <div class="row"><label>Esporos</label><input type="range" id="spor" min="0" max="1.6" step="0.01" value="1"></div>
+  <div class="row"><label>Pontas acesas</label><input type="range" id="pontas" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Vidro da placa</label><input type="checkbox" id="vidro" checked></div>
+</imagem>
+
+<dica>Cada colônia é um conjunto de pontas de hifa. A cada passo uma ponta avança um pouco, vira um pouco ao acaso, tende a se afastar do centro e às vezes se ramifica. Uma ponta morre ao bater na borda da placa, no território de outra colônia ou no miolo já velho da sua. Atrás da frente branca a colônia amadurece e esporula: Penicillium em sulcos radiais verde-azulados, Aspergillus em pontos negros, Rhizopus cotonoso com esporângios escuros, Fusarium rosa tingindo o ágar, Trichoderma e Neurospora em anéis, como um relógio de luz e escuro. A velocidade de cada espécie segue a proporção real (a Neurospora é a mais rápida, o Penicillium o mais lento). Pouco nutriente deixa as colônias ralas e ramificadas; muito, densas. Tocar na placa semeia a espécie escolhida.<br>Som: cada espécie é uma voz com o seu timbre e o seu registro (Aspergillus grave, Neurospora aguda); as notas saem das ramificações, no pulso, sempre do acorde da vez, e sobem à medida que a colônia se abre. Esporos = chuva de grãos; encontro de duas colônias = nota grave; cada anel novo de Trichoderma ou Neurospora = arpejo; semear = sino. O drone segue o acorde e se abre com a área coberta.</dica>
+
+<css>
+</css>
+
+<js>
+// ---------- espécies (velocidade em mm/h, proporcional à real; placa de 90 mm) ----------
+const ESP = {
+  penicillium: { nome: 'Penicillium', k: 'Pen', vel: 0.6, br: 0.09, wig: 0.2, bias: 0.1, cap: 7, mat: 12, hy: [232, 240, 236], sp: [52, 140, 122], spR: 1.1, spA: 0.22, raios: 11, h3: 0.08, reg: 0 },
+  aspergillus: { nome: 'Aspergillus', k: 'Asp', vel: 0.9, br: 0.08, wig: 0.2, bias: 0.1, cap: 10, mat: 9, hy: [236, 226, 170], sp: [24, 21, 16], spR: 1.5, spA: 0.55, h3: 0.1, reg: -7 },
+  rhizopus: { nome: 'Rhizopus', k: 'Rhi', vel: 2.4, br: 0.045, wig: 0.1, bias: 0.06, cap: 2, mat: 5, hy: [214, 214, 208], sp: [30, 30, 32], spR: 1.4, spA: 0.55, esparsa: 0.14, fofo: 1, h3: 0.2, reg: 2 },
+  fusarium: { nome: 'Fusarium', k: 'Fus', vel: 0.85, br: 0.09, wig: 0.28, bias: 0.08, cap: 4, mat: 14, hy: [246, 206, 228], sp: [196, 104, 186], spR: 1.7, spA: 0.13, pig: [150, 30, 110], fofo: 0.6, h3: 0.16, reg: -3 },
+  trichoderma: { nome: 'Trichoderma', k: 'Tri', vel: 1.8, br: 0.07, wig: 0.16, bias: 0.08, cap: 6, mat: 7, hy: [226, 244, 216], sp: [38, 168, 62], spR: 1.3, spA: 0.3, aneis: 6, h3: 0.09, reg: 4 },
+  neurospora: { nome: 'Neurospora', k: 'Neu', vel: 3.0, br: 0.055, wig: 0.12, bias: 0.07, cap: 5, mat: 5, hy: [250, 228, 196], sp: [255, 138, 28], spR: 1.0, spA: 0.2, aneis: 5, fofo: 0.4, h3: 0.13, reg: 7 }
+};
+const KEYS = Object.keys(ESP);
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+const O = Nucleo({
+  elementos: [
+    { k: 'Pen', nome: 'Penicillium', timbre: 'vidro', V: 0.6, D: 0.35 },
+    { k: 'Asp', nome: 'Aspergillus', timbre: 'marimba', V: 0.5, D: 0.2 },
+    { k: 'Rhi', nome: 'Rhizopus', timbre: 'harpa', V: 0.55, D: 0.3 },
+    { k: 'Fus', nome: 'Fusarium', timbre: 'macio', V: 0.65, D: 0.25 },
+    { k: 'Tri', nome: 'Trichoderma', timbre: 'celesta', V: 0.55, D: 0.4 },
+    { k: 'Neu', nome: 'Neurospora', timbre: 'kalimba', V: 0.5, D: 0.35 },
+    { k: 'Esp', nome: 'Chuva de esporos', timbre: '-', vol: 0.7, V: 0.7, D: 0.15 },
+    { k: 'Enc', nome: 'Encontro de colônias', timbre: 'grave', V: 0.5, D: 0.05 },
+    { k: 'Sem', nome: 'Semeadura', timbre: 'sinoGrave', V: 0.7, D: 0.3 }
+  ],
+  padroes: { verb: 0.62, vGlow: 3, dMix: 0.35, drone: 0.4 }
+});
+const P = O.P, V = O.V;
+
+// ---------- estado ----------
+const RES = Math.min(1024, Math.max(640, Math.round(Math.min(screen.width, screen.height)*(devicePixelRatio || 1)*0.9/64)*64));
+const myc = document.createElement('canvas'), mctx = myc.getContext('2d');
+const pig = document.createElement('canvas'), pctx = pig.getContext('2d');
+const mini = document.createElement('canvas'), nctx = mini.getContext('2d', { willReadFrequently: true });
+myc.width = myc.height = pig.width = pig.height = RES;
+const MS = 96; mini.width = mini.height = MS;
+let N = 0, Rg = 0, K = 1, own = null, tcol = null, spd = null, colonias = [], simH = 0, dishCells = 1, cobertos = 0;
+let fase = 'cresce', fadeT = 0, parado = 0, cheio = 0, lastT = 0, info = null, miniData = null, miniF = 0;
+let nextTick = 0, tickN = 0, grau = 0, progI = 0, encQ = [], ringQ = [], lastEnc = {}, proxSem = 0;
+const PROG = [0, 5, 3, 4, 0, 3, 1, 4];
+const TONS = [0, 2, 4, 7, 9, 11, 14];
+
+function pool(){ return P.esp === 'acaso' ? KEYS : [P.esp]; }
+const pick = a => a[Math.random()*a.length | 0];
+
+function reset(){
+  N = +P.res; Rg = N/2 - 1.5; K = RES/N;
+  own = new Int16Array(N*N); tcol = new Float32Array(N*N); spd = new Uint8Array(N*N); dishCells = 0; cobertos = 0;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){
+    const dx = x + 0.5 - N/2, dy = y + 0.5 - N/2, i = y*N + x;
+    if (dx*dx + dy*dy > Rg*Rg){ own[i] = -2; } else { own[i] = -1; dishCells++; }
+  }
+  mctx.clearRect(0, 0, RES, RES); pctx.clearRect(0, 0, RES, RES);
+  colonias = []; simH = 0; fase = 'cresce'; fadeT = 0; parado = 0; cheio = 0; lastEnc = {}; encQ = []; ringQ = []; proxSem = 18 + Math.random()*20;
+  inocular();
+}
+function livre(gx, gy){ const x = gx | 0, y = gy | 0; if (x < 2 || y < 2 || x >= N - 2 || y >= N - 2) return false; return own[y*N + x] === -1; }
+function inocular(){
+  const pl = pool(), m = P.inoc, ang = Math.random()*Math.PI*2;
+  if (m === 'acaso'){
+    const n = 2 + (Math.random()*4 | 0), usadas = [];
+    for (let k = 0; k < n; k++){
+      let key = pick(pl.filter(s => !usadas.includes(s))); if (!key) key = pick(pl); usadas.push(key);
+      for (let tries = 0; tries < 40; tries++){
+        const r = Math.sqrt(Math.random())*Rg*0.72, a = Math.random()*Math.PI*2, gx = N/2 + Math.cos(a)*r, gy = N/2 + Math.sin(a)*r;
+        if (colonias.every(c => Math.hypot(c.cx - gx, c.cy - gy) > Rg*0.3)){ semear(key, gx, gy, true); break; }
+      }
+    }
+  } else if (m === 'cada'){
+    KEYS.forEach((key, k) => { const a = ang + k/KEYS.length*Math.PI*2; semear(key, N/2 + Math.cos(a)*Rg*0.52, N/2 + Math.sin(a)*Rg*0.52, true); });
+  } else if (m === 'centro'){
+    semear(pick(pl), N/2, N/2, true);
+  } else if (m === 'duelo'){
+    const a = pick(pl), b = pick(KEYS.filter(s => s !== a));
+    semear(a, N/2 - Rg*0.45, N/2, true); semear(b, N/2 + Rg*0.45, N/2, true);
+  }
+}
+function semear(key, gx, gy, silencio){
+  if (!livre(gx, gy) || colonias.length > 3000) return null;
+  const E = ESP[key], c = { id: colonias.length, key, E, cx: gx, cy: gy, born: simH, tips: [], cells: [], fechada: 0, ev: 0, ex: gx, ey: gy, spN: 0, ring: -1, ph: Math.random()*6.28 };
+  colonias.push(c);
+  const n = 14 + (Math.random()*8 | 0);
+  for (let k = 0; k < n; k++){ const a = k/n*Math.PI*2 + Math.random()*0.3; c.tips.push({ x: gx + Math.cos(a)*1.2, y: gy + Math.sin(a)*1.2, a, prog: Math.random(), cell: -1 }); }
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){
+    if (dx*dx + dy*dy > 5) continue; const j = ((gy | 0) + dy)*N + ((gx | 0) + dx);
+    if (own[j] === -1){ own[j] = c.id; tcol[j] = simH; c.cells.push(j); cobertos++; }
+  }
+  mctx.fillStyle = rgba(E.hy, 0.55); mctx.beginPath(); mctx.arc(gx*K, gy*K, 2.2*K, 0, Math.PI*2); mctx.fill();
+  if (!silencio && O.running) O.play('Sem', grau + E.reg + 7, O.now() + 0.01, 0.75, (gx/N - 0.5)*1.6, 1.4);
+  return c;
+}
+
+// ---------- crescimento ----------
+function crescer(dtH){
+  simH += dtH;
+  const nutr = P.nutr, maxT = P.maxT | 0, esp = P.espess;
+  for (const c of colonias){
+    const E = c.E, tips = c.tips; if (!tips.length) continue;
+    const cpH = E.vel*N/90*(0.55 + 0.45*Math.min(1.4, nutr)), adv = cpH*dtH;
+    const brP = E.br*P.ramif*Math.pow(nutr, 0.8), wig = E.wig*(1 + Math.max(0, 1 - nutr)*0.9);
+    mctx.beginPath(); let fofo = null;
+    for (let q = tips.length - 1; q >= 0; q--){
+      const t = tips[q]; t.prog += adv; let morta = false;
+      while (t.prog >= 1 && !morta){
+        t.prog -= 1;
+        const ra = Math.atan2(t.y - c.cy, t.x - c.cx);
+        t.a += (Math.random() - 0.5)*2*wig + Math.sin(ra - t.a)*E.bias;
+        const nx = t.x + Math.cos(t.a), ny = t.y + Math.sin(t.a), ix = nx | 0, iy = ny | 0;
+        if (ix < 1 || iy < 1 || ix >= N - 1 || iy >= N - 1){ morta = true; break; }
+        const j = iy*N + ix, o = own[j];
+        if (o === -2){ morta = true; break; }
+        if (o >= 0 && o !== c.id){ morta = true; encontro(c, o, nx, ny); break; }
+        if (o === c.id && j !== t.cell){
+          const idade = (simH - tcol[j])*cpH;
+          if ((idade > 5 && Math.random() < 0.4) || Math.random() < 0.012){ morta = true; break; }
+        }
+        mctx.moveTo(t.x*K, t.y*K); mctx.lineTo(nx*K, ny*K);
+        t.x = nx; t.y = ny; t.cell = j;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){
+          const jj = j + dy*N + dx; if (own[jj] === -1){ own[jj] = c.id; tcol[jj] = simH; c.cells.push(jj); cobertos++; }
+        }
+        if (E.fofo && Math.random() < E.fofo*0.22) (fofo || (fofo = [])).push(nx, ny, t.a);
+        if (tips.length < maxT && Math.random() < brP){
+          const s = Math.random() < 0.5 ? -1 : 1;
+          tips.push({ x: nx, y: ny, a: t.a + s*(0.35 + Math.random()*0.6), prog: Math.random()*0.5, cell: j });
+          c.ev++; c.ex = nx; c.ey = ny;
+        }
+      }
+      if (morta){ tips[q] = tips[tips.length - 1]; tips.pop(); }
+    }
+    mctx.strokeStyle = rgba(E.hy, 0.5); mctx.lineWidth = 0.7*esp*K/4; mctx.lineCap = 'round'; mctx.stroke();
+    if (fofo){
+      // micélio aéreo (cotonoso): fios curtos e curvos saindo da frente
+      mctx.beginPath();
+      for (let i = 0; i < fofo.length; i += 3){
+        const x = fofo[i], y = fofo[i + 1], a = fofo[i + 2] + (Math.random() - 0.5)*2.4, L = 2 + Math.random()*6, b = a + (Math.random() - 0.5)*1.6;
+        mctx.moveTo(x*K, y*K); mctx.quadraticCurveTo((x + Math.cos(a)*L*0.6)*K, (y + Math.sin(a)*L*0.6)*K, (x + Math.cos(b)*L)*K, (y + Math.sin(b)*L)*K);
+      }
+      mctx.strokeStyle = rgba(E.hy, 0.13); mctx.lineWidth = 0.6*esp*K/4; mctx.stroke();
+    }
+    regenerar(c, maxT);
+    // anéis (Trichoderma, Neurospora): o relógio de luz e escuro
+    if (E.aneis && tips.length){
+      const r = Math.floor((simH - c.born)/E.aneis*2);
+      if (r !== c.ring){ if (r % 2 === 0 && r > 0) ringQ.push(c); c.ring = r; }
+    }
+  }
+  esporular(dtH);
+}
+// uma colônia cercada de espaço livre não para: pontas novas brotam das hifas recentes que ainda têm vizinho livre
+function regenerar(c, maxT){
+  const L = c.cells.length; if (!L || c.tips.length > maxT*0.5 || c.fechada > 400) return;
+  const from = Math.max(0, L - Math.max(200, L*0.35 | 0));
+  let achou = 0;
+  for (let q = 0; q < 8; q++){
+    const j = c.cells[from + (Math.random()*(L - from) | 0)], x = j % N, y = (j/N) | 0, a = Math.random()*Math.PI*2;
+    const nx = x + 0.5 + Math.cos(a)*1.8, ny = y + 0.5 + Math.sin(a)*1.8, jj = (ny | 0)*N + (nx | 0);
+    if (own[jj] === -1){ c.tips.push({ x: x + 0.5, y: y + 0.5, a, prog: Math.random(), cell: j }); achou++; }
+  }
+  c.fechada = achou ? 0 : (c.fechada || 0) + 1;
+}
+function esporular(dtH){
+  const s = P.spor; if (s <= 0) return;
+  for (const c of colonias){
+    const E = c.E, L = c.cells.length; if (!L) continue;
+    let n = Math.min(420, L*dtH*0.5); n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0); if (!n) continue;
+    mctx.beginPath(); let k = 0;
+    const r0 = E.spR*Math.min(K, 4)*0.32;
+    for (let q = 0; q < n; q++){
+      const j = c.cells[Math.random()*L | 0], idade = simH - tcol[j];
+      if (idade < E.mat) continue;
+      let p = Math.min(1, 0.3 + 0.7*(idade - E.mat)/(E.mat*1.5));
+      const x = j % N, y = (j/N) | 0;
+      if (E.raios){ const th = Math.atan2(y - c.cy, x - c.cx), m = 0.55 + 0.45*Math.cos(E.raios*th + c.ph + Math.hypot(x - c.cx, y - c.cy)*0.04); p *= m*m; }
+      if (E.aneis){ const f = (((tcol[j] - c.born)/E.aneis) % 1 + 1) % 1; if (f > 0.5) p *= 0.05; }
+      if (E.esparsa) p *= E.esparsa;
+      if (spd[j] >= E.cap || Math.random() > p) continue;
+      spd[j]++;
+      const px = (x + Math.random() + (Math.random() - 0.5)*1.4)*K, py = (y + Math.random() + (Math.random() - 0.5)*1.4)*K, r = r0*(0.6 + Math.random()*0.8);
+      mctx.moveTo(px + r, py); mctx.arc(px, py, r, 0, Math.PI*2); k++;
+    }
+    if (k){ mctx.fillStyle = rgba(E.sp, Math.min(1, E.spA*0.55*s)); mctx.fill(); c.spN += k; }
+    // pigmento que se espalha no ágar (Fusarium)
+    if (E.pig && Math.random() < dtH*1.2){
+      const j = c.cells[Math.random()*L | 0];
+      if (simH - tcol[j] > E.mat){
+        const x = (j % N + 0.5)*K, y = (((j/N) | 0) + 0.5)*K, R = (8 + Math.random()*14)*K, g = pctx.createRadialGradient(x, y, 0, x, y, R);
+        g.addColorStop(0, rgba(E.pig, 0.07)); g.addColorStop(1, rgba(E.pig, 0));
+        pctx.fillStyle = g; pctx.fillRect(x - R, y - R, 2*R, 2*R);
+      }
+    }
+  }
+}
+function encontro(c, o, x, y){
+  // linha de barreira: um traço âmbar escuro onde as colônias se tocam
+  mctx.globalCompositeOperation = 'destination-out'; mctx.fillStyle = 'rgba(0,0,0,0.3)'; mctx.fillRect(x*K - K*0.7, y*K - K*0.7, K*1.4, K*1.4); mctx.globalCompositeOperation = 'source-over';
+  const a = Math.min(c.id, o), b = Math.max(c.id, o), key = a + '_' + b, t = O.now();
+  if (!(t - (lastEnc[key] || -9) > 3.5)) return;
+  lastEnc[key] = t; if (encQ.length < 4) encQ.push({ x, c, o: colonias[o] });
+}
+
+// ---------- música ----------
+function tick(t, dtk){
+  const tempo = tickN/2; tickN++;
+  const passos = Math.max(1, P.acStep | 0);
+  if (tickN % 2 === 1 && tempo % passos === 0){
+    progI = (tempo/passos) | 0; grau = PROG[progI % PROG.length];
+    O.setDrone(O.semi(grau), 7, 2.5, 140 + cobertura()*1100);
+  }
+  // vozes das espécies: as colônias que mais se ramificaram desde o último pulso
+  const cand = colonias.filter(c => c.ev > 0 && c.tips.length).sort((a, b) => b.ev*Math.random() - a.ev*Math.random());
+  const maxV = P.vozes | 0; let tocou = 0;
+  for (const c of cand){
+    if (tocou >= maxV) break;
+    const p = P.dens*(1 - Math.exp(-c.ev*0.3));
+    if (Math.random() < p){
+      const rf = Math.min(1, Math.hypot(c.ex - c.cx, c.ey - c.cy)/Rg), idx = Math.min(TONS.length - 1, Math.floor(rf*TONS.length));
+      const d = grau + TONS[idx] + c.E.reg, off = tickN % 2 === 0 ? dtk*0.12 : 0;
+      O.play(c.E.k, d, t + off, 0.35 + Math.random()*0.4, (c.ex/N - 0.5)*1.6, 1);
+      c.ev *= 0.35; tocou++;
+    }
+  }
+  for (const c of colonias) c.ev *= 0.7;
+  // chuva de esporos
+  let sp = 0; for (const c of colonias){ sp += c.spN; c.spN = 0; }
+  const ng = Math.min(P.chuva | 0, Math.floor(Math.sqrt(sp)/4));
+  for (let i = 0; i < ng; i++) O.hit('Esp', t + Math.random()*dtk, 0.08 + Math.random()*0.18, (Math.random() - 0.5)*1.6, 3500 + Math.random()*7000, 0.02 + Math.random()*0.03);
+  // encontro de colônias: o intervalo entre as duas espécies, no grave
+  const e = encQ.shift();
+  if (e){ const pan = (e.x/N - 0.5)*1.4; O.play('Enc', grau - 14, t, 0.75, pan, 1.6); O.play('Enc', grau - 14 + Math.abs(e.c.E.reg - e.o.E.reg) % 7 + 2, t + dtk*0.5, 0.5, -pan, 1.4); }
+  // anel novo: arpejo da espécie
+  const r = ringQ.shift();
+  if (r){ [0, 2, 4, 7, 9].forEach((s, i) => O.play(r.E.k, grau + r.E.reg + s, t + i*dtk*0.33, 0.55 - i*0.06, (r.cx/N - 0.5)*1.6 + (i - 2)*0.12, 1.3)); }
+}
+function cobertura(){ return cobertos/dishCells; }
+
+// ---------- toque: semeia ----------
+function dish(){ const R = Math.min(V.W, V.H)*0.5*P.tam; return { cx: V.W/2, cy: V.H/2, R }; }
+V.cv.addEventListener('pointerdown', e => {
+  if (!O.running || !P.toque || !own || T3.on || fase !== 'cresce') return;
+  const d = dish(), gx = (e.clientX - d.cx)/d.R*(N/2) + N/2, gy = (e.clientY - d.cy)/d.R*(N/2) + N/2;
+  if (Math.hypot(gx - N/2, gy - N/2) > Rg*0.97) return;
+  semear(pick(pool()), gx, gy, false);
+});
+
+// ---------- desenho ----------
+const AGAR = { escuro: ['rgb(16,15,13)', 'rgb(6,6,6)'], fundo: ['rgb(92,64,26)', 'rgb(38,26,10)'], clara: ['rgb(196,160,98)', 'rgb(150,112,58)'] };
+function draw2d(C, t, alfa){
+  const { cx, cy, R } = dish(), ag = AGAR[P.luz] || AGAR.escuro;
+  C.save(); C.globalAlpha = alfa;
+  const g = C.createRadialGradient(cx, cy - R*0.2, R*0.1, cx, cy, R); g.addColorStop(0, ag[0]); g.addColorStop(1, ag[1]);
+  C.fillStyle = g; C.beginPath(); C.arc(cx, cy, R, 0, Math.PI*2); C.fill();
+  C.save(); C.beginPath(); C.arc(cx, cy, R, 0, Math.PI*2); C.clip();
+  C.imageSmoothingEnabled = true;
+  C.drawImage(pig, cx - R, cy - R, 2*R, 2*R);
+  C.drawImage(myc, cx - R, cy - R, 2*R, 2*R);
+  if (P.pontas > 0){
+    C.globalCompositeOperation = 'lighter'; const s = 2*R/N, w = Math.max(1.2, s*0.7);
+    for (const c of colonias){
+      if (!c.tips.length) continue;
+      C.fillStyle = rgba(c.E.hy, P.pontas*(0.55 + 0.25*Math.sin(t*2 + c.ph))*alfa);
+      for (const p of c.tips) C.fillRect(cx - R + p.x*s - w/2, cy - R + p.y*s - w/2, w, w);
+    }
+    C.globalCompositeOperation = 'source-over';
+  }
+  C.restore();
+  if (P.vidro){
+    C.globalCompositeOperation = 'lighter';
+    C.strokeStyle = `rgba(190,215,235,${0.22*alfa})`; C.lineWidth = 2; C.beginPath(); C.arc(cx, cy, R + 1, 0, Math.PI*2); C.stroke();
+    C.strokeStyle = `rgba(190,215,235,${0.1*alfa})`; C.lineWidth = 1; C.beginPath(); C.arc(cx, cy, R*1.035, 0, Math.PI*2); C.stroke();
+    C.strokeStyle = `rgba(255,255,255,${0.14*alfa})`; C.lineWidth = Math.max(3, R*0.012); C.lineCap = 'round';
+    C.beginPath(); C.arc(cx, cy, R*0.975, -2.45, -1.75); C.stroke();
+    C.strokeStyle = `rgba(255,255,255,${0.06*alfa})`; C.beginPath(); C.arc(cx, cy, R*0.975, 0.75, 1.15); C.stroke();
+    C.globalCompositeOperation = 'source-over';
+  }
+  C.restore();
+}
+// vista 3D: a placa deitada; a altura de cada ponto é o micélio aéreo da espécie (Rhizopus alto e cotonoso,
+// Penicillium baixo e aveludado), que cresce com a idade; as pontas vivas brilham na frente das colônias.
+const T3 = Vista3D({ ligado: false, giro: 0.05, incl: 38, yaw: 0.3 });
+function draw3d(C, t, alfa){
+  T3.quadro(V.W, V.H); T3.centro(0, 20);
+  if (++miniF % 6 === 1 || !miniData){
+    const ag = AGAR[P.luz] || AGAR.escuro;
+    nctx.globalCompositeOperation = 'source-over'; nctx.fillStyle = ag[0]; nctx.fillRect(0, 0, MS, MS);
+    nctx.drawImage(pig, 0, 0, MS, MS); nctx.drawImage(myc, 0, 0, MS, MS);
+    miniData = nctx.getImageData(0, 0, MS, MS).data;
+  }
+  const ag = AGAR[P.luz] || AGAR.escuro, sc = 1.15;
+  C.save(); C.globalAlpha = alfa;
+  // ágar (disco) e parede da placa
+  C.beginPath(); for (let k = 0; k <= 64; k++){ const a = k/64*Math.PI*2; T3.p(Math.cos(a)*sc, 0, Math.sin(a)*sc); k ? C.lineTo(T3.X, T3.Y) : C.moveTo(T3.X, T3.Y); }
+  C.fillStyle = ag[0]; C.fill();
+  // colunas de trás para a frente
+  T3.p(0, 0, -1); const z0 = T3.Z; T3.p(0, 0, 1); const back = z0 > T3.Z;
+  const cw = 2*sc/MS*T3.R*0.55, st = N/MS;
+  for (let yy = 0; yy < MS; yy++){
+    const v = back ? yy : MS - 1 - yy;
+    for (let u = 0; u < MS; u++){
+      const gx = Math.min(N - 1, (u + 0.5)*st | 0), gy = Math.min(N - 1, (v + 0.5)*st | 0), o = own[gy*N + gx];
+      if (o < 0) continue;
+      const c = colonias[o], idade = simH - tcol[gy*N + gx], h = c.E.h3*Math.min(1, 0.25 + idade/(c.E.mat*1.4 + 2))*(0.35 + 0.65*(((Math.sin(u*12.9898 + v*78.233)*43758.5453) % 1 + 1) % 1));
+      const wx = ((u + 0.5)/MS - 0.5)*2*sc, wz = ((v + 0.5)/MS - 0.5)*2*sc;
+      if (!T3.p(wx, 0, wz)) continue; const bx = T3.X, by = T3.Y, s = T3.S, a = T3.A;
+      T3.p(wx, h, wz); const ty = T3.Y, w = Math.max(1, cw*s), q = (v*MS + u)*4;
+      let r = miniData[q], gg = miniData[q + 1], b = miniData[q + 2];
+      const m = Math.max(r, gg, b); if (m < 60){ const f = 60/Math.max(1, m); r = Math.min(255, r*f + 8); gg = Math.min(255, gg*f + 8); b = Math.min(255, b*f + 8); }
+      C.globalAlpha = 0.75*a*alfa; C.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`;
+      C.fillRect(bx - w/2, ty, w, Math.max(1, by - ty));
+    }
+  }
+  C.globalAlpha = alfa;
+  if (P.pontas > 0){
+    C.globalCompositeOperation = 'lighter';
+    for (const c of colonias){ if (!c.tips.length) continue; const col = rgba(c.E.hy, 1);
+      for (let i = 0; i < c.tips.length; i += 3){ const p = c.tips[i]; T3.ponto(C, (p.x/N - 0.5)*2*sc, c.E.h3*0.35, (p.y/N - 0.5)*2*sc, 1.3, col, P.pontas*0.8*alfa); } }
+  }
+  if (P.vidro){
+    C.globalCompositeOperation = 'lighter'; C.strokeStyle = 'rgb(190,215,235)'; C.lineWidth = 1.3;
+    C.globalAlpha = 0.3*alfa; C.beginPath(); T3.circulo(C, 0, 0, 0, sc*1.01, 'y', 96); C.stroke();
+    C.globalAlpha = 0.18*alfa; C.beginPath(); T3.circulo(C, 0, 0.16, 0, sc*1.01, 'y', 96); C.stroke();
+    for (let k = 0; k < 24; k++){ const a = k/24*Math.PI*2; T3.seg(C, Math.cos(a)*sc*1.01, 0, Math.sin(a)*sc*1.01, Math.cos(a)*sc*1.01, 0.16, Math.sin(a)*sc*1.01, 0.08*alfa); }
+  }
+  C.restore();
+}
+
+function frame(){
+  const t = O.now(), dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
+  let alfa = 1;
+  if (O.running && own){
+    if (fase === 'cresce'){
+      crescer(dt*P.speed);
+      const vivas = colonias.reduce((s, c) => s + c.tips.length, 0), cob = cobertura();
+      // semear sozinho enquanto houver espaço
+      if (P.semAuto && simH > proxSem && cob < 0.6){
+        proxSem = simH + 16 + Math.random()*26;
+        for (let k = 0; k < 30; k++){ const r = Math.sqrt(Math.random())*Rg*0.85, a = Math.random()*Math.PI*2; if (semear(pick(pool()), N/2 + Math.cos(a)*r, N/2 + Math.sin(a)*r, false)) break; }
+      }
+      parado = vivas === 0 && P.inoc !== 'vazia' ? parado + dt : 0;
+      cheio = cob > 0.94 ? cheio + dt : 0;
+      if (P.auto && (parado > 5 || cheio > 10 || (vivas === 0 && colonias.length && cob > 0.5 && parado > 2))){ fase = 'fim'; fadeT = 0; O.play('Enc', grau - 21, t + 0.05, 0.9, 0, 2.5); O.play('Sem', grau + 4, t + 0.6, 0.5, 0, 2); }
+    } else {
+      fadeT += dt/6; alfa = Math.max(0, 1 - fadeT);
+      if (fadeT >= 1.15){ reset(); if (O.running) O.setDrone(O.semi(grau), 7, 3, 140); }
+    }
+    // pulso musical
+    const dtk = 60/P.bpm/2;
+    if (nextTick < t - 0.5) nextTick = t + 0.05;
+    while (nextTick < t + 0.12){ tick(nextTick, dtk); nextTick += dtk; }
+  }
+  const C = V.begin();
+  if (own){ if (T3.on) draw3d(C, t, alfa); else draw2d(C, t, alfa); }
+  V.end();
+  if (O.running && own && (t*2 | 0) !== (info && info.k)){
+    info = { k: t*2 | 0 };
+    const h = simH | 0, dia = Math.floor(simH/24) + 1;
+    $('num').textContent = `${h} h · dia ${dia} · ${Math.round(cobertura()*100)}% da placa`;
+    const vivas = {}; colonias.forEach(c => { vivas[c.E.nome] = (vivas[c.E.nome] || 0) + 1; });
+    $('op').textContent = Object.keys(vivas).map(n => vivas[n] > 1 ? `${n} ×${vivas[n]}` : n).join(' · ') || 'toque na placa para semear';
+    $('seq').textContent = O.chordName(grau);
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'res' || k === 'inoc') reset(); });
+O.setup(() => { lastT = O.now(); nextTick = O.now() + 0.1; O.setDrone(O.semi(grau), 7, 0.1, 140); }, { r: reset });
+reset();
+window.micelio = { crescer, reset, get colonias(){ return colonias; }, get simH(){ return simH; } };
+requestAnimationFrame(frame);
+</js>

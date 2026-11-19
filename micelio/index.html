@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Micélio</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s;text-align:center;padding:0 24px}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start p.sub{letter-spacing:.06em;opacity:.32;max-width:420px;line-height:1.6;font-size:11.5px}
+  #start.hide{opacity:0;pointer-events:none}
+  .hud{position:fixed;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums;transition:opacity .6s}
+  #num{left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:.55}
+  #op{left:30px;top:62px;right:60px;font-weight:300;font-size:16px;letter-spacing:.05em;opacity:.75;line-height:1.35}
+  #seq{left:30px;top:94px;right:60px;max-height:34%;font-weight:300;font-size:12.5px;line-height:1.75;letter-spacing:.03em;opacity:.42;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq b{font-weight:500}
+  body.semtexto .hud{opacity:0!important}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 96px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0;min-width:0}
+  .row select,.row input[type=number],.row input[type=text]{flex:1;min-width:0;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.55;margin-top:10px}
+  @media (max-width:640px){ #op{font-size:13.5px} #seq{top:112px;font-size:11.5px} #num{font-size:24px} }
+
+  #panel .sub{font-size:10.5px;letter-spacing:.12em;opacity:.45;margin:10px 0 2px;text-transform:uppercase}
+  #seq span.o{white-space:normal;display:inline}
+  .hud{text-shadow:0 0 8px #000,0 0 3px #000,0 0 1px #000}
+
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>MICÉLIO</h1><p>toque para começar</p>
+  <p class="sub">Um fungo cresce pelas pontas: cada hifa avança, se ramifica e, atrás da frente, a colônia amadurece e solta esporos com a cor da sua espécie. Seis espécies dividem o mesmo ágar e disputam o espaço até se encontrarem. Cada espécie é uma voz: as ramificações tocam notas que sobem à medida que a colônia se abre, os esporos caem como chuva e os encontros entre colônias soam no grave.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Placa</h2>
+  <div class="row"><label>Inóculo</label><select id="inoc"><option value="acaso" selected>Ao acaso (2 a 5 colônias)</option><option value="cada">Uma de cada espécie</option><option value="centro">Uma só, no centro</option><option value="duelo">Duelo (duas frente a frente)</option><option value="vazia">Placa vazia (só toque)</option></select></div>
+  <div class="row"><label>Espécie</label><select id="esp"><option value="acaso" selected>Todas, ao acaso</option><option value="penicillium">Penicillium (verde-azulado)</option><option value="aspergillus">Aspergillus (negro)</option><option value="rhizopus">Rhizopus (bolor do pão)</option><option value="fusarium">Fusarium (rosa)</option><option value="trichoderma">Trichoderma (anéis verdes)</option><option value="neurospora">Neurospora (laranja)</option></select></div>
+  <div class="row"><label>Velocidade (horas por segundo)</label><input type="range" id="speed" min="0.05" max="4" step="0.05" value="0.35"></div>
+  <div class="row"><label>Nutrientes do ágar</label><input type="range" id="nutr" min="0.25" max="1.5" step="0.01" value="1"></div>
+  <div class="row"><label>Ramificação</label><input type="range" id="ramif" min="0.3" max="2.2" step="0.01" value="1"></div>
+  <div class="row"><label>Pontas por colônia</label><input type="range" id="maxT" min="80" max="1400" step="10" value="650"></div>
+  <div class="row"><label>Resolução</label><select id="res"><option value="192">Grossa</option><option value="256" selected>Média</option><option value="340">Fina</option></select></div>
+  <div class="row"><label>Toque semeia</label><input type="checkbox" id="toque" checked></div>
+  <div class="row"><label>Semear sozinho</label><input type="checkbox" id="semAuto" checked></div>
+  <div class="row"><label>Recomeçar sozinho</label><input type="checkbox" id="auto" checked></div>
+  <h2>Música</h2>
+  <div class="row"><label>Pulso (BPM)</label><input type="range" id="bpm" min="36" max="120" step="1" value="62"></div>
+  <div class="row"><label>Densidade das notas</label><input type="range" id="dens" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Vozes por pulso</label><input type="range" id="vozes" min="1" max="4" step="1" value="2"></div>
+  <div class="row"><label>Acorde muda a cada (tempos)</label><input type="range" id="acStep" min="4" max="32" step="1" value="16"></div>
+  <div class="row"><label>Chuva de esporos</label><input type="range" id="chuva" min="0" max="12" step="1" value="5"></div>
+<div id="nucleo"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Iluminação</label><select id="luz"><option value="escuro" selected>Campo escuro</option><option value="fundo">Luz de fundo (ágar âmbar)</option><option value="clara">Placa clara</option></select></div>
+  <div class="row"><label>Tamanho da placa</label><input type="range" id="tam" min="0.5" max="1.15" step="0.01" value="0.9"></div>
+  <div class="row"><label>Espessura das hifas</label><input type="range" id="espess" min="0.3" max="2.5" step="0.01" value="1"></div>
+  <div class="row"><label>Esporos</label><input type="range" id="spor" min="0" max="1.6" step="0.01" value="1"></div>
+  <div class="row"><label>Pontas acesas</label><input type="range" id="pontas" min="0" max="1" step="0.01" value="0.55"></div>
+  <div class="row"><label>Vidro da placa</label><input type="checkbox" id="vidro" checked></div>
+<div id="nucleoVideo"></div>
+<div class="hint">Cada colônia é um conjunto de pontas de hifa. A cada passo uma ponta avança um pouco, vira um pouco ao acaso, tende a se afastar do centro e às vezes se ramifica. Uma ponta morre ao bater na borda da placa, no território de outra colônia ou no miolo já velho da sua. Atrás da frente branca a colônia amadurece e esporula: Penicillium em sulcos radiais verde-azulados, Aspergillus em pontos negros, Rhizopus cotonoso com esporângios escuros, Fusarium rosa tingindo o ágar, Trichoderma e Neurospora em anéis, como um relógio de luz e escuro. A velocidade de cada espécie segue a proporção real (a Neurospora é a mais rápida, o Penicillium o mais lento). Pouco nutriente deixa as colônias ralas e ramificadas; muito, densas. Tocar na placa semeia a espécie escolhida.<br>Som: cada espécie é uma voz com o seu timbre e o seu registro (Aspergillus grave, Neurospora aguda); as notas saem das ramificações, no pulso, sempre do acorde da vez, e sobem à medida que a colônia se abre. Esporos = chuva de grãos; encontro de duas colônias = nota grave; cada anel novo de Trichoderma ou Neurospora = arpejo; semear = sino. O drone segue o acorde e se abre com a área coberta.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
+</div>
+<script>
+// Vista 3D das Conjecturas — câmera em órbita e projeção em perspectiva desenhadas no mesmo canvas 2D da obra,
+// então o som, os efeitos de vídeo (rastro, brilho, espelho) e o banco de configurações valem também para o 3D.
+// A cena é descrita em unidades de mundo de mais ou menos −1 a 1 (y para cima). Uso:
+//   const T = Vista3D({ ligado: true, giro: 0.12, incl: 20 });
+//   if (T.on){ T.quadro(); C.beginPath(); T.mv(C, x, y, z); T.ln(C, x2, y2, z2); C.stroke(); }
+// Controles: arrastar = girar, pinça/roda = aproximar, dois toques = recentrar, tecla D = liga/desliga.
+window.Vista3D = function(opt = {}){
+  const $ = id => document.getElementById(id);
+  const cv = opt.canvas || $('cv');
+  const DEF = Object.assign({ ligado: true, giro: 0.12, incl: 22, zoom: 1, persp: 0.45, nevoa: 0.35, grade: true, yaw: 0.5 }, opt);
+  const T = { on: DEF.ligado, giro: DEF.giro, incl: DEF.incl, zoom: DEF.zoom, persp: DEF.persp, nevoa: DEF.nevoa, grade: DEF.grade,
+    X: 0, Y: 0, S: 1, A: 1, Z: 0, R: 300, W: 0, H: 0, cx: 0, cy: 0, ouvintes: [] };
+  let yaw = DEF.yaw, dPitch = 0, zMul = 1, last = 0, cy = 1, sy = 0, cp = 1, sp = 0, D = 4, F = 1, ox = 0, oy = 0;
+
+  // ---------- painel: uma seção "Vista 3D" logo antes dos efeitos de vídeo (ou da seção Imagem) ----------
+  const panel = $('panel');
+  if (panel && !$('v3d')){
+    const box = document.createElement('div'); box.id = 'vista3dBox';
+    box.innerHTML = `<h2>Vista 3D</h2>
+      <div class="row"><label>3D (tecla D)</label><input type="checkbox" id="v3d"${T.on ? ' checked' : ''}></div>
+      <div class="row"><label>Giro automático</label><input type="range" id="v3dGiro" min="-1" max="1" step="0.01" value="${T.giro}"></div>
+      <div class="row"><label>Inclinação</label><input type="range" id="v3dIncl" min="-15" max="85" step="1" value="${T.incl}"></div>
+      <div class="row"><label>Aproximar</label><input type="range" id="v3dZoom" min="0.4" max="3" step="0.01" value="${T.zoom}"></div>
+      <div class="row"><label>Perspectiva</label><input type="range" id="v3dPersp" min="0" max="1" step="0.01" value="${T.persp}"></div>
+      <div class="row"><label>Névoa ao fundo</label><input type="range" id="v3dNev" min="0" max="1" step="0.01" value="${T.nevoa}"></div>
+      <div class="row"><label>Grade do chão</label><input type="checkbox" id="v3dGrade"${T.grade ? ' checked' : ''}></div>
+      <div class="row"><button id="v3dCentro" type="button">Recentrar câmera</button></div>`;
+    const antes = opt.antes ? $(opt.antes) : ($('nucleoVideo') || [...panel.querySelectorAll('h2')].find(h => /imagem|v[ií]deo/i.test(h.textContent)) || panel.querySelector('.hint'));
+    if (antes && antes.parentNode) antes.parentNode.insertBefore(box, antes); else panel.appendChild(box);
+    const ler = () => {
+      T.on = $('v3d').checked; T.giro = +$('v3dGiro').value; T.incl = +$('v3dIncl').value; T.zoom = +$('v3dZoom').value;
+      T.persp = +$('v3dPersp').value; T.nevoa = +$('v3dNev').value; T.grade = $('v3dGrade').checked;
+      document.body.classList.toggle('em3d', T.on); const b = $('b3d'); if (b) b.classList.toggle('on', T.on);
+      for (const fn of T.ouvintes) fn(T.on);
+    };
+    box.addEventListener('input', ler); box.addEventListener('change', ler);
+    $('v3dCentro').addEventListener('click', () => T.recentrar());
+    T.ler = ler;
+  }
+  // botão rápido "3D" ao lado do ponto do painel
+  if (!$('b3d')){
+    const st = document.createElement('style');
+    st.textContent = `#b3d{position:fixed;right:50px;top:16px;height:26px;padding:0 9px;border-radius:13px;z-index:4;border:1px solid rgba(255,255,255,.25);
+      background:rgba(0,0,0,.35);color:#cfd6dd;font:500 10.5px/24px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;letter-spacing:.12em;cursor:pointer;opacity:.28;transition:opacity .4s}
+      #b3d:hover{opacity:.8} #b3d.on{opacity:.55;border-color:rgba(191,228,255,.7);color:#e8f4ff} body.em3d #cv{cursor:grab} body.em3d #cv:active{cursor:grabbing}`;
+    document.head.appendChild(st);
+    const b = document.createElement('button'); b.id = 'b3d'; b.type = 'button'; b.title = 'Vista 3D (D)'; b.textContent = '3D';
+    b.classList.toggle('on', T.on); document.body.appendChild(b);
+    b.addEventListener('click', e => { e.stopPropagation(); T.alternar(); });
+  }
+  document.body.classList.toggle('em3d', T.on);
+  T.alternar = () => { const c = $('v3d'); if (c){ c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); } else { T.on = !T.on; for (const fn of T.ouvintes) fn(T.on); } };
+  T.recentrar = () => { yaw = DEF.yaw; dPitch = 0; zMul = 1; };
+  T.mudou = fn => T.ouvintes.push(fn);
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'd' || e.key === 'D'){ e.preventDefault(); T.alternar(); }
+  });
+
+  // ---------- arrastar, pinça, roda, dois toques ----------
+  const pts = new Map(); let pinch0 = 0, zoom0 = 1, tapT = 0;
+  cv.addEventListener('pointerdown', e => {
+    if (!T.on) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 2){ const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = zMul; }
+    const agora = performance.now(); if (agora - tapT < 300 && pts.size === 1) T.recentrar(); tapT = agora;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!T.on || !pts.has(e.pointerId)) return;
+    const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 1){ yaw += dx*0.008; dPitch = Math.max(-80, Math.min(80, dPitch + dy*0.35)); }
+    else if (pts.size === 2 && pinch0 > 0){ const [a, b] = [...pts.values()]; zMul = Math.max(0.25, Math.min(6, zoom0*Math.hypot(a.x - b.x, a.y - b.y)/pinch0)); }
+  });
+  const solta = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; };
+  cv.addEventListener('pointerup', solta); cv.addEventListener('pointercancel', solta);
+  cv.addEventListener('wheel', e => { if (!T.on) return; e.preventDefault(); zMul = Math.max(0.25, Math.min(6, zMul*Math.exp(-e.deltaY*0.0012))); }, { passive: false });
+  cv.style.touchAction = 'none';
+
+  // ---------- câmera ----------
+  // chamar uma vez por quadro, antes de desenhar; dt em segundos (opcional)
+  T.quadro = (W = innerWidth, H = innerHeight, dt) => {
+    const agora = performance.now()/1000;
+    if (dt === undefined) dt = Math.min(0.1, last ? agora - last : 0); last = agora;
+    if (!pts.size) yaw += dt*T.giro*0.6;
+    const pitch = Math.max(-89, Math.min(89, T.incl + dPitch))*Math.PI/180;
+    cy = Math.cos(yaw); sy = Math.sin(yaw); cp = Math.cos(pitch); sp = Math.sin(pitch);
+    const fov = (12 + T.persp*68)*Math.PI/180; D = 1.25/Math.tan(fov/2);
+    T.W = W; T.H = H; T.cx = W/2 + ox; T.cy = H/2 + oy;
+    T.R = Math.min(W, H)*0.42*T.zoom*zMul; F = T.R*D;
+    T.yaw = yaw; T.pitch = pitch; T.D = D;
+    return T;
+  };
+  // desloca o centro da tela (por exemplo, para deixar espaço para o texto)
+  T.centro = (dx = 0, dy = 0) => { ox = dx; oy = dy; };
+  // projeta (x, y, z): grava T.X, T.Y (pixels), T.S (escala: 1 = na origem), T.A (névoa 0–1), T.Z (profundidade); false se atrás da câmera
+  T.p = (x, y, z) => {
+    const x1 = cy*x + sy*z, z1 = -sy*x + cy*z;
+    const y2 = cp*y - sp*z1, z2 = sp*y + cp*z1;
+    const zc = D - z2;
+    if (zc < 0.08) return false;
+    const k = F/zc;
+    T.X = T.cx + x1*k; T.Y = T.cy - y2*k; T.S = D/zc; T.Z = zc;
+    T.A = T.nevoa > 0 ? Math.exp(-T.nevoa*1.1*Math.max(0, zc - D + 1)) : 1;
+    return true;
+  };
+  // caminhos: mv = moveTo, ln = lineTo (pulando o que fica atrás da câmera)
+  let tem = false;
+  T.mv = (C, x, y, z) => { tem = T.p(x, y, z); if (tem) C.moveTo(T.X, T.Y); return tem; };
+  T.ln = (C, x, y, z) => { const ok = T.p(x, y, z); if (ok){ tem ? C.lineTo(T.X, T.Y) : C.moveTo(T.X, T.Y); } tem = ok; return ok; };
+  // ponto redondo com raio r (em pixels na origem), com névoa
+  T.ponto = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(0.4, r*T.S), a = alfa*T.A; if (a < 0.01) return true;
+    C.globalAlpha = Math.min(1, a); if (cor) C.fillStyle = cor;
+    if (rr < 1.6) C.fillRect(T.X - rr, T.Y - rr, rr*2, rr*2);
+    else { C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); }
+    C.globalAlpha = 1; return true;
+  };
+  // brilho redondo (gradiente) — para estrelas, cabeças, clarões
+  T.brilho = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(1, r*T.S), a = Math.min(1, alfa*T.A); if (a < 0.01) return true;
+    const g = C.createRadialGradient(T.X, T.Y, 0, T.X, T.Y, rr);
+    g.addColorStop(0, cor); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.globalAlpha = a; C.fillStyle = g; C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); C.globalAlpha = 1; return true;
+  };
+  // segmento com névoa
+  T.seg = (C, x1, y1, z1, x2, y2, z2, alfa = 1) => {
+    if (!T.p(x1, y1, z1)) return; const ax = T.X, ay = T.Y, aa = T.A;
+    if (!T.p(x2, y2, z2)) return;
+    C.globalAlpha = Math.min(1, alfa*(aa + T.A)/2); C.beginPath(); C.moveTo(ax, ay); C.lineTo(T.X, T.Y); C.stroke(); C.globalAlpha = 1;
+  };
+  // linha por vários pontos [x, y, z, x, y, z, ...], em trechos com a névoa de cada trecho
+  T.poli = (C, a, alfa = 1, trecho = 12) => {
+    const n = a.length/3 | 0; if (n < 2) return;
+    for (let i = 0; i < n - 1; i += trecho){
+      const f = Math.min(n - 1, i + trecho), m = (i + f) >> 1;
+      T.p(a[m*3], a[m*3 + 1], a[m*3 + 2]); const al = Math.min(1, alfa*T.A); if (al < 0.01) continue;
+      C.globalAlpha = al; C.beginPath(); tem = false;
+      for (let j = i; j <= f; j++) T.ln(C, a[j*3], a[j*3 + 1], a[j*3 + 2]);
+      C.stroke();
+    }
+    C.globalAlpha = 1;
+  };
+  // círculo no espaço: centro, raio, eixo 'y' (deitado), 'z' (de pé, de frente) ou 'x'
+  T.circulo = (C, x, y, z, r, eixo = 'y', n = 48, a0 = 0, a1 = Math.PI*2) => {
+    tem = false;
+    for (let i = 0; i <= n; i++){
+      const a = a0 + (a1 - a0)*i/n, c = Math.cos(a)*r, s = Math.sin(a)*r;
+      if (eixo === 'y') T.ln(C, x + c, y, z + s); else if (eixo === 'z') T.ln(C, x + c, y + s, z); else T.ln(C, x, y + c, z + s);
+    }
+  };
+  // grade do chão (y = nivel) e eixo, para dar referência de espaço
+  T.chao = (C, nivel = -1, tam = 1.2, div = 8, cor = 'rgba(150,190,230,1)', alfa = 0.07) => {
+    if (!T.grade) return;
+    C.save(); C.strokeStyle = cor; C.lineWidth = 1;
+    for (let i = 0; i <= div; i++){
+      const u = -tam + 2*tam*i/div;
+      T.seg(C, u, nivel, -tam, u, nivel, tam, alfa); T.seg(C, -tam, nivel, u, tam, nivel, u, alfa);
+    }
+    C.restore();
+  };
+  T.ler && T.ler();
+  return T;
+};
+</script>
+<script>
+(() => {
+'use strict';
+// ---------- núcleo v2 das conjecturas ----------
+// Motor de som do Cometa de Goldbach / Recamán (um canal por elemento com volume e envios para reverb Valhalla, delay,
+// pitch delay e bit crusher; filtro, saturação e largura na saída), timbres e ADSR do Corredor Solitário, efeitos de
+// vídeo (brilho, contraste, saturação, matiz, brilho difuso, desfoque, rastro com zoom e giro, inverter, espelho) e o
+// painel padrão montado automaticamente. Cada obra só descreve os seus elementos e desenha.
+const $ = id => document.getElementById(id);
+function Nucleo(cfg){
+  cfg = cfg || {};
+  const EL = (cfg.elementos || []).map(e => Object.assign({ vol: 1, V: 0.5, D: 0.2, P: 0, B: 0, timbre: 'sino' }, e));
+  const P = {};
+
+  // ---------- painel padrão ----------
+  const rg = (id, lab, min, max, step, v) => `<div class="row"><label for="${id}">${lab}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${v}"></div>`;
+  const sl = (id, lab, opts, v) => `<div class="row"><label for="${id}">${lab}</label><select id="${id}">${opts.map(([a, b]) => `<option value="${a}"${String(a) === String(v) ? ' selected' : ''}>${b}</option>`).join('')}</select></div>`;
+  const ck = (id, lab, v) => `<div class="row"><label for="${id}">${lab}</label><input type="checkbox" id="${id}"${v ? ' checked' : ''}></div>`;
+  const sub = t => `<div class="sub">${t}</div>`;
+  const ESCALAS = [['jonico','Jônico (maior)'],['dorico','Dórico'],['frigio','Frígio'],['lidio','Lídio'],['mixolidio','Mixolídio'],['eolio','Eólio (menor)'],
+    ['menorHarm','Menor harmônica'],['menorMel','Menor melódica'],['frigioDom','Frígio dominante'],['hungara','Húngara menor'],['penta','Pentatônica menor'],
+    ['pentaMaior','Pentatônica maior'],['hirajoshi','Hirajoshi'],['tons','Tons inteiros']];
+  const TLIST = [['sino','Sino'],['corda','Corda'],['macio','Macio'],['vidro','Vidro'],['marimba','Marimba'],['celesta','Celesta'],['kalimba','Kalimba'],
+    ['sopro','Sopro'],['sinoGrave','Sino grave'],['harpa','Harpa'],['pad','Pad'],['seno','Seno puro'],['grave','Baixo redondo'],['percussao','Percussão']];
+  const nucleo = $('nucleo'), nVideo = $('nucleoVideo');
+  if (nucleo){
+    let h = '<h2>Som</h2>' + sl('scale', 'Modo', ESCALAS, 'dorico') + rg('vol', 'Volume geral', 0, 1, 0.01, 0.75);
+    h += '<h2>Volumes</h2>' + EL.map(e => rg('vol' + e.k, e.nome, 0, 1.5, 0.01, e.vol)).join('') + rg('drone', 'Drone', 0, 1, 0.01, 0.45);
+    h += '<h2>Timbre</h2>' + EL.filter(e => e.timbre !== '-').map(e => sl('tm' + e.k, e.nome, TLIST, e.timbre)).join('');
+    h += rg('tBright', 'Brilho', 0.2, 3, 0.01, 1) + rg('tPart', 'Parcial metálica', 0, 3, 0.01, 1) + rg('tRatio', 'Razão da parcial', 0.5, 2, 0.01, 1)
+       + rg('tDet', 'Desafinação', 0, 40, 0.5, 0) + rg('tLen', 'Duração', 0.2, 3, 0.01, 1)
+       + sl('envMode', 'Envelope', [['timbre','Do timbre'],['manual','ADSR manual']], 'timbre')
+       + sub('Amplitude') + rg('aA', 'Ataque', 0.001, 3, 0.001, 0.005) + rg('aD', 'Decaimento', 0.01, 4, 0.01, 0.9) + rg('aS', 'Sustentação', 0, 1, 0.01, 0.25) + rg('aR', 'Repouso', 0.01, 6, 0.01, 1.4)
+       + sub('Filtro') + rg('fCut', 'Corte', 0.5, 24, 0.1, 3) + rg('fRes', 'Ressonância', 0, 18, 0.1, 2) + rg('fAmt', 'Envelope', 0, 6, 0.05, 2.5)
+       + rg('fA', 'Ataque', 0.001, 3, 0.001, 0.01) + rg('fD', 'Decaimento', 0.01, 4, 0.01, 0.6) + rg('fS', 'Sustentação', 0, 1, 0.01, 0.2) + rg('fR', 'Repouso', 0.01, 6, 0.01, 1);
+    h += '<h2>Efeitos</h2>'
+       + sub('Delay') + rg('dMix', 'Mix', 0, 1, 0.01, 0.45) + rg('dTime', 'Tempo', 0.05, 1.5, 0.01, 0.42) + rg('dFbk', 'Realimentação', 0, 0.92, 0.01, 0.3) + rg('dTone', 'Tom', 400, 9000, 10, 2200)
+       + sub('Reverb Valhalla') + rg('verb', 'Mix', 0, 1, 0.01, 0.55) + rg('vSize', 'Tamanho', 0.5, 2.5, 0.01, 1.2) + rg('vDecay', 'Decaimento', 0.3, 0.95, 0.005, 0.78)
+       + rg('vDamp', 'Amortecimento', 500, 9000, 10, 2400) + rg('vMod', 'Modulação', 0, 1, 0.01, 0.35) + rg('vPre', 'Pré-delay', 0, 0.25, 0.005, 0.03)
+       + sub('Bit crusher') + rg('bMix', 'Mix', 0, 1, 0.01, 0) + rg('bBits', 'Bits', 2, 16, 0.1, 8) + rg('bDown', 'Redução', 1, 40, 1, 4)
+       + sub('Pitch delay') + rg('pMix', 'Mix', 0, 1, 0.01, 0) + rg('pSemi', 'Semitons', -12, 12, 1, 12) + rg('pTime', 'Tempo', 0.05, 1.5, 0.01, 0.5) + rg('pFbk', 'Realimentação', 0, 0.85, 0.01, 0.45)
+       + sub('Saída') + rg('oCut', 'Filtro', 200, 20000, 10, 20000) + rg('oRes', 'Ressonância', 0, 15, 0.1, 0.7) + rg('oDrive', 'Saturação', 0, 1, 0.01, 0) + rg('oWidth', 'Largura estéreo', 0, 1.5, 0.01, 1)
+       + '<div class="btns"><button id="bFxDef" type="button">Efeitos padrão</button><button id="bFxZero" type="button">Efeitos zerados</button></div>';
+    h += '<h2>Envios</h2>' + EL.concat([{ k: 'Dro', nome: 'Drone', V: 1, D: 0, P: 0, B: 0 }]).map(e => sub(e.nome)
+       + rg('s' + e.k + 'V', 'Reverb', 0, 1, 0.01, e.V) + rg('s' + e.k + 'D', 'Delay', 0, 1, 0.01, e.D) + rg('s' + e.k + 'P', 'Pitch delay', 0, 1, 0.01, e.P) + rg('s' + e.k + 'B', 'Bit crusher', 0, 1, 0.01, e.B)).join('');
+    nucleo.innerHTML = h;
+  }
+  if (nVideo){
+    nVideo.innerHTML = '<h2>Vídeo</h2>' + rg('vBri', 'Brilho', 0.3, 2.5, 0.01, 1) + rg('vCon', 'Contraste', 0.4, 2.5, 0.01, 1) + rg('vSat', 'Saturação', 0, 3, 0.01, 1)
+      + rg('vHue', 'Matiz', 0, 360, 1, 0) + rg('vGlow', 'Brilho difuso', 0, 30, 0.5, 4) + rg('vBlur', 'Desfoque', 0, 8, 0.1, 0) + rg('vTrail', 'Rastro', 0, 0.97, 0.01, 0)
+      + rg('vZoom', 'Zoom do rastro', 0.95, 1.06, 0.001, 1.01) + rg('vRot', 'Giro do rastro', -3, 3, 0.05, 0.3) + ck('vInv', 'Inverter', false)
+      + sl('vMirror', 'Espelho', [['0','Nenhum'],['2','2 lados'],['4','4 lados']], '0') + ck('showTxt', 'Texto', true)
+      + '<div class="btns"><button id="bRe" type="button">Recomeçar</button><button id="bFull" type="button">Tela cheia</button></div>';
+  }
+  // padrões próprios de cada obra
+  for (const k in (cfg.padroes || {})){ const el = $(k); if (!el) continue; if (el.type === 'checkbox') el.checked = !!cfg.padroes[k]; else el.value = cfg.padroes[k]; }
+  const FX_IDS = ['dMix','dTime','dFbk','dTone','verb','vSize','vDecay','vDamp','vMod','vPre','bMix','bBits','bDown','pMix','pSemi','pTime','pFbk','oCut','oRes','oDrive','oWidth'];
+  const FX_PAD = {}; for (const k of FX_IDS){ const el = $(k); if (el) FX_PAD[k] = el.value; }
+
+  // ---------- leitura dos controles ----------
+  const panel = $('panel');
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id]')].filter(el => !el.id.startsWith('bk') && el.type !== 'file');
+  function readP(){ for (const el of ctrls()) P[el.id] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' || el.type === 'text') ? el.value : el.value === '' ? NaN : parseFloat(el.value); }
+  readP();
+  const listeners = [];
+  for (const el of ctrls()){
+    el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => {
+      const old = Object.assign({}, P); readP(); applyMix(); if (el.id[0] === 'v' || el.id === 'showTxt') applyVideo();
+      for (const fn of listeners) fn(el.id, old);
+    });
+  }
+  const setCtl = (k, v) => { const el = $(k); if (!el) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+  if ($('bFxDef')) $('bFxDef').addEventListener('click', () => { for (const k in FX_PAD) setCtl(k, FX_PAD[k]); });
+  if ($('bFxZero')) $('bFxZero').addEventListener('click', () => { for (const k of ['dMix','verb','bMix','pMix','oDrive']) setCtl(k, 0); setCtl('oCut', 20000); setCtl('oRes', 0.7); });
+
+  // ---------- áudio ----------
+  const WORKLET_SRC = `
+  class Crusher extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'bits',defaultValue:8},{name:'down',defaultValue:4},{name:'mix',defaultValue:0}]; }
+    constructor(){ super(); this.ph = [0,0]; this.hold = [0,0]; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0]; if (!i || !i.length) return true;
+      const mix = p.mix[0], bits = p.bits[0], down = Math.max(1, p.down[0]), step = Math.pow(0.5, bits - 1);
+      for (let c = 0; c < o.length; c++){
+        const x = i[c] || i[0], y = o[c];
+        if (mix <= 0.0001){ y.set(x); continue; }
+        for (let n = 0; n < y.length; n++){
+          if (++this.ph[c] >= down){ this.ph[c] -= down; this.hold[c] = step * Math.round(x[n] / step); }
+          y[n] = x[n] * (1 - mix) + this.hold[c] * mix;
+        }
+      }
+      return true;
+    }
+  }
+  class PitchDelay extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'time',defaultValue:0.5},{name:'fb',defaultValue:0.45},{name:'semi',defaultValue:12}]; }
+    constructor(){ super(); this.N = Math.ceil(sampleRate*2.2); this.buf = new Float32Array(this.N); this.w = 0; this.ph = 0; this.W = Math.round(sampleRate*0.07); }
+    read(pos){ const N = this.N; pos = ((pos % N) + N) % N; const i0 = Math.floor(pos), fr = pos - i0; return this.buf[i0]*(1-fr) + this.buf[(i0+1)%N]*fr; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0], L = o[0].length;
+      const D = Math.min(this.N - this.W - 4, p.time[0]*sampleRate), fb = p.fb[0], ratio = Math.pow(2, p.semi[0]/12), W = this.W;
+      const inc = (1 - ratio) / W;
+      for (let n = 0; n < L; n++){
+        const x = i && i.length ? (i[0][n] + (i[1] ? i[1][n] : i[0][n]))*0.5 : 0;
+        this.ph += inc; this.ph -= Math.floor(this.ph);
+        let y = 0;
+        for (let k = 0; k < 2; k++){ const ph = (this.ph + k*0.5) % 1; y += this.read(this.w - D - W - ph*W) * Math.sin(Math.PI*ph); }
+        y *= 0.75;
+        this.buf[this.w] = x + Math.tanh(y*fb);
+        this.w = (this.w + 1) % this.N;
+        for (let c = 0; c < o.length; c++) o[c][n] = y;
+      }
+      return true;
+    }
+  }
+  registerProcessor('conj-crusher', Crusher);
+  registerProcessor('conj-pitchdelay', PitchDelay);
+  `;
+  let AC = null, master, comp, fxF, fxDrive, dFb, dRet, dLpF, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  let preDelay = null, combs = [], srcBus = {}, pdIn = null, pdOut = null, crIn = null, crOut = null, pdNode = null, crusher = null, lastDrive = -1;
+  const SCALES = {
+    jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+    mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+    menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+    penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+  };
+  const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+  const ROOT = 73.416; // Ré2
+  const now = () => AC ? AC.currentTime : performance.now()/1000;
+  let voices = 0;
+  const MAXV = cfg.maxVozes || 56;
+  function allpass(input, dt, g){
+    const sum = AC.createGain(), d = AC.createDelay(0.2), fbg = AC.createGain(), ff = AC.createGain(), o = AC.createGain();
+    d.delayTime.value = dt; fbg.gain.value = g; ff.gain.value = -g;
+    input.connect(sum); sum.connect(d); d.connect(fbg); fbg.connect(sum); sum.connect(ff); ff.connect(o); d.connect(o);
+    return o;
+  }
+  function initAudio(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+    master = AC.createGain();
+    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
+    fxDrive = AC.createWaveShaper(); fxDrive.oversample = '2x';
+    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(comp); comp.connect(AC.destination);
+    dryBus = AC.createGain(); dryBus.connect(master);
+    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+    // reverb "Valhalla": pré-delay, difusão em allpass e pentes modulados
+    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+    preDelay = AC.createDelay(0.5); preDelay.delayTime.value = 0.03;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200;
+    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 5000;
+    verbIn.connect(preDelay); preDelay.connect(hp); hp.connect(pre);
+    let diff = pre;
+    for (const [dt, gg] of [[0.0047,0.62],[0.0113,0.6],[0.0171,0.58],[0.0231,0.55]]) diff = allpass(diff, dt, gg);
+    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373,0.1489,0.1601].forEach((dt, i) => {
+      const d = AC.createDelay(0.6); d.delayTime.value = dt;
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+      const fb = AC.createGain(); fb.gain.value = 0.78;
+      const o = AC.createGain(); o.gain.value = 0.15;
+      const lfo = AC.createOscillator(); lfo.frequency.value = 0.13 + i*0.071;
+      const lg = AC.createGain(); lg.gain.value = 0.0012; lfo.connect(lg); lg.connect(d.delayTime); lfo.start();
+      diff.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+      combs.push({ d, lp, fb, lg, base: dt });
+    });
+    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+    dFb = AC.createGain(); dFb.gain.value = 0.3; dRet = AC.createGain(); dRet.gain.value = 1;
+    dLpF = AC.createBiquadFilter(); dLpF.type = 'lowpass'; dLpF.frequency.value = 2200;
+    delay.connect(dLpF); dLpF.connect(dFb); dFb.connect(delay); dLpF.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
+    pdIn = AC.createGain(); pdOut = AC.createGain(); pdOut.gain.value = 0; pdOut.connect(dryBus); pdOut.connect(verbIn);
+    crIn = AC.createGain(); crOut = AC.createGain(); crOut.gain.value = 0; crOut.connect(master);
+    for (const k of EL.map(e => e.k).concat(['Dro'])){
+      const bus = AC.createGain(); bus.connect(dryBus); const snd = {};
+      for (const [suf, dest] of [['V', verbIn], ['D', delay], ['P', pdIn], ['B', crIn]]){ const gg = AC.createGain(); gg.gain.value = 0; bus.connect(gg); gg.connect(dest); snd[suf] = gg; }
+      srcBus[k] = { bus, snd };
+    }
+    if (AC.audioWorklet){
+      const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+      AC.audioWorklet.addModule(url).then(() => {
+        pdNode = new AudioWorkletNode(AC, 'conj-pitchdelay', { outputChannelCount: [2] }); pdIn.connect(pdNode); pdNode.connect(pdOut);
+        crusher = new AudioWorkletNode(AC, 'conj-crusher', { outputChannelCount: [2] }); crusher.parameters.get('mix').value = 1; crIn.connect(crusher); crusher.connect(crOut);
+        applyMix();
+      }).catch(() => {});
+    }
+    droneG = AC.createGain(); droneG.gain.value = 0;
+    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
+    droneF.connect(droneG); droneG.connect(srcBus.Dro.bus);
+    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f, type, g]) => {
+      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    });
+    applyMix();
+  }
+  function applyMix(){
+    if (!AC) return;
+    const t = AC.currentTime;
+    master.gain.setTargetAtTime(P.vol, t, 0.1);
+    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
+    delay.delayTime.setTargetAtTime(P.dTime, t, 0.15); dFb.gain.setTargetAtTime(P.dFbk, t, 0.05);
+    dLpF.frequency.setTargetAtTime(P.dTone, t, 0.05); dRet.gain.setTargetAtTime(P.dMix*2.2, t, 0.05);
+    preDelay.delayTime.setTargetAtTime(P.vPre, t, 0.1);
+    for (const c of combs){
+      c.d.delayTime.setTargetAtTime(c.base*P.vSize, t, 0.2); c.fb.gain.setTargetAtTime(P.vDecay, t, 0.1);
+      c.lp.frequency.setTargetAtTime(P.vDamp, t, 0.1); c.lg.gain.setTargetAtTime(0.0035*P.vMod*P.vSize, t, 0.1);
+    }
+    pdOut.gain.setTargetAtTime(P.pMix*1.4, t, 0.05); crOut.gain.setTargetAtTime(P.bMix*1.2, t, 0.05);
+    for (const k in srcBus) if (k !== 'Dro') srcBus[k].bus.gain.setTargetAtTime(P['vol'+k] == null ? 1 : P['vol'+k], t, 0.05);
+    for (const k in srcBus) for (const suf in srcBus[k].snd) srcBus[k].snd[suf].gain.setTargetAtTime((P['s'+k+suf] || 0) * (suf === 'D' ? 1.2 : suf === 'P' ? 1.3 : 1), t, 0.05);
+    if (pdNode){ const pp = pdNode.parameters; pp.get('time').setTargetAtTime(P.pTime, t, 0.1); pp.get('fb').setTargetAtTime(P.pFbk, t, 0.05); pp.get('semi').setValueAtTime(P.pSemi, t); }
+    if (crusher){ const cp = crusher.parameters; cp.get('bits').setValueAtTime(P.bBits, t); cp.get('down').setValueAtTime(P.bDown, t); }
+    fxF.frequency.setTargetAtTime(P.oCut, t, 0.08); fxF.Q.setTargetAtTime(P.oRes, t, 0.08);
+    if (P.oDrive !== lastDrive){ lastDrive = P.oDrive; drive(P.oDrive); }
+    width = P.oWidth;
+  }
+  function drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
+    const n = 2048, c = new Float32Array(n), k = 1 + a*30;
+    for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; }
+  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
+    if (!AC) return;
+    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
+    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
+    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
+  }
+  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
+  function semi(d){ d = Math.round(d); const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
+  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chordName(d){
+    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
+    let name = NOTAS[root];
+    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+      if (q) name += ' ' + q; }
+    return name;
+  }
+  const noteName = d => NOTAS[((semi(d) % 12) + 12) % 12];
+  function out(node, pan, t, end, src){
+    let last = node;
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
+    last.connect((srcBus[src] || srcBus[EL[0] ? EL[0].k : 'Dro']).bus);
+    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  }
+  const ok = () => AC && voices < MAXV;
+
+  // ---------- timbres (espectro + parcial + filtro + envelope) ----------
+  const SPECTRA = (() => {
+    const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
+    return { sine: mk(n => n === 1 ? 1 : 0), triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
+             sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)), square: mk(n => n % 2 ? 4/(Math.PI*n) : 0) };
+  })();
+  const TIMBRES = {
+    sino:      { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:2.6 },
+    corda:     { w:'sawtooth', r:1.003,pg:0.4,  cut:10, q:2,   a:0.004, d:1.1 },
+    macio:     { w:'triangle', r:0,    pg:0,    cut:6,  q:0.5, a:0.025, d:2.0 },
+    vidro:     { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:3.2 },
+    marimba:   { w:'sine',     r:4.0,  pg:0.45, cut:0,  q:0.5, a:0.003, d:1.3 },
+    celesta:   { w:'sine',     r:3.0,  pg:0.4,  cut:0,  q:0.5, a:0.004, d:2.4 },
+    kalimba:   { w:'sine',     r:5.4,  pg:0.35, cut:0,  q:0.5, a:0.002, d:1.7 },
+    sopro:     { w:'triangle', r:2.0,  pg:0.22, cut:5,  q:0.5, a:0.09,  d:2.0 },
+    sinoGrave: { w:'sine',     r:1.48, pg:0.55, cut:0,  q:0.5, a:0.005, d:3.6 },
+    harpa:     { w:'square',   r:0,    pg:0,    cut:4,  q:0.5, a:0.003, d:2.0 },
+    pad:       { w:'sawtooth', r:1.006,pg:0.6,  cut:4,  q:0.5, a:0.6,   d:4.5 },
+    seno:      { w:'sine',     r:0,    pg:0,    cut:0,  q:0.5, a:0.012, d:2.6 },
+    grave:     { w:'triangle', r:2.0,  pg:0.12, cut:3,  q:0.7, a:0.01,  d:2.4 },
+    percussao: { w:'sine',     r:1.59, pg:0.9,  cut:0,  q:0.5, a:0.001, d:0.32 }
+  };
+  const waves = {};
+  function waveOf(w){ if (!waves[w]) waves[w] = AC.createPeriodicWave(new Float32Array(33), SPECTRA[w]); return waves[w]; }
+  // nota de um elemento com o timbre escolhido para ele; durMul alonga ou encurta o envelope
+  function note(src, f, t, vel = 0.8, pan = 0, durMul = 1){
+    if (!ok() || !(f > 15 && f < 20000)) return;
+    t = Math.max(t, AC.currentTime);
+    const T = TIMBRES[P['tm' + src]] || TIMBRES.sino, manual = P.envMode === 'manual';
+    const g = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.connect(g);
+    const o = AC.createOscillator(); o.setPeriodicWave(waveOf(T.w)); o.frequency.value = f; o.connect(lp);
+    let o2 = null;
+    if (P.tDet > 0){ o2 = AC.createOscillator(); o2.setPeriodicWave(waveOf(T.w)); o2.frequency.value = f; o2.detune.value = P.tDet; o.detune.value = -P.tDet*0.5; o2.connect(lp); }
+    const lvl = 0.14 * vel * (T.w === 'sawtooth' || T.w === 'square' ? 0.5 : 1) * (o2 ? 0.75 : 1);
+    let end;
+    if (!manual){
+      const dur = T.d * P.tLen * durMul;
+      lp.Q.value = T.q;
+      const c0 = Math.min(18000, f*(T.cut || 30)*P.tBright);
+      lp.frequency.setValueAtTime(c0, t);
+      if (T.cut) lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1*P.tBright), t + Math.min(0.9, dur*0.6));
+      const a = Math.min(T.a, dur*0.4);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      end = t + dur;
+    } else {
+      const tr = t + Math.max(P.aA, 0.12*P.tLen*durMul);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + P.aA);
+      g.gain.setTargetAtTime(lvl*P.aS, t + P.aA, P.aD/4); g.gain.setTargetAtTime(0, tr, P.aR/4);
+      const base = Math.min(18000, f*P.fCut*P.tBright), peak = Math.min(18000, base*Math.pow(2, P.fAmt));
+      lp.Q.value = P.fRes;
+      lp.frequency.setValueAtTime(base, t); lp.frequency.exponentialRampToValueAtTime(peak, t + P.fA);
+      lp.frequency.setTargetAtTime(Math.min(18000, base*Math.pow(2, P.fAmt*P.fS)), t + P.fA, P.fD/4);
+      lp.frequency.setTargetAtTime(base, tr, P.fR/4);
+      end = tr + P.aR*1.6;
+    }
+    let p = null;
+    if (T.r && T.pg*P.tPart > 0.005){
+      p = AC.createOscillator(); p.frequency.value = f*T.r*P.tRatio;
+      const pg = AC.createGain(); pg.gain.setValueAtTime(T.pg*P.tPart, t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, Math.max(0.05, end - t)));
+      p.connect(pg); pg.connect(lp);
+    }
+    out(g, pan, t, end, src);
+    o.start(t); o.stop(end + 0.05); if (o2){ o2.start(t); o2.stop(end + 0.05); } if (p){ p.start(t); p.stop(end + 0.05); }
+  }
+  // grau da escala → nota
+  const play = (src, d, t, vel, pan, durMul, base) => note(src, freq(d, base), t, vel, pan, durMul);
+  let noiseBuf = null;
+  function hit(src, t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = 1.4;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(bp); bp.connect(g); out(g, pan, t, t+dur, src); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
+  }
+  function kick(src, t, vel = 0.8, f0 = 120){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
+    o.connect(g); out(g, 0, t, t+0.5, src); o.start(t); o.stop(t+0.5);
+  }
+  // voz contínua de um elemento (oscilador sustentado): devolve {set(f, gain, pan), stop()}
+  function voz(src, type = 'sine'){
+    if (!AC) return null;
+    const o = AC.createOscillator(); o.type = type; const g = AC.createGain(); g.gain.value = 0;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4000;
+    let pn = null; o.connect(lp); lp.connect(g);
+    if (AC.createStereoPanner){ pn = AC.createStereoPanner(); g.connect(pn); pn.connect(srcBus[src].bus); } else g.connect(srcBus[src].bus);
+    o.start();
+    return {
+      set(f, gain, pan = 0, tc = 0.05, cut){ const t = AC.currentTime; if (f > 0) o.frequency.setTargetAtTime(f, t, tc); g.gain.setTargetAtTime(gain, t, tc);
+        if (pn) pn.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan*width)), t, tc); if (cut) lp.frequency.setTargetAtTime(cut, t, tc); },
+      stop(){ const t = AC.currentTime; g.gain.setTargetAtTime(0, t, 0.1); o.stop(t + 1); }
+    };
+  }
+
+  // ---------- vídeo ----------
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const lay = document.createElement('canvas'), lctx = lay.getContext('2d');
+  const fbk = document.createElement('canvas'), fctx = fbk.getContext('2d');
+  const HAS_FILTER = 'filter' in lctx;
+  const V = { cv, ctx, lay, lctx, W: 0, H: 0, DPR: 1, resizers: [] };
+  function resize(){
+    V.DPR = Math.min(devicePixelRatio || 1, 2); V.W = innerWidth; V.H = innerHeight;
+    for (const c of [cv, lay, fbk]){ c.width = V.W*V.DPR; c.height = V.H*V.DPR; }
+    ctx.setTransform(V.DPR,0,0,V.DPR,0,0); lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    for (const fn of V.resizers) fn();
+  }
+  addEventListener('resize', resize); resize();
+  function applyVideo(){
+    cv.style.filter = `brightness(${P.vBri}) contrast(${P.vCon}) saturate(${P.vSat}) hue-rotate(${P.vHue}deg)${P.vInv ? ' invert(1)' : ''}`;
+    document.body.classList.toggle('semtexto', P.showTxt === false);
+  }
+  applyVideo();
+  // começa um quadro: devolve o contexto da camada onde a obra desenha (tamanho em pixels CSS)
+  V.begin = (clear = true) => {
+    const { W, H } = V;
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    if (P.vTrail > 0){
+      ctx.save(); ctx.globalAlpha = P.vTrail;
+      ctx.translate(W/2, H/2); ctx.rotate(P.vRot*Math.PI/180); ctx.scale(P.vZoom, P.vZoom); ctx.translate(-W/2, -H/2);
+      ctx.drawImage(fbk, 0, 0, W, H); ctx.restore();
+    }
+    lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    lctx.globalCompositeOperation = 'source-over'; lctx.globalAlpha = 1; lctx.filter = 'none';
+    if (clear) lctx.clearRect(0, 0, W, H);
+    return lctx;
+  };
+  // fecha o quadro: brilho difuso, desfoque e espelho; guarda o quadro para o rastro
+  V.end = () => {
+    const { W, H } = V;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const m = +P.vMirror, mirrors = m === 4 ? [[1,1],[-1,1],[1,-1],[-1,-1]] : m === 2 ? [[1,1],[-1,1]] : [[1,1]];
+    for (const [sx, sy] of mirrors){
+      ctx.save(); ctx.translate(W/2, H/2); ctx.scale(sx, sy); ctx.translate(-W/2, -H/2);
+      const al = sx === 1 && sy === 1 ? 1 : 0.7;
+      if (HAS_FILTER && P.vGlow > 0){ ctx.filter = `blur(${P.vGlow}px)`; ctx.globalAlpha = 0.55*al; ctx.drawImage(lay, 0, 0, W, H); }
+      ctx.filter = HAS_FILTER && P.vBlur > 0 ? `blur(${P.vBlur}px)` : 'none';
+      ctx.globalAlpha = al; ctx.drawImage(lay, 0, 0, W, H);
+      ctx.restore();
+    }
+    ctx.restore(); ctx.filter = 'none';
+    if (P.vTrail > 0){ fctx.setTransform(1,0,0,1,0,0); fctx.globalCompositeOperation = 'copy'; fctx.drawImage(cv, 0, 0); fctx.globalCompositeOperation = 'source-over'; }
+  };
+  // cor da série (Gelo, Arco-íris, Brasa, Branco) para um valor u em [0,1)
+  V.cor = (u, a = 1, l = 66) => {
+    switch (P.color){
+      case 'arco': return `hsla(${(u*360 + 190) % 360},70%,${l}%,${a})`;
+      case 'brasa': return `hsla(${8 + 40*((u % 1 + 1) % 1)},85%,${l - 4}%,${a})`;
+      case 'branco': return `hsla(0,0%,${Math.min(96, l + 14)}%,${a})`;
+      default: { const k = (u % 1 + 1) % 1; return `hsla(${192 + 38*k},${60 - 26*k}%,${l + 10 - 18*k}%,${a})`; }
+    }
+  };
+
+  // ---------- tela, painel, teclas ----------
+  function toggleFull(){
+    const d = document;
+    try {
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+      else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } catch (e) {}
+  }
+  let running = false;
+  function setup(onStart, keys = {}){
+    $('start').addEventListener('pointerdown', e => { e.stopPropagation(); go(); });
+    function go(){ if (running) return; initAudio(); running = true; $('start').classList.add('hide'); onStart && onStart(); }
+    $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+    const bf = $('bFull'); if (bf) bf.addEventListener('click', toggleFull);
+    const br = $('bRe'); if (br && keys.r) br.addEventListener('click', () => keys.r());
+    const st = $('showTxt');
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+      if (e.target.tagName === 'SELECT') return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') $('panel').classList.toggle('on');
+      else if (k === 'f') toggleFull();
+      else if (k === 't' && st){ st.checked = !st.checked; st.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === ' ' && !running){ e.preventDefault(); go(); }
+      else if (keys[k] || keys[e.key]){ e.preventDefault(); if (running) (keys[k] || keys[e.key])(); }
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const fmt = v => typeof v === 'number' ? v.toLocaleString('pt-BR') : String(v);
+  return { P, V, readP, now, initAudio, applyMix, applyVideo, setDrone, freq, semi, chord, chordName, noteName, scale, SCALES, NOTAS, ROOT,
+    note, play, hit, kick, voz, setup, toggleFull, fmt, on: fn => listeners.push(fn),
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; }, get voices(){ return voices; } };
+}
+
+// ---------- espécies (velocidade em mm/h, proporcional à real; placa de 90 mm) ----------
+const ESP = {
+  penicillium: { nome: 'Penicillium', k: 'Pen', vel: 0.6, br: 0.09, wig: 0.2, bias: 0.1, cap: 7, mat: 12, hy: [232, 240, 236], sp: [52, 140, 122], spR: 1.1, spA: 0.22, raios: 11, h3: 0.08, reg: 0 },
+  aspergillus: { nome: 'Aspergillus', k: 'Asp', vel: 0.9, br: 0.08, wig: 0.2, bias: 0.1, cap: 10, mat: 9, hy: [236, 226, 170], sp: [24, 21, 16], spR: 1.5, spA: 0.55, h3: 0.1, reg: -7 },
+  rhizopus: { nome: 'Rhizopus', k: 'Rhi', vel: 2.4, br: 0.045, wig: 0.1, bias: 0.06, cap: 2, mat: 5, hy: [214, 214, 208], sp: [30, 30, 32], spR: 1.4, spA: 0.55, esparsa: 0.14, fofo: 1, h3: 0.2, reg: 2 },
+  fusarium: { nome: 'Fusarium', k: 'Fus', vel: 0.85, br: 0.09, wig: 0.28, bias: 0.08, cap: 4, mat: 14, hy: [246, 206, 228], sp: [196, 104, 186], spR: 1.7, spA: 0.13, pig: [150, 30, 110], fofo: 0.6, h3: 0.16, reg: -3 },
+  trichoderma: { nome: 'Trichoderma', k: 'Tri', vel: 1.8, br: 0.07, wig: 0.16, bias: 0.08, cap: 6, mat: 7, hy: [226, 244, 216], sp: [38, 168, 62], spR: 1.3, spA: 0.3, aneis: 6, h3: 0.09, reg: 4 },
+  neurospora: { nome: 'Neurospora', k: 'Neu', vel: 3.0, br: 0.055, wig: 0.12, bias: 0.07, cap: 5, mat: 5, hy: [250, 228, 196], sp: [255, 138, 28], spR: 1.0, spA: 0.2, aneis: 5, fofo: 0.4, h3: 0.13, reg: 7 }
+};
+const KEYS = Object.keys(ESP);
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+const O = Nucleo({
+  elementos: [
+    { k: 'Pen', nome: 'Penicillium', timbre: 'vidro', V: 0.6, D: 0.35 },
+    { k: 'Asp', nome: 'Aspergillus', timbre: 'marimba', V: 0.5, D: 0.2 },
+    { k: 'Rhi', nome: 'Rhizopus', timbre: 'harpa', V: 0.55, D: 0.3 },
+    { k: 'Fus', nome: 'Fusarium', timbre: 'macio', V: 0.65, D: 0.25 },
+    { k: 'Tri', nome: 'Trichoderma', timbre: 'celesta', V: 0.55, D: 0.4 },
+    { k: 'Neu', nome: 'Neurospora', timbre: 'kalimba', V: 0.5, D: 0.35 },
+    { k: 'Esp', nome: 'Chuva de esporos', timbre: '-', vol: 0.7, V: 0.7, D: 0.15 },
+    { k: 'Enc', nome: 'Encontro de colônias', timbre: 'grave', V: 0.5, D: 0.05 },
+    { k: 'Sem', nome: 'Semeadura', timbre: 'sinoGrave', V: 0.7, D: 0.3 }
+  ],
+  padroes: { verb: 0.62, vGlow: 3, dMix: 0.35, drone: 0.4 }
+});
+const P = O.P, V = O.V;
+
+// ---------- estado ----------
+const RES = Math.min(1024, Math.max(640, Math.round(Math.min(screen.width, screen.height)*(devicePixelRatio || 1)*0.9/64)*64));
+const myc = document.createElement('canvas'), mctx = myc.getContext('2d');
+const pig = document.createElement('canvas'), pctx = pig.getContext('2d');
+const mini = document.createElement('canvas'), nctx = mini.getContext('2d', { willReadFrequently: true });
+myc.width = myc.height = pig.width = pig.height = RES;
+const MS = 96; mini.width = mini.height = MS;
+let N = 0, Rg = 0, K = 1, own = null, tcol = null, spd = null, colonias = [], simH = 0, dishCells = 1, cobertos = 0;
+let fase = 'cresce', fadeT = 0, parado = 0, cheio = 0, lastT = 0, info = null, miniData = null, miniF = 0;
+let nextTick = 0, tickN = 0, grau = 0, progI = 0, encQ = [], ringQ = [], lastEnc = {}, proxSem = 0;
+const PROG = [0, 5, 3, 4, 0, 3, 1, 4];
+const TONS = [0, 2, 4, 7, 9, 11, 14];
+
+function pool(){ return P.esp === 'acaso' ? KEYS : [P.esp]; }
+const pick = a => a[Math.random()*a.length | 0];
+
+function reset(){
+  N = +P.res; Rg = N/2 - 1.5; K = RES/N;
+  own = new Int16Array(N*N); tcol = new Float32Array(N*N); spd = new Uint8Array(N*N); dishCells = 0; cobertos = 0;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){
+    const dx = x + 0.5 - N/2, dy = y + 0.5 - N/2, i = y*N + x;
+    if (dx*dx + dy*dy > Rg*Rg){ own[i] = -2; } else { own[i] = -1; dishCells++; }
+  }
+  mctx.clearRect(0, 0, RES, RES); pctx.clearRect(0, 0, RES, RES);
+  colonias = []; simH = 0; fase = 'cresce'; fadeT = 0; parado = 0; cheio = 0; lastEnc = {}; encQ = []; ringQ = []; proxSem = 18 + Math.random()*20;
+  inocular();
+}
+function livre(gx, gy){ const x = gx | 0, y = gy | 0; if (x < 2 || y < 2 || x >= N - 2 || y >= N - 2) return false; return own[y*N + x] === -1; }
+function inocular(){
+  const pl = pool(), m = P.inoc, ang = Math.random()*Math.PI*2;
+  if (m === 'acaso'){
+    const n = 2 + (Math.random()*4 | 0), usadas = [];
+    for (let k = 0; k < n; k++){
+      let key = pick(pl.filter(s => !usadas.includes(s))); if (!key) key = pick(pl); usadas.push(key);
+      for (let tries = 0; tries < 40; tries++){
+        const r = Math.sqrt(Math.random())*Rg*0.72, a = Math.random()*Math.PI*2, gx = N/2 + Math.cos(a)*r, gy = N/2 + Math.sin(a)*r;
+        if (colonias.every(c => Math.hypot(c.cx - gx, c.cy - gy) > Rg*0.3)){ semear(key, gx, gy, true); break; }
+      }
+    }
+  } else if (m === 'cada'){
+    KEYS.forEach((key, k) => { const a = ang + k/KEYS.length*Math.PI*2; semear(key, N/2 + Math.cos(a)*Rg*0.52, N/2 + Math.sin(a)*Rg*0.52, true); });
+  } else if (m === 'centro'){
+    semear(pick(pl), N/2, N/2, true);
+  } else if (m === 'duelo'){
+    const a = pick(pl), b = pick(KEYS.filter(s => s !== a));
+    semear(a, N/2 - Rg*0.45, N/2, true); semear(b, N/2 + Rg*0.45, N/2, true);
+  }
+}
+function semear(key, gx, gy, silencio){
+  if (!livre(gx, gy) || colonias.length > 3000) return null;
+  const E = ESP[key], c = { id: colonias.length, key, E, cx: gx, cy: gy, born: simH, tips: [], cells: [], fechada: 0, ev: 0, ex: gx, ey: gy, spN: 0, ring: -1, ph: Math.random()*6.28 };
+  colonias.push(c);
+  const n = 14 + (Math.random()*8 | 0);
+  for (let k = 0; k < n; k++){ const a = k/n*Math.PI*2 + Math.random()*0.3; c.tips.push({ x: gx + Math.cos(a)*1.2, y: gy + Math.sin(a)*1.2, a, prog: Math.random(), cell: -1 }); }
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){
+    if (dx*dx + dy*dy > 5) continue; const j = ((gy | 0) + dy)*N + ((gx | 0) + dx);
+    if (own[j] === -1){ own[j] = c.id; tcol[j] = simH; c.cells.push(j); cobertos++; }
+  }
+  mctx.fillStyle = rgba(E.hy, 0.55); mctx.beginPath(); mctx.arc(gx*K, gy*K, 2.2*K, 0, Math.PI*2); mctx.fill();
+  if (!silencio && O.running) O.play('Sem', grau + E.reg + 7, O.now() + 0.01, 0.75, (gx/N - 0.5)*1.6, 1.4);
+  return c;
+}
+
+// ---------- crescimento ----------
+function crescer(dtH){
+  simH += dtH;
+  const nutr = P.nutr, maxT = P.maxT | 0, esp = P.espess;
+  for (const c of colonias){
+    const E = c.E, tips = c.tips; if (!tips.length) continue;
+    const cpH = E.vel*N/90*(0.55 + 0.45*Math.min(1.4, nutr)), adv = cpH*dtH;
+    const brP = E.br*P.ramif*Math.pow(nutr, 0.8), wig = E.wig*(1 + Math.max(0, 1 - nutr)*0.9);
+    mctx.beginPath(); let fofo = null;
+    for (let q = tips.length - 1; q >= 0; q--){
+      const t = tips[q]; t.prog += adv; let morta = false;
+      while (t.prog >= 1 && !morta){
+        t.prog -= 1;
+        const ra = Math.atan2(t.y - c.cy, t.x - c.cx);
+        t.a += (Math.random() - 0.5)*2*wig + Math.sin(ra - t.a)*E.bias;
+        const nx = t.x + Math.cos(t.a), ny = t.y + Math.sin(t.a), ix = nx | 0, iy = ny | 0;
+        if (ix < 1 || iy < 1 || ix >= N - 1 || iy >= N - 1){ morta = true; break; }
+        const j = iy*N + ix, o = own[j];
+        if (o === -2){ morta = true; break; }
+        if (o >= 0 && o !== c.id){ morta = true; encontro(c, o, nx, ny); break; }
+        if (o === c.id && j !== t.cell){
+          const idade = (simH - tcol[j])*cpH;
+          if ((idade > 5 && Math.random() < 0.4) || Math.random() < 0.012){ morta = true; break; }
+        }
+        mctx.moveTo(t.x*K, t.y*K); mctx.lineTo(nx*K, ny*K);
+        t.x = nx; t.y = ny; t.cell = j;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){
+          const jj = j + dy*N + dx; if (own[jj] === -1){ own[jj] = c.id; tcol[jj] = simH; c.cells.push(jj); cobertos++; }
+        }
+        if (E.fofo && Math.random() < E.fofo*0.22) (fofo || (fofo = [])).push(nx, ny, t.a);
+        if (tips.length < maxT && Math.random() < brP){
+          const s = Math.random() < 0.5 ? -1 : 1;
+          tips.push({ x: nx, y: ny, a: t.a + s*(0.35 + Math.random()*0.6), prog: Math.random()*0.5, cell: j });
+          c.ev++; c.ex = nx; c.ey = ny;
+        }
+      }
+      if (morta){ tips[q] = tips[tips.length - 1]; tips.pop(); }
+    }
+    mctx.strokeStyle = rgba(E.hy, 0.5); mctx.lineWidth = 0.7*esp*K/4; mctx.lineCap = 'round'; mctx.stroke();
+    if (fofo){
+      // micélio aéreo (cotonoso): fios curtos e curvos saindo da frente
+      mctx.beginPath();
+      for (let i = 0; i < fofo.length; i += 3){
+        const x = fofo[i], y = fofo[i + 1], a = fofo[i + 2] + (Math.random() - 0.5)*2.4, L = 2 + Math.random()*6, b = a + (Math.random() - 0.5)*1.6;
+        mctx.moveTo(x*K, y*K); mctx.quadraticCurveTo((x + Math.cos(a)*L*0.6)*K, (y + Math.sin(a)*L*0.6)*K, (x + Math.cos(b)*L)*K, (y + Math.sin(b)*L)*K);
+      }
+      mctx.strokeStyle = rgba(E.hy, 0.13); mctx.lineWidth = 0.6*esp*K/4; mctx.stroke();
+    }
+    regenerar(c, maxT);
+    // anéis (Trichoderma, Neurospora): o relógio de luz e escuro
+    if (E.aneis && tips.length){
+      const r = Math.floor((simH - c.born)/E.aneis*2);
+      if (r !== c.ring){ if (r % 2 === 0 && r > 0) ringQ.push(c); c.ring = r; }
+    }
+  }
+  esporular(dtH);
+}
+// uma colônia cercada de espaço livre não para: pontas novas brotam das hifas recentes que ainda têm vizinho livre
+function regenerar(c, maxT){
+  const L = c.cells.length; if (!L || c.tips.length > maxT*0.5 || c.fechada > 400) return;
+  const from = Math.max(0, L - Math.max(200, L*0.35 | 0));
+  let achou = 0;
+  for (let q = 0; q < 8; q++){
+    const j = c.cells[from + (Math.random()*(L - from) | 0)], x = j % N, y = (j/N) | 0, a = Math.random()*Math.PI*2;
+    const nx = x + 0.5 + Math.cos(a)*1.8, ny = y + 0.5 + Math.sin(a)*1.8, jj = (ny | 0)*N + (nx | 0);
+    if (own[jj] === -1){ c.tips.push({ x: x + 0.5, y: y + 0.5, a, prog: Math.random(), cell: j }); achou++; }
+  }
+  c.fechada = achou ? 0 : (c.fechada || 0) + 1;
+}
+function esporular(dtH){
+  const s = P.spor; if (s <= 0) return;
+  for (const c of colonias){
+    const E = c.E, L = c.cells.length; if (!L) continue;
+    let n = Math.min(420, L*dtH*0.5); n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0); if (!n) continue;
+    mctx.beginPath(); let k = 0;
+    const r0 = E.spR*Math.min(K, 4)*0.32;
+    for (let q = 0; q < n; q++){
+      const j = c.cells[Math.random()*L | 0], idade = simH - tcol[j];
+      if (idade < E.mat) continue;
+      let p = Math.min(1, 0.3 + 0.7*(idade - E.mat)/(E.mat*1.5));
+      const x = j % N, y = (j/N) | 0;
+      if (E.raios){ const th = Math.atan2(y - c.cy, x - c.cx), m = 0.55 + 0.45*Math.cos(E.raios*th + c.ph + Math.hypot(x - c.cx, y - c.cy)*0.04); p *= m*m; }
+      if (E.aneis){ const f = (((tcol[j] - c.born)/E.aneis) % 1 + 1) % 1; if (f > 0.5) p *= 0.05; }
+      if (E.esparsa) p *= E.esparsa;
+      if (spd[j] >= E.cap || Math.random() > p) continue;
+      spd[j]++;
+      const px = (x + Math.random() + (Math.random() - 0.5)*1.4)*K, py = (y + Math.random() + (Math.random() - 0.5)*1.4)*K, r = r0*(0.6 + Math.random()*0.8);
+      mctx.moveTo(px + r, py); mctx.arc(px, py, r, 0, Math.PI*2); k++;
+    }
+    if (k){ mctx.fillStyle = rgba(E.sp, Math.min(1, E.spA*0.55*s)); mctx.fill(); c.spN += k; }
+    // pigmento que se espalha no ágar (Fusarium)
+    if (E.pig && Math.random() < dtH*1.2){
+      const j = c.cells[Math.random()*L | 0];
+      if (simH - tcol[j] > E.mat){
+        const x = (j % N + 0.5)*K, y = (((j/N) | 0) + 0.5)*K, R = (8 + Math.random()*14)*K, g = pctx.createRadialGradient(x, y, 0, x, y, R);
+        g.addColorStop(0, rgba(E.pig, 0.07)); g.addColorStop(1, rgba(E.pig, 0));
+        pctx.fillStyle = g; pctx.fillRect(x - R, y - R, 2*R, 2*R);
+      }
+    }
+  }
+}
+function encontro(c, o, x, y){
+  // linha de barreira: um traço âmbar escuro onde as colônias se tocam
+  mctx.globalCompositeOperation = 'destination-out'; mctx.fillStyle = 'rgba(0,0,0,0.3)'; mctx.fillRect(x*K - K*0.7, y*K - K*0.7, K*1.4, K*1.4); mctx.globalCompositeOperation = 'source-over';
+  const a = Math.min(c.id, o), b = Math.max(c.id, o), key = a + '_' + b, t = O.now();
+  if (!(t - (lastEnc[key] || -9) > 3.5)) return;
+  lastEnc[key] = t; if (encQ.length < 4) encQ.push({ x, c, o: colonias[o] });
+}
+
+// ---------- música ----------
+function tick(t, dtk){
+  const tempo = tickN/2; tickN++;
+  const passos = Math.max(1, P.acStep | 0);
+  if (tickN % 2 === 1 && tempo % passos === 0){
+    progI = (tempo/passos) | 0; grau = PROG[progI % PROG.length];
+    O.setDrone(O.semi(grau), 7, 2.5, 140 + cobertura()*1100);
+  }
+  // vozes das espécies: as colônias que mais se ramificaram desde o último pulso
+  const cand = colonias.filter(c => c.ev > 0 && c.tips.length).sort((a, b) => b.ev*Math.random() - a.ev*Math.random());
+  const maxV = P.vozes | 0; let tocou = 0;
+  for (const c of cand){
+    if (tocou >= maxV) break;
+    const p = P.dens*(1 - Math.exp(-c.ev*0.3));
+    if (Math.random() < p){
+      const rf = Math.min(1, Math.hypot(c.ex - c.cx, c.ey - c.cy)/Rg), idx = Math.min(TONS.length - 1, Math.floor(rf*TONS.length));
+      const d = grau + TONS[idx] + c.E.reg, off = tickN % 2 === 0 ? dtk*0.12 : 0;
+      O.play(c.E.k, d, t + off, 0.35 + Math.random()*0.4, (c.ex/N - 0.5)*1.6, 1);
+      c.ev *= 0.35; tocou++;
+    }
+  }
+  for (const c of colonias) c.ev *= 0.7;
+  // chuva de esporos
+  let sp = 0; for (const c of colonias){ sp += c.spN; c.spN = 0; }
+  const ng = Math.min(P.chuva | 0, Math.floor(Math.sqrt(sp)/4));
+  for (let i = 0; i < ng; i++) O.hit('Esp', t + Math.random()*dtk, 0.08 + Math.random()*0.18, (Math.random() - 0.5)*1.6, 3500 + Math.random()*7000, 0.02 + Math.random()*0.03);
+  // encontro de colônias: o intervalo entre as duas espécies, no grave
+  const e = encQ.shift();
+  if (e){ const pan = (e.x/N - 0.5)*1.4; O.play('Enc', grau - 14, t, 0.75, pan, 1.6); O.play('Enc', grau - 14 + Math.abs(e.c.E.reg - e.o.E.reg) % 7 + 2, t + dtk*0.5, 0.5, -pan, 1.4); }
+  // anel novo: arpejo da espécie
+  const r = ringQ.shift();
+  if (r){ [0, 2, 4, 7, 9].forEach((s, i) => O.play(r.E.k, grau + r.E.reg + s, t + i*dtk*0.33, 0.55 - i*0.06, (r.cx/N - 0.5)*1.6 + (i - 2)*0.12, 1.3)); }
+}
+function cobertura(){ return cobertos/dishCells; }
+
+// ---------- toque: semeia ----------
+function dish(){ const R = Math.min(V.W, V.H)*0.5*P.tam; return { cx: V.W/2, cy: V.H/2, R }; }
+V.cv.addEventListener('pointerdown', e => {
+  if (!O.running || !P.toque || !own || T3.on || fase !== 'cresce') return;
+  const d = dish(), gx = (e.clientX - d.cx)/d.R*(N/2) + N/2, gy = (e.clientY - d.cy)/d.R*(N/2) + N/2;
+  if (Math.hypot(gx - N/2, gy - N/2) > Rg*0.97) return;
+  semear(pick(pool()), gx, gy, false);
+});
+
+// ---------- desenho ----------
+const AGAR = { escuro: ['rgb(16,15,13)', 'rgb(6,6,6)'], fundo: ['rgb(92,64,26)', 'rgb(38,26,10)'], clara: ['rgb(196,160,98)', 'rgb(150,112,58)'] };
+function draw2d(C, t, alfa){
+  const { cx, cy, R } = dish(), ag = AGAR[P.luz] || AGAR.escuro;
+  C.save(); C.globalAlpha = alfa;
+  const g = C.createRadialGradient(cx, cy - R*0.2, R*0.1, cx, cy, R); g.addColorStop(0, ag[0]); g.addColorStop(1, ag[1]);
+  C.fillStyle = g; C.beginPath(); C.arc(cx, cy, R, 0, Math.PI*2); C.fill();
+  C.save(); C.beginPath(); C.arc(cx, cy, R, 0, Math.PI*2); C.clip();
+  C.imageSmoothingEnabled = true;
+  C.drawImage(pig, cx - R, cy - R, 2*R, 2*R);
+  C.drawImage(myc, cx - R, cy - R, 2*R, 2*R);
+  if (P.pontas > 0){
+    C.globalCompositeOperation = 'lighter'; const s = 2*R/N, w = Math.max(1.2, s*0.7);
+    for (const c of colonias){
+      if (!c.tips.length) continue;
+      C.fillStyle = rgba(c.E.hy, P.pontas*(0.55 + 0.25*Math.sin(t*2 + c.ph))*alfa);
+      for (const p of c.tips) C.fillRect(cx - R + p.x*s - w/2, cy - R + p.y*s - w/2, w, w);
+    }
+    C.globalCompositeOperation = 'source-over';
+  }
+  C.restore();
+  if (P.vidro){
+    C.globalCompositeOperation = 'lighter';
+    C.strokeStyle = `rgba(190,215,235,${0.22*alfa})`; C.lineWidth = 2; C.beginPath(); C.arc(cx, cy, R + 1, 0, Math.PI*2); C.stroke();
+    C.strokeStyle = `rgba(190,215,235,${0.1*alfa})`; C.lineWidth = 1; C.beginPath(); C.arc(cx, cy, R*1.035, 0, Math.PI*2); C.stroke();
+    C.strokeStyle = `rgba(255,255,255,${0.14*alfa})`; C.lineWidth = Math.max(3, R*0.012); C.lineCap = 'round';
+    C.beginPath(); C.arc(cx, cy, R*0.975, -2.45, -1.75); C.stroke();
+    C.strokeStyle = `rgba(255,255,255,${0.06*alfa})`; C.beginPath(); C.arc(cx, cy, R*0.975, 0.75, 1.15); C.stroke();
+    C.globalCompositeOperation = 'source-over';
+  }
+  C.restore();
+}
+// vista 3D: a placa deitada; a altura de cada ponto é o micélio aéreo da espécie (Rhizopus alto e cotonoso,
+// Penicillium baixo e aveludado), que cresce com a idade; as pontas vivas brilham na frente das colônias.
+const T3 = Vista3D({ ligado: false, giro: 0.05, incl: 38, yaw: 0.3 });
+function draw3d(C, t, alfa){
+  T3.quadro(V.W, V.H); T3.centro(0, 20);
+  if (++miniF % 6 === 1 || !miniData){
+    const ag = AGAR[P.luz] || AGAR.escuro;
+    nctx.globalCompositeOperation = 'source-over'; nctx.fillStyle = ag[0]; nctx.fillRect(0, 0, MS, MS);
+    nctx.drawImage(pig, 0, 0, MS, MS); nctx.drawImage(myc, 0, 0, MS, MS);
+    miniData = nctx.getImageData(0, 0, MS, MS).data;
+  }
+  const ag = AGAR[P.luz] || AGAR.escuro, sc = 1.15;
+  C.save(); C.globalAlpha = alfa;
+  // ágar (disco) e parede da placa
+  C.beginPath(); for (let k = 0; k <= 64; k++){ const a = k/64*Math.PI*2; T3.p(Math.cos(a)*sc, 0, Math.sin(a)*sc); k ? C.lineTo(T3.X, T3.Y) : C.moveTo(T3.X, T3.Y); }
+  C.fillStyle = ag[0]; C.fill();
+  // colunas de trás para a frente
+  T3.p(0, 0, -1); const z0 = T3.Z; T3.p(0, 0, 1); const back = z0 > T3.Z;
+  const cw = 2*sc/MS*T3.R*0.55, st = N/MS;
+  for (let yy = 0; yy < MS; yy++){
+    const v = back ? yy : MS - 1 - yy;
+    for (let u = 0; u < MS; u++){
+      const gx = Math.min(N - 1, (u + 0.5)*st | 0), gy = Math.min(N - 1, (v + 0.5)*st | 0), o = own[gy*N + gx];
+      if (o < 0) continue;
+      const c = colonias[o], idade = simH - tcol[gy*N + gx], h = c.E.h3*Math.min(1, 0.25 + idade/(c.E.mat*1.4 + 2))*(0.35 + 0.65*(((Math.sin(u*12.9898 + v*78.233)*43758.5453) % 1 + 1) % 1));
+      const wx = ((u + 0.5)/MS - 0.5)*2*sc, wz = ((v + 0.5)/MS - 0.5)*2*sc;
+      if (!T3.p(wx, 0, wz)) continue; const bx = T3.X, by = T3.Y, s = T3.S, a = T3.A;
+      T3.p(wx, h, wz); const ty = T3.Y, w = Math.max(1, cw*s), q = (v*MS + u)*4;
+      let r = miniData[q], gg = miniData[q + 1], b = miniData[q + 2];
+      const m = Math.max(r, gg, b); if (m < 60){ const f = 60/Math.max(1, m); r = Math.min(255, r*f + 8); gg = Math.min(255, gg*f + 8); b = Math.min(255, b*f + 8); }
+      C.globalAlpha = 0.75*a*alfa; C.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`;
+      C.fillRect(bx - w/2, ty, w, Math.max(1, by - ty));
+    }
+  }
+  C.globalAlpha = alfa;
+  if (P.pontas > 0){
+    C.globalCompositeOperation = 'lighter';
+    for (const c of colonias){ if (!c.tips.length) continue; const col = rgba(c.E.hy, 1);
+      for (let i = 0; i < c.tips.length; i += 3){ const p = c.tips[i]; T3.ponto(C, (p.x/N - 0.5)*2*sc, c.E.h3*0.35, (p.y/N - 0.5)*2*sc, 1.3, col, P.pontas*0.8*alfa); } }
+  }
+  if (P.vidro){
+    C.globalCompositeOperation = 'lighter'; C.strokeStyle = 'rgb(190,215,235)'; C.lineWidth = 1.3;
+    C.globalAlpha = 0.3*alfa; C.beginPath(); T3.circulo(C, 0, 0, 0, sc*1.01, 'y', 96); C.stroke();
+    C.globalAlpha = 0.18*alfa; C.beginPath(); T3.circulo(C, 0, 0.16, 0, sc*1.01, 'y', 96); C.stroke();
+    for (let k = 0; k < 24; k++){ const a = k/24*Math.PI*2; T3.seg(C, Math.cos(a)*sc*1.01, 0, Math.sin(a)*sc*1.01, Math.cos(a)*sc*1.01, 0.16, Math.sin(a)*sc*1.01, 0.08*alfa); }
+  }
+  C.restore();
+}
+
+function frame(){
+  const t = O.now(), dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
+  let alfa = 1;
+  if (O.running && own){
+    if (fase === 'cresce'){
+      crescer(dt*P.speed);
+      const vivas = colonias.reduce((s, c) => s + c.tips.length, 0), cob = cobertura();
+      // semear sozinho enquanto houver espaço
+      if (P.semAuto && simH > proxSem && cob < 0.6){
+        proxSem = simH + 16 + Math.random()*26;
+        for (let k = 0; k < 30; k++){ const r = Math.sqrt(Math.random())*Rg*0.85, a = Math.random()*Math.PI*2; if (semear(pick(pool()), N/2 + Math.cos(a)*r, N/2 + Math.sin(a)*r, false)) break; }
+      }
+      parado = vivas === 0 && P.inoc !== 'vazia' ? parado + dt : 0;
+      cheio = cob > 0.94 ? cheio + dt : 0;
+      if (P.auto && (parado > 5 || cheio > 10 || (vivas === 0 && colonias.length && cob > 0.5 && parado > 2))){ fase = 'fim'; fadeT = 0; O.play('Enc', grau - 21, t + 0.05, 0.9, 0, 2.5); O.play('Sem', grau + 4, t + 0.6, 0.5, 0, 2); }
+    } else {
+      fadeT += dt/6; alfa = Math.max(0, 1 - fadeT);
+      if (fadeT >= 1.15){ reset(); if (O.running) O.setDrone(O.semi(grau), 7, 3, 140); }
+    }
+    // pulso musical
+    const dtk = 60/P.bpm/2;
+    if (nextTick < t - 0.5) nextTick = t + 0.05;
+    while (nextTick < t + 0.12){ tick(nextTick, dtk); nextTick += dtk; }
+  }
+  const C = V.begin();
+  if (own){ if (T3.on) draw3d(C, t, alfa); else draw2d(C, t, alfa); }
+  V.end();
+  if (O.running && own && (t*2 | 0) !== (info && info.k)){
+    info = { k: t*2 | 0 };
+    const h = simH | 0, dia = Math.floor(simH/24) + 1;
+    $('num').textContent = `${h} h · dia ${dia} · ${Math.round(cobertura()*100)}% da placa`;
+    const vivas = {}; colonias.forEach(c => { vivas[c.E.nome] = (vivas[c.E.nome] || 0) + 1; });
+    $('op').textContent = Object.keys(vivas).map(n => vivas[n] > 1 ? `${n} ×${vivas[n]}` : n).join(' · ') || 'toque na placa para semear';
+    $('seq').textContent = O.chordName(grau);
+  }
+  requestAnimationFrame(frame);
+}
+O.on(k => { if (k === 'res' || k === 'inoc') reset(); });
+O.setup(() => { lastT = O.now(); nextTick = O.now() + 0.1; O.setDrone(O.semi(grau), 7, 0.1, 140); }, { r: reset });
+reset();
+window.micelio = { crescer, reset, get colonias(){ return colonias; }, get simH(){ return simH; } };
+requestAnimationFrame(frame);
+})();
+</script>
+<script>
+// ---------- banco de configurações (comum a todas as conjecturas) ----------
+// Lê e aplica todos os controles do painel (#panel) com id. Salva configurações com nome, carrega pelas teclas 1–9,
+// exporta/importa em .json e lembra os últimos ajustes ao reabrir. Para aplicar, muda o valor do controle e dispara
+// os eventos input/change, então cada obra reage como se a pessoa tivesse mexido no painel.
+(() => {
+  const panel = document.getElementById('panel');
+  if (!panel || window.__banco) return;
+  window.__banco = true;
+  const obra = (location.pathname.split('/').filter(Boolean).filter(s => s !== 'index.html').pop() || 'obra');
+  const KB = 'conjecturas-banco-' + obra, KA = 'conjecturas-atual-' + obra, KL = 'conjecturas-lembrar-' + obra;
+  const ls = {
+    get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id],textarea[id]')]
+    .filter(el => !el.id.startsWith('bk') && el.type !== 'file' && el.type !== 'button' && el.type !== 'submit');
+  const val = el => el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value;
+  const estado = () => { const s = {}; for (const el of ctrls()) s[el.id] = val(el); return s; };
+  const igual = (el, v) => el.type === 'checkbox' || el.type === 'radio' ? el.checked === !!v : String(el.value) === String(v);
+  const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+  let aplicando = false;
+  function aplicar(s){
+    if (!s) return;
+    aplicando = true;
+    try {
+      // duas passadas: se um controle muda outros (ex.: um modo que reposiciona sliders), a segunda corrige
+      for (let pass = 0; pass < 2; pass++){
+        for (const el of ctrls()){
+          if (!(el.id in s) || igual(el, s[el.id])) continue;
+          if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!s[el.id];
+          else if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(s[el.id]))) continue;
+          else el.value = s[el.id];
+          try { fire(el); } catch (e) { console.warn('banco:', el.id, e); }
+        }
+      }
+    } finally { aplicando = false; }
+    guardarAtual();
+  }
+  const PADRAO = estado();
+
+  // ---------- interface ----------
+  const css = document.createElement('style');
+  css.textContent = `
+    #bkBox{border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:12px;margin-bottom:6px}
+    #bkBox .row label{flex:0 0 52px}
+    #bkBox .btns{margin-top:6px}
+    #bkMsg{min-height:1em;opacity:.55;font-size:10.5px;margin-top:6px;transition:opacity .4s}
+    #bkBox .lembrar{display:flex;align-items:center;gap:6px;opacity:.7;margin-top:8px;font-size:11px}
+    #bkBox .lembrar input{accent-color:#9fb8d0;margin:0}`;
+  document.head.appendChild(css);
+  const box = document.createElement('div');
+  box.id = 'bkBox';
+  box.innerHTML = `
+    <h2>Configurações</h2>
+    <div class="row"><label for="bkSel">salvas</label><select id="bkSel"></select></div>
+    <div class="row"><label for="bkNome">nome</label><input id="bkNome" type="text" placeholder="nome da configuração" autocomplete="off" spellcheck="false"></div>
+    <div class="btns"><button id="bkSalvar" type="button">Salvar</button><button id="bkApagar" type="button">Apagar</button></div>
+    <div class="btns"><button id="bkExp" type="button">Exportar</button><button id="bkImp" type="button">Importar</button><input id="bkArq" type="file" accept=".json,application/json" style="display:none"></div>
+    <label class="lembrar"><input id="bkLembrar" type="checkbox"> lembrar os ajustes ao reabrir</label>
+    <div id="bkMsg"></div>
+    <div class="hint" style="margin-top:4px">Teclas 1–9 carregam as configurações salvas, na ordem da lista; 0 volta ao padrão. Exporte o .json para levar para outro aparelho.</div>`;
+  panel.insertBefore(box, panel.firstChild);
+  const $b = id => document.getElementById(id);
+  const sel = $b('bkSel'), nome = $b('bkNome'), bSalvar = $b('bkSalvar'), msgEl = $b('bkMsg'), lembrar = $b('bkLembrar');
+  let msgT;
+  const msg = t => { msgEl.textContent = t; msgEl.style.opacity = .7; clearTimeout(msgT); msgT = setTimeout(() => { msgEl.style.opacity = 0; }, 2600); };
+
+  let banco = ls.get(KB, []);
+  if (!Array.isArray(banco)) banco = [];
+  const gravarBanco = () => ls.set(KB, banco);
+  function lista(escolhido){
+    sel.innerHTML = '<option value="">— atual —</option><option value="__padrao">Padrão</option>' +
+      banco.map((c, i) => `<option value="${i}">${i < 9 ? (i + 1) + ' · ' : ''}${c.nome.replace(/[<&]/g, ch => ch === '<' ? '&lt;' : '&amp;')}</option>`).join('');
+    sel.value = escolhido == null ? '' : String(escolhido);
+    rotulo();
+  }
+  function rotulo(){ bSalvar.textContent = banco.some(c => c.nome === nome.value.trim()) ? 'Regravar' : 'Salvar'; }
+  function carregar(i){
+    if (i === '__padrao'){ aplicar(PADRAO); lista('__padrao'); nome.value = ''; rotulo(); msg('Padrão restaurado'); return; }
+    const c = banco[i]; if (!c) return;
+    aplicar(c.valores); lista(i); nome.value = c.nome; rotulo(); msg('Carregada: ' + c.nome);
+  }
+  sel.addEventListener('change', () => { if (sel.value !== '') carregar(sel.value === '__padrao' ? '__padrao' : +sel.value); });
+  nome.addEventListener('input', rotulo);
+  nome.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') bSalvar.click(); });
+  bSalvar.addEventListener('click', () => {
+    let n = nome.value.trim();
+    if (!n){ let k = banco.length + 1; while (banco.some(c => c.nome === 'Configuração ' + k)) k++; n = 'Configuração ' + k; }
+    const c = { nome: n, valores: estado(), data: new Date().toISOString() };
+    const j = banco.findIndex(x => x.nome === n);
+    if (j >= 0) banco[j] = c; else banco.push(c);
+    gravarBanco(); nome.value = n; lista(j >= 0 ? j : banco.length - 1);
+    msg((j >= 0 ? 'Regravada: ' : 'Salva: ') + n + ((j >= 0 ? j : banco.length - 1) < 9 ? ' (tecla ' + ((j >= 0 ? j : banco.length - 1) + 1) + ')' : ''));
+  });
+  $b('bkApagar').addEventListener('click', () => {
+    const i = sel.value === '' || sel.value === '__padrao' ? banco.findIndex(c => c.nome === nome.value.trim()) : +sel.value;
+    if (i < 0 || !banco[i]){ msg('Escolha na lista a configuração para apagar'); return; }
+    if ($b('bkApagar').dataset.ok !== String(i)){ // segundo toque confirma (sem janela de confirmação)
+      $b('bkApagar').dataset.ok = String(i); $b('bkApagar').textContent = 'Apagar mesmo?';
+      setTimeout(() => { delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar'; }, 3000); return;
+    }
+    const n = banco[i].nome; banco.splice(i, 1); gravarBanco(); nome.value = '';
+    delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar';
+    lista(); msg('Apagada: ' + n);
+  });
+  $b('bkExp').addEventListener('click', async () => {
+    const dados = { obra, versao: 1, exportado: new Date().toISOString(), atual: estado(), configuracoes: banco };
+    const txt = JSON.stringify(dados, null, 2), arq = obra + '-configuracoes.json';
+    const blob = new Blob([txt], { type: 'application/json' });
+    try {
+      const f = new File([blob], arq, { type: 'application/json' });
+      if (/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: arq }); msg('Exportado'); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = arq;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg('Exportado: ' + arq);
+  });
+  $b('bkImp').addEventListener('click', () => $b('bkArq').click());
+  $b('bkArq').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      const vem = Array.isArray(d) ? d : Array.isArray(d.configuracoes) ? d.configuracoes : [];
+      if (d && d.obra && d.obra !== obra && !vem.length) throw new Error('outra obra');
+      let novas = 0, troc = 0;
+      for (const c of vem){
+        if (!c || typeof c.nome !== 'string' || !c.valores) continue;
+        const j = banco.findIndex(x => x.nome === c.nome);
+        if (j >= 0){ banco[j] = c; troc++; } else { banco.push(c); novas++; }
+      }
+      gravarBanco(); lista();
+      msg(novas + troc ? `Importadas: ${novas} novas${troc ? ', ' + troc + ' substituídas' : ''}${d.obra && d.obra !== obra ? ' (arquivo de ' + d.obra + ')' : ''}` : 'Nenhuma configuração no arquivo');
+    } catch (err) { msg('Não consegui ler esse arquivo'); }
+  });
+
+  // ---------- lembrar ao reabrir ----------
+  lembrar.checked = ls.get(KL, true) !== false;
+  lembrar.addEventListener('change', () => { ls.set(KL, lembrar.checked); if (lembrar.checked) guardarAtual(); });
+  let tA;
+  function guardarAtual(){ if (!lembrar.checked) return; clearTimeout(tA); tA = setTimeout(() => ls.set(KA, estado()), 300); }
+  panel.addEventListener('input', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')){ guardarAtual(); if (sel.value !== '') sel.value = ''; } }, true);
+  panel.addEventListener('change', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')) guardarAtual(); }, true);
+  addEventListener('pagehide', () => { if (lembrar.checked) ls.set(KA, estado()); });
+
+  // ---------- teclas 1–9 e 0 ----------
+  addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && t.type !== 'range' && t.type !== 'checkbox'))) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^[1-9]$/.test(e.key)){ const i = +e.key - 1; if (banco[i]){ e.preventDefault(); carregar(i); } }
+    else if (e.key === '0'){ e.preventDefault(); carregar('__padrao'); }
+  });
+
+  lista();
+  if (lembrar.checked){ const a = ls.get(KA, null); if (a) aplicar(a); }
+})();
+
+</script>
+</body>
+</html>

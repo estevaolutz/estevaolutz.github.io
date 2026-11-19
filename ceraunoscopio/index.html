@@ -68,7 +68,7 @@ kbd{border:1px solid #ffffff30;border-radius:3px;padding:0 4px;font-size:11px;co
   <p>Uma máquina de relâmpagos. Cada raio é simulado pela física da descarga: o líder desce em degraus, a descarga de retorno sobe pelo canal, as descargas seguintes repetem o caminho, a corrente contínua mantém o canal aceso — e o trovão nasce da forma de cada raio.</p>
   <p>Toque ou clique no céu para disparar. Controle tudo pelo painel ou pelo MIDI (Korg nanoPAD2 e Moog Sub Phatty já mapeados; qualquer controle pode ser aprendido).</p>
   <button id="go">COMEÇAR</button>
-  <div class="k"><kbd>espaço</kbd> raio · <kbd>1</kbd>–<kbd>0</kbd> <kbd>-</kbd> <kbd>=</kbd> tipos · <kbd>S</kbd> câmera lenta · <kbd>O</kbd> obturador · <kbd>T</kbd> tempestade<br><kbd>P</kbd> pausa · <kbd>.</kbd> quadro a quadro · <kbd>L</kbd> linha do tempo · <kbd>M</kbd> painel · <kbd>H</kbd> legenda · <kbd>F</kbd> tela cheia · <kbd>R</kbd> gravar · <kbd>X</kbd> limpar</div>
+  <div class="k"><kbd>espaço</kbd> raio · <kbd>1</kbd>–<kbd>0</kbd> <kbd>-</kbd> <kbd>=</kbd> tipos · <kbd>S</kbd> câmera lenta · <kbd>O</kbd> obturador · <kbd>T</kbd> tempestade<br><kbd>P</kbd> pausa · <kbd>.</kbd> quadro a quadro · <kbd>L</kbd> linha do tempo · <kbd>M</kbd> painel · <kbd>H</kbd> legenda · <kbd>F</kbd> tela cheia · <kbd>R</kbd> gravar · <kbd>X</kbd> limpar · <kbd>B</kbd> cenário</div>
  </div>
 </div>
 <script>
@@ -149,13 +149,13 @@ const SPEC=[
 ];
 function fmtN(n){return n>=1e6?(n/1e6).toFixed(1)+' mi':n>=1e3?Math.round(n/1e3)+' mil':Math.round(n)+'';}
 const PS=Object.fromEntries(SPEC.map(s=>[s[0],{id:s[0],l:s[1],min:s[2],max:s[3],def:s[4],...s[5]}]));
-const P={tipo:'neg',cenario:'mar',lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
+const P={tipo:'neg',cenario:'mar',verCenario:false,lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
  ...Object.fromEntries(SPEC.map(s=>[s[0],s[4]]))};
 P.tempestade=0; // começa desligada; o padrão 12 vale ao ligar
 let stormRate=12;
 const SAVEKEY='ceraunoscopio-v1';
 try{const s=JSON.parse(localStorage.getItem(SAVEKEY)||'{}');for(const k in s)if(k in P)P[k]=s[k];}catch(e){}
-P.tempestade=0;P.lenta=false;P.obturador=false;P.cenario='mar';
+P.tempestade=0;P.lenta=false;P.obturador=false;P.cenario='mar';P.verCenario=false;
 let saveT=0;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(SAVEKEY,JSON.stringify(P));}catch(e){}},300);}
 const toU=(s,v)=>s.log?Math.log(v/s.min)/Math.log(s.max/s.min):(v-s.min)/(s.max-s.min);
 const fromU=(s,u)=>{u=clamp(u,0,1);return s.log?s.min*Math.pow(s.max/s.min,u):s.min+(s.max-s.min)*u;};
@@ -485,9 +485,9 @@ void main(){vec2 a=seg.xy,b=seg.zw,d=b-a;float L=length(d);vec2 t=L>1e-4?d/L:vec
  float r=wi.x*4.+1.5;vec2 P=mix(a-t*r,b+t*r,q.x)+n*r*q.y;vP=P;vS=seg;vW=wi;
  gl_Position=vec4(P.x/res.x*2.-1.,1.-P.y/res.y*2.,0,1);}`;
 const FS_SEG=`#version 300 es
-precision highp float;in vec2 vP;flat in vec4 vS;flat in vec4 vW;uniform vec3 core,sheath;uniform sampler2D skyT;uniform vec2 res;uniform float HY,FL,camH,city;out vec4 o;
+precision highp float;in vec2 vP;flat in vec4 vS;flat in vec4 vW;uniform vec3 core,sheath;uniform sampler2D skyT;uniform vec2 res;uniform float HY,FL,camH,city,bare;out vec4 o;
 void main(){vec2 sk=texture(skyT,vec2(vP.x/res.x,.5)).rg;float sil=sk.r*res.y;
- if(vP.y>=sil-.5){float occZ=vP.y<HY?sk.g:camH*FL/max(vP.y-HY,1e-3);if(city>.5&&vP.y>=HY)occZ=min(occZ,1300.);if(1./vW.z>occZ)discard;}
+ if(bare<.5&&vP.y>=sil-.5){float occZ=vP.y<HY?sk.g:camH*FL/max(vP.y-HY,1e-3);if(city>.5&&vP.y>=HY)occZ=min(occZ,1300.);if(1./vW.z>occZ)discard;}
  vec2 a=vS.xy,b=vS.zw,pa=vP-a,ba=b-a;float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-6),0.,1.);float d=length(pa-ba*h);
  float w=vW.x,g=exp(-d*d/(w*w)),hot=exp(-d*d/(w*w*.25)),sh=exp(-d*d/(w*w*7.));
  vec3 c=(core*g+vec3(1)*hot*.35+sheath*sh*.28)*vW.y;o=vec4(c,(g>.02||sh>.1)?vW.z:0.);}`;
@@ -503,7 +503,7 @@ precision highp float;in vec2 uv;uniform sampler2D old;uniform sampler2D cur;uni
 void main(){o=vec4(max(texture(old,uv).rgb*k,texture(cur,uv).rgb),1);}`;
 const FS_SCENE=`#version 300 es
 precision highp float;in vec2 uv;out vec4 o;
-uniform vec2 res;uniform float HY,FL,camH,Hc,time,rain,fog,cityGlow,flashG,windX,scen,bloomAmt,persAmt;
+uniform vec2 res;uniform float HY,FL,camH,Hc,time,rain,fog,cityGlow,flashG,windX,scen,bloomAmt,persAmt,bare;
 uniform vec4 Lp[8];uniform float Lr[8];uniform vec3 lCol,core;
 uniform sampler2D boltT,bloomT,bloomLo,persT,skyT;
 float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
@@ -573,10 +573,11 @@ vec3 sea(float x,float y){
 }
 void main(){
  vec2 fc=gl_FragCoord.xy;float y=res.y-fc.y,x=fc.x;
+ vec3 tint=mix(vec3(1),lCol*1.15,.55);
+ if(bare>.5){vec3 c=texture(boltT,uv).rgb+texture(bloomT,uv).rgb*bloomAmt*tint+texture(bloomLo,uv).rgb*.12*tint+texture(persT,uv).rgb*persAmt*tint;o=vec4(c,1);return;}
  vec3 col=y<HY?sky(x,y):sea(x,y);
  col+=texture(boltT,uv).rgb;
  vec3 bl=texture(bloomT,uv).rgb,blo=texture(bloomLo,uv).rgb;
- vec3 tint=mix(vec3(1),lCol*1.15,.55);
  col+=bl*bloomAmt*tint;
  col+=blo*(.35+.9*rain)*.3*tint;
  col+=texture(persT,uv).rgb*persAmt*(y<HY+1.?1.:0.)*tint;
@@ -659,7 +660,7 @@ function buildFrame(ta,tb,win){
    const w=L*F.len[i];const bx=clamp(Math.floor((F.sx[i]/cw)*8),0,7),o=bx*5;
    acc[o]+=w;acc[o+1]+=w*F.X[i];acc[o+2]+=w*F.Y[i];acc[o+3]+=w*F.Z[i];acc[o+4]+=w*(F.X[i]*F.X[i]+F.Y[i]*F.Y[i]*.6);
    flashG+=w/(F.Z[i]*F.Z[i]+1e5);
-   const Lv=L*F.vis[i];if(Lv<2.5e-3||ni>=MAXI)continue;
+   const Lv=L*(P.verCenario?F.vis[i]:Math.max(F.vis[i],.3));if(Lv<2.5e-3||ni>=MAXI)continue;
    const Z=Math.max(F.Z[i],30),wm=(.2+.95*F.Q[i]*F.Q[i])*(1+.35*Math.log(1+Lv)),wt=FL*wm/Z,wp=Math.max(.8,wt);
    const I=Lv*Math.min(1,Math.sqrt(wt/.8)*1.1)*F.jit[i];
    const k=ni*8;instData[k]=F.sx[p];instData[k+1]=F.sy[p];instData[k+2]=F.sx[i];instData[k+3]=F.sy[i];
@@ -677,7 +678,7 @@ function render(dtReal){
  bindOut(T.bolt);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
  const D=(lastFlash?lastFlash.Z[0]:P.dist*1000),lc=lightColor(Math.min(D,P.dist*1000*3)),core=[lerp(1,lc[0],.18),lerp(1,lc[1],.18),lerp(1,lc[2],.18)];
  if(nInst){gl.enable(gl.BLEND);gl.blendEquation(gl.MAX);gl.useProgram(pSeg.p);gl.uniform2f(pSeg.u.res,cw,ch);gl.uniform3fv(pSeg.u.core,core);gl.uniform3fv(pSeg.u.sheath,[lc[0]*.85,lc[1]*.7,lc[2]*1.15]);
-  gl.uniform1f(pSeg.u.HY,HY);gl.uniform1f(pSeg.u.FL,FL);gl.uniform1f(pSeg.u.camH,camH);gl.uniform1i(pSeg.u.skyT,4);gl.uniform1f(pSeg.u.city,P.cenario==='cidade'?1:0);tex(4,skyTex);
+  gl.uniform1f(pSeg.u.HY,HY);gl.uniform1f(pSeg.u.FL,FL);gl.uniform1f(pSeg.u.camH,camH);gl.uniform1i(pSeg.u.skyT,4);gl.uniform1f(pSeg.u.city,P.cenario==='cidade'?1:0);gl.uniform1f(pSeg.u.bare,P.verCenario?0:1);tex(4,skyTex);
   gl.bindVertexArray(segVAO);gl.bindBuffer(gl.ARRAY_BUFFER,iB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instData,0,nInst*8);
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,nInst);gl.disable(gl.BLEND);gl.blendEquation(gl.FUNC_ADD);}
  gl.useProgram(pDown.p);gl.uniform1i(pDown.u.t,0);
@@ -692,7 +693,7 @@ function render(dtReal){
  gl.uniform2f(s.res,cw,ch);gl.uniform1f(s.HY,HY);gl.uniform1f(s.FL,FL);gl.uniform1f(s.camH,camH);gl.uniform1f(s.Hc,P.base);
  gl.uniform1f(s.time,performance.now()/1000);gl.uniform1f(s.rain,P.chuva);gl.uniform1f(s.fog,P.nevoa);gl.uniform1f(s.cityGlow,P.luzCidade);
  gl.uniform1f(s.flashG,flashG);gl.uniform1f(s.windX,P.vento*.1);gl.uniform1f(s.scen,['mar','campo','cidade','morros'].indexOf(P.cenario));
- gl.uniform1f(s.bloomAmt,P.halo);gl.uniform1f(s.persAmt,P.persist>0?.55:0);
+ gl.uniform1f(s.bloomAmt,P.halo);gl.uniform1f(s.bare,P.verCenario?0:1);gl.uniform1f(s.persAmt,P.persist>0?.55:0);
  gl.uniform4fv(s.Lp,lights);gl.uniform1fv(s.Lr,lightR);gl.uniform3fv(s.lCol,lc);gl.uniform3fv(s.core,core);
  gl.uniform1i(s.boltT,0);gl.uniform1i(s.bloomT,1);gl.uniform1i(s.bloomLo,2);gl.uniform1i(s.persT,3);gl.uniform1i(s.skyT,4);
  tex(0,T.bolt.t);tex(1,T.up[0].t);tex(2,T.up[4].t);tex(3,T.pers[persIdx].t);tex(4,skyTex);full();
@@ -774,7 +775,7 @@ function initAudio(){
 function audioParams(){if(!AC)return;const t=AC.currentTime;
  thBus.gain.setTargetAtTime(P.volTrovao,t,.05);shelf.gain.setTargetAtTime(-4+P.graves*16,t,.05);
  wetG.gain.setTargetAtTime(P.ambiente*1.3,t,.05);dryG.gain.setTargetAtTime(1-P.ambiente*.35,t,.05);
- rainG.gain.setTargetAtTime(P.volChuva*P.chuva*.22,t,.3);}
+ rainG.gain.setTargetAtTime(P.verCenario?P.volChuva*P.chuva*.22:0,t,.3);}
 function makeIR(){if(!AC)return;const sr=AC.sampleRate,len=Math.floor(sr*4.5),b=AC.createBuffer(2,len,sr),sc=P.cenario;
  const tau={mar:1.9,campo:.9,cidade:1.5,morros:2.2}[sc];
  const echoes={mar:[],campo:[[.18,.25]],cidade:[[.03,.5],[.07,.4],[.11,.35],[.16,.3],[.23,.25],[.31,.2],[.45,.15]],morros:[[.6,.45],[1.15,.35],[1.8,.25],[2.6,.15]]}[sc];
@@ -874,6 +875,7 @@ function buildPanel(){
  <div class="btns"><button id="bFire">⚡ Raio (espaço)</button><button id="bClear">Limpar (X)</button><button id="bPause">Pausa (P)</button><button id="bStep">Quadro → (.)</button></div>`;
  const extra={Tempo:`<label class="chk"><input type="checkbox" id="chk_lenta"> Câmera lenta (S)</label><label class="chk"><input type="checkbox" id="chk_obturador"> Obturador — longa exposição (O)</label><label class="chk"><input type="checkbox" id="chk_tempestade"> Tempestade automática (T)</label><label class="chk"><input type="checkbox" id="chk_tl"> Linha do tempo do raio (L)</label>`,
   CenaX:`<div class="row"><label>Cenário</label><span></span><span></span><select id="sel_cenario">${Object.entries(SCN).map(([k,v])=>`<option value="${k}">${v.n}</option>`).join('')}</select></div>`,
+  Cena:`<label class="chk"><input type="checkbox" id="chk_cen"> Mostrar cenário — céu, mar e chuva (B)</label><p class="note">Desligado: só os relâmpagos, sobre fundo preto.</p>`,
   'Trovão':`<p class="note">O trovão chega com o atraso real: ~3 s por km (a 4 km, uns 12 s — a legenda mostra a contagem).</p><div class="btns"><button id="bTestTh">Ouvir um trovão agora (raio a 600 m)</button></div><label class="chk"><input type="checkbox" id="chk_atraso"> Atraso real do som (343 m/s)</label>`};
  for(const sec of['Raio','Tempo','Cena','Imagem','Trovão']){
   h+=`<details ${sec==='Raio'?'open':''}><summary>${sec}</summary>${extra[sec]||''}`;
@@ -899,7 +901,7 @@ function buildPanel(){
  $('#r_compOp').oninput=e=>{P.compOp=e.target.value/1000;compUI();};
  $('#chk_lenta').onchange=e=>setP('lenta',e.target.checked);$('#chk_obturador').onchange=e=>setP('obturador',e.target.checked);
  $('#chk_tempestade').onchange=e=>setP('tempestade',e.target.checked?stormRate:0);$('#chk_tl').onchange=e=>{tlOn=e.target.checked;tlc.style.display=tlOn?'block':'none';};
- $('#chk_atraso').onchange=e=>setP('atrasoReal',e.target.checked);
+ $('#chk_atraso').onchange=e=>setP('atrasoReal',e.target.checked);$('#chk_cen').onchange=e=>setP('verCenario',e.target.checked);
  $('#bTestTh').onclick=()=>{if(AC&&AC.state!=='running')AC.resume();fire('neg',{xs:.5,D:.6});};
  $('#pads').onclick=e=>{const b=e.target.closest('button');if(b)padAction(+b.dataset.i,.6);};
  $('#bFire').onclick=()=>fire();$('#bClear').onclick=clearAll;$('#bPause').onclick=()=>{paused=!paused;};$('#bStep').onclick=()=>{paused=true;stepOnce=true;};
@@ -912,7 +914,7 @@ function buildPanel(){
 function syncUI(){
  for(const id in PS){const r=$('#r_'+id),v=$('#v_'+id);if(r){r.value=Math.round(toU(PS[id],P[id])*1000);v.textContent=PS[id].fmt(P[id]);}}
  $('#sel_tipo').value=P.tipo;$('#chk_lenta').checked=P.lenta;$('#chk_obturador').checked=P.obturador;
- $('#chk_tempestade').checked=P.tempestade>0;$('#chk_atraso').checked=P.atrasoReal;$('#sel_comp').value=P.comp;
+ $('#chk_tempestade').checked=P.tempestade>0;$('#chk_atraso').checked=P.atrasoReal;$('#chk_cen').checked=P.verCenario;$('#sel_comp').value=P.comp;
  $('#r_compOp').value=P.compOp*1000;$('#v_compOp').textContent=(P.compOp*100|0)+'%';
  panel.querySelectorAll('.pads button').forEach((b,i)=>b.classList.toggle('act',PADS[i]===P.tipo||(PADS[i]==='#tempestade'&&P.tempestade>0)||(PADS[i]==='#obturador'&&P.obturador)||(PADS[i]==='#lenta'&&P.lenta)));
 }
@@ -923,7 +925,8 @@ function setP(id,v,fromUI){
  else syncUI();
  if(id==='cenario'){TOWERS.length=0;computeSkyline();makeIR();}
  if(id==='obturador'&&v)accClear=true;
- if(['volTrovao','graves','ambiente','volChuva','chuva'].includes(id))audioParams();
+ if(['volTrovao','graves','ambiente','volChuva','chuva','verCenario'].includes(id))audioParams();
+ if(id==='verCenario')syncUI();
  if(id==='lenta'||id==='obturador'||id==='tempestade')syncUI();
  if(id!=='tempestade')save();
  showToast(id,v);
@@ -939,8 +942,8 @@ function refreshLearn(){panel.querySelectorAll('.lrn').forEach(b=>{const id=b.da
  const t=$('#mapT');if(t)t.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');}
 function padUI(){const b=$('#bPadLearn');if(b)b.textContent=padLearn>=0?`Toque o pad ${padLearn+1} de 16…`:'Aprender os 16 pads';}
 function flashPad(i){const b=panel.querySelectorAll('.pads button')[i];if(b){b.style.background='#3a2a66';setTimeout(()=>b.style.background='',160);}}
-let toastT=0;function showToast(id,v){if(!PS[id]&&!['tipo','cenario','lenta','obturador','tempestade'].includes(id))return;
- const s=PS[id]?PS[id].l+': '+PS[id].fmt(v):id==='tipo'?TNAME[v]:id==='cenario'?'Cenário: '+SCN[v].n:id==='tempestade'?(v?'Tempestade automática: '+v.toFixed(0)+'/min':'Tempestade desligada'):(id==='lenta'?'Câmera lenta':'Obturador')+(v?' ligado':' desligado');
+let toastT=0;function showToast(id,v){if(!PS[id]&&!['tipo','cenario','lenta','obturador','tempestade','verCenario'].includes(id))return;
+ const s=PS[id]?PS[id].l+': '+PS[id].fmt(v):id==='tipo'?TNAME[v]:id==='cenario'?'Cenário: '+SCN[v].n:id==='tempestade'?(v?'Tempestade automática: '+v.toFixed(0)+'/min':'Tempestade desligada'):id==='verCenario'?(v?'Cenário ligado':'Só os relâmpagos'):(id==='lenta'?'Câmera lenta':'Obturador')+(v?' ligado':' desligado');
  hudMsg(s);}
 
 /* ============================================================ HUD, LINHA DO TEMPO, COMPARAÇÃO, GRAVAÇÃO */
@@ -1016,7 +1019,7 @@ addEventListener('keydown',e=>{
  else if(k==='m')panel.classList.toggle('on');else if(k==='h'){hudOn=!hudOn;hudDraw();}
  else if(k==='l'){tlOn=!tlOn;tlc.style.display=tlOn?'block':'none';const c=$('#chk_tl');if(c)c.checked=tlOn;}
  else if(k==='f'){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{});}
- else if(k==='r')toggleRec();else if(k==='x')clearAll();
+ else if(k==='r')toggleRec();else if(k==='b')toggle('verCenario');else if(k==='x')clearAll();
  else if(k==='c'){P.comp=P.comp==='off'?'cortina':P.comp==='cortina'?'sobre':'off';const s=$('#sel_comp');if(s)s.value=P.comp;compUI();}
 });
 $('#go').onclick=()=>{$('#intro').style.display='none';initAudio();initMIDI();if(AC.state!=='running')AC.resume();setTimeout(()=>fire('neg',{xs:.5}),350);};

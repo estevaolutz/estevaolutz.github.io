@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pentaminós de Titanita</title>
+<style>
+:root{
+  --bg:#0b0d16; --bg2:#141827; --ink:#ece6d6; --muted:#9a96a8; --gold:#e7b75f; --haze:#c9773a;
+  --line:#2a3048; --cell:40px; --ok:#7fe3a8; --bad:#ff6b6b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:radial-gradient(1200px 700px at 80% -10%,#3a2414 0%,transparent 60%),radial-gradient(900px 600px at -10% 110%,#1b2346 0%,transparent 60%),var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+body{-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px 6px;flex-wrap:wrap}
+h1{font-family:ui-serif,Georgia,"Times New Roman",serif;font-weight:500;letter-spacing:.02em;margin:0;font-size:clamp(20px,3.2vw,30px)}
+h1 small{display:block;font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-top:2px}
+nav.tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:3px}
+nav.tabs button{background:none;border:0;color:var(--muted);padding:7px 14px;border-radius:999px;font:inherit;font-size:14px;cursor:pointer}
+nav.tabs button.on{background:var(--gold);color:#1a1206}
+main{padding:6px 18px 40px;max-width:1200px;margin:0 auto}
+.view{display:none}.view.on{display:block}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 12px}
+.bar .sp{flex:1}
+select,.btn{background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font:inherit;font-size:14px;cursor:pointer}
+.btn:hover,select:hover{border-color:#4a5276}
+.btn.gold{background:var(--gold);color:#1a1206;border-color:var(--gold)}
+.btn:disabled{opacity:.4;cursor:default}
+.stat{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+.stat b{color:var(--ink);font-weight:600}
+#stage{display:flex;flex-direction:column;align-items:center;gap:16px}
+#boardWrap{position:relative;padding:10px;border-radius:14px;background:linear-gradient(160deg,#1a1f33,#10131f);border:1px solid var(--line);box-shadow:0 20px 50px -20px #000,inset 0 1px 0 #ffffff10}
+#board{position:relative}
+.bcell{position:absolute;border:1px solid #ffffff0d;background:#0c0f1a;border-radius:3px}
+.bcell.hole{background:transparent;border-color:transparent}
+.bcell.pv-ok{background:#7fe3a833}.bcell.pv-bad{background:#ff6b6b33}
+#tray{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;min-height:60px;padding:10px;border-radius:14px;border:1px dashed var(--line);width:100%}
+.slot{position:relative;display:flex;align-items:center;justify-content:center;padding:6px;border-radius:10px}
+.slot.sel{background:#e7b75f1a;outline:1px solid #e7b75f66}
+.piece{position:absolute;touch-action:none;cursor:grab}
+.slot .piece{position:relative}
+.sq{position:absolute;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40,inset 0 -6px 10px #00000040,inset 0 6px 8px #ffffff30}
+.sq::after{content:"";position:absolute;inset:18% 50% 50% 18%;background:linear-gradient(135deg,#ffffff90,transparent);border-radius:2px;opacity:.55}
+.piece.sel .sq{box-shadow:inset 0 0 0 2px #fff,inset 0 -6px 10px #00000040}
+.lbl{position:absolute;font:600 11px ui-monospace,monospace;color:#00000080;pointer-events:none}
+#ghost{position:fixed;pointer-events:none;z-index:50;filter:drop-shadow(0 14px 18px #000a)}
+#ghost .sq{opacity:.92}
+.hint{font-size:13px;color:var(--muted);text-align:center;max-width:720px;line-height:1.5}
+kbd{background:#ffffff14;border:1px solid #ffffff22;border-radius:4px;padding:0 5px;font-size:12px}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(30px);opacity:0;background:#1d2236;border:1px solid var(--line);padding:10px 16px;border-radius:12px;transition:.25s;z-index:60;font-size:14px;max-width:90vw;text-align:center}
+#toast.on{opacity:1;transform:translateX(-50%)}
+#win{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#05060bcc;z-index:70}
+#win.on{display:flex}
+#win .card{background:linear-gradient(160deg,#20263d,#121626);border:1px solid #e7b75f66;border-radius:18px;padding:26px 28px;max-width:420px;text-align:center;box-shadow:0 30px 80px #000}
+#win h2{font-family:ui-serif,Georgia,serif;font-weight:500;color:var(--gold);margin:0 0 8px;font-size:28px}
+#win p{color:var(--ink);line-height:1.5;margin:6px 0}
+.spark{position:fixed;width:6px;height:6px;border-radius:50%;pointer-events:none;z-index:65}
+/* Leitura */
+article{max-width:760px;margin:0 auto;line-height:1.7;font-size:17px}
+article h2{font-family:ui-serif,Georgia,serif;font-weight:500;color:var(--gold);font-size:26px;margin:28px 0 6px}
+article h3{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:26px 0 4px}
+article blockquote{margin:16px 0;padding:12px 18px;border-left:3px solid var(--gold);background:#ffffff08;border-radius:0 10px 10px 0;font-family:ui-serif,Georgia,serif;font-size:19px}
+article blockquote small{display:block;font-family:ui-sans-serif,system-ui,sans-serif;font-size:13px;color:var(--muted);margin-top:6px}
+article .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+article .fact{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px}
+article .fact b{display:block;font-size:24px;color:var(--gold);font-variant-numeric:tabular-nums}
+article .fact span{font-size:13px;color:var(--muted)}
+article a{color:var(--gold)}
+article .src{font-size:13px;color:var(--muted);border-top:1px solid var(--line);margin-top:30px;padding-top:12px}
+article .src li{margin:3px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Pentaminós de Titanita<small>o quebra-cabeça de <i>Terra Imperial</i>, de Arthur C. Clarke</small></h1>
+  <nav class="tabs"><button data-v="jogar" class="on">Jogar</button><button data-v="clarke">Clarke &amp; o livro</button></nav>
+</header>
+<main>
+<section class="view on" id="v-jogar">
+  <div class="bar">
+    <select id="boardSel" aria-label="Tabuleiro">
+      <option value="6x10">Caixa 6 × 10 — a do livro (2.339 soluções)</option>
+      <option value="5x12">Retângulo 5 × 12 (1.010 soluções)</option>
+      <option value="4x15">Retângulo 4 × 15 (368 soluções)</option>
+      <option value="3x20">Desafio da avó: 3 × 20 (só 2 soluções)</option>
+      <option value="8x8">Quadrado 8 × 8 com furo (65 soluções)</option>
+    </select>
+    <button class="btn" id="bRot" title="Girar (R)">↻ Girar</button>
+    <button class="btn" id="bFlip" title="Espelhar (F)">⇋ Espelhar</button>
+    <span class="sp"></span>
+    <span class="stat">⏱ <b id="time">0:00</b></span>
+    <span class="stat">peças <b id="count">0/12</b></span>
+    <span class="stat" id="found"></span>
+  </div>
+  <div class="bar">
+    <button class="btn" id="bHint">💡 Dica</button>
+    <button class="btn" id="bSolve">Mostrar uma solução</button>
+    <button class="btn" id="bClear">Recolher peças</button>
+  </div>
+  <div id="stage">
+    <div id="boardWrap"><div id="board"></div></div>
+    <div id="tray"></div>
+    <p class="hint">Arraste as peças para a caixa. <b>Toque</b> numa peça para girá-la; use <b>⇋ Espelhar</b> para virá-la do avesso.
+    No computador: <kbd>R</kbd> gira, <kbd>F</kbd> espelha (também durante o arrasto), roda do mouse gira, botão direito espelha. Arraste uma peça para fora da caixa para devolvê-la.</p>
+  </div>
+</section>
+
+<section class="view" id="v-clarke">
+<article>
+  <h2>Onde o jogo aparece na obra de Clarke</h2>
+  <p>Os pentaminós estão em <b><i>Imperial Earth</i></b> (no Brasil, <i>Terra Imperial</i>), romance de 1975 lançado a tempo do bicentenário dos EUA. O protagonista, Duncan Makenzie, é um clone da família que governa Titã, a maior lua de Saturno, e viaja à Terra para as comemorações do quinto centenário americano, em 2276.</p>
+  <p>Numa das cenas mais lembradas do livro, a avó de Duncan lhe dá um conjunto de pentaminós feitos de <b>titanita</b> — um cristal nativo de Titã — junto com uma caixa de 10 × 6 onde as doze peças devem caber. O livro explica o jogo com calma: primeiro o leitor é convidado a <i>descobrir</i> por conta própria quais são as doze formas possíveis de juntar cinco quadrados, e só depois a arrumá-las. Clarke chegou a incluir a ilustração de uma solução, que virou referência para quem empaca.</p>
+  <h3>O desafio do 3 × 20</h3>
+  <p>A avó então propõe o retângulo comprido e fino de 3 × 20. Duncan conclui que é impossível. Ela responde que não — e acrescenta, numa frase curta:</p>
+  <blockquote>“There are just two solutions.”<small>“Existem apenas duas soluções.” — <i>Imperial Earth</i> (1975)</small></blockquote>
+  <p>E ainda dá a pista: quem acha uma, acha a outra. (É verdade: as duas diferem só por um bloco central de sete peças girado 180°. Experimente no tabuleiro “Desafio da avó”.)</p>
+
+  <h2>Clarke na vida real</h2>
+  <p>A cena é autobiográfica. Num artigo para a <i>Sunday Telegraph Magazine</i>, Clarke contou que, embora quase não jogasse jogos intelectuais, “roubou” da sobrinha um conjunto de peças de plástico e passou centenas de horas com ele. Ele advertiu que o passatempo pode virar <i>“a way of life”</i> para quem tem esse tipo de cabeça.</p>
+  <p>Levou um mês inteiro para fechar a caixa 6 × 10 — e depois ficou sem graça ao saber que existem 2.339 maneiras de fazer isso. Quando Martin Gardner revelou que o 3 × 20 tem só duas soluções, Clarke ficou obcecado: ofereceu 10 rúpias a quem as encontrasse (um amigo conseguiu) e calculou que, testando permutações às cegas, a busca levaria mais de 20 bilhões de anos.</p>
+
+  <div class="facts">
+    <div class="fact"><b>12</b><span>peças distintas de 5 quadrados</span></div>
+    <div class="fact"><b>2.339</b><span>soluções da caixa 6 × 10</span></div>
+    <div class="fact"><b>1.010</b><span>soluções do 5 × 12</span></div>
+    <div class="fact"><b>368</b><span>soluções do 4 × 15</span></div>
+    <div class="fact"><b>2</b><span>soluções do 3 × 20</span></div>
+    <div class="fact"><b>65</b><span>soluções do 8 × 8 com furo</span></div>
+  </div>
+
+  <h2>Um pouco de história</h2>
+  <p>O nome “pentaminó” foi criado pelo matemático Solomon Golomb em 1953, juntando o grego <i>pénte</i> (cinco) ao final de “dominó”. Golomb batizou as doze peças com letras: F, I, L, N, P, T, U, V, W, X, Y e Z (o mnemônico “FILiPiNo” + o fim do alfabeto). Martin Gardner popularizou o jogo na coluna <i>Mathematical Games</i> da <i>Scientific American</i>, e foi por esse caminho que Clarke se tornou um dos fãs mais famosos. O caso 6 × 10 foi resolvido por computador em 1960, por Colin Brian e Jenifer Haselgrove. Já o 8 × 8 com furo central foi resolvido por Dana Scott em 1958.</p>
+  <p>Detalhe divertido: os personagens de Clarke resolvem tudo à mão — sem computador, num romance passado no século XXIII.</p>
+
+  <div class="src"><b>Fontes</b>
+    <ul>
+      <li><a href="https://en.wikipedia.org/wiki/Imperial_Earth" target="_blank" rel="noopener">Imperial Earth — Wikipedia</a></li>
+      <li><a href="https://hermiene.net/books/title/438" target="_blank" rel="noopener">hermiene.net — resenha de Imperial Earth</a></li>
+      <li><a href="https://www.futilitycloset.com/2017/01/28/pentominoes/" target="_blank" rel="noopener">Futility Closet — “Pentominoes” (artigo de Clarke no Sunday Telegraph)</a></li>
+      <li><a href="https://h2g2.com/entry/A970904" target="_blank" rel="noopener">h2g2 — Pentominoes</a></li>
+      <li><a href="https://en.wikipedia.org/wiki/Pentomino" target="_blank" rel="noopener">Pentomino — Wikipedia</a></li>
+    </ul>
+  </div>
+</article>
+</section>
+</main>
+
+<div id="toast"></div>
+<div id="win"><div class="card"><h2>Caixa fechada!</h2><p id="winMsg"></p><p style="margin-top:16px"><button class="btn gold" id="bAgain">Jogar de novo</button> <button class="btn" id="bClose">Admirar</button></p></div></div>
+
+<script>
+(()=>{
+const SHAPES={
+ F:[[0,1],[0,2],[1,0],[1,1],[2,1]], I:[[0,0],[1,0],[2,0],[3,0],[4,0]], L:[[0,0],[1,0],[2,0],[3,0],[3,1]],
+ N:[[0,1],[1,1],[2,0],[2,1],[3,0]], P:[[0,0],[0,1],[1,0],[1,1],[2,0]], T:[[0,0],[0,1],[0,2],[1,1],[2,1]],
+ U:[[0,0],[0,2],[1,0],[1,1],[1,2]], V:[[0,0],[1,0],[2,0],[2,1],[2,2]], W:[[0,0],[1,0],[1,1],[2,1],[2,2]],
+ X:[[0,1],[1,0],[1,1],[1,2],[2,1]], Y:[[0,1],[1,0],[1,1],[2,1],[3,1]], Z:[[0,0],[0,1],[1,1],[2,1],[2,2]]
+};
+const IDS=Object.keys(SHAPES);
+// cristais de titanita: tons de âmbar, mel, verde-oliva, azul de Saturno
+const COLORS={F:'#e8a33d',I:'#5fb3c9',L:'#d0664a',N:'#9b7fd1',P:'#e6cf6b',T:'#6fc59a',U:'#c9577f',V:'#4f86d6',W:'#b4c95a',X:'#f08a5d',Y:'#8fd0d9',Z:'#c78fe0'};
+const BOARDS={
+ '6x10':{h:6,w:10,total:2339},'5x12':{h:5,w:12,total:1010},'4x15':{h:4,w:15,total:368},
+ '3x20':{h:3,w:20,total:2},'8x8':{h:8,w:8,total:65,holes:[[3,3],[3,4],[4,3],[4,4]]}
+};
+function transform(cells,rot,flip){
+  let c=cells.map(([r,q])=>[r,flip?-q:q]);
+  for(let i=0;i<rot;i++)c=c.map(([r,q])=>[q,-r]);
+  const mr=Math.min(...c.map(x=>x[0])),mc=Math.min(...c.map(x=>x[1]));
+  return c.map(([r,q])=>[r-mr,q-mc]);
+}
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+// ---------- estado ----------
+let S; // {key,h,w,transposed,holes:Set,pieces:{id:{rot,flip,pos:null|[r,c]}}}
+let CELL=40, selected=null, t0=null, tick=null, solved=false, worker=null;
+const $=s=>document.querySelector(s);
+const board=$('#board'), tray=$('#tray');
+
+function newGame(key){
+  const B=BOARDS[key]; const narrow=window.innerWidth<640 && B.w>B.h;
+  const h=narrow?B.w:B.h, w=narrow?B.h:B.w;
+  const holes=new Set((B.holes||[]).map(([r,c])=>narrow?`${c},${r}`:`${r},${c}`));
+  S={key,h,w,transposed:narrow,holes,pieces:{}};
+  IDS.forEach(id=>S.pieces[id]={rot:0,flip:false,pos:null});
+  selected=null; solved=false; t0=null; clearInterval(tick); $('#time').textContent='0:00';
+  layout(); render(); updateFound();
+}
+function layout(){
+  const avail=Math.min(window.innerWidth-60,1100);
+  CELL=Math.max(16,Math.min(52,Math.floor(avail/S.w),Math.floor((window.innerHeight*0.55)/S.h)));
+  document.documentElement.style.setProperty('--cell',CELL+'px');
+}
+function cellsOf(id){const p=S.pieces[id];return transform(SHAPES[id],p.rot,p.flip)}
+function occupancy(except){
+  const m=new Map();
+  for(const id of IDS){if(id===except)continue;const p=S.pieces[id];if(!p.pos)continue;
+    for(const [r,c] of cellsOf(id))m.set(`${p.pos[0]+r},${p.pos[1]+c}`,id);}
+  return m;
+}
+function fits(id,pos,cells){
+  const occ=occupancy(id);
+  return cells.every(([r,c])=>{const R=pos[0]+r,C=pos[1]+c;
+    return R>=0&&C>=0&&R<S.h&&C<S.w&&!S.holes.has(`${R},${C}`)&&!occ.has(`${R},${C}`)});
+}
+function pieceEl(id,size,cells){
+  const el=document.createElement('div');el.className='piece';el.dataset.id=id;
+  const H=Math.max(...cells.map(x=>x[0]))+1,W=Math.max(...cells.map(x=>x[1]))+1;
+  el.style.width=W*size+'px';el.style.height=H*size+'px';
+  cells.forEach(([r,c],i)=>{const s=document.createElement('div');s.className='sq';s.dataset.i=i;
+    s.style.cssText=`left:${c*size+1}px;top:${r*size+1}px;width:${size-2}px;height:${size-2}px;background:linear-gradient(145deg,${COLORS[id]},${shade(COLORS[id],-.35)})`;
+    el.appendChild(s);});
+  const [lr,lc]=cells[2];const l=document.createElement('div');l.className='lbl';l.textContent=id;
+  l.style.cssText=`left:${lc*size}px;top:${lr*size}px;width:${size}px;line-height:${size}px;text-align:center;font-size:${Math.max(9,size*.3)}px`;
+  el.appendChild(l);
+  return el;
+}
+function shade(hex,f){const n=parseInt(hex.slice(1),16);let r=n>>16,g=n>>8&255,b=n&255;
+  const t=f<0?0:255,p=Math.abs(f);r=Math.round((t-r)*p+r);g=Math.round((t-g)*p+g);b=Math.round((t-b)*p+b);
+  return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}
+
+function render(){
+  board.innerHTML='';board.style.width=S.w*CELL+'px';board.style.height=S.h*CELL+'px';
+  for(let r=0;r<S.h;r++)for(let c=0;c<S.w;c++){const d=document.createElement('div');
+    d.className='bcell'+(S.holes.has(`${r},${c}`)?' hole':'');d.id=`b${r}_${c}`;
+    d.style.cssText=`left:${c*CELL}px;top:${r*CELL}px;width:${CELL}px;height:${CELL}px`;board.appendChild(d);}
+  tray.innerHTML='';const TS=Math.max(14,Math.round(CELL*.62));
+  let n=0;
+  for(const id of IDS){const p=S.pieces[id];const cells=cellsOf(id);
+    if(p.pos){n++;const el=pieceEl(id,CELL,cells);el.style.left=p.pos[1]*CELL+'px';el.style.top=p.pos[0]*CELL+'px';
+      if(selected===id)el.classList.add('sel');board.appendChild(el);bindPiece(el,CELL);}
+    else{const slot=document.createElement('div');slot.className='slot'+(selected===id?' sel':'');
+      slot.style.minWidth=5*TS+12+'px';slot.style.minHeight=Math.min(5,3)*TS+12+'px';
+      const el=pieceEl(id,TS,cells);slot.appendChild(el);tray.appendChild(slot);bindPiece(el,TS);}
+  }
+  $('#count').textContent=`${n}/12`;
+  if(n===12&&!solved)win();
+}
+
+// ---------- arrastar ----------
+let drag=null;
+function bindPiece(el,size){
+  el.addEventListener('pointerdown',e=>{
+    if(e.button===2)return;
+    const sq=e.target.closest('.sq');if(!sq)return;e.preventDefault();
+    const id=el.dataset.id;select(id);
+    const rect=sq.getBoundingClientRect();
+    drag={id,i:+sq.dataset.i,x0:e.clientX,y0:e.clientY,moved:false,size,
+      fx:(e.clientX-rect.left)/size,fy:(e.clientY-rect.top)/size,pid:e.pointerId};
+    window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp,{once:true});
+  });
+  el.addEventListener('contextmenu',e=>{e.preventDefault();select(el.dataset.id);act('flip');});
+}
+function startTimer(){if(!t0){t0=Date.now();tick=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);$('#time').textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`},500)}}
+function onMove(e){
+  if(!drag)return;
+  if(!drag.moved){if(Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)<6)return;
+    drag.moved=true;startTimer();S.pieces[drag.id].pos=null;render();
+    const g=document.createElement('div');g.id='ghost';document.body.appendChild(g);drag.g=g;drawGhost();}
+  drag.cx=e.clientX;drag.cy=e.clientY;placeGhost();
+}
+function drawGhost(){const cells=cellsOf(drag.id);drag.g.innerHTML='';const el=pieceEl(drag.id,CELL,cells);el.style.position='relative';drag.g.appendChild(el);drag.cells=cells;placeGhost()}
+function placeGhost(){
+  if(!drag||!drag.g||drag.cx==null)return;
+  const [r,c]=drag.cells[drag.i];
+  drag.g.style.left=drag.cx-(c+drag.fx)*CELL+'px';drag.g.style.top=drag.cy-(r+drag.fy)*CELL+'px';
+  board.querySelectorAll('.pv-ok,.pv-bad').forEach(x=>x.classList.remove('pv-ok','pv-bad'));
+  const t=target();drag.target=null;
+  if(t){const ok=fits(drag.id,t,drag.cells);drag.target=ok?t:null;
+    drag.cells.forEach(([a,b])=>{const d=document.getElementById(`b${t[0]+a}_${t[1]+b}`);if(d)d.classList.add(ok?'pv-ok':'pv-bad')});}
+}
+function target(){
+  const br=board.getBoundingClientRect();
+  const [r,c]=drag.cells[drag.i];
+  const gx=drag.cx-(c+drag.fx)*CELL-br.left, gy=drag.cy-(r+drag.fy)*CELL-br.top;
+  const C=Math.round(gx/CELL),R=Math.round(gy/CELL);
+  const pw=Math.max(...drag.cells.map(x=>x[1]))+1,ph=Math.max(...drag.cells.map(x=>x[0]))+1;
+  if(C<-pw+1||R<-ph+1||C>S.w-1||R>S.h-1)return null;return [R,C];
+}
+function onUp(){
+  window.removeEventListener('pointermove',onMove);
+  if(!drag)return;const d=drag;drag=null;
+  if(!d.moved){act('rot',d.i);return;}
+  if(d.g)d.g.remove();
+  if(d.target)S.pieces[d.id].pos=d.target;
+  render();save();
+}
+function select(id){selected=id;document.querySelectorAll('.piece.sel').forEach(x=>x.classList.remove('sel'));
+  document.querySelectorAll('.slot.sel').forEach(x=>x.classList.remove('sel'));
+  document.querySelectorAll(`.piece[data-id="${id}"]`).forEach(x=>{x.classList.add('sel');x.parentElement.classList.contains('slot')&&x.parentElement.classList.add('sel')});}
+function act(kind,pivot=2){
+  const id=drag&&drag.moved?drag.id:selected;if(!id)return toast('Escolha uma peça primeiro');
+  const p=S.pieces[id];const before=cellsOf(id);
+  if(kind==='rot')p.rot=(p.rot+1)%4;else{p.flip=!p.flip;}
+  if(drag&&drag.moved){drawGhost();return}
+  if(p.pos){const after=cellsOf(id);
+    const np=[p.pos[0]+before[pivot][0]-after[pivot][0],p.pos[1]+before[pivot][1]-after[pivot][1]];
+    p.pos=fits(id,np,after)?np:null; if(!p.pos)toast('Sem espaço para girar ali — a peça voltou para a bandeja');}
+  render();select(id);save();
+}
+
+// ---------- vitória & soluções ----------
+function grid(){const g=[...Array(S.h)].map(()=>Array(S.w).fill('.'));
+  for(const id of IDS){const p=S.pieces[id];if(!p.pos)continue;for(const [r,c] of cellsOf(id))g[p.pos[0]+r][p.pos[1]+c]=id;}
+  return g;}
+function canon(){
+  let g=grid(); if(S.transposed)g=g[0].map((_,c)=>g.map(row=>row[c]));
+  const T=x=>x[0].map((_,c)=>x.map(r=>r[c]));
+  const vars=[g,g.map(r=>[...r].reverse()),[...g].reverse(),[...g].reverse().map(r=>[...r].reverse())];
+  if(g.length===g[0].length)vars.push(...vars.map(T));
+  return vars.map(v=>v.map(r=>r.join('')).join('/')).sort()[0];
+}
+function updateFound(){const f=LS.get('pento-found-'+S.key,[]);$('#found').innerHTML=`achadas por você <b>${f.length}</b> de ${BOARDS[S.key].total.toLocaleString('pt-BR')}`}
+function win(){
+  solved=true;clearInterval(tick);
+  const key=canon();const f=LS.get('pento-found-'+S.key,[]);const isNew=!f.includes(key);
+  if(isNew&&!S.cheated){f.push(key);LS.set('pento-found-'+S.key,f);}updateFound();
+  const secs=t0?Math.round((Date.now()-t0)/1000):0;
+  const msg=S.cheated?'Essa solução foi montada com ajuda — tente achar uma só sua.':
+    (isNew?`Uma solução nova! Você levou ${Math.floor(secs/60)} min ${secs%60} s.<br>Clarke levou um mês na primeira.`:'Linda — mas essa solução você já tinha achado. Existem outras!');
+  $('#winMsg').innerHTML=msg+`<br><small style="color:var(--muted)">Tabuleiro ${BOARDS[S.key].h} × ${BOARDS[S.key].w}: ${BOARDS[S.key].total.toLocaleString('pt-BR')} soluções no total.</small>`;
+  $('#win').classList.add('on');sparkle();
+}
+function sparkle(){const br=board.getBoundingClientRect();
+  for(let k=0;k<60;k++){const s=document.createElement('div');s.className='spark';
+    s.style.background=Object.values(COLORS)[k%12];s.style.left=br.left+Math.random()*br.width+'px';s.style.top=br.top+Math.random()*br.height+'px';
+    document.body.appendChild(s);const dx=(Math.random()-.5)*300,dy=-100-Math.random()*250;
+    s.animate([{transform:'translate(0,0)',opacity:1},{transform:`translate(${dx}px,${dy}px)`,opacity:0}],{duration:1200+Math.random()*800,easing:'cubic-bezier(.2,.7,.3,1)'}).onfinish=()=>s.remove();}}
+
+// ---------- solucionador (Web Worker) ----------
+const WORKER_SRC=`
+const SHAPES=${JSON.stringify(SHAPES)};
+${transform.toString()}
+onmessage=e=>{
+  const {h,w,blocked,free}=e.data;const colMajor=w>h;
+  const g=[...Array(h)].map((_,r)=>[...Array(w)].map((_,c)=>blocked.includes(r+','+c)?1:0));
+  const orients={};
+  for(const id of free){const seen=new Set();orients[id]=[];
+    for(let f=0;f<2;f++)for(let r=0;r<4;r++){const cells=transform(SHAPES[id],r,!!f);
+      const k=cells.map(x=>x.join(',')).sort().join(';');if(seen.has(k))continue;seen.add(k);
+      const first=[...cells].sort((a,b)=>colMajor?(a[1]-b[1]||a[0]-b[0]):(a[0]-b[0]||a[1]-b[1]))[0];
+      orients[id].push({rot:r,flip:!!f,cells,first});}}
+  const used={},sol=[];let nodes=0;
+  function next(){if(colMajor){for(let c=0;c<w;c++)for(let r=0;r<h;r++)if(!g[r][c])return[r,c]}else{for(let r=0;r<h;r++)for(let c=0;c<w;c++)if(!g[r][c])return[r,c]}return null}
+  function regionsOk(){const seen=g.map(r=>r.map(v=>v));const st=[];
+    for(let r=0;r<h;r++)for(let c=0;c<w;c++){if(seen[r][c])continue;let n=0;st.push([r,c]);seen[r][c]=1;
+      while(st.length){const [y,x]=st.pop();n++;for(const [dy,dx] of [[1,0],[-1,0],[0,1],[0,-1]]){const Y=y+dy,X=x+dx;
+        if(Y>=0&&X>=0&&Y<h&&X<w&&!seen[Y][X]){seen[Y][X]=1;st.push([Y,X])}}}
+      if(n%5)return false;}
+    return true;}
+  function go(){if(++nodes>4e6)throw 'limit';const t=next();if(!t)return true;if(!regionsOk())return false;
+    for(const id of free){if(used[id])continue;for(const o of orients[id]){
+      const R=t[0]-o.first[0],C=t[1]-o.first[1];let ok=true;
+      for(const [a,b] of o.cells){const y=R+a,x=C+b;if(y<0||x<0||y>=h||x>=w||g[y][x]){ok=false;break}}
+      if(!ok)continue;for(const [a,b] of o.cells)g[R+a][C+b]=1;used[id]=1;sol.push({id,rot:o.rot,flip:o.flip,pos:[R,C]});
+      if(go())return true;sol.pop();used[id]=0;for(const [a,b] of o.cells)g[R+a][C+b]=0;}}
+    return false;}
+  // embaralha a ordem para variar as soluções
+  free.sort(()=>Math.random()-.5);
+  try{postMessage(go()?{ok:true,sol}:{ok:false})}catch(err){postMessage({ok:false,limit:true})}
+};`;
+function solve(cb){
+  if(worker)worker.terminate();
+  try{worker=new Worker(URL.createObjectURL(new Blob([WORKER_SRC],{type:'text/javascript'})));}catch(e){toast('Seu navegador não permitiu o solucionador');return;}
+  const blocked=[...S.holes];const occ=occupancy(null);blocked.push(...occ.keys());
+  const free=IDS.filter(id=>!S.pieces[id].pos);
+  toast('Pensando como um computador de Titã…',8000);
+  const timer=setTimeout(()=>{worker.terminate();worker=null;toast('Demorou demais — tente recolher algumas peças')},20000);
+  worker.onerror=e=>{clearTimeout(timer);worker=null;toast('Erro no solucionador: '+(e.message||''))};
+  worker.onmessage=e=>{clearTimeout(timer);worker.terminate();worker=null;cb(e.data)};
+  worker.postMessage({h:S.h,w:S.w,blocked,free});
+}
+$('#bHint').onclick=()=>solve(d=>{
+  if(!d.ok)return toast(d.limit?'Busca grande demais — recolha algumas peças':'Com as peças nessas posições não há solução. Tire alguma e tente de novo.',4000);
+  const p=d.sol[Math.floor(Math.random()*d.sol.length)];
+  Object.assign(S.pieces[p.id],{rot:p.rot,flip:p.flip,pos:p.pos});S.cheated=true;startTimer();render();select(p.id);save();
+  toast(`Ainda tem saída! Coloquei a peça ${p.id} para você.`,3000);
+});
+$('#bSolve').onclick=()=>{IDS.forEach(id=>S.pieces[id].pos=null);render();solve(d=>{
+  if(!d.ok)return toast('Não consegui agora — tente de novo');
+  S.cheated=true;d.sol.forEach(p=>Object.assign(S.pieces[p.id],{rot:p.rot,flip:p.flip,pos:p.pos}));render();toast('Uma das soluções possíveis',2500);});};
+$('#bClear').onclick=()=>{IDS.forEach(id=>S.pieces[id].pos=null);S.cheated=false;solved=false;t0=null;clearInterval(tick);$('#time').textContent='0:00';render();save();};
+$('#bRot').onclick=()=>act('rot');$('#bFlip').onclick=()=>act('flip');
+$('#bAgain').onclick=()=>{$('#win').classList.remove('on');$('#bClear').onclick();};
+$('#bClose').onclick=()=>$('#win').classList.remove('on');
+$('#boardSel').onchange=e=>{newGame(e.target.value);save();};
+window.addEventListener('keydown',e=>{if(e.key==='r'||e.key==='R')act('rot');if(e.key==='f'||e.key==='F')act('flip');});
+window.addEventListener('wheel',e=>{if(drag&&drag.moved){e.preventDefault();act('rot');}},{passive:false});
+let rz;window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{layout();render();},150)});
+document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+b.dataset.v));
+  try{history.replaceState(null,'','#'+b.dataset.v)}catch(e){}});
+let tt;function toast(m,ms=2200){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),ms)}
+function save(){LS.set('pento-state',{key:S.key,transposed:S.transposed,pieces:S.pieces,cheated:!!S.cheated})}
+
+// iniciar
+const saved=LS.get('pento-state',null);
+newGame(saved&&BOARDS[saved.key]?saved.key:'6x10');
+if(saved&&saved.transposed===S.transposed&&saved.pieces){S.pieces=saved.pieces;S.cheated=saved.cheated;render();}
+$('#boardSel').value=S.key;
+if(location.hash==='#clarke')document.querySelector('nav.tabs button[data-v=clarke]').click();
+})();
+</script>
+</body>
+</html>

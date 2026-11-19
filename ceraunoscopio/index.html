@@ -137,7 +137,7 @@ const SPEC=[
  ['nevoa','Névoa',0,1,.4,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
  ['luzCidade','Brilho do céu à noite',0,1,.45,{fmt:v=>(v*100|0)+'%',sec:'Cena'}],
  ['expo','Exposição',.1,10,1,{log:1,fmt:v=>v.toFixed(2)+'×',sec:'Imagem'}],
- ['halo','Halo',0,2.5,.8,{fmt:v=>v.toFixed(2),sec:'Imagem'}],
+ ['halo','Halo',0,2.5,.6,{fmt:v=>v.toFixed(2),sec:'Imagem'}],
  ['persist','Persistência na retina',0,800,110,{fmt:v=>v.toFixed(0)+' ms',sec:'Imagem'}],
  ['sat','Saturação',0,2,1,{fmt:v=>v.toFixed(2),sec:'Imagem'}],
  ['matiz','Matiz',-180,180,0,{fmt:v=>v.toFixed(0)+'°',sec:'Imagem'}],
@@ -149,13 +149,13 @@ const SPEC=[
 ];
 function fmtN(n){return n>=1e6?(n/1e6).toFixed(1)+' mi':n>=1e3?Math.round(n/1e3)+' mil':Math.round(n)+'';}
 const PS=Object.fromEntries(SPEC.map(s=>[s[0],{id:s[0],l:s[1],min:s[2],max:s[3],def:s[4],...s[5]}]));
-const P={tipo:'neg',cenario:'campo',lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
+const P={tipo:'neg',cenario:'mar',lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
  ...Object.fromEntries(SPEC.map(s=>[s[0],s[4]]))};
 P.tempestade=0; // começa desligada; o padrão 12 vale ao ligar
 let stormRate=12;
 const SAVEKEY='ceraunoscopio-v1';
 try{const s=JSON.parse(localStorage.getItem(SAVEKEY)||'{}');for(const k in s)if(k in P)P[k]=s[k];}catch(e){}
-P.tempestade=0;P.lenta=false;P.obturador=false;P.cenario='campo';
+P.tempestade=0;P.lenta=false;P.obturador=false;P.cenario='mar';
 let saveT=0;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(SAVEKEY,JSON.stringify(P));}catch(e){}},300);}
 const toU=(s,v)=>s.log?Math.log(v/s.min)/Math.log(s.max/s.min):(v-s.min)/(s.max-s.min);
 const fromU=(s,u)=>{u=clamp(u,0,1);return s.log?s.min*Math.pow(s.max/s.min,u):s.min+(s.max-s.min)*u;};
@@ -424,7 +424,8 @@ const GEN={
 function finalize(G,d){
  const n=G.X.length,F={n,type:'',I0:d.I0};
  F.X=Float32Array.from(G.X);F.Y=Float32Array.from(G.Y);F.Z=Float32Array.from(G.Z);F.P=Int32Array.from(G.P);F.TL=Float32Array.from(G.T);F.Q=Float32Array.from(G.Q);
- F.vis=new Float32Array(n);F.len=new Float32Array(n);
+ F.vis=new Float32Array(n);F.len=new Float32Array(n);F.jit=new Float32Array(n);
+ {const sd=rnd()*50;let s0=0;for(let i=0;i<n;i++){s0=s0*.0+i;F.jit[i]=.72+.56*vnoise(i/9+sd,sd)*(.7+.3*rnd());}}
  const Hc=P.base;
  for(let i=0;i<n;i++){const b=Hc+80*(vnoise(F.X[i]/1500,F.Z[i]/1500)-.5),dy=F.Y[i]-b;F.vis[i]=dy<0?1:Math.exp(-dy/80);
   const p=F.P[i];if(p>=0)F.len[i]=Math.hypot(F.X[i]-F.X[p],F.Y[i]-F.Y[p],F.Z[i]-F.Z[p]);}
@@ -481,14 +482,15 @@ const VS_SEG=`#version 300 es
 layout(location=0) in vec2 q;layout(location=1) in vec4 seg;layout(location=2) in vec4 wi;
 uniform vec2 res;out vec2 vP;flat out vec4 vS;flat out vec4 vW;
 void main(){vec2 a=seg.xy,b=seg.zw,d=b-a;float L=length(d);vec2 t=L>1e-4?d/L:vec2(1,0),n=vec2(-t.y,t.x);
- float r=wi.x*2.6+1.5;vec2 P=mix(a-t*r,b+t*r,q.x)+n*r*q.y;vP=P;vS=seg;vW=wi;
+ float r=wi.x*4.+1.5;vec2 P=mix(a-t*r,b+t*r,q.x)+n*r*q.y;vP=P;vS=seg;vW=wi;
  gl_Position=vec4(P.x/res.x*2.-1.,1.-P.y/res.y*2.,0,1);}`;
 const FS_SEG=`#version 300 es
-precision highp float;in vec2 vP;flat in vec4 vS;flat in vec4 vW;uniform vec3 core;uniform sampler2D skyT;uniform vec2 res;uniform float HY,FL,camH,city;out vec4 o;
+precision highp float;in vec2 vP;flat in vec4 vS;flat in vec4 vW;uniform vec3 core,sheath;uniform sampler2D skyT;uniform vec2 res;uniform float HY,FL,camH,city;out vec4 o;
 void main(){vec2 sk=texture(skyT,vec2(vP.x/res.x,.5)).rg;float sil=sk.r*res.y;
  if(vP.y>=sil-.5){float occZ=vP.y<HY?sk.g:camH*FL/max(vP.y-HY,1e-3);if(city>.5&&vP.y>=HY)occZ=min(occZ,1300.);if(1./vW.z>occZ)discard;}
  vec2 a=vS.xy,b=vS.zw,pa=vP-a,ba=b-a;float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-6),0.,1.);float d=length(pa-ba*h);
- float w=vW.x,g=exp(-d*d/(w*w));o=vec4(core*vW.y*g,g>.02?vW.z:0.);}`;
+ float w=vW.x,g=exp(-d*d/(w*w)),hot=exp(-d*d/(w*w*.25)),sh=exp(-d*d/(w*w*7.));
+ vec3 c=(core*g+vec3(1)*hot*.35+sheath*sh*.28)*vW.y;o=vec4(c,(g>.02||sh>.1)?vW.z:0.);}`;
 const FS_DOWN=`#version 300 es
 precision highp float;in vec2 uv;uniform sampler2D t;uniform vec2 px;out vec4 o;
 void main(){vec3 c=texture(t,uv).rgb*.5;c+=(texture(t,uv+px*vec2(-1,-1)).rgb+texture(t,uv+px*vec2(1,-1)).rgb+texture(t,uv+px*vec2(-1,1)).rgb+texture(t,uv+px*vec2(1,1)).rgb)*.125;o=vec4(c,1);}`;
@@ -506,51 +508,81 @@ uniform vec4 Lp[8];uniform float Lr[8];uniform vec3 lCol,core;
 uniform sampler2D boltT,bloomT,bloomLo,persT,skyT;
 float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
-float fbm(vec2 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*vn(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return s;}
+float fbm(vec2 p){float a=.5,s=0.;mat2 m=mat2(1.6,1.2,-1.2,1.6);for(int i=0;i<6;i++){s+=a*vn(p);p=m*p+vec2(1.7,9.2);a*=.5;}return s;}
+float fbm3(vec2 p){float a=.5,s=0.;mat2 m=mat2(1.6,1.2,-1.2,1.6);for(int i=0;i<3;i++){s+=a*vn(p);p=m*p;a*=.5;}return s;}
 float lit(vec3 P,float rs){float s=0.;for(int k=0;k<8;k++){vec3 d=P-Lp[k].xyz;float R=Lr[k]*rs;s+=Lp[k].w/(1.+dot(d,d)/(R*R));}return s;}
+vec3 amb=vec3(.010,.012,.020);
+vec3 hazeAt(float e){return amb*1.6+flashG*lCol*.22+vec3(.10,.055,.026)*cityGlow*.25*(1.+.6*exp(-e*12.));}
+/* céu: base da nuvem em perspectiva, com distorção de domínio, volumes e cortinas de chuva */
+vec3 sky(float x,float y){
+ float e=max((HY-y)/FL,1e-4);float Z=(Hc-camH)/e;vec3 P=vec3((x-res.x*.5)/FL*Z,Hc,Z);
+ vec2 q=P.xz/2600.+vec2(time*.003*windX,time*.004);
+ vec2 w=vec2(fbm3(q*1.2+vec2(0,time*.01)),fbm3(q*1.2+vec2(5.2,1.3)));
+ float d=fbm(q+1.8*w);float det=fbm(q*5.+w*3.+3.1);
+ float dens=smoothstep(.34,.78,d*.85+det*.32);
+ float lump=smoothstep(.35,.9,fbm3(q*14.+w*4.));
+ float thick=dens*(.7+.3*lump);
+ float L=lit(P+vec3(0,160,0),1.+.6*thick);
+ float Lb=lit(P+vec3(0,40,0),.55);
+ vec3 c=amb*(1.25-.75*thick)+vec3(.10,.055,.026)*cityGlow*.25*(.4+thick);
+ c+=lCol*L*(.06+1.0*thick*thick+.25*thick);
+ c+=lCol*Lb*.45*smoothstep(.15,.5,det-thick*.4);
+ c+=flashG*lCol*(.05+.45*thick);
+ float fogf=exp(-Z/(11000.*(1.25-fog)));
+ vec3 col=mix(hazeAt(e),c,fogf);
+ float curt=smoothstep(.45,.85,fbm3(vec2(P.x/1400.+time*.01*windX,1.3)))*smoothstep(.2,.0,e)*rain;
+ float strand=.6+.4*vn(vec2(x*.12+y*.02*windX,y*.004));
+ vec3 cc=amb*1.2+lCol*lit(vec3(P.x,Hc*.4,P.z*.8),1.6)*.18+flashG*lCol*.15;
+ col=mix(col,cc,curt*.75*strand);
+ return col;
+}
 float rainS(vec2 p,float sc,float sp,float th,float tilt){p.x+=p.y*tilt;vec2 g=vec2(p.x/sc,p.y/(sc*16.)-time*sp);vec2 id=floor(g),f=fract(g);float h=h21(id);
  float on=step(1.-th,h);float xo=.2+.6*h21(id+7.1);return smoothstep(.09,0.,abs(f.x-xo))*smoothstep(0.,.35,f.y)*smoothstep(1.,.65,f.y)*on;}
+/* ondas do mar: soma de ondas direcionais + ruído + respingos de chuva */
+vec2 slope(vec2 p,float fade,float Z){
+ vec2 s=vec2(0);
+ const int N=7;
+ for(int i=0;i<N;i++){float fi=float(i);float a=fi*1.93+.4;vec2 d=vec2(cos(a),sin(a));float k=.045*pow(1.55,fi);float A=.55/pow(1.7,fi);
+  float ph=dot(d,p)*k+time*sqrt(9.8*k)*1.;s+=d*A*k*cos(ph)*(fi<3.?1.:fade);}
+ float e=.6;vec2 n=vec2(vn(p*.9+time*.6)-vn(p*.9+vec2(e,0)+time*.6),vn(p*.9+time*.6)-vn(p*.9+vec2(0,e)+time*.6));
+ s+=n*.18*fade*fade;
+ if(rain>0.){vec2 c=floor(p/1.6),f=fract(p/1.6)-.5;float h=h21(c);float tt=fract(time*.9+h);vec2 o2=vec2(h21(c+3.)-.5,h21(c+5.)-.5)*.6;
+  float r=length(f-o2);float ring=sin((r-tt*.55)*60.)*exp(-tt*3.)*smoothstep(.5,.0,r)*step(.35,h);s+=normalize(f-o2+1e-4)*ring*.25*rain*smoothstep(500.,40.,Z);}
+ return s;
+}
+vec3 sea(float x,float y){
+ float e=max((y-HY)/FL,1e-5);float Z=camH/e;vec3 P=vec3((x-res.x*.5)/FL*Z,0,Z);
+ float fade=clamp(1.-Z/3500.,0.,1.);
+ vec2 sl=slope(P.xz,fade,Z)*mix(.25,.8,fade)*(1.-.5*smoothstep(300.,30.,Z));
+ vec3 N=normalize(vec3(-sl.x,1.,-sl.y));
+ vec3 V=normalize(P-vec3(0,camH,0));vec3 R=reflect(V,N);
+ float cosT=clamp(dot(-V,N),0.,1.);float F=.02+.98*pow(1.-cosT,5.);
+ // reflexo do céu: direção refletida volta para a tela
+ float er=max(R.y,1e-3)/max(length(R.xz),1e-3);float yr=HY-er*FL;float xr=res.x*.5+R.x/max(R.z,1e-3)*FL;
+ vec3 skyR=sky(xr,yr);
+ vec2 ruv=vec2(xr/res.x,1.-yr/res.y);
+ vec3 bolt=texture(boltT,ruv).rgb+texture(bloomT,ruv).rgb*bloomAmt*.9;
+ vec3 refl=(skyR+bolt)*F;
+ // brilho especular das luzes do raio na água
+ vec3 spec=vec3(0);
+ for(int k=0;k<8;k++){if(Lp[k].w<=0.)continue;vec3 Ld=normalize(Lp[k].xyz-P);float sp=pow(max(dot(R,Ld),0.),160.)*Lp[k].w*2.2+pow(max(dot(R,Ld),0.),18.)*Lp[k].w*.18;spec+=lCol*sp;}
+ vec3 body=vec3(.004,.008,.010)+lCol*(lit(P,1.6)*.025+flashG*.02);
+ vec3 col=body*(1.-F)+refl+spec*(.4+.6*F);
+ col=mix(col,hazeAt(0.)*.9,1.-exp(-Z/(12000.*(1.25-fog))));
+ return col;
+}
 void main(){
  vec2 fc=gl_FragCoord.xy;float y=res.y-fc.y,x=fc.x;
- vec2 sk=texture(skyT,vec2(uv.x,.5)).rg;float sil=sk.r*res.y,silZ=sk.g;
- vec3 amb=vec3(.011,.013,.021);
- vec3 cityC=vec3(.10,.055,.026)*cityGlow*(scen==2.?1.:.22);
- vec3 col;float occZ=1e9;
- vec3 hazeC=amb*1.5+flashG*lCol*.22+cityC*.7;
- if(y<sil&&y<HY){
-  float e=(HY-y)/FL;float Z=(Hc-camH)/max(e,1e-5);vec3 Pp=vec3((x-res.x*.5)/FL*Z,Hc,Z);
-  vec2 q=Pp.xz/1700.+vec2(time*.006*windX,time*.012);
-  float d=fbm(q),d2=fbm(q*3.3+3.1);float dens=smoothstep(.22,.9,d*.8+d2*.32);
-  float L=lit(Pp+vec3(0,150,0),1.+.5*dens);
-  vec3 c=amb*(.55+dens)+lCol*L*(.12+.8*dens)+flashG*lCol*(.06+.42*dens)+cityC*(.35+dens);
-  float fogf=exp(-Z/(10000.*(1.25-fog)));col=mix(hazeC,c,fogf);
- }else if(scen==0.&&y>=HY){
-  float e=(y-HY)/FL;float Z=camH/max(e,1e-5);occZ=Z;
-  float w=(vn(vec2(x*.015,y*.35+time*1.3))-.5)*(y-HY)*.18;
-  vec2 ruv=vec2((x+w)/res.x,(fc.y+2.*(y-HY))/res.y);
-  vec3 refl=texture(boltT,ruv).rgb+texture(bloomT,ruv).rgb*bloomAmt*.8;
-  float fres=.2+.6*exp(-(y-HY)/(res.y*.06));
-  vec3 Pp=vec3((x-res.x*.5)/FL*Z,0,Z);
-  col=amb*.45+refl*fres*.55+lCol*lit(Pp,1.4)*.04+flashG*lCol*(.08*fres)+cityC*.1;
-  col=mix(col,hazeC*.8,1.-exp(-Z/(9000.*(1.25-fog))));
- }else{
-  bool obj=y<HY;float Z=obj?silZ:camH/max((y-HY)/FL,1e-5);occZ=Z;
-  vec3 Pp=vec3((x-res.x*.5)/FL*Z,obj?(camH+(HY-y)*Z/FL)*.5:0.,Z);
-  float L=lit(Pp,1.3);
-  col=amb*.28+lCol*L*.04+flashG*lCol*.015;
-  if(scen==2.&&!obj&&Z>1300.)col=amb*.22+flashG*lCol*.01;
-  if(scen==2.&&obj){vec2 wc=floor(vec2(x/2.,y/3.));float hw=h21(wc+floor(silZ/40.)*1.7);col+=vec3(1.,.7,.36)*.035*step(.93,hw)*cityGlow*step(1.5,mod(wc.y,3.));}
-  col=mix(col,hazeC*.7,1.-exp(-Z/(8000.*(1.25-fog))));
- }
+ vec3 col=y<HY?sky(x,y):sea(x,y);
  col+=texture(boltT,uv).rgb;
  vec3 bl=texture(bloomT,uv).rgb,blo=texture(bloomLo,uv).rgb;
  vec3 tint=mix(vec3(1),lCol*1.15,.55);
  col+=bl*bloomAmt*tint;
- col+=blo*(.35+.9*rain)*.5*tint;
- col+=texture(persT,uv).rgb*persAmt*(y<sil+2.?1.:0.)*tint;
+ col+=blo*(.35+.9*rain)*.3*tint;
+ col+=texture(persT,uv).rgb*persAmt*(y<HY+1.?1.:0.)*tint;
  float tilt=windX*.012;
  float r=rainS(vec2(x,y),5.,2.4,.55*rain,tilt)*.45+rainS(vec2(x,y)+33.,9.,1.7,.5*rain,tilt)*.75+rainS(vec2(x,y)+77.,17.,1.1,.35*rain,tilt);
- col+=r*rain*(amb*3.+blo*1.2+bl*.15+flashG*lCol*.6+cityC*.6)*.45;
+ col+=r*rain*(amb*3.+blo*1.2+bl*.15+flashG*lCol*.6)*.45;
  o=vec4(col,1);
 }`;
 const FS_ACC=`#version 300 es
@@ -628,8 +660,8 @@ function buildFrame(ta,tb,win){
    acc[o]+=w;acc[o+1]+=w*F.X[i];acc[o+2]+=w*F.Y[i];acc[o+3]+=w*F.Z[i];acc[o+4]+=w*(F.X[i]*F.X[i]+F.Y[i]*F.Y[i]*.6);
    flashG+=w/(F.Z[i]*F.Z[i]+1e5);
    const Lv=L*F.vis[i];if(Lv<2.5e-3||ni>=MAXI)continue;
-   const Z=Math.max(F.Z[i],30),wm=(.28+.9*F.Q[i])*(1+.35*Math.log(1+Lv)),wt=FL*wm/Z,wp=Math.max(.8,wt);
-   const I=Lv*Math.min(1,Math.sqrt(wt/.8)*1.1);
+   const Z=Math.max(F.Z[i],30),wm=(.2+.95*F.Q[i]*F.Q[i])*(1+.35*Math.log(1+Lv)),wt=FL*wm/Z,wp=Math.max(.8,wt);
+   const I=Lv*Math.min(1,Math.sqrt(wt/.8)*1.1)*F.jit[i];
    const k=ni*8;instData[k]=F.sx[p];instData[k+1]=F.sy[p];instData[k+2]=F.sx[i];instData[k+3]=F.sy[i];
    instData[k+4]=wp;instData[k+5]=I;instData[k+6]=1/Z;instData[k+7]=0;ni++;}
  }
@@ -644,7 +676,7 @@ function render(dtReal){
  gl.disable(gl.BLEND);
  bindOut(T.bolt);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
  const D=(lastFlash?lastFlash.Z[0]:P.dist*1000),lc=lightColor(Math.min(D,P.dist*1000*3)),core=[lerp(1,lc[0],.18),lerp(1,lc[1],.18),lerp(1,lc[2],.18)];
- if(nInst){gl.enable(gl.BLEND);gl.blendEquation(gl.MAX);gl.useProgram(pSeg.p);gl.uniform2f(pSeg.u.res,cw,ch);gl.uniform3fv(pSeg.u.core,core);
+ if(nInst){gl.enable(gl.BLEND);gl.blendEquation(gl.MAX);gl.useProgram(pSeg.p);gl.uniform2f(pSeg.u.res,cw,ch);gl.uniform3fv(pSeg.u.core,core);gl.uniform3fv(pSeg.u.sheath,[lc[0]*.85,lc[1]*.7,lc[2]*1.15]);
   gl.uniform1f(pSeg.u.HY,HY);gl.uniform1f(pSeg.u.FL,FL);gl.uniform1f(pSeg.u.camH,camH);gl.uniform1i(pSeg.u.skyT,4);gl.uniform1f(pSeg.u.city,P.cenario==='cidade'?1:0);tex(4,skyTex);
   gl.bindVertexArray(segVAO);gl.bindBuffer(gl.ARRAY_BUFFER,iB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instData,0,nInst*8);
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,nInst);gl.disable(gl.BLEND);gl.blendEquation(gl.FUNC_ADD);}
@@ -744,7 +776,7 @@ function audioParams(){if(!AC)return;const t=AC.currentTime;
  wetG.gain.setTargetAtTime(P.ambiente*1.3,t,.05);dryG.gain.setTargetAtTime(1-P.ambiente*.35,t,.05);
  rainG.gain.setTargetAtTime(P.volChuva*P.chuva*.22,t,.3);}
 function makeIR(){if(!AC)return;const sr=AC.sampleRate,len=Math.floor(sr*4.5),b=AC.createBuffer(2,len,sr),sc=P.cenario;
- const tau={mar:1.1,campo:.9,cidade:1.5,morros:2.2}[sc];
+ const tau={mar:1.9,campo:.9,cidade:1.5,morros:2.2}[sc];
  const echoes={mar:[],campo:[[.18,.25]],cidade:[[.03,.5],[.07,.4],[.11,.35],[.16,.3],[.23,.25],[.31,.2],[.45,.15]],morros:[[.6,.45],[1.15,.35],[1.8,.25],[2.6,.15]]}[sc];
  for(let ch=0;ch<2;ch++){const d=b.getChannelData(ch);let lp=0;
   for(let i=0;i<len;i++){const t=i/sr;lp=lp*.8+(rnd()*2-1)*.2;d[i]=lp*Math.exp(-t/tau)*.6*(t<.01?t/.01:1);}

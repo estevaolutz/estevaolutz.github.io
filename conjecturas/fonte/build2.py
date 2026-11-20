@@ -20,6 +20,7 @@ OBRAS2 = {
   'dupla-cobertura': ('Dupla Cobertura', 'Ciclos que passam duas vezes por cada aresta, como linhas de ônibus em polirritmia'),
   'noperthedron': ('Noperthedron', 'O primeiro sólido que não passa por dentro de si mesmo'),
   'musica-dos-primos': ('Música dos Primos', 'Hipótese de Riemann: os zeros da função zeta reconstroem a escada dos primos'),
+  'linha-critica': ('Linha Crítica', 'Hipótese de Riemann: a zeta leva a linha ½ ao plano complexo e passa pela origem em cada zero'),
   'cento-e-noventa-e-seis': ('196', 'Inverter e somar: o número que nunca vira palíndromo'),
   'gilbreath': ('Gilbreath', 'A pirâmide das diferenças entre primos sempre começa com 1'),
   # física

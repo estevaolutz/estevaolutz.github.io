@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Linha Crítica</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s;text-align:center;padding:0 24px}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start p.sub{letter-spacing:.06em;opacity:.32;max-width:420px;line-height:1.6;font-size:11.5px}
+  #start.hide{opacity:0;pointer-events:none}
+  .hud{position:fixed;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums;transition:opacity .6s}
+  #num{left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:.55}
+  #op{left:30px;top:62px;right:60px;font-weight:300;font-size:16px;letter-spacing:.05em;opacity:.75;line-height:1.35}
+  #seq{left:30px;top:94px;right:60px;max-height:34%;font-weight:300;font-size:12.5px;line-height:1.75;letter-spacing:.03em;opacity:.42;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq b{font-weight:500}
+  body.semtexto .hud{opacity:0!important}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 96px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0;min-width:0}
+  .row select,.row input[type=number],.row input[type=text]{flex:1;min-width:0;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.55;margin-top:10px}
+  @media (max-width:640px){ #op{font-size:13.5px} #seq{top:112px;font-size:11.5px} #num{font-size:24px} }
+
+  #panel .sub{font-size:10.5px;letter-spacing:.12em;opacity:.45;margin:10px 0 2px;text-transform:uppercase}
+  #seq span.o{white-space:normal;display:inline}
+  .hud{text-shadow:0 0 8px #000,0 0 3px #000,0 0 1px #000}
+
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>LINHA CRÍTICA</h1><p>toque para começar</p>
+  <p class="sub">A hipótese de Riemann diz que todos os zeros não triviais da função zeta estão sobre a linha Re(s) = ½. Aqui um ponto sobe por essa linha e a zeta leva cada ponto para o plano complexo: a curva gira, se enrola e, em cada zero, passa exatamente pela origem e silencia. Desloque a linha para fora do ½ e a curva passa a errar a origem, sempre.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Linha</h2>
+  <div class="row"><label>Re(s) = σ (tecla L volta ao ½)</label><input type="range" id="sigma" min="0" max="1" step="0.005" value="0.5"></div>
+  <div class="row"><label>Velocidade (t/s)</label><input type="range" id="vel" min="0.1" max="12" step="0.05" value="1.3"></div>
+  <div class="row"><label>Acelerar</label><input type="checkbox" id="accel" checked></div>
+  <div class="row"><label>t vai até</label><select id="tMax"><option value="100">100 (29 zeros)</option><option value="250" selected>250 (≈ 100 zeros)</option><option value="600">600 (≈ 300 zeros)</option></select></div>
+  <div class="row"><label>Afinação</label><select id="afin"><option value="literal" selected>Zeros (literal)</option><option value="escala">Escala do modo</option></select></div>
+  <div class="row"><label>Frequência do 1º zero (Hz)</label><input type="range" id="f0" min="40" max="400" step="1" value="110"></div>
+  <div class="row"><label>Voz da zeta (Hz)</label><input type="range" id="fVoz" min="30" max="300" step="1" value="73"></div>
+  <div class="row"><label>Pontos de Gram</label><input type="checkbox" id="gram" checked></div>
+<div id="nucleo"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="color"><option value="gelo" selected>Gelo</option><option value="arco">Arco-íris</option><option value="brasa">Brasa</option><option value="branco">Branco</option></select></div>
+  <div class="row"><label>Rastro da curva (t)</label><input type="range" id="rastro" min="2" max="60" step="0.5" value="16"></div>
+  <div class="row"><label>Relevo (3D)</label><input type="range" id="malha" min="0" max="1.5" step="0.01" value="0.7"></div>
+  <div class="row"><label>Espessura</label><input type="range" id="lw" min="0.5" max="4" step="0.05" value="1.5"></div>
+<div id="nucleoVideo"></div>
+<div class="hint">Na vista plana, a curva é ζ(σ + it) desenhada no plano complexo enquanto t sobe; o ponto no centro é a origem. Na linha ½ a curva atravessa a origem em cada zero (um clarão e uma nota). Com σ fora do ½ ela passa perto e erra: o tracejado mostra quanto faltou, e a nota sai fraca e desafinada. Embaixo fica a faixa crítica com os zeros sobre o ½.<br>Na vista 3D, o chão é a faixa crítica e a altura é log |ζ|: cada zero é um poço sem fundo, e todos os poços conhecidos caem na mesma linha.<br>Som: a voz contínua tem volume igual a |ζ|, então cala em cada zero; o pan segue o argumento. Os pontos de Gram (onde ζ(½ + it) é real) tocam como pulso; quando a lei de Gram falha, a nota muda e o tique fica vermelho.<br>Tecla D liga e desliga o 3D; tecla L devolve a linha para o ½.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
+</div>
+<script>
+// Vista 3D das Conjecturas — câmera em órbita e projeção em perspectiva desenhadas no mesmo canvas 2D da obra,
+// então o som, os efeitos de vídeo (rastro, brilho, espelho) e o banco de configurações valem também para o 3D.
+// A cena é descrita em unidades de mundo de mais ou menos −1 a 1 (y para cima). Uso:
+//   const T = Vista3D({ ligado: true, giro: 0.12, incl: 20 });
+//   if (T.on){ T.quadro(); C.beginPath(); T.mv(C, x, y, z); T.ln(C, x2, y2, z2); C.stroke(); }
+// Controles: arrastar = girar, pinça/roda = aproximar, dois toques = recentrar, tecla D = liga/desliga.
+window.Vista3D = function(opt = {}){
+  const $ = id => document.getElementById(id);
+  const cv = opt.canvas || $('cv');
+  const DEF = Object.assign({ ligado: true, giro: 0.12, incl: 22, zoom: 1, persp: 0.45, nevoa: 0.35, grade: true, yaw: 0.5 }, opt);
+  const T = { on: DEF.ligado, giro: DEF.giro, incl: DEF.incl, zoom: DEF.zoom, persp: DEF.persp, nevoa: DEF.nevoa, grade: DEF.grade,
+    X: 0, Y: 0, S: 1, A: 1, Z: 0, R: 300, W: 0, H: 0, cx: 0, cy: 0, ouvintes: [] };
+  let yaw = DEF.yaw, dPitch = 0, zMul = 1, last = 0, cy = 1, sy = 0, cp = 1, sp = 0, D = 4, F = 1, ox = 0, oy = 0;
+
+  // ---------- painel: uma seção "Vista 3D" logo antes dos efeitos de vídeo (ou da seção Imagem) ----------
+  const panel = $('panel');
+  if (panel && !$('v3d')){
+    const box = document.createElement('div'); box.id = 'vista3dBox';
+    box.innerHTML = `<h2>Vista 3D</h2>
+      <div class="row"><label>3D (tecla D)</label><input type="checkbox" id="v3d"${T.on ? ' checked' : ''}></div>
+      <div class="row"><label>Giro automático</label><input type="range" id="v3dGiro" min="-1" max="1" step="0.01" value="${T.giro}"></div>
+      <div class="row"><label>Inclinação</label><input type="range" id="v3dIncl" min="-15" max="85" step="1" value="${T.incl}"></div>
+      <div class="row"><label>Aproximar</label><input type="range" id="v3dZoom" min="0.4" max="3" step="0.01" value="${T.zoom}"></div>
+      <div class="row"><label>Perspectiva</label><input type="range" id="v3dPersp" min="0" max="1" step="0.01" value="${T.persp}"></div>
+      <div class="row"><label>Névoa ao fundo</label><input type="range" id="v3dNev" min="0" max="1" step="0.01" value="${T.nevoa}"></div>
+      <div class="row"><label>Grade do chão</label><input type="checkbox" id="v3dGrade"${T.grade ? ' checked' : ''}></div>
+      <div class="row"><button id="v3dCentro" type="button">Recentrar câmera</button></div>`;
+    const antes = opt.antes ? $(opt.antes) : ($('nucleoVideo') || [...panel.querySelectorAll('h2')].find(h => /imagem|v[ií]deo/i.test(h.textContent)) || panel.querySelector('.hint'));
+    if (antes && antes.parentNode) antes.parentNode.insertBefore(box, antes); else panel.appendChild(box);
+    const ler = () => {
+      T.on = $('v3d').checked; T.giro = +$('v3dGiro').value; T.incl = +$('v3dIncl').value; T.zoom = +$('v3dZoom').value;
+      T.persp = +$('v3dPersp').value; T.nevoa = +$('v3dNev').value; T.grade = $('v3dGrade').checked;
+      document.body.classList.toggle('em3d', T.on); const b = $('b3d'); if (b) b.classList.toggle('on', T.on);
+      for (const fn of T.ouvintes) fn(T.on);
+    };
+    box.addEventListener('input', ler); box.addEventListener('change', ler);
+    $('v3dCentro').addEventListener('click', () => T.recentrar());
+    T.ler = ler;
+  }
+  // botão rápido "3D" ao lado do ponto do painel
+  if (!$('b3d')){
+    const st = document.createElement('style');
+    st.textContent = `#b3d{position:fixed;right:50px;top:16px;height:26px;padding:0 9px;border-radius:13px;z-index:4;border:1px solid rgba(255,255,255,.25);
+      background:rgba(0,0,0,.35);color:#cfd6dd;font:500 10.5px/24px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;letter-spacing:.12em;cursor:pointer;opacity:.28;transition:opacity .4s}
+      #b3d:hover{opacity:.8} #b3d.on{opacity:.55;border-color:rgba(191,228,255,.7);color:#e8f4ff} body.em3d #cv{cursor:grab} body.em3d #cv:active{cursor:grabbing}`;
+    document.head.appendChild(st);
+    const b = document.createElement('button'); b.id = 'b3d'; b.type = 'button'; b.title = 'Vista 3D (D)'; b.textContent = '3D';
+    b.classList.toggle('on', T.on); document.body.appendChild(b);
+    b.addEventListener('click', e => { e.stopPropagation(); T.alternar(); });
+  }
+  document.body.classList.toggle('em3d', T.on);
+  T.alternar = () => { const c = $('v3d'); if (c){ c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); } else { T.on = !T.on; for (const fn of T.ouvintes) fn(T.on); } };
+  T.recentrar = () => { yaw = DEF.yaw; dPitch = 0; zMul = 1; };
+  T.mudou = fn => T.ouvintes.push(fn);
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'd' || e.key === 'D'){ e.preventDefault(); T.alternar(); }
+  });
+
+  // ---------- arrastar, pinça, roda, dois toques ----------
+  const pts = new Map(); let pinch0 = 0, zoom0 = 1, tapT = 0;
+  cv.addEventListener('pointerdown', e => {
+    if (!T.on) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 2){ const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = zMul; }
+    const agora = performance.now(); if (agora - tapT < 300 && pts.size === 1) T.recentrar(); tapT = agora;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!T.on || !pts.has(e.pointerId)) return;
+    const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 1){ yaw += dx*0.008; dPitch = Math.max(-80, Math.min(80, dPitch + dy*0.35)); }
+    else if (pts.size === 2 && pinch0 > 0){ const [a, b] = [...pts.values()]; zMul = Math.max(0.25, Math.min(6, zoom0*Math.hypot(a.x - b.x, a.y - b.y)/pinch0)); }
+  });
+  const solta = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; };
+  cv.addEventListener('pointerup', solta); cv.addEventListener('pointercancel', solta);
+  cv.addEventListener('wheel', e => { if (!T.on) return; e.preventDefault(); zMul = Math.max(0.25, Math.min(6, zMul*Math.exp(-e.deltaY*0.0012))); }, { passive: false });
+  cv.style.touchAction = 'none';
+
+  // ---------- câmera ----------
+  // chamar uma vez por quadro, antes de desenhar; dt em segundos (opcional)
+  T.quadro = (W = innerWidth, H = innerHeight, dt) => {
+    const agora = performance.now()/1000;
+    if (dt === undefined) dt = Math.min(0.1, last ? agora - last : 0); last = agora;
+    if (!pts.size) yaw += dt*T.giro*0.6;
+    const pitch = Math.max(-89, Math.min(89, T.incl + dPitch))*Math.PI/180;
+    cy = Math.cos(yaw); sy = Math.sin(yaw); cp = Math.cos(pitch); sp = Math.sin(pitch);
+    const fov = (12 + T.persp*68)*Math.PI/180; D = 1.25/Math.tan(fov/2);
+    T.W = W; T.H = H; T.cx = W/2 + ox; T.cy = H/2 + oy;
+    T.R = Math.min(W, H)*0.42*T.zoom*zMul; F = T.R*D;
+    T.yaw = yaw; T.pitch = pitch; T.D = D;
+    return T;
+  };
+  // desloca o centro da tela (por exemplo, para deixar espaço para o texto)
+  T.centro = (dx = 0, dy = 0) => { ox = dx; oy = dy; };
+  // projeta (x, y, z): grava T.X, T.Y (pixels), T.S (escala: 1 = na origem), T.A (névoa 0–1), T.Z (profundidade); false se atrás da câmera
+  T.p = (x, y, z) => {
+    const x1 = cy*x + sy*z, z1 = -sy*x + cy*z;
+    const y2 = cp*y - sp*z1, z2 = sp*y + cp*z1;
+    const zc = D - z2;
+    if (zc < 0.08) return false;
+    const k = F/zc;
+    T.X = T.cx + x1*k; T.Y = T.cy - y2*k; T.S = D/zc; T.Z = zc;
+    T.A = T.nevoa > 0 ? Math.exp(-T.nevoa*1.1*Math.max(0, zc - D + 1)) : 1;
+    return true;
+  };
+  // caminhos: mv = moveTo, ln = lineTo (pulando o que fica atrás da câmera)
+  let tem = false;
+  T.mv = (C, x, y, z) => { tem = T.p(x, y, z); if (tem) C.moveTo(T.X, T.Y); return tem; };
+  T.ln = (C, x, y, z) => { const ok = T.p(x, y, z); if (ok){ tem ? C.lineTo(T.X, T.Y) : C.moveTo(T.X, T.Y); } tem = ok; return ok; };
+  // ponto redondo com raio r (em pixels na origem), com névoa
+  T.ponto = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(0.4, r*T.S), a = alfa*T.A; if (a < 0.01) return true;
+    C.globalAlpha = Math.min(1, a); if (cor) C.fillStyle = cor;
+    if (rr < 1.6) C.fillRect(T.X - rr, T.Y - rr, rr*2, rr*2);
+    else { C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); }
+    C.globalAlpha = 1; return true;
+  };
+  // brilho redondo (gradiente) — para estrelas, cabeças, clarões
+  T.brilho = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(1, r*T.S), a = Math.min(1, alfa*T.A); if (a < 0.01) return true;
+    const g = C.createRadialGradient(T.X, T.Y, 0, T.X, T.Y, rr);
+    g.addColorStop(0, cor); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.globalAlpha = a; C.fillStyle = g; C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); C.globalAlpha = 1; return true;
+  };
+  // segmento com névoa
+  T.seg = (C, x1, y1, z1, x2, y2, z2, alfa = 1) => {
+    if (!T.p(x1, y1, z1)) return; const ax = T.X, ay = T.Y, aa = T.A;
+    if (!T.p(x2, y2, z2)) return;
+    C.globalAlpha = Math.min(1, alfa*(aa + T.A)/2); C.beginPath(); C.moveTo(ax, ay); C.lineTo(T.X, T.Y); C.stroke(); C.globalAlpha = 1;
+  };
+  // linha por vários pontos [x, y, z, x, y, z, ...], em trechos com a névoa de cada trecho
+  T.poli = (C, a, alfa = 1, trecho = 12) => {
+    const n = a.length/3 | 0; if (n < 2) return;
+    for (let i = 0; i < n - 1; i += trecho){
+      const f = Math.min(n - 1, i + trecho), m = (i + f) >> 1;
+      T.p(a[m*3], a[m*3 + 1], a[m*3 + 2]); const al = Math.min(1, alfa*T.A); if (al < 0.01) continue;
+      C.globalAlpha = al; C.beginPath(); tem = false;
+      for (let j = i; j <= f; j++) T.ln(C, a[j*3], a[j*3 + 1], a[j*3 + 2]);
+      C.stroke();
+    }
+    C.globalAlpha = 1;
+  };
+  // círculo no espaço: centro, raio, eixo 'y' (deitado), 'z' (de pé, de frente) ou 'x'
+  T.circulo = (C, x, y, z, r, eixo = 'y', n = 48, a0 = 0, a1 = Math.PI*2) => {
+    tem = false;
+    for (let i = 0; i <= n; i++){
+      const a = a0 + (a1 - a0)*i/n, c = Math.cos(a)*r, s = Math.sin(a)*r;
+      if (eixo === 'y') T.ln(C, x + c, y, z + s); else if (eixo === 'z') T.ln(C, x + c, y + s, z); else T.ln(C, x, y + c, z + s);
+    }
+  };
+  // grade do chão (y = nivel) e eixo, para dar referência de espaço
+  T.chao = (C, nivel = -1, tam = 1.2, div = 8, cor = 'rgba(150,190,230,1)', alfa = 0.07) => {
+    if (!T.grade) return;
+    C.save(); C.strokeStyle = cor; C.lineWidth = 1;
+    for (let i = 0; i <= div; i++){
+      const u = -tam + 2*tam*i/div;
+      T.seg(C, u, nivel, -tam, u, nivel, tam, alfa); T.seg(C, -tam, nivel, u, tam, nivel, u, alfa);
+    }
+    C.restore();
+  };
+  T.ler && T.ler();
+  return T;
+};
+</script>
+<script>
+(() => {
+'use strict';
+// ---------- núcleo v2 das conjecturas ----------
+// Motor de som do Cometa de Goldbach / Recamán (um canal por elemento com volume e envios para reverb Valhalla, delay,
+// pitch delay e bit crusher; filtro, saturação e largura na saída), timbres e ADSR do Corredor Solitário, efeitos de
+// vídeo (brilho, contraste, saturação, matiz, brilho difuso, desfoque, rastro com zoom e giro, inverter, espelho) e o
+// painel padrão montado automaticamente. Cada obra só descreve os seus elementos e desenha.
+const $ = id => document.getElementById(id);
+function Nucleo(cfg){
+  cfg = cfg || {};
+  const EL = (cfg.elementos || []).map(e => Object.assign({ vol: 1, V: 0.5, D: 0.2, P: 0, B: 0, timbre: 'sino' }, e));
+  const P = {};
+
+  // ---------- painel padrão ----------
+  const rg = (id, lab, min, max, step, v) => `<div class="row"><label for="${id}">${lab}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${v}"></div>`;
+  const sl = (id, lab, opts, v) => `<div class="row"><label for="${id}">${lab}</label><select id="${id}">${opts.map(([a, b]) => `<option value="${a}"${String(a) === String(v) ? ' selected' : ''}>${b}</option>`).join('')}</select></div>`;
+  const ck = (id, lab, v) => `<div class="row"><label for="${id}">${lab}</label><input type="checkbox" id="${id}"${v ? ' checked' : ''}></div>`;
+  const sub = t => `<div class="sub">${t}</div>`;
+  const ESCALAS = [['jonico','Jônico (maior)'],['dorico','Dórico'],['frigio','Frígio'],['lidio','Lídio'],['mixolidio','Mixolídio'],['eolio','Eólio (menor)'],
+    ['menorHarm','Menor harmônica'],['menorMel','Menor melódica'],['frigioDom','Frígio dominante'],['hungara','Húngara menor'],['penta','Pentatônica menor'],
+    ['pentaMaior','Pentatônica maior'],['hirajoshi','Hirajoshi'],['tons','Tons inteiros']];
+  const TLIST = [['sino','Sino'],['corda','Corda'],['macio','Macio'],['vidro','Vidro'],['marimba','Marimba'],['celesta','Celesta'],['kalimba','Kalimba'],
+    ['sopro','Sopro'],['sinoGrave','Sino grave'],['harpa','Harpa'],['pad','Pad'],['seno','Seno puro'],['grave','Baixo redondo'],['percussao','Percussão']];
+  const nucleo = $('nucleo'), nVideo = $('nucleoVideo');
+  if (nucleo){
+    let h = '<h2>Som</h2>' + sl('scale', 'Modo', ESCALAS, 'dorico') + rg('vol', 'Volume geral', 0, 1, 0.01, 0.75);
+    h += '<h2>Volumes</h2>' + EL.map(e => rg('vol' + e.k, e.nome, 0, 1.5, 0.01, e.vol)).join('') + rg('drone', 'Drone', 0, 1, 0.01, 0.45);
+    h += '<h2>Timbre</h2>' + EL.filter(e => e.timbre !== '-').map(e => sl('tm' + e.k, e.nome, TLIST, e.timbre)).join('');
+    h += rg('tBright', 'Brilho', 0.2, 3, 0.01, 1) + rg('tPart', 'Parcial metálica', 0, 3, 0.01, 1) + rg('tRatio', 'Razão da parcial', 0.5, 2, 0.01, 1)
+       + rg('tDet', 'Desafinação', 0, 40, 0.5, 0) + rg('tLen', 'Duração', 0.2, 3, 0.01, 1)
+       + sl('envMode', 'Envelope', [['timbre','Do timbre'],['manual','ADSR manual']], 'timbre')
+       + sub('Amplitude') + rg('aA', 'Ataque', 0.001, 3, 0.001, 0.005) + rg('aD', 'Decaimento', 0.01, 4, 0.01, 0.9) + rg('aS', 'Sustentação', 0, 1, 0.01, 0.25) + rg('aR', 'Repouso', 0.01, 6, 0.01, 1.4)
+       + sub('Filtro') + rg('fCut', 'Corte', 0.5, 24, 0.1, 3) + rg('fRes', 'Ressonância', 0, 18, 0.1, 2) + rg('fAmt', 'Envelope', 0, 6, 0.05, 2.5)
+       + rg('fA', 'Ataque', 0.001, 3, 0.001, 0.01) + rg('fD', 'Decaimento', 0.01, 4, 0.01, 0.6) + rg('fS', 'Sustentação', 0, 1, 0.01, 0.2) + rg('fR', 'Repouso', 0.01, 6, 0.01, 1);
+    h += '<h2>Efeitos</h2>'
+       + sub('Delay') + rg('dMix', 'Mix', 0, 1, 0.01, 0.45) + rg('dTime', 'Tempo', 0.05, 1.5, 0.01, 0.42) + rg('dFbk', 'Realimentação', 0, 0.92, 0.01, 0.3) + rg('dTone', 'Tom', 400, 9000, 10, 2200)
+       + sub('Reverb Valhalla') + rg('verb', 'Mix', 0, 1, 0.01, 0.55) + rg('vSize', 'Tamanho', 0.5, 2.5, 0.01, 1.2) + rg('vDecay', 'Decaimento', 0.3, 0.95, 0.005, 0.78)
+       + rg('vDamp', 'Amortecimento', 500, 9000, 10, 2400) + rg('vMod', 'Modulação', 0, 1, 0.01, 0.35) + rg('vPre', 'Pré-delay', 0, 0.25, 0.005, 0.03)
+       + sub('Bit crusher') + rg('bMix', 'Mix', 0, 1, 0.01, 0) + rg('bBits', 'Bits', 2, 16, 0.1, 8) + rg('bDown', 'Redução', 1, 40, 1, 4)
+       + sub('Pitch delay') + rg('pMix', 'Mix', 0, 1, 0.01, 0) + rg('pSemi', 'Semitons', -12, 12, 1, 12) + rg('pTime', 'Tempo', 0.05, 1.5, 0.01, 0.5) + rg('pFbk', 'Realimentação', 0, 0.85, 0.01, 0.45)
+       + sub('Saída') + rg('oCut', 'Filtro', 200, 20000, 10, 20000) + rg('oRes', 'Ressonância', 0, 15, 0.1, 0.7) + rg('oDrive', 'Saturação', 0, 1, 0.01, 0) + rg('oWidth', 'Largura estéreo', 0, 1.5, 0.01, 1)
+       + '<div class="btns"><button id="bFxDef" type="button">Efeitos padrão</button><button id="bFxZero" type="button">Efeitos zerados</button></div>';
+    h += '<h2>Envios</h2>' + EL.concat([{ k: 'Dro', nome: 'Drone', V: 1, D: 0, P: 0, B: 0 }]).map(e => sub(e.nome)
+       + rg('s' + e.k + 'V', 'Reverb', 0, 1, 0.01, e.V) + rg('s' + e.k + 'D', 'Delay', 0, 1, 0.01, e.D) + rg('s' + e.k + 'P', 'Pitch delay', 0, 1, 0.01, e.P) + rg('s' + e.k + 'B', 'Bit crusher', 0, 1, 0.01, e.B)).join('');
+    nucleo.innerHTML = h;
+  }
+  if (nVideo){
+    nVideo.innerHTML = '<h2>Vídeo</h2>' + rg('vBri', 'Brilho', 0.3, 2.5, 0.01, 1) + rg('vCon', 'Contraste', 0.4, 2.5, 0.01, 1) + rg('vSat', 'Saturação', 0, 3, 0.01, 1)
+      + rg('vHue', 'Matiz', 0, 360, 1, 0) + rg('vGlow', 'Brilho difuso', 0, 30, 0.5, 4) + rg('vBlur', 'Desfoque', 0, 8, 0.1, 0) + rg('vTrail', 'Rastro', 0, 0.97, 0.01, 0)
+      + rg('vZoom', 'Zoom do rastro', 0.95, 1.06, 0.001, 1.01) + rg('vRot', 'Giro do rastro', -3, 3, 0.05, 0.3) + ck('vInv', 'Inverter', false)
+      + sl('vMirror', 'Espelho', [['0','Nenhum'],['2','2 lados'],['4','4 lados']], '0') + ck('showTxt', 'Texto', true)
+      + '<div class="btns"><button id="bRe" type="button">Recomeçar</button><button id="bFull" type="button">Tela cheia</button></div>';
+  }
+  // padrões próprios de cada obra
+  for (const k in (cfg.padroes || {})){ const el = $(k); if (!el) continue; if (el.type === 'checkbox') el.checked = !!cfg.padroes[k]; else el.value = cfg.padroes[k]; }
+  const FX_IDS = ['dMix','dTime','dFbk','dTone','verb','vSize','vDecay','vDamp','vMod','vPre','bMix','bBits','bDown','pMix','pSemi','pTime','pFbk','oCut','oRes','oDrive','oWidth'];
+  const FX_PAD = {}; for (const k of FX_IDS){ const el = $(k); if (el) FX_PAD[k] = el.value; }
+
+  // ---------- leitura dos controles ----------
+  const panel = $('panel');
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id]')].filter(el => !el.id.startsWith('bk') && el.type !== 'file');
+  function readP(){ for (const el of ctrls()) P[el.id] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' || el.type === 'text') ? el.value : el.value === '' ? NaN : parseFloat(el.value); }
+  readP();
+  const listeners = [];
+  for (const el of ctrls()){
+    el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => {
+      const old = Object.assign({}, P); readP(); applyMix(); if (el.id[0] === 'v' || el.id === 'showTxt') applyVideo();
+      for (const fn of listeners) fn(el.id, old);
+    });
+  }
+  const setCtl = (k, v) => { const el = $(k); if (!el) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+  if ($('bFxDef')) $('bFxDef').addEventListener('click', () => { for (const k in FX_PAD) setCtl(k, FX_PAD[k]); });
+  if ($('bFxZero')) $('bFxZero').addEventListener('click', () => { for (const k of ['dMix','verb','bMix','pMix','oDrive']) setCtl(k, 0); setCtl('oCut', 20000); setCtl('oRes', 0.7); });
+
+  // ---------- áudio ----------
+  const WORKLET_SRC = `
+  class Crusher extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'bits',defaultValue:8},{name:'down',defaultValue:4},{name:'mix',defaultValue:0}]; }
+    constructor(){ super(); this.ph = [0,0]; this.hold = [0,0]; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0]; if (!i || !i.length) return true;
+      const mix = p.mix[0], bits = p.bits[0], down = Math.max(1, p.down[0]), step = Math.pow(0.5, bits - 1);
+      for (let c = 0; c < o.length; c++){
+        const x = i[c] || i[0], y = o[c];
+        if (mix <= 0.0001){ y.set(x); continue; }
+        for (let n = 0; n < y.length; n++){
+          if (++this.ph[c] >= down){ this.ph[c] -= down; this.hold[c] = step * Math.round(x[n] / step); }
+          y[n] = x[n] * (1 - mix) + this.hold[c] * mix;
+        }
+      }
+      return true;
+    }
+  }
+  class PitchDelay extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'time',defaultValue:0.5},{name:'fb',defaultValue:0.45},{name:'semi',defaultValue:12}]; }
+    constructor(){ super(); this.N = Math.ceil(sampleRate*2.2); this.buf = new Float32Array(this.N); this.w = 0; this.ph = 0; this.W = Math.round(sampleRate*0.07); }
+    read(pos){ const N = this.N; pos = ((pos % N) + N) % N; const i0 = Math.floor(pos), fr = pos - i0; return this.buf[i0]*(1-fr) + this.buf[(i0+1)%N]*fr; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0], L = o[0].length;
+      const D = Math.min(this.N - this.W - 4, p.time[0]*sampleRate), fb = p.fb[0], ratio = Math.pow(2, p.semi[0]/12), W = this.W;
+      const inc = (1 - ratio) / W;
+      for (let n = 0; n < L; n++){
+        const x = i && i.length ? (i[0][n] + (i[1] ? i[1][n] : i[0][n]))*0.5 : 0;
+        this.ph += inc; this.ph -= Math.floor(this.ph);
+        let y = 0;
+        for (let k = 0; k < 2; k++){ const ph = (this.ph + k*0.5) % 1; y += this.read(this.w - D - W - ph*W) * Math.sin(Math.PI*ph); }
+        y *= 0.75;
+        this.buf[this.w] = x + Math.tanh(y*fb);
+        this.w = (this.w + 1) % this.N;
+        for (let c = 0; c < o.length; c++) o[c][n] = y;
+      }
+      return true;
+    }
+  }
+  registerProcessor('conj-crusher', Crusher);
+  registerProcessor('conj-pitchdelay', PitchDelay);
+  `;
+  let AC = null, master, comp, fxF, fxDrive, dFb, dRet, dLpF, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  let preDelay = null, combs = [], srcBus = {}, pdIn = null, pdOut = null, crIn = null, crOut = null, pdNode = null, crusher = null, lastDrive = -1;
+  const SCALES = {
+    jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+    mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+    menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+    penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+  };
+  const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+  const ROOT = 73.416; // Ré2
+  const now = () => AC ? AC.currentTime : performance.now()/1000;
+  let voices = 0;
+  const MAXV = cfg.maxVozes || 56;
+  function allpass(input, dt, g){
+    const sum = AC.createGain(), d = AC.createDelay(0.2), fbg = AC.createGain(), ff = AC.createGain(), o = AC.createGain();
+    d.delayTime.value = dt; fbg.gain.value = g; ff.gain.value = -g;
+    input.connect(sum); sum.connect(d); d.connect(fbg); fbg.connect(sum); sum.connect(ff); ff.connect(o); d.connect(o);
+    return o;
+  }
+  function initAudio(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+    master = AC.createGain();
+    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
+    fxDrive = AC.createWaveShaper(); fxDrive.oversample = '2x';
+    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(comp); comp.connect(AC.destination);
+    dryBus = AC.createGain(); dryBus.connect(master);
+    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+    // reverb "Valhalla": pré-delay, difusão em allpass e pentes modulados
+    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+    preDelay = AC.createDelay(0.5); preDelay.delayTime.value = 0.03;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200;
+    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 5000;
+    verbIn.connect(preDelay); preDelay.connect(hp); hp.connect(pre);
+    let diff = pre;
+    for (const [dt, gg] of [[0.0047,0.62],[0.0113,0.6],[0.0171,0.58],[0.0231,0.55]]) diff = allpass(diff, dt, gg);
+    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373,0.1489,0.1601].forEach((dt, i) => {
+      const d = AC.createDelay(0.6); d.delayTime.value = dt;
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+      const fb = AC.createGain(); fb.gain.value = 0.78;
+      const o = AC.createGain(); o.gain.value = 0.15;
+      const lfo = AC.createOscillator(); lfo.frequency.value = 0.13 + i*0.071;
+      const lg = AC.createGain(); lg.gain.value = 0.0012; lfo.connect(lg); lg.connect(d.delayTime); lfo.start();
+      diff.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+      combs.push({ d, lp, fb, lg, base: dt });
+    });
+    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+    dFb = AC.createGain(); dFb.gain.value = 0.3; dRet = AC.createGain(); dRet.gain.value = 1;
+    dLpF = AC.createBiquadFilter(); dLpF.type = 'lowpass'; dLpF.frequency.value = 2200;
+    delay.connect(dLpF); dLpF.connect(dFb); dFb.connect(delay); dLpF.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
+    pdIn = AC.createGain(); pdOut = AC.createGain(); pdOut.gain.value = 0; pdOut.connect(dryBus); pdOut.connect(verbIn);
+    crIn = AC.createGain(); crOut = AC.createGain(); crOut.gain.value = 0; crOut.connect(master);
+    for (const k of EL.map(e => e.k).concat(['Dro'])){
+      const bus = AC.createGain(); bus.connect(dryBus); const snd = {};
+      for (const [suf, dest] of [['V', verbIn], ['D', delay], ['P', pdIn], ['B', crIn]]){ const gg = AC.createGain(); gg.gain.value = 0; bus.connect(gg); gg.connect(dest); snd[suf] = gg; }
+      srcBus[k] = { bus, snd };
+    }
+    if (AC.audioWorklet){
+      const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+      AC.audioWorklet.addModule(url).then(() => {
+        pdNode = new AudioWorkletNode(AC, 'conj-pitchdelay', { outputChannelCount: [2] }); pdIn.connect(pdNode); pdNode.connect(pdOut);
+        crusher = new AudioWorkletNode(AC, 'conj-crusher', { outputChannelCount: [2] }); crusher.parameters.get('mix').value = 1; crIn.connect(crusher); crusher.connect(crOut);
+        applyMix();
+      }).catch(() => {});
+    }
+    droneG = AC.createGain(); droneG.gain.value = 0;
+    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
+    droneF.connect(droneG); droneG.connect(srcBus.Dro.bus);
+    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f, type, g]) => {
+      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    });
+    applyMix();
+  }
+  function applyMix(){
+    if (!AC) return;
+    const t = AC.currentTime;
+    master.gain.setTargetAtTime(P.vol, t, 0.1);
+    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
+    delay.delayTime.setTargetAtTime(P.dTime, t, 0.15); dFb.gain.setTargetAtTime(P.dFbk, t, 0.05);
+    dLpF.frequency.setTargetAtTime(P.dTone, t, 0.05); dRet.gain.setTargetAtTime(P.dMix*2.2, t, 0.05);
+    preDelay.delayTime.setTargetAtTime(P.vPre, t, 0.1);
+    for (const c of combs){
+      c.d.delayTime.setTargetAtTime(c.base*P.vSize, t, 0.2); c.fb.gain.setTargetAtTime(P.vDecay, t, 0.1);
+      c.lp.frequency.setTargetAtTime(P.vDamp, t, 0.1); c.lg.gain.setTargetAtTime(0.0035*P.vMod*P.vSize, t, 0.1);
+    }
+    pdOut.gain.setTargetAtTime(P.pMix*1.4, t, 0.05); crOut.gain.setTargetAtTime(P.bMix*1.2, t, 0.05);
+    for (const k in srcBus) if (k !== 'Dro') srcBus[k].bus.gain.setTargetAtTime(P['vol'+k] == null ? 1 : P['vol'+k], t, 0.05);
+    for (const k in srcBus) for (const suf in srcBus[k].snd) srcBus[k].snd[suf].gain.setTargetAtTime((P['s'+k+suf] || 0) * (suf === 'D' ? 1.2 : suf === 'P' ? 1.3 : 1), t, 0.05);
+    if (pdNode){ const pp = pdNode.parameters; pp.get('time').setTargetAtTime(P.pTime, t, 0.1); pp.get('fb').setTargetAtTime(P.pFbk, t, 0.05); pp.get('semi').setValueAtTime(P.pSemi, t); }
+    if (crusher){ const cp = crusher.parameters; cp.get('bits').setValueAtTime(P.bBits, t); cp.get('down').setValueAtTime(P.bDown, t); }
+    fxF.frequency.setTargetAtTime(P.oCut, t, 0.08); fxF.Q.setTargetAtTime(P.oRes, t, 0.08);
+    if (P.oDrive !== lastDrive){ lastDrive = P.oDrive; drive(P.oDrive); }
+    width = P.oWidth;
+  }
+  function drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
+    const n = 2048, c = new Float32Array(n), k = 1 + a*30;
+    for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; }
+  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
+    if (!AC) return;
+    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
+    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
+    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
+  }
+  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
+  function semi(d){ d = Math.round(d); const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
+  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chordName(d){
+    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
+    let name = NOTAS[root];
+    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+      if (q) name += ' ' + q; }
+    return name;
+  }
+  const noteName = d => NOTAS[((semi(d) % 12) + 12) % 12];
+  function out(node, pan, t, end, src){
+    let last = node;
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
+    last.connect((srcBus[src] || srcBus[EL[0] ? EL[0].k : 'Dro']).bus);
+    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  }
+  const ok = () => AC && voices < MAXV;
+
+  // ---------- timbres (espectro + parcial + filtro + envelope) ----------
+  const SPECTRA = (() => {
+    const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
+    return { sine: mk(n => n === 1 ? 1 : 0), triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
+             sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)), square: mk(n => n % 2 ? 4/(Math.PI*n) : 0) };
+  })();
+  const TIMBRES = {
+    sino:      { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:2.6 },
+    corda:     { w:'sawtooth', r:1.003,pg:0.4,  cut:10, q:2,   a:0.004, d:1.1 },
+    macio:     { w:'triangle', r:0,    pg:0,    cut:6,  q:0.5, a:0.025, d:2.0 },
+    vidro:     { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:3.2 },
+    marimba:   { w:'sine',     r:4.0,  pg:0.45, cut:0,  q:0.5, a:0.003, d:1.3 },
+    celesta:   { w:'sine',     r:3.0,  pg:0.4,  cut:0,  q:0.5, a:0.004, d:2.4 },
+    kalimba:   { w:'sine',     r:5.4,  pg:0.35, cut:0,  q:0.5, a:0.002, d:1.7 },
+    sopro:     { w:'triangle', r:2.0,  pg:0.22, cut:5,  q:0.5, a:0.09,  d:2.0 },
+    sinoGrave: { w:'sine',     r:1.48, pg:0.55, cut:0,  q:0.5, a:0.005, d:3.6 },
+    harpa:     { w:'square',   r:0,    pg:0,    cut:4,  q:0.5, a:0.003, d:2.0 },
+    pad:       { w:'sawtooth', r:1.006,pg:0.6,  cut:4,  q:0.5, a:0.6,   d:4.5 },
+    seno:      { w:'sine',     r:0,    pg:0,    cut:0,  q:0.5, a:0.012, d:2.6 },
+    grave:     { w:'triangle', r:2.0,  pg:0.12, cut:3,  q:0.7, a:0.01,  d:2.4 },
+    percussao: { w:'sine',     r:1.59, pg:0.9,  cut:0,  q:0.5, a:0.001, d:0.32 }
+  };
+  const waves = {};
+  function waveOf(w){ if (!waves[w]) waves[w] = AC.createPeriodicWave(new Float32Array(33), SPECTRA[w]); return waves[w]; }
+  // nota de um elemento com o timbre escolhido para ele; durMul alonga ou encurta o envelope
+  function note(src, f, t, vel = 0.8, pan = 0, durMul = 1){
+    if (!ok() || !(f > 15 && f < 20000)) return;
+    t = Math.max(t, AC.currentTime);
+    const T = TIMBRES[P['tm' + src]] || TIMBRES.sino, manual = P.envMode === 'manual';
+    const g = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.connect(g);
+    const o = AC.createOscillator(); o.setPeriodicWave(waveOf(T.w)); o.frequency.value = f; o.connect(lp);
+    let o2 = null;
+    if (P.tDet > 0){ o2 = AC.createOscillator(); o2.setPeriodicWave(waveOf(T.w)); o2.frequency.value = f; o2.detune.value = P.tDet; o.detune.value = -P.tDet*0.5; o2.connect(lp); }
+    const lvl = 0.14 * vel * (T.w === 'sawtooth' || T.w === 'square' ? 0.5 : 1) * (o2 ? 0.75 : 1);
+    let end;
+    if (!manual){
+      const dur = T.d * P.tLen * durMul;
+      lp.Q.value = T.q;
+      const c0 = Math.min(18000, f*(T.cut || 30)*P.tBright);
+      lp.frequency.setValueAtTime(c0, t);
+      if (T.cut) lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1*P.tBright), t + Math.min(0.9, dur*0.6));
+      const a = Math.min(T.a, dur*0.4);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      end = t + dur;
+    } else {
+      const tr = t + Math.max(P.aA, 0.12*P.tLen*durMul);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + P.aA);
+      g.gain.setTargetAtTime(lvl*P.aS, t + P.aA, P.aD/4); g.gain.setTargetAtTime(0, tr, P.aR/4);
+      const base = Math.min(18000, f*P.fCut*P.tBright), peak = Math.min(18000, base*Math.pow(2, P.fAmt));
+      lp.Q.value = P.fRes;
+      lp.frequency.setValueAtTime(base, t); lp.frequency.exponentialRampToValueAtTime(peak, t + P.fA);
+      lp.frequency.setTargetAtTime(Math.min(18000, base*Math.pow(2, P.fAmt*P.fS)), t + P.fA, P.fD/4);
+      lp.frequency.setTargetAtTime(base, tr, P.fR/4);
+      end = tr + P.aR*1.6;
+    }
+    let p = null;
+    if (T.r && T.pg*P.tPart > 0.005){
+      p = AC.createOscillator(); p.frequency.value = f*T.r*P.tRatio;
+      const pg = AC.createGain(); pg.gain.setValueAtTime(T.pg*P.tPart, t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, Math.max(0.05, end - t)));
+      p.connect(pg); pg.connect(lp);
+    }
+    out(g, pan, t, end, src);
+    o.start(t); o.stop(end + 0.05); if (o2){ o2.start(t); o2.stop(end + 0.05); } if (p){ p.start(t); p.stop(end + 0.05); }
+  }
+  // grau da escala → nota
+  const play = (src, d, t, vel, pan, durMul, base) => note(src, freq(d, base), t, vel, pan, durMul);
+  let noiseBuf = null;
+  function hit(src, t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = 1.4;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(bp); bp.connect(g); out(g, pan, t, t+dur, src); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
+  }
+  function kick(src, t, vel = 0.8, f0 = 120){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
+    o.connect(g); out(g, 0, t, t+0.5, src); o.start(t); o.stop(t+0.5);
+  }
+  // voz contínua de um elemento (oscilador sustentado): devolve {set(f, gain, pan), stop()}
+  function voz(src, type = 'sine'){
+    if (!AC) return null;
+    const o = AC.createOscillator(); o.type = type; const g = AC.createGain(); g.gain.value = 0;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4000;
+    let pn = null; o.connect(lp); lp.connect(g);
+    if (AC.createStereoPanner){ pn = AC.createStereoPanner(); g.connect(pn); pn.connect(srcBus[src].bus); } else g.connect(srcBus[src].bus);
+    o.start();
+    return {
+      set(f, gain, pan = 0, tc = 0.05, cut){ const t = AC.currentTime; if (f > 0) o.frequency.setTargetAtTime(f, t, tc); g.gain.setTargetAtTime(gain, t, tc);
+        if (pn) pn.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan*width)), t, tc); if (cut) lp.frequency.setTargetAtTime(cut, t, tc); },
+      stop(){ const t = AC.currentTime; g.gain.setTargetAtTime(0, t, 0.1); o.stop(t + 1); }
+    };
+  }
+
+  // ---------- vídeo ----------
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const lay = document.createElement('canvas'), lctx = lay.getContext('2d');
+  const fbk = document.createElement('canvas'), fctx = fbk.getContext('2d');
+  const HAS_FILTER = 'filter' in lctx;
+  const V = { cv, ctx, lay, lctx, W: 0, H: 0, DPR: 1, resizers: [] };
+  function resize(){
+    V.DPR = Math.min(devicePixelRatio || 1, 2); V.W = innerWidth; V.H = innerHeight;
+    for (const c of [cv, lay, fbk]){ c.width = V.W*V.DPR; c.height = V.H*V.DPR; }
+    ctx.setTransform(V.DPR,0,0,V.DPR,0,0); lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    for (const fn of V.resizers) fn();
+  }
+  addEventListener('resize', resize); resize();
+  function applyVideo(){
+    cv.style.filter = `brightness(${P.vBri}) contrast(${P.vCon}) saturate(${P.vSat}) hue-rotate(${P.vHue}deg)${P.vInv ? ' invert(1)' : ''}`;
+    document.body.classList.toggle('semtexto', P.showTxt === false);
+  }
+  applyVideo();
+  // começa um quadro: devolve o contexto da camada onde a obra desenha (tamanho em pixels CSS)
+  V.begin = (clear = true) => {
+    const { W, H } = V;
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    if (P.vTrail > 0){
+      ctx.save(); ctx.globalAlpha = P.vTrail;
+      ctx.translate(W/2, H/2); ctx.rotate(P.vRot*Math.PI/180); ctx.scale(P.vZoom, P.vZoom); ctx.translate(-W/2, -H/2);
+      ctx.drawImage(fbk, 0, 0, W, H); ctx.restore();
+    }
+    lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    lctx.globalCompositeOperation = 'source-over'; lctx.globalAlpha = 1; lctx.filter = 'none';
+    if (clear) lctx.clearRect(0, 0, W, H);
+    return lctx;
+  };
+  // fecha o quadro: brilho difuso, desfoque e espelho; guarda o quadro para o rastro
+  V.end = () => {
+    const { W, H } = V;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const m = +P.vMirror, mirrors = m === 4 ? [[1,1],[-1,1],[1,-1],[-1,-1]] : m === 2 ? [[1,1],[-1,1]] : [[1,1]];
+    for (const [sx, sy] of mirrors){
+      ctx.save(); ctx.translate(W/2, H/2); ctx.scale(sx, sy); ctx.translate(-W/2, -H/2);
+      const al = sx === 1 && sy === 1 ? 1 : 0.7;
+      if (HAS_FILTER && P.vGlow > 0){ ctx.filter = `blur(${P.vGlow}px)`; ctx.globalAlpha = 0.55*al; ctx.drawImage(lay, 0, 0, W, H); }
+      ctx.filter = HAS_FILTER && P.vBlur > 0 ? `blur(${P.vBlur}px)` : 'none';
+      ctx.globalAlpha = al; ctx.drawImage(lay, 0, 0, W, H);
+      ctx.restore();
+    }
+    ctx.restore(); ctx.filter = 'none';
+    if (P.vTrail > 0){ fctx.setTransform(1,0,0,1,0,0); fctx.globalCompositeOperation = 'copy'; fctx.drawImage(cv, 0, 0); fctx.globalCompositeOperation = 'source-over'; }
+  };
+  // cor da série (Gelo, Arco-íris, Brasa, Branco) para um valor u em [0,1)
+  V.cor = (u, a = 1, l = 66) => {
+    switch (P.color){
+      case 'arco': return `hsla(${(u*360 + 190) % 360},70%,${l}%,${a})`;
+      case 'brasa': return `hsla(${8 + 40*((u % 1 + 1) % 1)},85%,${l - 4}%,${a})`;
+      case 'branco': return `hsla(0,0%,${Math.min(96, l + 14)}%,${a})`;
+      default: { const k = (u % 1 + 1) % 1; return `hsla(${192 + 38*k},${60 - 26*k}%,${l + 10 - 18*k}%,${a})`; }
+    }
+  };
+
+  // ---------- tela, painel, teclas ----------
+  function toggleFull(){
+    const d = document;
+    try {
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+      else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } catch (e) {}
+  }
+  let running = false;
+  function setup(onStart, keys = {}){
+    $('start').addEventListener('pointerdown', e => { e.stopPropagation(); go(); });
+    function go(){ if (running) return; initAudio(); running = true; $('start').classList.add('hide'); onStart && onStart(); }
+    $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+    const bf = $('bFull'); if (bf) bf.addEventListener('click', toggleFull);
+    const br = $('bRe'); if (br && keys.r) br.addEventListener('click', () => keys.r());
+    const st = $('showTxt');
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+      if (e.target.tagName === 'SELECT') return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') $('panel').classList.toggle('on');
+      else if (k === 'f') toggleFull();
+      else if (k === 't' && st){ st.checked = !st.checked; st.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === ' ' && !running){ e.preventDefault(); go(); }
+      else if (keys[k] || keys[e.key]){ e.preventDefault(); if (running) (keys[k] || keys[e.key])(); }
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const fmt = v => typeof v === 'number' ? v.toLocaleString('pt-BR') : String(v);
+  return { P, V, readP, now, initAudio, applyMix, applyVideo, setDrone, freq, semi, chord, chordName, noteName, scale, SCALES, NOTAS, ROOT,
+    note, play, hit, kick, voz, setup, toggleFull, fmt, on: fn => listeners.push(fn),
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; }, get voices(){ return voices; } };
+}
+
+const O = Nucleo({
+  elementos: [
+    { k: 'Zero', nome: 'Zeros (a curva passa pela origem)', timbre: 'vidro', V: 0.65, D: 0.35 },
+    { k: 'Voz', nome: 'Voz da zeta |ζ|', timbre: '-', vol: 0.8, V: 0.7, D: 0.1 },
+    { k: 'Gram', nome: 'Pontos de Gram', timbre: 'kalimba', vol: 0.55, V: 0.35, D: 0.3 },
+    { k: 'Baixo', nome: 'Baixo (a cada 10 zeros)', timbre: 'grave', V: 0.6, D: 0.05 }
+  ]
+});
+const P = O.P, V = O.V;
+
+// ---------- ζ(s) por Euler–Maclaurin: vale em todo o plano, inclusive dentro da faixa crítica ----------
+const LN = new Float64Array(2000); for (let n = 1; n < 2000; n++) LN[n] = Math.log(n);
+const EMC = [1/6, -1/30, 1/42, -1/30, 5/66, -691/2730, 7/6].map((b, k) => { let f = 1; for (let i = 2; i <= 2*k + 2; i++) f *= i; return b/f; });
+const ZW = [0, 0];
+function zeta(sr, si, out = ZW){
+  const N = 10 + Math.ceil(Math.abs(si)/3);
+  let re = 0, im = 0;
+  for (let n = 1; n < N; n++){ const m = Math.exp(-sr*LN[n]), a = -si*LN[n]; re += m*Math.cos(a); im += m*Math.sin(a); }
+  const lN = LN[N], mN = Math.exp(-sr*lN), aN = -si*lN, pr = mN*Math.cos(aN), pi = mN*Math.sin(aN);
+  const qr = N*pr, qi = N*pi, dr = sr - 1, di = si, dd = dr*dr + di*di;
+  re += (qr*dr + qi*di)/dd; im += (qi*dr - qr*di)/dd;
+  re += pr/2; im += pi/2;
+  let fr = sr, fi = si, tr = pr/N, ti = pi/N;
+  for (let k = 0; k < EMC.length; k++){
+    re += EMC[k]*(fr*tr - fi*ti); im += EMC[k]*(fr*ti + fi*tr);
+    for (let j = 2*k + 1; j <= 2*k + 2; j++){ const a = sr + j, nr = fr*a - fi*si; fi = fr*si + fi*a; fr = nr; }
+    tr /= N*N; ti /= N*N;
+  }
+  out[0] = re; out[1] = im; return out;
+}
+// ---------- zeros pela fórmula de Riemann–Siegel e pontos de Gram ----------
+function theta(t){ return t/2*Math.log(t/(2*Math.PI)) - t/2 - Math.PI/8 + 1/(48*t) + 7/(5760*t*t*t); }
+function Z(t){
+  const a = Math.sqrt(t/(2*Math.PI)), N = Math.floor(a); let p = a - N;
+  const th = theta(t); let s = 0;
+  for (let n = 1; n <= N; n++) s += Math.cos(th - t*Math.log(n))/Math.sqrt(n);
+  let c = Math.cos(2*Math.PI*p); if (Math.abs(c) < 1e-7){ p += 1e-6; c = Math.cos(2*Math.PI*p); }
+  const C0 = Math.cos(2*Math.PI*(p*p - p - 1/16))/c;
+  return 2*s + ((N - 1) % 2 ? -1 : 1)*Math.pow(t/(2*Math.PI), -0.25)*C0;
+}
+const ZEROS = [];
+(function(){
+  let t0 = 10, z0 = Z(t0);
+  for (let t = 10.02; t < 700 && ZEROS.length < 400; t += 0.02){
+    const z = Z(t);
+    if (z0*z < 0){ let a = t0, b = t, za = z0; for (let i = 0; i < 40; i++){ const m = (a + b)/2, zm = Z(m); if (za*zm <= 0) b = m; else { a = m; za = zm; } } ZEROS.push((a + b)/2); }
+    t0 = t; z0 = z;
+  }
+  [14.134725, 21.022040, 25.010858, 30.424876, 32.935062, 37.586178, 40.918719, 43.327073, 48.005151, 49.773832].forEach((g, i) => { ZEROS[i] = g; });
+})();
+// pontos de Gram: θ(g) = nπ. Neles ζ(½ + ig) é real; a "lei de Gram" diz que Re ζ > 0 ali — vale quase sempre, mas falha
+const GRAM = [];
+for (let n = -1, g = 9.6; GRAM.length < 500; n++){
+  for (let i = 0; i < 30; i++){ const d = (theta(g) - n*Math.PI)/(0.5*Math.log(g/(2*Math.PI))); g -= d; if (Math.abs(d) < 1e-10) break; }
+  if (g > 720) break;
+  const re = zeta(0.5, g)[0];
+  GRAM.push({ g, n, ok: re > 0 }); g += 1.2;
+}
+
+// ---------- estado ----------
+const T0 = 8, DT = 0.01;
+let tCur = T0, lastF = 0, nZ = 0, nG = 0, zIdx = 0, gIdx = 0, flashes = [], hudT = 0, msg = '', msgT = -9, minD = 9, minDAt = 0;
+let vozA = null, vozB = null;
+// cache da imagem da reta Re(s) = σ (passo 0,01 em t)
+let CR = new Float32Array(0), CI = new Float32Array(0), OK = new Uint8Array(0), cacheSig = NaN;
+function tEnd(){ return +P.tMax; }
+function cache(){ const n = Math.ceil((tEnd() + 20 - T0)/DT) + 2; if (CR.length !== n || cacheSig !== P.sigma){ CR = new Float32Array(n); CI = new Float32Array(n); OK = new Uint8Array(n); cacheSig = P.sigma; } }
+function img(i){ if (!OK[i]){ zeta(P.sigma, T0 + i*DT); CR[i] = ZW[0]; CI[i] = ZW[1]; OK[i] = 1; } }
+// relevo log|ζ| sobre a faixa: linhas de t a cada 0,1, colunas σ de −0,25 a 1,25 (σ = ½ é a coluna 15)
+const NSIG = 31, SIG = Array.from({ length: NSIG }, (_, j) => -0.25 + 1.5*j/(NSIG - 1)), RDT = 0.1;
+const ROWS = new Map();
+function row(r){
+  let a = ROWS.get(r); if (a) return a;
+  a = new Float32Array(NSIG); const t = T0 + r*RDT;
+  for (let j = 0; j < NSIG; j++){ zeta(SIG[j], t); a[j] = Math.log(Math.hypot(ZW[0], ZW[1]) + 1e-6); }
+  ROWS.set(r, a); return a;
+}
+const fZero = g => P.afin === 'literal' ? P.f0*g/ZEROS[0] : O.freq(Math.round(Math.log2(g/ZEROS[0])*O.scale().length*1.2), P.f0);
+function reset(){ tCur = T0; zIdx = 0; gIdx = 0; nZ = 0; nG = 0; flashes = []; minD = 9; msg = ''; ROWS.clear(); }
+function speedNow(){ return P.vel*(P.accel ? Math.min(6, 1 + (tCur - T0)/90) : 1); }
+// comprime |w| para caber na tela sem perder a origem
+const comp = r => r/(1 + 0.22*r);
+function plano(wr, wi){ const r = Math.hypot(wr, wi); if (r < 1e-9) return [0, 0]; const k = comp(r)/r; return [wr*k, wi*k]; }
+
+function eventos(ta, tb, t){
+  // zeros da linha ½: na linha certa a curva passa exatamente pela origem; fora dela, passa perto e erra
+  while (zIdx < ZEROS.length && ZEROS[zIdx] <= tb){
+    const g = ZEROS[zIdx]; zIdx++;
+    if (g <= ta) continue;
+    zeta(P.sigma, g); const d = Math.hypot(ZW[0], ZW[1]), exato = Math.abs(P.sigma - 0.5) < 0.003;
+    nZ++;
+    let f = fZero(g); while (f > 2600) f /= 2;
+    const desv = exato ? 1 : Math.pow(2, (P.sigma - 0.5)*0.9);  // fora da linha, o zero soa desafinado
+    O.note('Zero', f*desv, t, exato ? 0.85 : Math.max(0.12, 0.7*Math.exp(-d*3)), ((nZ % 7) - 3)/4, exato ? 1.3 : 0.6);
+    if (nZ % 10 === 0) O.play('Baixo', -14 + (nZ/10 % 7), t, 0.85, 0, 1.6);
+    flashes.push({ g, t, wr: ZW[0], wi: ZW[1], exato, k: zIdx });
+    msg = exato ? `${zIdx}º zero · ½ + ${g.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} i · ζ = 0`
+                : `${zIdx}º zero fica na linha ½ · aqui, em σ = ${P.sigma.toLocaleString('pt-BR')}, |ζ| = ${d.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}`;
+    msgT = t;
+  }
+  while (gIdx < GRAM.length && GRAM[gIdx].g <= tb){
+    const G = GRAM[gIdx]; gIdx++;
+    if (G.g <= ta || !P.gram) continue;
+    nG++;
+    O.play('Gram', G.ok ? (G.n % 2 ? 4 : 0) : 6, t + 0.01, G.ok ? 0.45 : 0.8, G.n % 2 ? 0.45 : -0.45, G.ok ? 0.5 : 1.2);
+    if (!G.ok){ msg = `ponto de Gram g${G.n} · ${G.g.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} · a lei de Gram falha aqui`; msgT = t; }
+  }
+}
+
+// ---------- 3D: o relevo log|ζ(σ + it)| sobre a faixa crítica, com os zeros como poços na linha ½ ----------
+const T3 = Vista3D({ giro: 0.04, incl: 30, yaw: -0.62, zoom: 1.05 });
+const XS = 14, XW = t => (t - tCur)/XS*1.25, ZS = s => (s - 0.5)*1.15, YL = L => Math.max(-2.6, Math.min(1.7, L))*0.2 - 0.08;
+function draw3d(C, t){
+  T3.quadro(V.W, V.H); T3.centro(0, 20);
+  const ta = Math.max(T0, tCur - 20), tb = Math.min(tEnd() + 15, tCur + 13);
+  const r0 = Math.ceil((ta - T0)/RDT), r1 = Math.floor((tb - T0)/RDT);
+  for (const k of ROWS.keys()) if (k < r0 - 5 || k > r1 + 200) ROWS.delete(k);
+  C.globalCompositeOperation = 'lighter'; C.lineJoin = 'round';
+  const al = P.malha;
+  // linhas de σ constante
+  for (let j = 0; j < NSIG; j++){
+    const meio = j === 15, borda = j === 5 || j === 25;
+    if (!meio && !borda && j % 2) continue;
+    const a = [];
+    for (let r = r0; r <= r1; r++) a.push(XW(T0 + r*RDT), YL(row(r)[j]), ZS(SIG[j]));
+    C.strokeStyle = meio ? 'rgb(255,255,255)' : V.cor(j/NSIG, 1, 62); C.lineWidth = meio ? 1 : 0.8;
+    T3.poli(C, a, al*(meio ? 0.55 : borda ? 0.45 : 0.28), 14);
+  }
+  // linhas de t constante
+  C.lineWidth = 0.7;
+  for (let r = Math.ceil(r0/5)*5; r <= r1; r += 5){
+    const a = [], R = row(r);
+    for (let j = 0; j < NSIG; j++) a.push(XW(T0 + r*RDT), YL(R[j]), ZS(SIG[j]));
+    C.strokeStyle = V.cor(0.55, 1, 60); T3.poli(C, a, al*0.22, 31);
+  }
+  // a reta Re(s) = σ escolhida, exata, sobre o relevo
+  cache();
+  const i0 = Math.max(0, Math.floor((ta - T0)/DT)), iH = Math.floor((tCur - T0)/DT);
+  const a = [];
+  for (let i = i0; i <= iH; i += 4){ img(i); a.push(XW(T0 + i*DT), YL(Math.log(Math.hypot(CR[i], CI[i]) + 1e-6)) + 0.004, ZS(P.sigma)); }
+  C.strokeStyle = V.cor(0.12, 1, 74); C.lineWidth = P.lw; T3.poli(C, a, 0.95, 12);
+  // zeros: poços no fundo, sobre a linha ½
+  for (let j = 0; j < ZEROS.length; j++){
+    const g = ZEROS[j]; if (g < ta) continue; if (g > tb) break;
+    const on = g <= tCur;
+    T3.ponto(C, XW(g), YL(-2.6), ZS(0.5), on ? 2.6 : 1.4, on ? V.cor(j/60, 1, 72) : 'rgb(255,255,255)', on ? 0.9 : 0.3);
+    if (on){ C.strokeStyle = V.cor(j/60, 1, 70); T3.seg(C, XW(g), YL(-2.6), ZS(0.5), XW(g), -0.75, ZS(0.5), 0.12); }
+  }
+  for (const F of flashes){
+    const k = Math.exp(-(t - F.t)*1.6); if (k < 0.02) continue;
+    C.strokeStyle = V.cor(0.1, 1, 82); C.lineWidth = 1.2; C.globalAlpha = k;
+    C.beginPath(); T3.circulo(C, XW(F.g), YL(-2.6), ZS(F.exato ? 0.5 : P.sigma), 0.02 + (1 - k)*0.28, 'y', 40); C.stroke(); C.globalAlpha = 1;
+  }
+  // sonda
+  img(iH); const yH = YL(Math.log(Math.hypot(CR[iH], CI[iH]) + 1e-6));
+  C.strokeStyle = 'rgb(255,255,255)'; C.lineWidth = 1; T3.seg(C, 0, -0.75, ZS(P.sigma), 0, yH, ZS(P.sigma), 0.25);
+  T3.brilho(C, 0, yH, ZS(P.sigma), 16, V.cor(0.12, 0.95, 86));
+  // bordas da faixa crítica no chão
+  C.strokeStyle = 'rgb(255,255,255)';
+  for (const s of [0, 0.5, 1]) T3.seg(C, XW(ta), -0.75, ZS(s), XW(tb), -0.75, ZS(s), s === 0.5 ? 0.22 : 0.1);
+}
+
+// ---------- 2D: a imagem da reta no plano complexo — na linha ½ ela passa pela origem em cada zero ----------
+function draw2d(C, t){
+  const { W, H } = V, alto = H > W;
+  const cx = alto ? W/2 : W*0.44, cy = alto ? H*0.43 : H*0.47, R = Math.min(W*(alto ? 1.05 : 0.62), H*0.72)/(2*comp(4.5));
+  C.globalCompositeOperation = 'lighter'; C.lineJoin = 'round'; C.lineCap = 'butt';
+  // eixos e a origem
+  C.strokeStyle = 'rgba(255,255,255,0.08)'; C.lineWidth = 1; C.beginPath();
+  C.moveTo(cx - R*comp(5), cy); C.lineTo(cx + R*comp(5), cy); C.moveTo(cx, cy - R*comp(5)); C.lineTo(cx, cy + R*comp(5)); C.stroke();
+  for (const r of [1, 2, 4]){ C.strokeStyle = `rgba(255,255,255,${r === 1 ? 0.07 : 0.035})`; C.beginPath(); C.arc(cx, cy, R*comp(r), 0, Math.PI*2); C.stroke(); }
+  C.fillStyle = 'rgba(255,255,255,0.5)'; C.beginPath(); C.arc(cx, cy, 2.2, 0, Math.PI*2); C.fill();
+  // curva com rastro
+  cache();
+  const iH = Math.floor((tCur - T0)/DT), i0 = Math.max(0, iH - Math.round(P.rastro/DT)), n = iH - i0;
+  C.lineWidth = P.lw;
+  const CH = 12;
+  for (let s = i0; s < iH; s += CH){
+    const e = Math.min(iH, s + CH), age = (iH - e)/Math.max(1, n);
+    C.strokeStyle = V.cor(((T0 + s*DT)/40) % 1, Math.pow(1 - age, 1.6)*0.95, 70);
+    C.beginPath();
+    for (let i = s; i <= e; i++){ img(i); const [x, y] = plano(CR[i], CI[i]); i === s ? C.moveTo(cx + x*R, cy - y*R) : C.lineTo(cx + x*R, cy - y*R); }
+    C.stroke();
+  }
+  img(iH); const [hx, hy] = plano(CR[iH], CI[iH]);
+  const gr = C.createRadialGradient(cx + hx*R, cy - hy*R, 0, cx + hx*R, cy - hy*R, 16);
+  gr.addColorStop(0, V.cor(0.12, 0.95, 88)); gr.addColorStop(1, 'rgba(0,0,0,0)'); C.fillStyle = gr; C.beginPath(); C.arc(cx + hx*R, cy - hy*R, 16, 0, Math.PI*2); C.fill();
+  // clarões dos zeros
+  for (const F of flashes){
+    const k = Math.exp(-(t - F.t)*1.5); if (k < 0.02) continue;
+    const [x, y] = plano(F.wr, F.wi);
+    C.strokeStyle = V.cor(0.08, k, 82); C.lineWidth = 1.3; C.beginPath(); C.arc(cx + x*R, cy - y*R, 4 + (1 - k)*(F.exato ? 60 : 24), 0, Math.PI*2); C.stroke();
+    if (!F.exato){ C.strokeStyle = `rgba(255,255,255,${0.35*k})`; C.setLineDash([3, 4]); C.beginPath(); C.moveTo(cx, cy); C.lineTo(cx + x*R, cy - y*R); C.stroke(); C.setLineDash([]); }
+  }
+  // faixa crítica embaixo: t na horizontal, σ na vertical
+  const gx0 = 40, gx1 = W - 40, sy0 = H - 96, sy1 = H - 40, ta = tCur - 40, tb = tCur + 10;
+  const X = tt => gx0 + (gx1 - gx0)*(tt - ta)/(tb - ta), Y = s => sy1 - (sy1 - sy0)*(s + 0.1)/1.2;
+  C.fillStyle = 'rgba(255,255,255,0.025)'; C.fillRect(gx0, Y(1), gx1 - gx0, Y(0) - Y(1));
+  C.strokeStyle = 'rgba(255,255,255,0.12)'; C.lineWidth = 1; C.beginPath();
+  for (const s of [0, 1]){ C.moveTo(gx0, Y(s)); C.lineTo(gx1, Y(s)); } C.stroke();
+  C.setLineDash([2, 4]); C.strokeStyle = 'rgba(255,255,255,0.3)'; C.beginPath(); C.moveTo(gx0, Y(0.5)); C.lineTo(gx1, Y(0.5)); C.stroke(); C.setLineDash([]);
+  C.strokeStyle = V.cor(0.12, 0.7, 72); C.beginPath(); C.moveTo(gx0, Y(P.sigma)); C.lineTo(X(tCur), Y(P.sigma)); C.stroke();
+  for (let j = 0; j < ZEROS.length; j++){
+    const g = ZEROS[j]; if (g < ta) continue; if (g > tb) break;
+    const on = g <= tCur; C.fillStyle = on ? V.cor(j/60, 0.9, 72) : 'rgba(255,255,255,0.18)';
+    C.beginPath(); C.arc(X(g), Y(0.5), on ? 2.4 : 1.5, 0, Math.PI*2); C.fill();
+  }
+  if (P.gram) for (const G of GRAM){ if (G.g < ta) continue; if (G.g > tb) break;
+    C.fillStyle = G.ok ? 'rgba(255,255,255,0.22)' : V.cor(0.02, 0.9, 70); C.fillRect(X(G.g) - 0.5, Y(1) - (G.ok ? 6 : 12), 1, G.ok ? 6 : 12); }
+  C.fillStyle = V.cor(0.12, 1, 86); C.beginPath(); C.arc(X(tCur), Y(P.sigma), 3.2, 0, Math.PI*2); C.fill();
+}
+
+function frame(){
+  const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t;
+  if (O.running){
+    const ta = tCur; tCur += dt*speedNow();
+    if (tCur > tEnd()){ reset(); }
+    else eventos(ta, tCur, t);
+    // voz contínua: o volume é |ζ| (silêncio nos zeros), a altura sobe com |ζ|, o pan gira com o argumento
+    if (!vozA && O.AC){ vozA = O.voz('Voz', 'triangle'); vozB = O.voz('Voz', 'sine'); }
+    if (vozA){
+      cache(); const i = Math.floor((tCur - T0)/DT); img(i);
+      const m = Math.hypot(CR[i], CI[i]), ang = Math.atan2(CI[i], CR[i]), q = Math.min(1, m/1.6);
+      const f = P.fVoz*Math.pow(2, Math.min(2.2, m*0.55));
+      vozA.set(f, 0.075*q, Math.sin(ang)*0.8, 0.03, 300 + 2600*q);
+      vozB.set(f/2, 0.06*q, -Math.sin(ang)*0.5, 0.03, 900);
+      if (m < minD){ minD = m; minDAt = tCur; }
+    }
+  } else if (vozA){ vozA.set(0, 0); vozB.set(0, 0); }
+  flashes = flashes.filter(F => t - F.t < 4);
+  const C = V.begin();
+  if (T3.on) draw3d(C, t); else draw2d(C, t);
+  V.end();
+  if (!document.body.classList.contains('semtexto')){
+    const ctx = V.ctx; ctx.font = '300 10.5px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; ctx.fillStyle = 'rgba(207,214,221,0.45)';
+    if (T3.on){ ctx.fillText('relevo log |ζ(σ + it)| · os poços são os zeros · a linha branca é σ = ½', 30, V.H - 30); }
+    else { ctx.fillText('faixa crítica 0 < σ < 1 · tracejado: linha ½ · pontos: zeros', 40, V.H - 104); }
+  }
+  if (t - hudT > 0.08){
+    hudT = t;
+    cache(); const i = Math.floor((tCur - T0)/DT); img(i);
+    const f = (v, d = 3) => v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const s = Math.abs(P.sigma - 0.5) < 0.003 ? '½' : f(P.sigma, 3);
+    $('num').textContent = `t = ${f(tCur, 2)}`;
+    $('op').textContent = `ζ(${s} + ${f(tCur, 2)} i) = ${f(CR[i])} ${CI[i] < 0 ? '−' : '+'} ${f(Math.abs(CI[i]))} i`;
+    const m = t - msgT < 4 ? `<span class="o"><b>${msg}</b></span><br>` : '';
+    $('seq').innerHTML = m + `<span class="o">${zIdx === 1 ? '1 zero passado' : zIdx + ' zeros passados'} · ${Math.abs(P.sigma - 0.5) < 0.003
+      ? 'na linha ½ a curva atravessa a origem em cada um'
+      : 'fora da linha ½ a curva nunca toca a origem (se a hipótese for verdadeira)'}</span>`;
+  }
+  requestAnimationFrame(frame);
+}
+O.on(key => {
+  if (key === 'tMax' && tCur > tEnd()) reset();
+});
+O.setup(() => { reset(); O.setDrone(-5, 7, 0.1); }, { r: reset, l: () => { const el = $('sigma'); el.value = 0.5; el.dispatchEvent(new Event('input', { bubbles: true })); } });
+requestAnimationFrame(frame);
+})();
+</script>
+<script>
+// ---------- banco de configurações (comum a todas as conjecturas) ----------
+// Lê e aplica todos os controles do painel (#panel) com id. Salva configurações com nome, carrega pelas teclas 1–9,
+// exporta/importa em .json e lembra os últimos ajustes ao reabrir. Para aplicar, muda o valor do controle e dispara
+// os eventos input/change, então cada obra reage como se a pessoa tivesse mexido no painel.
+(() => {
+  const panel = document.getElementById('panel');
+  if (!panel || window.__banco) return;
+  window.__banco = true;
+  const obra = (location.pathname.split('/').filter(Boolean).filter(s => s !== 'index.html').pop() || 'obra');
+  const KB = 'conjecturas-banco-' + obra, KA = 'conjecturas-atual-' + obra, KL = 'conjecturas-lembrar-' + obra;
+  const ls = {
+    get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id],textarea[id]')]
+    .filter(el => !el.id.startsWith('bk') && el.type !== 'file' && el.type !== 'button' && el.type !== 'submit');
+  const val = el => el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value;
+  const estado = () => { const s = {}; for (const el of ctrls()) s[el.id] = val(el); return s; };
+  const igual = (el, v) => el.type === 'checkbox' || el.type === 'radio' ? el.checked === !!v : String(el.value) === String(v);
+  const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+  let aplicando = false;
+  function aplicar(s){
+    if (!s) return;
+    aplicando = true;
+    try {
+      // duas passadas: se um controle muda outros (ex.: um modo que reposiciona sliders), a segunda corrige
+      for (let pass = 0; pass < 2; pass++){
+        for (const el of ctrls()){
+          if (!(el.id in s) || igual(el, s[el.id])) continue;
+          if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!s[el.id];
+          else if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(s[el.id]))) continue;
+          else el.value = s[el.id];
+          try { fire(el); } catch (e) { console.warn('banco:', el.id, e); }
+        }
+      }
+    } finally { aplicando = false; }
+    guardarAtual();
+  }
+  const PADRAO = estado();
+
+  // ---------- interface ----------
+  const css = document.createElement('style');
+  css.textContent = `
+    #bkBox{border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:12px;margin-bottom:6px}
+    #bkBox .row label{flex:0 0 52px}
+    #bkBox .btns{margin-top:6px}
+    #bkMsg{min-height:1em;opacity:.55;font-size:10.5px;margin-top:6px;transition:opacity .4s}
+    #bkBox .lembrar{display:flex;align-items:center;gap:6px;opacity:.7;margin-top:8px;font-size:11px}
+    #bkBox .lembrar input{accent-color:#9fb8d0;margin:0}`;
+  document.head.appendChild(css);
+  const box = document.createElement('div');
+  box.id = 'bkBox';
+  box.innerHTML = `
+    <h2>Configurações</h2>
+    <div class="row"><label for="bkSel">salvas</label><select id="bkSel"></select></div>
+    <div class="row"><label for="bkNome">nome</label><input id="bkNome" type="text" placeholder="nome da configuração" autocomplete="off" spellcheck="false"></div>
+    <div class="btns"><button id="bkSalvar" type="button">Salvar</button><button id="bkApagar" type="button">Apagar</button></div>
+    <div class="btns"><button id="bkExp" type="button">Exportar</button><button id="bkImp" type="button">Importar</button><input id="bkArq" type="file" accept=".json,application/json" style="display:none"></div>
+    <label class="lembrar"><input id="bkLembrar" type="checkbox"> lembrar os ajustes ao reabrir</label>
+    <div id="bkMsg"></div>
+    <div class="hint" style="margin-top:4px">Teclas 1–9 carregam as configurações salvas, na ordem da lista; 0 volta ao padrão. Exporte o .json para levar para outro aparelho.</div>`;
+  panel.insertBefore(box, panel.firstChild);
+  const $b = id => document.getElementById(id);
+  const sel = $b('bkSel'), nome = $b('bkNome'), bSalvar = $b('bkSalvar'), msgEl = $b('bkMsg'), lembrar = $b('bkLembrar');
+  let msgT;
+  const msg = t => { msgEl.textContent = t; msgEl.style.opacity = .7; clearTimeout(msgT); msgT = setTimeout(() => { msgEl.style.opacity = 0; }, 2600); };
+
+  let banco = ls.get(KB, []);
+  if (!Array.isArray(banco)) banco = [];
+  const gravarBanco = () => ls.set(KB, banco);
+  function lista(escolhido){
+    sel.innerHTML = '<option value="">— atual —</option><option value="__padrao">Padrão</option>' +
+      banco.map((c, i) => `<option value="${i}">${i < 9 ? (i + 1) + ' · ' : ''}${c.nome.replace(/[<&]/g, ch => ch === '<' ? '&lt;' : '&amp;')}</option>`).join('');
+    sel.value = escolhido == null ? '' : String(escolhido);
+    rotulo();
+  }
+  function rotulo(){ bSalvar.textContent = banco.some(c => c.nome === nome.value.trim()) ? 'Regravar' : 'Salvar'; }
+  function carregar(i){
+    if (i === '__padrao'){ aplicar(PADRAO); lista('__padrao'); nome.value = ''; rotulo(); msg('Padrão restaurado'); return; }
+    const c = banco[i]; if (!c) return;
+    aplicar(c.valores); lista(i); nome.value = c.nome; rotulo(); msg('Carregada: ' + c.nome);
+  }
+  sel.addEventListener('change', () => { if (sel.value !== '') carregar(sel.value === '__padrao' ? '__padrao' : +sel.value); });
+  nome.addEventListener('input', rotulo);
+  nome.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') bSalvar.click(); });
+  bSalvar.addEventListener('click', () => {
+    let n = nome.value.trim();
+    if (!n){ let k = banco.length + 1; while (banco.some(c => c.nome === 'Configuração ' + k)) k++; n = 'Configuração ' + k; }
+    const c = { nome: n, valores: estado(), data: new Date().toISOString() };
+    const j = banco.findIndex(x => x.nome === n);
+    if (j >= 0) banco[j] = c; else banco.push(c);
+    gravarBanco(); nome.value = n; lista(j >= 0 ? j : banco.length - 1);
+    msg((j >= 0 ? 'Regravada: ' : 'Salva: ') + n + ((j >= 0 ? j : banco.length - 1) < 9 ? ' (tecla ' + ((j >= 0 ? j : banco.length - 1) + 1) + ')' : ''));
+  });
+  $b('bkApagar').addEventListener('click', () => {
+    const i = sel.value === '' || sel.value === '__padrao' ? banco.findIndex(c => c.nome === nome.value.trim()) : +sel.value;
+    if (i < 0 || !banco[i]){ msg('Escolha na lista a configuração para apagar'); return; }
+    if ($b('bkApagar').dataset.ok !== String(i)){ // segundo toque confirma (sem janela de confirmação)
+      $b('bkApagar').dataset.ok = String(i); $b('bkApagar').textContent = 'Apagar mesmo?';
+      setTimeout(() => { delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar'; }, 3000); return;
+    }
+    const n = banco[i].nome; banco.splice(i, 1); gravarBanco(); nome.value = '';
+    delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar';
+    lista(); msg('Apagada: ' + n);
+  });
+  $b('bkExp').addEventListener('click', async () => {
+    const dados = { obra, versao: 1, exportado: new Date().toISOString(), atual: estado(), configuracoes: banco };
+    const txt = JSON.stringify(dados, null, 2), arq = obra + '-configuracoes.json';
+    const blob = new Blob([txt], { type: 'application/json' });
+    try {
+      const f = new File([blob], arq, { type: 'application/json' });
+      if (/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: arq }); msg('Exportado'); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = arq;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg('Exportado: ' + arq);
+  });
+  $b('bkImp').addEventListener('click', () => $b('bkArq').click());
+  $b('bkArq').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      const vem = Array.isArray(d) ? d : Array.isArray(d.configuracoes) ? d.configuracoes : [];
+      if (d && d.obra && d.obra !== obra && !vem.length) throw new Error('outra obra');
+      let novas = 0, troc = 0;
+      for (const c of vem){
+        if (!c || typeof c.nome !== 'string' || !c.valores) continue;
+        const j = banco.findIndex(x => x.nome === c.nome);
+        if (j >= 0){ banco[j] = c; troc++; } else { banco.push(c); novas++; }
+      }
+      gravarBanco(); lista();
+      msg(novas + troc ? `Importadas: ${novas} novas${troc ? ', ' + troc + ' substituídas' : ''}${d.obra && d.obra !== obra ? ' (arquivo de ' + d.obra + ')' : ''}` : 'Nenhuma configuração no arquivo');
+    } catch (err) { msg('Não consegui ler esse arquivo'); }
+  });
+
+  // ---------- lembrar ao reabrir ----------
+  lembrar.checked = ls.get(KL, true) !== false;
+  lembrar.addEventListener('change', () => { ls.set(KL, lembrar.checked); if (lembrar.checked) guardarAtual(); });
+  let tA;
+  function guardarAtual(){ if (!lembrar.checked) return; clearTimeout(tA); tA = setTimeout(() => ls.set(KA, estado()), 300); }
+  panel.addEventListener('input', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')){ guardarAtual(); if (sel.value !== '') sel.value = ''; } }, true);
+  panel.addEventListener('change', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')) guardarAtual(); }, true);
+  addEventListener('pagehide', () => { if (lembrar.checked) ls.set(KA, estado()); });
+
+  // ---------- teclas 1–9 e 0 ----------
+  addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && t.type !== 'range' && t.type !== 'checkbox'))) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^[1-9]$/.test(e.key)){ const i = +e.key - 1; if (banco[i]){ e.preventDefault(); carregar(i); } }
+    else if (e.key === '0'){ e.preventDefault(); carregar('__padrao'); }
+  });
+
+  lista();
+  if (lembrar.checked){ const a = ls.get(KA, null); if (a) aplicar(a); }
+})();
+
+</script>
+</body>
+</html>

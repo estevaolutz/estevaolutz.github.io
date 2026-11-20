@@ -2,6 +2,7 @@
 
 <painel>
   <h2>Placa</h2>
+  <div class="row"><label>Superfície</label><select id="sup"><option value="petri" selected>Placa de Petri (redonda)</option><option value="ret">Retangular (tela toda)</option></select></div>
   <div class="row"><label>Inóculo</label><select id="inoc"><option value="acaso" selected>Ao acaso (2 a 5 colônias)</option><option value="cada">Uma de cada espécie</option><option value="centro">Uma só, no centro</option><option value="duelo">Duelo (duas frente a frente)</option><option value="vazia">Placa vazia (só toque)</option></select></div>
   <div class="row"><label>Espécie</label><select id="esp"><option value="acaso" selected>Todas, ao acaso</option><option value="penicillium">Penicillium (verde-azulado)</option><option value="aspergillus">Aspergillus (negro)</option><option value="rhizopus">Rhizopus (bolor do pão)</option><option value="fusarium">Fusarium (rosa)</option><option value="trichoderma">Trichoderma (anéis verdes)</option><option value="neurospora">Neurospora (laranja)</option></select></div>
   <div class="row"><label>Velocidade (horas por segundo)</label><input type="range" id="speed" min="0.05" max="4" step="0.05" value="0.35"></div>
@@ -70,8 +71,8 @@ const myc = document.createElement('canvas'), mctx = myc.getContext('2d');
 const pig = document.createElement('canvas'), pctx = pig.getContext('2d');
 const mini = document.createElement('canvas'), nctx = mini.getContext('2d', { willReadFrequently: true });
 myc.width = myc.height = pig.width = pig.height = RES;
-const MS = 96; mini.width = mini.height = MS;
-let N = 0, Rg = 0, K = 1, own = null, tcol = null, spd = null, colonias = [], simH = 0, dishCells = 1, cobertos = 0;
+const MS = 96; let MSX = MS, MSY = MS; mini.width = mini.height = MS;
+let N = 0, NX = 0, NY = 0, ret = false, aspR = 1, Rg = 0, K = 1, own = null, tcol = null, spd = null, colonias = [], simH = 0, dishCells = 1, cobertos = 0;
 let fase = 'cresce', fadeT = 0, parado = 0, cheio = 0, lastT = 0, info = null, miniData = null, miniF = 0;
 let nextTick = 0, tickN = 0, grau = 0, progI = 0, encQ = [], ringQ = [], lastEnc = {}, proxSem = 0;
 const PROG = [0, 5, 3, 4, 0, 3, 1, 4];
@@ -81,17 +82,26 @@ function pool(){ return P.esp === 'acaso' ? KEYS : [P.esp]; }
 const pick = a => a[Math.random()*a.length | 0];
 
 function reset(){
-  N = +P.res; Rg = N/2 - 1.5; K = RES/N;
-  own = new Int16Array(N*N); tcol = new Float32Array(N*N); spd = new Uint8Array(N*N); dishCells = 0; cobertos = 0;
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){
-    const dx = x + 0.5 - N/2, dy = y + 0.5 - N/2, i = y*N + x;
-    if (dx*dx + dy*dy > Rg*Rg){ own[i] = -2; } else { own[i] = -1; dishCells++; }
+  N = +P.res; Rg = N/2 - 1.5; K = RES/N; ret = P.sup === 'ret';
+  // superfície retangular: a grade segue a proporção da tela (N células no lado menor)
+  aspR = Math.max(0.2, Math.min(5, V.W/Math.max(1, V.H)));
+  if (ret){ if (aspR >= 1){ NY = N; NX = Math.round(N*aspR); } else { NX = N; NY = Math.round(N/aspR); } } else { NX = NY = N; }
+  myc.width = pig.width = Math.round(NX*K); myc.height = pig.height = Math.round(NY*K);
+  MSX = Math.round(MS*NX/Math.max(NX, NY)); MSY = Math.round(MS*NY/Math.max(NX, NY)); mini.width = MSX; mini.height = MSY; miniData = null;
+  own = new Int16Array(NX*NY); tcol = new Float32Array(NX*NY); spd = new Uint8Array(NX*NY); dishCells = 0; cobertos = 0;
+  for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++){
+    const dx = x + 0.5 - NX/2, dy = y + 0.5 - NY/2, i = y*NX + x;
+    const fora = ret ? (x < 1 || y < 1 || x >= NX - 1 || y >= NY - 1) : dx*dx + dy*dy > Rg*Rg;
+    if (fora){ own[i] = -2; } else { own[i] = -1; dishCells++; }
   }
-  mctx.clearRect(0, 0, RES, RES); pctx.clearRect(0, 0, RES, RES);
+  mctx.clearRect(0, 0, myc.width, myc.height); pctx.clearRect(0, 0, pig.width, pig.height);
   colonias = []; simH = 0; fase = 'cresce'; fadeT = 0; parado = 0; cheio = 0; lastEnc = {}; encQ = []; ringQ = []; proxSem = 18 + Math.random()*20;
   inocular();
 }
-function livre(gx, gy){ const x = gx | 0, y = gy | 0; if (x < 2 || y < 2 || x >= N - 2 || y >= N - 2) return false; return own[y*N + x] === -1; }
+function livre(gx, gy){ const x = gx | 0, y = gy | 0; if (x < 2 || y < 2 || x >= NX - 2 || y >= NY - 2) return false; return own[y*NX + x] === -1; }
+// posição na superfície: ângulo a e fração f do raio (na retangular, f do meio-lado em cada eixo)
+function pos(a, f){ return ret ? [NX/2 + Math.cos(a)*f*(NX/2 - 3), NY/2 + Math.sin(a)*f*(NY/2 - 3)] : [NX/2 + Math.cos(a)*f*Rg, NY/2 + Math.sin(a)*f*Rg]; }
+function posAcaso(f){ return ret ? [NX/2 + (Math.random() - 0.5)*2*f*(NX/2 - 3), NY/2 + (Math.random() - 0.5)*2*f*(NY/2 - 3)] : pos(Math.random()*Math.PI*2, Math.sqrt(Math.random())*f); }
 function inocular(){
   const pl = pool(), m = P.inoc, ang = Math.random()*Math.PI*2;
   if (m === 'acaso'){
@@ -99,17 +109,17 @@ function inocular(){
     for (let k = 0; k < n; k++){
       let key = pick(pl.filter(s => !usadas.includes(s))); if (!key) key = pick(pl); usadas.push(key);
       for (let tries = 0; tries < 40; tries++){
-        const r = Math.sqrt(Math.random())*Rg*0.72, a = Math.random()*Math.PI*2, gx = N/2 + Math.cos(a)*r, gy = N/2 + Math.sin(a)*r;
+        const [gx, gy] = posAcaso(0.8);
         if (colonias.every(c => Math.hypot(c.cx - gx, c.cy - gy) > Rg*0.3)){ semear(key, gx, gy, true); break; }
       }
     }
   } else if (m === 'cada'){
-    KEYS.forEach((key, k) => { const a = ang + k/KEYS.length*Math.PI*2; semear(key, N/2 + Math.cos(a)*Rg*0.52, N/2 + Math.sin(a)*Rg*0.52, true); });
+    KEYS.forEach((key, k) => { const a = ang + k/KEYS.length*Math.PI*2; const q = pos(a, 0.55); semear(key, q[0], q[1], true); });
   } else if (m === 'centro'){
-    semear(pick(pl), N/2, N/2, true);
+    semear(pick(pl), NX/2, NY/2, true);
   } else if (m === 'duelo'){
     const a = pick(pl), b = pick(KEYS.filter(s => s !== a));
-    semear(a, N/2 - Rg*0.45, N/2, true); semear(b, N/2 + Rg*0.45, N/2, true);
+    const q1 = pos(Math.PI, 0.5), q2 = pos(0, 0.5); semear(a, q1[0], q1[1], true); semear(b, q2[0], q2[1], true);
   }
 }
 function semear(key, gx, gy, silencio){
@@ -119,11 +129,11 @@ function semear(key, gx, gy, silencio){
   const n = 14 + (Math.random()*8 | 0);
   for (let k = 0; k < n; k++){ const a = k/n*Math.PI*2 + Math.random()*0.3; c.tips.push({ x: gx + Math.cos(a)*1.2, y: gy + Math.sin(a)*1.2, a, prog: Math.random(), cell: -1 }); }
   for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){
-    if (dx*dx + dy*dy > 5) continue; const j = ((gy | 0) + dy)*N + ((gx | 0) + dx);
+    if (dx*dx + dy*dy > 5) continue; const j = ((gy | 0) + dy)*NX + ((gx | 0) + dx);
     if (own[j] === -1){ own[j] = c.id; tcol[j] = simH; c.cells.push(j); cobertos++; }
   }
   mctx.fillStyle = rgba(E.hy, 0.55); mctx.beginPath(); mctx.arc(gx*K, gy*K, 2.2*K, 0, Math.PI*2); mctx.fill();
-  if (!silencio && O.running) O.play('Sem', grau + E.reg + 7, O.now() + 0.01, 0.75, (gx/N - 0.5)*1.6, 1.4);
+  if (!silencio && O.running) O.play('Sem', grau + E.reg + 7, O.now() + 0.01, 0.75, (gx/NX - 0.5)*1.6, 1.4);
   return c;
 }
 
@@ -143,8 +153,8 @@ function crescer(dtH){
         const ra = Math.atan2(t.y - c.cy, t.x - c.cx);
         t.a += (Math.random() - 0.5)*2*wig + Math.sin(ra - t.a)*E.bias;
         const nx = t.x + Math.cos(t.a), ny = t.y + Math.sin(t.a), ix = nx | 0, iy = ny | 0;
-        if (ix < 1 || iy < 1 || ix >= N - 1 || iy >= N - 1){ morta = true; break; }
-        const j = iy*N + ix, o = own[j];
+        if (ix < 1 || iy < 1 || ix >= NX - 1 || iy >= NY - 1){ morta = true; break; }
+        const j = iy*NX + ix, o = own[j];
         if (o === -2){ morta = true; break; }
         if (o >= 0 && o !== c.id){ morta = true; encontro(c, o, nx, ny); break; }
         if (o === c.id && j !== t.cell){
@@ -154,7 +164,7 @@ function crescer(dtH){
         mctx.moveTo(t.x*K, t.y*K); mctx.lineTo(nx*K, ny*K);
         t.x = nx; t.y = ny; t.cell = j;
         for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){
-          const jj = j + dy*N + dx; if (own[jj] === -1){ own[jj] = c.id; tcol[jj] = simH; c.cells.push(jj); cobertos++; }
+          const jj = j + dy*NX + dx; if (own[jj] === -1){ own[jj] = c.id; tcol[jj] = simH; c.cells.push(jj); cobertos++; }
         }
         if (E.fofo && Math.random() < E.fofo*0.22) (fofo || (fofo = [])).push(nx, ny, t.a);
         if (tips.length < maxT && Math.random() < brP){
@@ -190,8 +200,8 @@ function regenerar(c, maxT){
   const from = Math.max(0, L - Math.max(200, L*0.35 | 0));
   let achou = 0;
   for (let q = 0; q < 8; q++){
-    const j = c.cells[from + (Math.random()*(L - from) | 0)], x = j % N, y = (j/N) | 0, a = Math.random()*Math.PI*2;
-    const nx = x + 0.5 + Math.cos(a)*1.8, ny = y + 0.5 + Math.sin(a)*1.8, jj = (ny | 0)*N + (nx | 0);
+    const j = c.cells[from + (Math.random()*(L - from) | 0)], x = j % NX, y = (j/NX) | 0, a = Math.random()*Math.PI*2;
+    const nx = x + 0.5 + Math.cos(a)*1.8, ny = y + 0.5 + Math.sin(a)*1.8, jj = (ny | 0)*NX + (nx | 0);
     if (own[jj] === -1){ c.tips.push({ x: x + 0.5, y: y + 0.5, a, prog: Math.random(), cell: j }); achou++; }
   }
   c.fechada = achou ? 0 : (c.fechada || 0) + 1;
@@ -207,7 +217,7 @@ function esporular(dtH){
       const j = c.cells[Math.random()*L | 0], idade = simH - tcol[j];
       if (idade < E.mat) continue;
       let p = Math.min(1, 0.3 + 0.7*(idade - E.mat)/(E.mat*1.5));
-      const x = j % N, y = (j/N) | 0;
+      const x = j % NX, y = (j/NX) | 0;
       if (E.raios){ const th = Math.atan2(y - c.cy, x - c.cx), m = 0.55 + 0.45*Math.cos(E.raios*th + c.ph + Math.hypot(x - c.cx, y - c.cy)*0.04); p *= m*m; }
       if (E.aneis){ const f = (((tcol[j] - c.born)/E.aneis) % 1 + 1) % 1; if (f > 0.5) p *= 0.05; }
       if (E.esparsa) p *= E.esparsa;
@@ -221,7 +231,7 @@ function esporular(dtH){
     if (E.pig && Math.random() < dtH*1.2){
       const j = c.cells[Math.random()*L | 0];
       if (simH - tcol[j] > E.mat){
-        const x = (j % N + 0.5)*K, y = (((j/N) | 0) + 0.5)*K, R = (8 + Math.random()*14)*K, g = pctx.createRadialGradient(x, y, 0, x, y, R);
+        const x = (j % NX + 0.5)*K, y = (((j/NX) | 0) + 0.5)*K, R = (8 + Math.random()*14)*K, g = pctx.createRadialGradient(x, y, 0, x, y, R);
         g.addColorStop(0, rgba(E.pig, 0.07)); g.addColorStop(1, rgba(E.pig, 0));
         pctx.fillStyle = g; pctx.fillRect(x - R, y - R, 2*R, 2*R);
       }
@@ -253,7 +263,7 @@ function tick(t, dtk){
     if (Math.random() < p){
       const rf = Math.min(1, Math.hypot(c.ex - c.cx, c.ey - c.cy)/Rg), idx = Math.min(TONS.length - 1, Math.floor(rf*TONS.length));
       const d = grau + TONS[idx] + c.E.reg, off = tickN % 2 === 0 ? dtk*0.12 : 0;
-      O.play(c.E.k, d, t + off, 0.35 + Math.random()*0.4, (c.ex/N - 0.5)*1.6, 1);
+      O.play(c.E.k, d, t + off, 0.35 + Math.random()*0.4, (c.ex/NX - 0.5)*1.6, 1);
       c.ev *= 0.35; tocou++;
     }
   }
@@ -264,10 +274,10 @@ function tick(t, dtk){
   for (let i = 0; i < ng; i++) O.hit('Esp', t + Math.random()*dtk, 0.08 + Math.random()*0.18, (Math.random() - 0.5)*1.6, 3500 + Math.random()*7000, 0.02 + Math.random()*0.03);
   // encontro de colônias: o intervalo entre as duas espécies, no grave
   const e = encQ.shift();
-  if (e){ const pan = (e.x/N - 0.5)*1.4; O.play('Enc', grau - 14, t, 0.75, pan, 1.6); O.play('Enc', grau - 14 + Math.abs(e.c.E.reg - e.o.E.reg) % 7 + 2, t + dtk*0.5, 0.5, -pan, 1.4); }
+  if (e){ const pan = (e.x/NX - 0.5)*1.4; O.play('Enc', grau - 14, t, 0.75, pan, 1.6); O.play('Enc', grau - 14 + Math.abs(e.c.E.reg - e.o.E.reg) % 7 + 2, t + dtk*0.5, 0.5, -pan, 1.4); }
   // anel novo: arpejo da espécie
   const r = ringQ.shift();
-  if (r){ [0, 2, 4, 7, 9].forEach((s, i) => O.play(r.E.k, grau + r.E.reg + s, t + i*dtk*0.33, 0.55 - i*0.06, (r.cx/N - 0.5)*1.6 + (i - 2)*0.12, 1.3)); }
+  if (r){ [0, 2, 4, 7, 9].forEach((s, i) => O.play(r.E.k, grau + r.E.reg + s, t + i*dtk*0.33, 0.55 - i*0.06, (r.cx/NX - 0.5)*1.6 + (i - 2)*0.12, 1.3)); }
 }
 function cobertura(){ return cobertos/dishCells; }
 
@@ -275,14 +285,33 @@ function cobertura(){ return cobertos/dishCells; }
 function dish(){ const R = Math.min(V.W, V.H)*0.5*P.tam; return { cx: V.W/2, cy: V.H/2, R }; }
 V.cv.addEventListener('pointerdown', e => {
   if (!O.running || !P.toque || !own || T3.on || fase !== 'cresce') return;
-  const d = dish(), gx = (e.clientX - d.cx)/d.R*(N/2) + N/2, gy = (e.clientY - d.cy)/d.R*(N/2) + N/2;
-  if (Math.hypot(gx - N/2, gy - N/2) > Rg*0.97) return;
+  let gx, gy;
+  if (ret){ gx = e.clientX/V.W*NX; gy = e.clientY/V.H*NY; }
+  else { const d = dish(); gx = (e.clientX - d.cx)/d.R*(N/2) + NX/2; gy = (e.clientY - d.cy)/d.R*(N/2) + NY/2; if (Math.hypot(gx - NX/2, gy - NY/2) > Rg*0.97) return; }
   semear(pick(pool()), gx, gy, false);
 });
 
 // ---------- desenho ----------
 const AGAR = { escuro: ['rgb(16,15,13)', 'rgb(6,6,6)'], fundo: ['rgb(92,64,26)', 'rgb(38,26,10)'], clara: ['rgb(196,160,98)', 'rgb(150,112,58)'] };
+function draw2dRet(C, t, alfa){
+  const ag = AGAR[P.luz] || AGAR.escuro, W = V.W, H = V.H;
+  C.save(); C.globalAlpha = alfa;
+  const g = C.createRadialGradient(W/2, H*0.4, Math.min(W, H)*0.1, W/2, H/2, Math.hypot(W, H)*0.6); g.addColorStop(0, ag[0]); g.addColorStop(1, ag[1]);
+  C.fillStyle = g; C.fillRect(0, 0, W, H);
+  C.imageSmoothingEnabled = true;
+  C.drawImage(pig, 0, 0, W, H); C.drawImage(myc, 0, 0, W, H);
+  if (P.pontas > 0){
+    C.globalCompositeOperation = 'lighter'; const sx = W/NX, sy = H/NY, w = Math.max(1.2, Math.min(sx, sy)*0.7);
+    for (const c of colonias){
+      if (!c.tips.length) continue;
+      C.fillStyle = rgba(c.E.hy, P.pontas*(0.55 + 0.25*Math.sin(t*2 + c.ph))*alfa);
+      for (const p of c.tips) C.fillRect(p.x*sx - w/2, p.y*sy - w/2, w, w);
+    }
+  }
+  C.restore();
+}
 function draw2d(C, t, alfa){
+  if (ret) return draw2dRet(C, t, alfa);
   const { cx, cy, R } = dish(), ag = AGAR[P.luz] || AGAR.escuro;
   C.save(); C.globalAlpha = alfa;
   const g = C.createRadialGradient(cx, cy - R*0.2, R*0.1, cx, cy, R); g.addColorStop(0, ag[0]); g.addColorStop(1, ag[1]);
@@ -319,27 +348,30 @@ function draw3d(C, t, alfa){
   T3.quadro(V.W, V.H); T3.centro(0, 20);
   if (++miniF % 6 === 1 || !miniData){
     const ag = AGAR[P.luz] || AGAR.escuro;
-    nctx.globalCompositeOperation = 'source-over'; nctx.fillStyle = ag[0]; nctx.fillRect(0, 0, MS, MS);
-    nctx.drawImage(pig, 0, 0, MS, MS); nctx.drawImage(myc, 0, 0, MS, MS);
-    miniData = nctx.getImageData(0, 0, MS, MS).data;
+    nctx.globalCompositeOperation = 'source-over'; nctx.fillStyle = ag[0]; nctx.fillRect(0, 0, MSX, MSY);
+    nctx.drawImage(pig, 0, 0, MSX, MSY); nctx.drawImage(myc, 0, 0, MSX, MSY);
+    miniData = nctx.getImageData(0, 0, MSX, MSY).data;
   }
   const ag = AGAR[P.luz] || AGAR.escuro, sc = 1.15;
   C.save(); C.globalAlpha = alfa;
   // ágar (disco) e parede da placa
-  C.beginPath(); for (let k = 0; k <= 64; k++){ const a = k/64*Math.PI*2; T3.p(Math.cos(a)*sc, 0, Math.sin(a)*sc); k ? C.lineTo(T3.X, T3.Y) : C.moveTo(T3.X, T3.Y); }
+  const ax = sc*NX/Math.max(NX, NY), az = sc*NY/Math.max(NX, NY);
+  C.beginPath();
+  if (ret){ [[-ax, -az], [ax, -az], [ax, az], [-ax, az]].forEach((q, k) => { T3.p(q[0], 0, q[1]); k ? C.lineTo(T3.X, T3.Y) : C.moveTo(T3.X, T3.Y); }); C.closePath(); }
+  else for (let k = 0; k <= 64; k++){ const a = k/64*Math.PI*2; T3.p(Math.cos(a)*sc, 0, Math.sin(a)*sc); k ? C.lineTo(T3.X, T3.Y) : C.moveTo(T3.X, T3.Y); }
   C.fillStyle = ag[0]; C.fill();
   // colunas de trás para a frente
   T3.p(0, 0, -1); const z0 = T3.Z; T3.p(0, 0, 1); const back = z0 > T3.Z;
-  const cw = 2*sc/MS*T3.R*0.55, st = N/MS;
-  for (let yy = 0; yy < MS; yy++){
-    const v = back ? yy : MS - 1 - yy;
-    for (let u = 0; u < MS; u++){
-      const gx = Math.min(N - 1, (u + 0.5)*st | 0), gy = Math.min(N - 1, (v + 0.5)*st | 0), o = own[gy*N + gx];
+  const cw = 2*ax/MSX*T3.R*0.55, stx = NX/MSX, sty = NY/MSY;
+  for (let yy = 0; yy < MSY; yy++){
+    const v = back ? yy : MSY - 1 - yy;
+    for (let u = 0; u < MSX; u++){
+      const gx = Math.min(NX - 1, (u + 0.5)*stx | 0), gy = Math.min(NY - 1, (v + 0.5)*sty | 0), o = own[gy*NX + gx];
       if (o < 0) continue;
-      const c = colonias[o], idade = simH - tcol[gy*N + gx], h = c.E.h3*Math.min(1, 0.25 + idade/(c.E.mat*1.4 + 2))*(0.35 + 0.65*(((Math.sin(u*12.9898 + v*78.233)*43758.5453) % 1 + 1) % 1));
-      const wx = ((u + 0.5)/MS - 0.5)*2*sc, wz = ((v + 0.5)/MS - 0.5)*2*sc;
+      const c = colonias[o], idade = simH - tcol[gy*NX + gx], h = c.E.h3*Math.min(1, 0.25 + idade/(c.E.mat*1.4 + 2))*(0.35 + 0.65*(((Math.sin(u*12.9898 + v*78.233)*43758.5453) % 1 + 1) % 1));
+      const wx = ((u + 0.5)/MSX - 0.5)*2*ax, wz = ((v + 0.5)/MSY - 0.5)*2*az;
       if (!T3.p(wx, 0, wz)) continue; const bx = T3.X, by = T3.Y, s = T3.S, a = T3.A;
-      T3.p(wx, h, wz); const ty = T3.Y, w = Math.max(1, cw*s), q = (v*MS + u)*4;
+      T3.p(wx, h, wz); const ty = T3.Y, w = Math.max(1, cw*s), q = (v*MSX + u)*4;
       let r = miniData[q], gg = miniData[q + 1], b = miniData[q + 2];
       const m = Math.max(r, gg, b); if (m < 60){ const f = 60/Math.max(1, m); r = Math.min(255, r*f + 8); gg = Math.min(255, gg*f + 8); b = Math.min(255, b*f + 8); }
       C.globalAlpha = 0.75*a*alfa; C.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`;
@@ -350,9 +382,13 @@ function draw3d(C, t, alfa){
   if (P.pontas > 0){
     C.globalCompositeOperation = 'lighter';
     for (const c of colonias){ if (!c.tips.length) continue; const col = rgba(c.E.hy, 1);
-      for (let i = 0; i < c.tips.length; i += 3){ const p = c.tips[i]; T3.ponto(C, (p.x/N - 0.5)*2*sc, c.E.h3*0.35, (p.y/N - 0.5)*2*sc, 1.3, col, P.pontas*0.8*alfa); } }
+      for (let i = 0; i < c.tips.length; i += 3){ const p = c.tips[i]; T3.ponto(C, (p.x/NX - 0.5)*2*ax, c.E.h3*0.35, (p.y/NY - 0.5)*2*az, 1.3, col, P.pontas*0.8*alfa); } }
   }
-  if (P.vidro){
+  if (P.vidro && ret){
+    C.globalCompositeOperation = 'lighter';
+    const cs = [[-ax, -az], [ax, -az], [ax, az], [-ax, az]];
+    for (let k = 0; k < 4; k++){ const a = cs[k], b = cs[(k + 1) % 4]; T3.seg(C, a[0], 0, a[1], b[0], 0, b[1], 0.3*alfa); T3.seg(C, a[0], 0.1, a[1], b[0], 0.1, b[1], 0.15*alfa); T3.seg(C, a[0], 0, a[1], a[0], 0.1, a[1], 0.15*alfa); }
+  } else if (P.vidro){
     C.globalCompositeOperation = 'lighter'; C.strokeStyle = 'rgb(190,215,235)'; C.lineWidth = 1.3;
     C.globalAlpha = 0.3*alfa; C.beginPath(); T3.circulo(C, 0, 0, 0, sc*1.01, 'y', 96); C.stroke();
     C.globalAlpha = 0.18*alfa; C.beginPath(); T3.circulo(C, 0, 0.16, 0, sc*1.01, 'y', 96); C.stroke();
@@ -371,7 +407,7 @@ function frame(){
       // semear sozinho enquanto houver espaço
       if (P.semAuto && simH > proxSem && cob < 0.6){
         proxSem = simH + 16 + Math.random()*26;
-        for (let k = 0; k < 30; k++){ const r = Math.sqrt(Math.random())*Rg*0.85, a = Math.random()*Math.PI*2; if (semear(pick(pool()), N/2 + Math.cos(a)*r, N/2 + Math.sin(a)*r, false)) break; }
+        for (let k = 0; k < 30; k++){ const q = posAcaso(0.9); if (semear(pick(pool()), q[0], q[1], false)) break; }
       }
       parado = vivas === 0 && P.inoc !== 'vazia' ? parado + dt : 0;
       cheio = cob > 0.94 ? cheio + dt : 0;
@@ -385,6 +421,7 @@ function frame(){
     if (nextTick < t - 0.5) nextTick = t + 0.05;
     while (nextTick < t + 0.12){ tick(nextTick, dtk); nextTick += dtk; }
   }
+  if (ret && own && Math.abs(V.W/Math.max(1, V.H)/aspR - 1) > 0.15) reset();
   const C = V.begin();
   if (own){ if (T3.on) draw3d(C, t, alfa); else draw2d(C, t, alfa); }
   V.end();
@@ -398,7 +435,7 @@ function frame(){
   }
   requestAnimationFrame(frame);
 }
-O.on(k => { if (k === 'res' || k === 'inoc') reset(); });
+O.on(k => { if (k === 'res' || k === 'inoc' || k === 'sup') reset(); });
 O.setup(() => { lastT = O.now(); nextTick = O.now() + 0.1; O.setDrone(O.semi(grau), 7, 0.1, 140); }, { r: reset });
 reset();
 window.micelio = { crescer, reset, get colonias(){ return colonias; }, get simH(){ return simH; } };

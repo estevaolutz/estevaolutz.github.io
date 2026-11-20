@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Girassol</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icone-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#cfd6dd}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;transition:opacity 2.5s;text-align:center;padding:0 24px}
+  #start h1{font-weight:200;letter-spacing:.5em;font-size:22px;margin:0 0 0 .5em;color:#e8edf2}
+  #start p{font-weight:300;font-size:12px;letter-spacing:.25em;opacity:.45;margin:0}
+  #start p.sub{letter-spacing:.06em;opacity:.32;max-width:420px;line-height:1.6;font-size:11.5px}
+  #start.hide{opacity:0;pointer-events:none}
+  .hud{position:fixed;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums;transition:opacity .6s}
+  #num{left:28px;top:22px;font-weight:200;font-size:28px;letter-spacing:.08em;opacity:.55}
+  #op{left:30px;top:62px;right:60px;font-weight:300;font-size:16px;letter-spacing:.05em;opacity:.75;line-height:1.35}
+  #seq{left:30px;top:94px;right:60px;max-height:34%;font-weight:300;font-size:12.5px;line-height:1.75;letter-spacing:.03em;opacity:.42;overflow:hidden}
+  #seq.cheio{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38px);mask-image:linear-gradient(to bottom,transparent 0,#000 38px)}
+  #seq span.o{white-space:nowrap;margin-right:1.4em;display:inline-block}
+  #seq b{font-weight:500}
+  body.semtexto .hud{opacity:0!important}
+  #dot{position:fixed;right:14px;top:14px;width:30px;height:30px;border-radius:50%;z-index:4;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.18;transition:opacity .4s}
+  #dot:hover{opacity:.7}
+  #dot::after{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+  #panel{position:fixed;right:14px;top:52px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:rgba(10,12,16,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;z-index:4;font-size:12px;display:none}
+  #panel.on{display:block}
+  #panel h2{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;opacity:.5;margin:14px 0 8px}
+  #panel h2:first-child{margin-top:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  .row label{opacity:.8;flex:0 0 96px}
+  .row input[type=range]{flex:1;accent-color:#9fb8d0;min-width:0}
+  .row select,.row input[type=number],.row input[type=text]{flex:1;min-width:0;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 6px;font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .btns button{flex:1;background:#151a21;color:#cfd6dd;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .btns button:active{background:#232b36}
+  .hint{opacity:.4;font-size:10.5px;line-height:1.55;margin-top:10px}
+  @media (max-width:640px){ #op{font-size:13.5px} #seq{top:112px;font-size:11.5px} #num{font-size:24px} }
+
+  #panel .sub{font-size:10.5px;letter-spacing:.12em;opacity:.45;margin:10px 0 2px;text-transform:uppercase}
+  #seq span.o{white-space:normal;display:inline}
+  .hud{text-shadow:0 0 8px #000,0 0 3px #000,0 0 1px #000}
+
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="num" class="hud"></div><div id="op" class="hud"></div><div id="seq" class="hud"></div>
+<div id="start"><h1>GIRASSOL</h1><p>toque para começar</p>
+  <p class="sub">Uma semente de girassol na terra escura. Ela bebe água e incha, a raiz desce, o caule sobe curvado em gancho e se abre para a luz. As folhas nascem em espiral, cada uma a 137,5° da anterior — o ângulo de ouro — e a planta jovem segue o sol. Quando o capítulo abre, centenas de florzinhas se acendem da borda para o centro, desenhando as espirais de Fibonacci. Cada uma vira semente, e as sementes voltam para a terra. O mesmo ângulo de ouro que arruma as sementes escreve a melodia.</p></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <h2>Planta</h2>
+  <div class="row"><label>Girassóis</label><select id="plantas"><option value="1" selected>Um só</option><option value="3">Três</option><option value="5">Um canteiro (cinco)</option></select></div>
+  <div class="row"><label>Velocidade (dias por segundo)</label><input type="range" id="speed" min="0.1" max="3" step="0.05" value="0.7"></div>
+  <div class="row"><label>Câmera lenta na germinação e na floração</label><input type="checkbox" id="lenta" checked></div>
+  <div class="row"><label>Ângulo de divergência (°)</label><input type="range" id="angulo" min="120" max="150" step="0.001" value="137.508"></div>
+  <div class="btns"><button id="bOuro" type="button">Ângulo de ouro (137,508°)</button></div>
+  <div class="row"><label>Flores no disco</label><input type="range" id="flores" min="300" max="2500" step="10" value="1200"></div>
+  <div class="row"><label>Pétalas</label><select id="petalas"><option value="21">21</option><option value="34" selected>34</option><option value="55">55</option></select></div>
+  <div class="row"><label>Altura</label><input type="range" id="altura" min="0.6" max="1.4" step="0.01" value="1"></div>
+  <div class="row"><label>Enquadramento</label><select id="enq"><option value="auto" selected>Automático (segue a fase)</option><option value="inteira">Planta inteira</option><option value="flor">Capítulo (a flor)</option><option value="raiz">Raízes</option></select></div>
+  <div class="row"><label>Recomeçar sozinho</label><input type="checkbox" id="auto" checked></div>
+  <h2>Céu</h2>
+  <div class="row"><label>Sol e céu</label><input type="checkbox" id="ceu" checked></div>
+  <div class="row"><label>Um dia do céu (segundos)</label><input type="range" id="ciclo" min="8" max="120" step="1" value="36"></div>
+  <div class="row"><label>A planta jovem segue o sol</label><input type="checkbox" id="helio" checked></div>
+  <h2>Música</h2>
+  <div class="row"><label>Pulso (BPM)</label><input type="range" id="bpm" min="36" max="120" step="1" value="64"></div>
+  <div class="row"><label>Densidade das notas</label><input type="range" id="dens" min="0" max="1" step="0.01" value="0.6"></div>
+  <div class="row"><label>Vozes por pulso</label><input type="range" id="vozes" min="1" max="4" step="1" value="2"></div>
+  <div class="row"><label>Acorde muda a cada (tempos)</label><input type="range" id="acStep" min="4" max="32" step="1" value="16"></div>
+<div id="nucleo"></div>
+  <h2>Imagem</h2>
+  <div class="row"><label>Cor</label><select id="cor"><option value="natural" selected>Natural</option><option value="ouro">Ouro</option><option value="espirais">Espirais (cada braço uma cor)</option></select></div>
+  <div class="row"><label>Família das espirais na cor</label><select id="fam"><option value="13">13</option><option value="21" selected>21</option><option value="34">34</option><option value="55">55</option></select></div>
+  <div class="row"><label>Linhas das espirais</label><select id="para"><option value="nenhuma" selected>Nenhuma</option><option value="hor">Horárias</option><option value="anti">Anti-horárias</option><option value="ambas">As duas</option></select></div>
+  <div class="row"><label>Tamanho das flores</label><input type="range" id="pontoT" min="0.4" max="2" step="0.01" value="1"></div>
+  <div class="row"><label>Espessura das linhas</label><input type="range" id="linha" min="0.4" max="3" step="0.01" value="1"></div>
+  <div class="row"><label>Raízes</label><input type="checkbox" id="raizV" checked></div>
+  <div class="row"><label>Terra em corte</label><input type="checkbox" id="terra" checked></div>
+<div id="nucleoVideo"></div>
+<div class="hint">Do dia 1 ao dia 106 da vida de um girassol, com as fases na ordem real: a semente se hidrata e incha; a radícula rompe a casca e desce (gravitropismo), as raízes laterais saem dela; o hipocótilo sobe curvado em gancho e se endireita; os cotilédones abrem; o caule alonga em curva sigmoide e as folhas nascem em espiral a 137,5° umas das outras; a planta jovem acompanha o sol de leste a oeste e volta para o leste à noite (heliotropismo); o botão abre, as brácteas recuam, as pétalas desdobram e o capítulo maduro fica voltado para o leste; as flores do disco abrem da borda para o centro, umas poucas fileiras por dia; cada uma vira semente, as pétalas murcham e caem, o capítulo se curva e as sementes caem na terra. A semente número n fica a raiz(n) do centro e girada n × 137,5°: daí saem as espirais visíveis, sempre em números de Fibonacci (21, 34, 55, 89). Mexa no ângulo de divergência para ver o arranjo se desfazer em raios.<br>Som: cada flor que abre toca uma nota tirada do seu ângulo (a melodia do ângulo de ouro), aguda na borda e grave no centro; cada folha nova é um arpejo de harpa; as pétalas, celesta; as raízes laterais, notas graves; as sementes maduras, brilhos de vidro; as que caem batem na terra; o nascer e o pôr do sol tocam um sino. O drone segue o acorde e se abre com a luz do dia.<br>Teclas: M controles · F tela cheia · T texto · D 3D · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
+</div>
+<script>
+// Vista 3D das Conjecturas — câmera em órbita e projeção em perspectiva desenhadas no mesmo canvas 2D da obra,
+// então o som, os efeitos de vídeo (rastro, brilho, espelho) e o banco de configurações valem também para o 3D.
+// A cena é descrita em unidades de mundo de mais ou menos −1 a 1 (y para cima). Uso:
+//   const T = Vista3D({ ligado: true, giro: 0.12, incl: 20 });
+//   if (T.on){ T.quadro(); C.beginPath(); T.mv(C, x, y, z); T.ln(C, x2, y2, z2); C.stroke(); }
+// Controles: arrastar = girar, pinça/roda = aproximar, dois toques = recentrar, tecla D = liga/desliga.
+window.Vista3D = function(opt = {}){
+  const $ = id => document.getElementById(id);
+  const cv = opt.canvas || $('cv');
+  const DEF = Object.assign({ ligado: true, giro: 0.12, incl: 22, zoom: 1, persp: 0.45, nevoa: 0.35, grade: true, yaw: 0.5 }, opt);
+  const T = { on: DEF.ligado, giro: DEF.giro, incl: DEF.incl, zoom: DEF.zoom, persp: DEF.persp, nevoa: DEF.nevoa, grade: DEF.grade,
+    X: 0, Y: 0, S: 1, A: 1, Z: 0, R: 300, W: 0, H: 0, cx: 0, cy: 0, ouvintes: [] };
+  let yaw = DEF.yaw, dPitch = 0, zMul = 1, last = 0, cy = 1, sy = 0, cp = 1, sp = 0, D = 4, F = 1, ox = 0, oy = 0;
+
+  // ---------- painel: uma seção "Vista 3D" logo antes dos efeitos de vídeo (ou da seção Imagem) ----------
+  const panel = $('panel');
+  if (panel && !$('v3d')){
+    const box = document.createElement('div'); box.id = 'vista3dBox';
+    box.innerHTML = `<h2>Vista 3D</h2>
+      <div class="row"><label>3D (tecla D)</label><input type="checkbox" id="v3d"${T.on ? ' checked' : ''}></div>
+      <div class="row"><label>Giro automático</label><input type="range" id="v3dGiro" min="-1" max="1" step="0.01" value="${T.giro}"></div>
+      <div class="row"><label>Inclinação</label><input type="range" id="v3dIncl" min="-15" max="85" step="1" value="${T.incl}"></div>
+      <div class="row"><label>Aproximar</label><input type="range" id="v3dZoom" min="0.4" max="3" step="0.01" value="${T.zoom}"></div>
+      <div class="row"><label>Perspectiva</label><input type="range" id="v3dPersp" min="0" max="1" step="0.01" value="${T.persp}"></div>
+      <div class="row"><label>Névoa ao fundo</label><input type="range" id="v3dNev" min="0" max="1" step="0.01" value="${T.nevoa}"></div>
+      <div class="row"><label>Grade do chão</label><input type="checkbox" id="v3dGrade"${T.grade ? ' checked' : ''}></div>
+      <div class="row"><button id="v3dCentro" type="button">Recentrar câmera</button></div>`;
+    const antes = opt.antes ? $(opt.antes) : ($('nucleoVideo') || [...panel.querySelectorAll('h2')].find(h => /imagem|v[ií]deo/i.test(h.textContent)) || panel.querySelector('.hint'));
+    if (antes && antes.parentNode) antes.parentNode.insertBefore(box, antes); else panel.appendChild(box);
+    const ler = () => {
+      T.on = $('v3d').checked; T.giro = +$('v3dGiro').value; T.incl = +$('v3dIncl').value; T.zoom = +$('v3dZoom').value;
+      T.persp = +$('v3dPersp').value; T.nevoa = +$('v3dNev').value; T.grade = $('v3dGrade').checked;
+      document.body.classList.toggle('em3d', T.on); const b = $('b3d'); if (b) b.classList.toggle('on', T.on);
+      for (const fn of T.ouvintes) fn(T.on);
+    };
+    box.addEventListener('input', ler); box.addEventListener('change', ler);
+    $('v3dCentro').addEventListener('click', () => T.recentrar());
+    T.ler = ler;
+  }
+  // botão rápido "3D" ao lado do ponto do painel
+  if (!$('b3d')){
+    const st = document.createElement('style');
+    st.textContent = `#b3d{position:fixed;right:50px;top:16px;height:26px;padding:0 9px;border-radius:13px;z-index:4;border:1px solid rgba(255,255,255,.25);
+      background:rgba(0,0,0,.35);color:#cfd6dd;font:500 10.5px/24px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;letter-spacing:.12em;cursor:pointer;opacity:.28;transition:opacity .4s}
+      #b3d:hover{opacity:.8} #b3d.on{opacity:.55;border-color:rgba(191,228,255,.7);color:#e8f4ff} body.em3d #cv{cursor:grab} body.em3d #cv:active{cursor:grabbing}`;
+    document.head.appendChild(st);
+    const b = document.createElement('button'); b.id = 'b3d'; b.type = 'button'; b.title = 'Vista 3D (D)'; b.textContent = '3D';
+    b.classList.toggle('on', T.on); document.body.appendChild(b);
+    b.addEventListener('click', e => { e.stopPropagation(); T.alternar(); });
+  }
+  document.body.classList.toggle('em3d', T.on);
+  T.alternar = () => { const c = $('v3d'); if (c){ c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); } else { T.on = !T.on; for (const fn of T.ouvintes) fn(T.on); } };
+  T.recentrar = () => { yaw = DEF.yaw; dPitch = 0; zMul = 1; };
+  T.mudou = fn => T.ouvintes.push(fn);
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'd' || e.key === 'D'){ e.preventDefault(); T.alternar(); }
+  });
+
+  // ---------- arrastar, pinça, roda, dois toques ----------
+  const pts = new Map(); let pinch0 = 0, zoom0 = 1, tapT = 0;
+  cv.addEventListener('pointerdown', e => {
+    if (!T.on) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 2){ const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = zMul; }
+    const agora = performance.now(); if (agora - tapT < 300 && pts.size === 1) T.recentrar(); tapT = agora;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!T.on || !pts.has(e.pointerId)) return;
+    const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 1){ yaw += dx*0.008; dPitch = Math.max(-80, Math.min(80, dPitch + dy*0.35)); }
+    else if (pts.size === 2 && pinch0 > 0){ const [a, b] = [...pts.values()]; zMul = Math.max(0.25, Math.min(6, zoom0*Math.hypot(a.x - b.x, a.y - b.y)/pinch0)); }
+  });
+  const solta = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; };
+  cv.addEventListener('pointerup', solta); cv.addEventListener('pointercancel', solta);
+  cv.addEventListener('wheel', e => { if (!T.on) return; e.preventDefault(); zMul = Math.max(0.25, Math.min(6, zMul*Math.exp(-e.deltaY*0.0012))); }, { passive: false });
+  cv.style.touchAction = 'none';
+
+  // ---------- câmera ----------
+  // chamar uma vez por quadro, antes de desenhar; dt em segundos (opcional)
+  T.quadro = (W = innerWidth, H = innerHeight, dt) => {
+    const agora = performance.now()/1000;
+    if (dt === undefined) dt = Math.min(0.1, last ? agora - last : 0); last = agora;
+    if (!pts.size) yaw += dt*T.giro*0.6;
+    const pitch = Math.max(-89, Math.min(89, T.incl + dPitch))*Math.PI/180;
+    cy = Math.cos(yaw); sy = Math.sin(yaw); cp = Math.cos(pitch); sp = Math.sin(pitch);
+    const fov = (12 + T.persp*68)*Math.PI/180; D = 1.25/Math.tan(fov/2);
+    T.W = W; T.H = H; T.cx = W/2 + ox; T.cy = H/2 + oy;
+    T.R = Math.min(W, H)*0.42*T.zoom*zMul; F = T.R*D;
+    T.yaw = yaw; T.pitch = pitch; T.D = D;
+    return T;
+  };
+  // desloca o centro da tela (por exemplo, para deixar espaço para o texto)
+  T.centro = (dx = 0, dy = 0) => { ox = dx; oy = dy; };
+  // projeta (x, y, z): grava T.X, T.Y (pixels), T.S (escala: 1 = na origem), T.A (névoa 0–1), T.Z (profundidade); false se atrás da câmera
+  T.p = (x, y, z) => {
+    const x1 = cy*x + sy*z, z1 = -sy*x + cy*z;
+    const y2 = cp*y - sp*z1, z2 = sp*y + cp*z1;
+    const zc = D - z2;
+    if (zc < 0.08) return false;
+    const k = F/zc;
+    T.X = T.cx + x1*k; T.Y = T.cy - y2*k; T.S = D/zc; T.Z = zc;
+    T.A = T.nevoa > 0 ? Math.exp(-T.nevoa*1.1*Math.max(0, zc - D + 1)) : 1;
+    return true;
+  };
+  // caminhos: mv = moveTo, ln = lineTo (pulando o que fica atrás da câmera)
+  let tem = false;
+  T.mv = (C, x, y, z) => { tem = T.p(x, y, z); if (tem) C.moveTo(T.X, T.Y); return tem; };
+  T.ln = (C, x, y, z) => { const ok = T.p(x, y, z); if (ok){ tem ? C.lineTo(T.X, T.Y) : C.moveTo(T.X, T.Y); } tem = ok; return ok; };
+  // ponto redondo com raio r (em pixels na origem), com névoa
+  T.ponto = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(0.4, r*T.S), a = alfa*T.A; if (a < 0.01) return true;
+    C.globalAlpha = Math.min(1, a); if (cor) C.fillStyle = cor;
+    if (rr < 1.6) C.fillRect(T.X - rr, T.Y - rr, rr*2, rr*2);
+    else { C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); }
+    C.globalAlpha = 1; return true;
+  };
+  // brilho redondo (gradiente) — para estrelas, cabeças, clarões
+  T.brilho = (C, x, y, z, r, cor, alfa = 1) => {
+    if (!T.p(x, y, z)) return false;
+    const rr = Math.max(1, r*T.S), a = Math.min(1, alfa*T.A); if (a < 0.01) return true;
+    const g = C.createRadialGradient(T.X, T.Y, 0, T.X, T.Y, rr);
+    g.addColorStop(0, cor); g.addColorStop(1, 'rgba(0,0,0,0)');
+    C.globalAlpha = a; C.fillStyle = g; C.beginPath(); C.arc(T.X, T.Y, rr, 0, Math.PI*2); C.fill(); C.globalAlpha = 1; return true;
+  };
+  // segmento com névoa
+  T.seg = (C, x1, y1, z1, x2, y2, z2, alfa = 1) => {
+    if (!T.p(x1, y1, z1)) return; const ax = T.X, ay = T.Y, aa = T.A;
+    if (!T.p(x2, y2, z2)) return;
+    C.globalAlpha = Math.min(1, alfa*(aa + T.A)/2); C.beginPath(); C.moveTo(ax, ay); C.lineTo(T.X, T.Y); C.stroke(); C.globalAlpha = 1;
+  };
+  // linha por vários pontos [x, y, z, x, y, z, ...], em trechos com a névoa de cada trecho
+  T.poli = (C, a, alfa = 1, trecho = 12) => {
+    const n = a.length/3 | 0; if (n < 2) return;
+    for (let i = 0; i < n - 1; i += trecho){
+      const f = Math.min(n - 1, i + trecho), m = (i + f) >> 1;
+      T.p(a[m*3], a[m*3 + 1], a[m*3 + 2]); const al = Math.min(1, alfa*T.A); if (al < 0.01) continue;
+      C.globalAlpha = al; C.beginPath(); tem = false;
+      for (let j = i; j <= f; j++) T.ln(C, a[j*3], a[j*3 + 1], a[j*3 + 2]);
+      C.stroke();
+    }
+    C.globalAlpha = 1;
+  };
+  // círculo no espaço: centro, raio, eixo 'y' (deitado), 'z' (de pé, de frente) ou 'x'
+  T.circulo = (C, x, y, z, r, eixo = 'y', n = 48, a0 = 0, a1 = Math.PI*2) => {
+    tem = false;
+    for (let i = 0; i <= n; i++){
+      const a = a0 + (a1 - a0)*i/n, c = Math.cos(a)*r, s = Math.sin(a)*r;
+      if (eixo === 'y') T.ln(C, x + c, y, z + s); else if (eixo === 'z') T.ln(C, x + c, y + s, z); else T.ln(C, x, y + c, z + s);
+    }
+  };
+  // grade do chão (y = nivel) e eixo, para dar referência de espaço
+  T.chao = (C, nivel = -1, tam = 1.2, div = 8, cor = 'rgba(150,190,230,1)', alfa = 0.07) => {
+    if (!T.grade) return;
+    C.save(); C.strokeStyle = cor; C.lineWidth = 1;
+    for (let i = 0; i <= div; i++){
+      const u = -tam + 2*tam*i/div;
+      T.seg(C, u, nivel, -tam, u, nivel, tam, alfa); T.seg(C, -tam, nivel, u, tam, nivel, u, alfa);
+    }
+    C.restore();
+  };
+  T.ler && T.ler();
+  return T;
+};
+</script>
+<script>
+(() => {
+'use strict';
+// ---------- núcleo v2 das conjecturas ----------
+// Motor de som do Cometa de Goldbach / Recamán (um canal por elemento com volume e envios para reverb Valhalla, delay,
+// pitch delay e bit crusher; filtro, saturação e largura na saída), timbres e ADSR do Corredor Solitário, efeitos de
+// vídeo (brilho, contraste, saturação, matiz, brilho difuso, desfoque, rastro com zoom e giro, inverter, espelho) e o
+// painel padrão montado automaticamente. Cada obra só descreve os seus elementos e desenha.
+const $ = id => document.getElementById(id);
+function Nucleo(cfg){
+  cfg = cfg || {};
+  const EL = (cfg.elementos || []).map(e => Object.assign({ vol: 1, V: 0.5, D: 0.2, P: 0, B: 0, timbre: 'sino' }, e));
+  const P = {};
+
+  // ---------- painel padrão ----------
+  const rg = (id, lab, min, max, step, v) => `<div class="row"><label for="${id}">${lab}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${v}"></div>`;
+  const sl = (id, lab, opts, v) => `<div class="row"><label for="${id}">${lab}</label><select id="${id}">${opts.map(([a, b]) => `<option value="${a}"${String(a) === String(v) ? ' selected' : ''}>${b}</option>`).join('')}</select></div>`;
+  const ck = (id, lab, v) => `<div class="row"><label for="${id}">${lab}</label><input type="checkbox" id="${id}"${v ? ' checked' : ''}></div>`;
+  const sub = t => `<div class="sub">${t}</div>`;
+  const ESCALAS = [['jonico','Jônico (maior)'],['dorico','Dórico'],['frigio','Frígio'],['lidio','Lídio'],['mixolidio','Mixolídio'],['eolio','Eólio (menor)'],
+    ['menorHarm','Menor harmônica'],['menorMel','Menor melódica'],['frigioDom','Frígio dominante'],['hungara','Húngara menor'],['penta','Pentatônica menor'],
+    ['pentaMaior','Pentatônica maior'],['hirajoshi','Hirajoshi'],['tons','Tons inteiros']];
+  const TLIST = [['sino','Sino'],['corda','Corda'],['macio','Macio'],['vidro','Vidro'],['marimba','Marimba'],['celesta','Celesta'],['kalimba','Kalimba'],
+    ['sopro','Sopro'],['sinoGrave','Sino grave'],['harpa','Harpa'],['pad','Pad'],['seno','Seno puro'],['grave','Baixo redondo'],['percussao','Percussão']];
+  const nucleo = $('nucleo'), nVideo = $('nucleoVideo');
+  if (nucleo){
+    let h = '<h2>Som</h2>' + sl('scale', 'Modo', ESCALAS, 'dorico') + rg('vol', 'Volume geral', 0, 1, 0.01, 0.75);
+    h += '<h2>Volumes</h2>' + EL.map(e => rg('vol' + e.k, e.nome, 0, 1.5, 0.01, e.vol)).join('') + rg('drone', 'Drone', 0, 1, 0.01, 0.45);
+    h += '<h2>Timbre</h2>' + EL.filter(e => e.timbre !== '-').map(e => sl('tm' + e.k, e.nome, TLIST, e.timbre)).join('');
+    h += rg('tBright', 'Brilho', 0.2, 3, 0.01, 1) + rg('tPart', 'Parcial metálica', 0, 3, 0.01, 1) + rg('tRatio', 'Razão da parcial', 0.5, 2, 0.01, 1)
+       + rg('tDet', 'Desafinação', 0, 40, 0.5, 0) + rg('tLen', 'Duração', 0.2, 3, 0.01, 1)
+       + sl('envMode', 'Envelope', [['timbre','Do timbre'],['manual','ADSR manual']], 'timbre')
+       + sub('Amplitude') + rg('aA', 'Ataque', 0.001, 3, 0.001, 0.005) + rg('aD', 'Decaimento', 0.01, 4, 0.01, 0.9) + rg('aS', 'Sustentação', 0, 1, 0.01, 0.25) + rg('aR', 'Repouso', 0.01, 6, 0.01, 1.4)
+       + sub('Filtro') + rg('fCut', 'Corte', 0.5, 24, 0.1, 3) + rg('fRes', 'Ressonância', 0, 18, 0.1, 2) + rg('fAmt', 'Envelope', 0, 6, 0.05, 2.5)
+       + rg('fA', 'Ataque', 0.001, 3, 0.001, 0.01) + rg('fD', 'Decaimento', 0.01, 4, 0.01, 0.6) + rg('fS', 'Sustentação', 0, 1, 0.01, 0.2) + rg('fR', 'Repouso', 0.01, 6, 0.01, 1);
+    h += '<h2>Efeitos</h2>'
+       + sub('Delay') + rg('dMix', 'Mix', 0, 1, 0.01, 0.45) + rg('dTime', 'Tempo', 0.05, 1.5, 0.01, 0.42) + rg('dFbk', 'Realimentação', 0, 0.92, 0.01, 0.3) + rg('dTone', 'Tom', 400, 9000, 10, 2200)
+       + sub('Reverb Valhalla') + rg('verb', 'Mix', 0, 1, 0.01, 0.55) + rg('vSize', 'Tamanho', 0.5, 2.5, 0.01, 1.2) + rg('vDecay', 'Decaimento', 0.3, 0.95, 0.005, 0.78)
+       + rg('vDamp', 'Amortecimento', 500, 9000, 10, 2400) + rg('vMod', 'Modulação', 0, 1, 0.01, 0.35) + rg('vPre', 'Pré-delay', 0, 0.25, 0.005, 0.03)
+       + sub('Bit crusher') + rg('bMix', 'Mix', 0, 1, 0.01, 0) + rg('bBits', 'Bits', 2, 16, 0.1, 8) + rg('bDown', 'Redução', 1, 40, 1, 4)
+       + sub('Pitch delay') + rg('pMix', 'Mix', 0, 1, 0.01, 0) + rg('pSemi', 'Semitons', -12, 12, 1, 12) + rg('pTime', 'Tempo', 0.05, 1.5, 0.01, 0.5) + rg('pFbk', 'Realimentação', 0, 0.85, 0.01, 0.45)
+       + sub('Saída') + rg('oCut', 'Filtro', 200, 20000, 10, 20000) + rg('oRes', 'Ressonância', 0, 15, 0.1, 0.7) + rg('oDrive', 'Saturação', 0, 1, 0.01, 0) + rg('oWidth', 'Largura estéreo', 0, 1.5, 0.01, 1)
+       + '<div class="btns"><button id="bFxDef" type="button">Efeitos padrão</button><button id="bFxZero" type="button">Efeitos zerados</button></div>';
+    h += '<h2>Envios</h2>' + EL.concat([{ k: 'Dro', nome: 'Drone', V: 1, D: 0, P: 0, B: 0 }]).map(e => sub(e.nome)
+       + rg('s' + e.k + 'V', 'Reverb', 0, 1, 0.01, e.V) + rg('s' + e.k + 'D', 'Delay', 0, 1, 0.01, e.D) + rg('s' + e.k + 'P', 'Pitch delay', 0, 1, 0.01, e.P) + rg('s' + e.k + 'B', 'Bit crusher', 0, 1, 0.01, e.B)).join('');
+    nucleo.innerHTML = h;
+  }
+  if (nVideo){
+    nVideo.innerHTML = '<h2>Vídeo</h2>' + rg('vBri', 'Brilho', 0.3, 2.5, 0.01, 1) + rg('vCon', 'Contraste', 0.4, 2.5, 0.01, 1) + rg('vSat', 'Saturação', 0, 3, 0.01, 1)
+      + rg('vHue', 'Matiz', 0, 360, 1, 0) + rg('vGlow', 'Brilho difuso', 0, 30, 0.5, 4) + rg('vBlur', 'Desfoque', 0, 8, 0.1, 0) + rg('vTrail', 'Rastro', 0, 0.97, 0.01, 0)
+      + rg('vZoom', 'Zoom do rastro', 0.95, 1.06, 0.001, 1.01) + rg('vRot', 'Giro do rastro', -3, 3, 0.05, 0.3) + ck('vInv', 'Inverter', false)
+      + sl('vMirror', 'Espelho', [['0','Nenhum'],['2','2 lados'],['4','4 lados']], '0') + ck('showTxt', 'Texto', true)
+      + '<div class="btns"><button id="bRe" type="button">Recomeçar</button><button id="bFull" type="button">Tela cheia</button></div>';
+  }
+  // padrões próprios de cada obra
+  for (const k in (cfg.padroes || {})){ const el = $(k); if (!el) continue; if (el.type === 'checkbox') el.checked = !!cfg.padroes[k]; else el.value = cfg.padroes[k]; }
+  const FX_IDS = ['dMix','dTime','dFbk','dTone','verb','vSize','vDecay','vDamp','vMod','vPre','bMix','bBits','bDown','pMix','pSemi','pTime','pFbk','oCut','oRes','oDrive','oWidth'];
+  const FX_PAD = {}; for (const k of FX_IDS){ const el = $(k); if (el) FX_PAD[k] = el.value; }
+
+  // ---------- leitura dos controles ----------
+  const panel = $('panel');
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id]')].filter(el => !el.id.startsWith('bk') && el.type !== 'file');
+  function readP(){ for (const el of ctrls()) P[el.id] = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' || el.type === 'text') ? el.value : el.value === '' ? NaN : parseFloat(el.value); }
+  readP();
+  const listeners = [];
+  for (const el of ctrls()){
+    el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => {
+      const old = Object.assign({}, P); readP(); applyMix(); if (el.id[0] === 'v' || el.id === 'showTxt') applyVideo();
+      for (const fn of listeners) fn(el.id, old);
+    });
+  }
+  const setCtl = (k, v) => { const el = $(k); if (!el) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+  if ($('bFxDef')) $('bFxDef').addEventListener('click', () => { for (const k in FX_PAD) setCtl(k, FX_PAD[k]); });
+  if ($('bFxZero')) $('bFxZero').addEventListener('click', () => { for (const k of ['dMix','verb','bMix','pMix','oDrive']) setCtl(k, 0); setCtl('oCut', 20000); setCtl('oRes', 0.7); });
+
+  // ---------- áudio ----------
+  const WORKLET_SRC = `
+  class Crusher extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'bits',defaultValue:8},{name:'down',defaultValue:4},{name:'mix',defaultValue:0}]; }
+    constructor(){ super(); this.ph = [0,0]; this.hold = [0,0]; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0]; if (!i || !i.length) return true;
+      const mix = p.mix[0], bits = p.bits[0], down = Math.max(1, p.down[0]), step = Math.pow(0.5, bits - 1);
+      for (let c = 0; c < o.length; c++){
+        const x = i[c] || i[0], y = o[c];
+        if (mix <= 0.0001){ y.set(x); continue; }
+        for (let n = 0; n < y.length; n++){
+          if (++this.ph[c] >= down){ this.ph[c] -= down; this.hold[c] = step * Math.round(x[n] / step); }
+          y[n] = x[n] * (1 - mix) + this.hold[c] * mix;
+        }
+      }
+      return true;
+    }
+  }
+  class PitchDelay extends AudioWorkletProcessor {
+    static get parameterDescriptors(){ return [{name:'time',defaultValue:0.5},{name:'fb',defaultValue:0.45},{name:'semi',defaultValue:12}]; }
+    constructor(){ super(); this.N = Math.ceil(sampleRate*2.2); this.buf = new Float32Array(this.N); this.w = 0; this.ph = 0; this.W = Math.round(sampleRate*0.07); }
+    read(pos){ const N = this.N; pos = ((pos % N) + N) % N; const i0 = Math.floor(pos), fr = pos - i0; return this.buf[i0]*(1-fr) + this.buf[(i0+1)%N]*fr; }
+    process(ins, outs, p){
+      const i = ins[0], o = outs[0], L = o[0].length;
+      const D = Math.min(this.N - this.W - 4, p.time[0]*sampleRate), fb = p.fb[0], ratio = Math.pow(2, p.semi[0]/12), W = this.W;
+      const inc = (1 - ratio) / W;
+      for (let n = 0; n < L; n++){
+        const x = i && i.length ? (i[0][n] + (i[1] ? i[1][n] : i[0][n]))*0.5 : 0;
+        this.ph += inc; this.ph -= Math.floor(this.ph);
+        let y = 0;
+        for (let k = 0; k < 2; k++){ const ph = (this.ph + k*0.5) % 1; y += this.read(this.w - D - W - ph*W) * Math.sin(Math.PI*ph); }
+        y *= 0.75;
+        this.buf[this.w] = x + Math.tanh(y*fb);
+        this.w = (this.w + 1) % this.N;
+        for (let c = 0; c < o.length; c++) o[c][n] = y;
+      }
+      return true;
+    }
+  }
+  registerProcessor('conj-crusher', Crusher);
+  registerProcessor('conj-pitchdelay', PitchDelay);
+  `;
+  let AC = null, master, comp, fxF, fxDrive, dFb, dRet, dLpF, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  let preDelay = null, combs = [], srcBus = {}, pdIn = null, pdOut = null, crIn = null, crOut = null, pdNode = null, crusher = null, lastDrive = -1;
+  const SCALES = {
+    jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
+    mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
+    menorHarm:[0,2,3,5,7,8,11], menorMel:[0,2,3,5,7,9,11], frigioDom:[0,1,4,5,7,8,10], hungara:[0,2,3,6,7,8,11],
+    penta:[0,3,5,7,10], pentaMaior:[0,2,4,7,9], hirajoshi:[0,2,3,7,8], tons:[0,2,4,6,8,10]
+  };
+  const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
+  const ROOT = 73.416; // Ré2
+  const now = () => AC ? AC.currentTime : performance.now()/1000;
+  let voices = 0;
+  const MAXV = cfg.maxVozes || 56;
+  function allpass(input, dt, g){
+    const sum = AC.createGain(), d = AC.createDelay(0.2), fbg = AC.createGain(), ff = AC.createGain(), o = AC.createGain();
+    d.delayTime.value = dt; fbg.gain.value = g; ff.gain.value = -g;
+    input.connect(sum); sum.connect(d); d.connect(fbg); fbg.connect(sum); sum.connect(ff); ff.connect(o); d.connect(o);
+    return o;
+  }
+  function initAudio(){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
+    master = AC.createGain();
+    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
+    fxDrive = AC.createWaveShaper(); fxDrive.oversample = '2x';
+    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(comp); comp.connect(AC.destination);
+    dryBus = AC.createGain(); dryBus.connect(master);
+    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
+    // reverb "Valhalla": pré-delay, difusão em allpass e pentes modulados
+    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
+    preDelay = AC.createDelay(0.5); preDelay.delayTime.value = 0.03;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200;
+    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 5000;
+    verbIn.connect(preDelay); preDelay.connect(hp); hp.connect(pre);
+    let diff = pre;
+    for (const [dt, gg] of [[0.0047,0.62],[0.0113,0.6],[0.0171,0.58],[0.0231,0.55]]) diff = allpass(diff, dt, gg);
+    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373,0.1489,0.1601].forEach((dt, i) => {
+      const d = AC.createDelay(0.6); d.delayTime.value = dt;
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+      const fb = AC.createGain(); fb.gain.value = 0.78;
+      const o = AC.createGain(); o.gain.value = 0.15;
+      const lfo = AC.createOscillator(); lfo.frequency.value = 0.13 + i*0.071;
+      const lg = AC.createGain(); lg.gain.value = 0.0012; lfo.connect(lg); lg.connect(d.delayTime); lfo.start();
+      diff.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
+      combs.push({ d, lp, fb, lg, base: dt });
+    });
+    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
+    dFb = AC.createGain(); dFb.gain.value = 0.3; dRet = AC.createGain(); dRet.gain.value = 1;
+    dLpF = AC.createBiquadFilter(); dLpF.type = 'lowpass'; dLpF.frequency.value = 2200;
+    delay.connect(dLpF); dLpF.connect(dFb); dFb.connect(delay); dLpF.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
+    pdIn = AC.createGain(); pdOut = AC.createGain(); pdOut.gain.value = 0; pdOut.connect(dryBus); pdOut.connect(verbIn);
+    crIn = AC.createGain(); crOut = AC.createGain(); crOut.gain.value = 0; crOut.connect(master);
+    for (const k of EL.map(e => e.k).concat(['Dro'])){
+      const bus = AC.createGain(); bus.connect(dryBus); const snd = {};
+      for (const [suf, dest] of [['V', verbIn], ['D', delay], ['P', pdIn], ['B', crIn]]){ const gg = AC.createGain(); gg.gain.value = 0; bus.connect(gg); gg.connect(dest); snd[suf] = gg; }
+      srcBus[k] = { bus, snd };
+    }
+    if (AC.audioWorklet){
+      const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+      AC.audioWorklet.addModule(url).then(() => {
+        pdNode = new AudioWorkletNode(AC, 'conj-pitchdelay', { outputChannelCount: [2] }); pdIn.connect(pdNode); pdNode.connect(pdOut);
+        crusher = new AudioWorkletNode(AC, 'conj-crusher', { outputChannelCount: [2] }); crusher.parameters.get('mix').value = 1; crIn.connect(crusher); crusher.connect(crOut);
+        applyMix();
+      }).catch(() => {});
+    }
+    droneG = AC.createGain(); droneG.gain.value = 0;
+    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
+    droneF.connect(droneG); droneG.connect(srcBus.Dro.bus);
+    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f, type, g]) => {
+      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
+    });
+    applyMix();
+  }
+  function applyMix(){
+    if (!AC) return;
+    const t = AC.currentTime;
+    master.gain.setTargetAtTime(P.vol, t, 0.1);
+    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
+    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
+    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
+    delay.delayTime.setTargetAtTime(P.dTime, t, 0.15); dFb.gain.setTargetAtTime(P.dFbk, t, 0.05);
+    dLpF.frequency.setTargetAtTime(P.dTone, t, 0.05); dRet.gain.setTargetAtTime(P.dMix*2.2, t, 0.05);
+    preDelay.delayTime.setTargetAtTime(P.vPre, t, 0.1);
+    for (const c of combs){
+      c.d.delayTime.setTargetAtTime(c.base*P.vSize, t, 0.2); c.fb.gain.setTargetAtTime(P.vDecay, t, 0.1);
+      c.lp.frequency.setTargetAtTime(P.vDamp, t, 0.1); c.lg.gain.setTargetAtTime(0.0035*P.vMod*P.vSize, t, 0.1);
+    }
+    pdOut.gain.setTargetAtTime(P.pMix*1.4, t, 0.05); crOut.gain.setTargetAtTime(P.bMix*1.2, t, 0.05);
+    for (const k in srcBus) if (k !== 'Dro') srcBus[k].bus.gain.setTargetAtTime(P['vol'+k] == null ? 1 : P['vol'+k], t, 0.05);
+    for (const k in srcBus) for (const suf in srcBus[k].snd) srcBus[k].snd[suf].gain.setTargetAtTime((P['s'+k+suf] || 0) * (suf === 'D' ? 1.2 : suf === 'P' ? 1.3 : 1), t, 0.05);
+    if (pdNode){ const pp = pdNode.parameters; pp.get('time').setTargetAtTime(P.pTime, t, 0.1); pp.get('fb').setTargetAtTime(P.pFbk, t, 0.05); pp.get('semi').setValueAtTime(P.pSemi, t); }
+    if (crusher){ const cp = crusher.parameters; cp.get('bits').setValueAtTime(P.bBits, t); cp.get('down').setValueAtTime(P.bDown, t); }
+    fxF.frequency.setTargetAtTime(P.oCut, t, 0.08); fxF.Q.setTargetAtTime(P.oRes, t, 0.08);
+    if (P.oDrive !== lastDrive){ lastDrive = P.oDrive; drive(P.oDrive); }
+    width = P.oWidth;
+  }
+  function drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
+    const n = 2048, c = new Float32Array(n), k = 1 + a*30;
+    for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; }
+  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
+    if (!AC) return;
+    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
+    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
+    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
+  }
+  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
+  function semi(d){ d = Math.round(d); const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
+  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chordName(d){
+    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
+    let name = NOTAS[root];
+    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+      if (q) name += ' ' + q; }
+    return name;
+  }
+  const noteName = d => NOTAS[((semi(d) % 12) + 12) % 12];
+  function out(node, pan, t, end, src){
+    let last = node;
+    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
+    last.connect((srcBus[src] || srcBus[EL[0] ? EL[0].k : 'Dro']).bus);
+    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  }
+  const ok = () => AC && voices < MAXV;
+
+  // ---------- timbres (espectro + parcial + filtro + envelope) ----------
+  const SPECTRA = (() => {
+    const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
+    return { sine: mk(n => n === 1 ? 1 : 0), triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
+             sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)), square: mk(n => n % 2 ? 4/(Math.PI*n) : 0) };
+  })();
+  const TIMBRES = {
+    sino:      { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:2.6 },
+    corda:     { w:'sawtooth', r:1.003,pg:0.4,  cut:10, q:2,   a:0.004, d:1.1 },
+    macio:     { w:'triangle', r:0,    pg:0,    cut:6,  q:0.5, a:0.025, d:2.0 },
+    vidro:     { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:3.2 },
+    marimba:   { w:'sine',     r:4.0,  pg:0.45, cut:0,  q:0.5, a:0.003, d:1.3 },
+    celesta:   { w:'sine',     r:3.0,  pg:0.4,  cut:0,  q:0.5, a:0.004, d:2.4 },
+    kalimba:   { w:'sine',     r:5.4,  pg:0.35, cut:0,  q:0.5, a:0.002, d:1.7 },
+    sopro:     { w:'triangle', r:2.0,  pg:0.22, cut:5,  q:0.5, a:0.09,  d:2.0 },
+    sinoGrave: { w:'sine',     r:1.48, pg:0.55, cut:0,  q:0.5, a:0.005, d:3.6 },
+    harpa:     { w:'square',   r:0,    pg:0,    cut:4,  q:0.5, a:0.003, d:2.0 },
+    pad:       { w:'sawtooth', r:1.006,pg:0.6,  cut:4,  q:0.5, a:0.6,   d:4.5 },
+    seno:      { w:'sine',     r:0,    pg:0,    cut:0,  q:0.5, a:0.012, d:2.6 },
+    grave:     { w:'triangle', r:2.0,  pg:0.12, cut:3,  q:0.7, a:0.01,  d:2.4 },
+    percussao: { w:'sine',     r:1.59, pg:0.9,  cut:0,  q:0.5, a:0.001, d:0.32 }
+  };
+  const waves = {};
+  function waveOf(w){ if (!waves[w]) waves[w] = AC.createPeriodicWave(new Float32Array(33), SPECTRA[w]); return waves[w]; }
+  // nota de um elemento com o timbre escolhido para ele; durMul alonga ou encurta o envelope
+  function note(src, f, t, vel = 0.8, pan = 0, durMul = 1){
+    if (!ok() || !(f > 15 && f < 20000)) return;
+    t = Math.max(t, AC.currentTime);
+    const T = TIMBRES[P['tm' + src]] || TIMBRES.sino, manual = P.envMode === 'manual';
+    const g = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.connect(g);
+    const o = AC.createOscillator(); o.setPeriodicWave(waveOf(T.w)); o.frequency.value = f; o.connect(lp);
+    let o2 = null;
+    if (P.tDet > 0){ o2 = AC.createOscillator(); o2.setPeriodicWave(waveOf(T.w)); o2.frequency.value = f; o2.detune.value = P.tDet; o.detune.value = -P.tDet*0.5; o2.connect(lp); }
+    const lvl = 0.14 * vel * (T.w === 'sawtooth' || T.w === 'square' ? 0.5 : 1) * (o2 ? 0.75 : 1);
+    let end;
+    if (!manual){
+      const dur = T.d * P.tLen * durMul;
+      lp.Q.value = T.q;
+      const c0 = Math.min(18000, f*(T.cut || 30)*P.tBright);
+      lp.frequency.setValueAtTime(c0, t);
+      if (T.cut) lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1*P.tBright), t + Math.min(0.9, dur*0.6));
+      const a = Math.min(T.a, dur*0.4);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      end = t + dur;
+    } else {
+      const tr = t + Math.max(P.aA, 0.12*P.tLen*durMul);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + P.aA);
+      g.gain.setTargetAtTime(lvl*P.aS, t + P.aA, P.aD/4); g.gain.setTargetAtTime(0, tr, P.aR/4);
+      const base = Math.min(18000, f*P.fCut*P.tBright), peak = Math.min(18000, base*Math.pow(2, P.fAmt));
+      lp.Q.value = P.fRes;
+      lp.frequency.setValueAtTime(base, t); lp.frequency.exponentialRampToValueAtTime(peak, t + P.fA);
+      lp.frequency.setTargetAtTime(Math.min(18000, base*Math.pow(2, P.fAmt*P.fS)), t + P.fA, P.fD/4);
+      lp.frequency.setTargetAtTime(base, tr, P.fR/4);
+      end = tr + P.aR*1.6;
+    }
+    let p = null;
+    if (T.r && T.pg*P.tPart > 0.005){
+      p = AC.createOscillator(); p.frequency.value = f*T.r*P.tRatio;
+      const pg = AC.createGain(); pg.gain.setValueAtTime(T.pg*P.tPart, t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, Math.max(0.05, end - t)));
+      p.connect(pg); pg.connect(lp);
+    }
+    out(g, pan, t, end, src);
+    o.start(t); o.stop(end + 0.05); if (o2){ o2.start(t); o2.stop(end + 0.05); } if (p){ p.start(t); p.stop(end + 0.05); }
+  }
+  // grau da escala → nota
+  const play = (src, d, t, vel, pan, durMul, base) => note(src, freq(d, base), t, vel, pan, durMul);
+  let noiseBuf = null;
+  function hit(src, t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = 1.4;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(bp); bp.connect(g); out(g, pan, t, t+dur, src); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
+  }
+  function kick(src, t, vel = 0.8, f0 = 120){
+    if (!ok()) return;
+    t = Math.max(t, AC.currentTime);
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
+    o.connect(g); out(g, 0, t, t+0.5, src); o.start(t); o.stop(t+0.5);
+  }
+  // voz contínua de um elemento (oscilador sustentado): devolve {set(f, gain, pan), stop()}
+  function voz(src, type = 'sine'){
+    if (!AC) return null;
+    const o = AC.createOscillator(); o.type = type; const g = AC.createGain(); g.gain.value = 0;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4000;
+    let pn = null; o.connect(lp); lp.connect(g);
+    if (AC.createStereoPanner){ pn = AC.createStereoPanner(); g.connect(pn); pn.connect(srcBus[src].bus); } else g.connect(srcBus[src].bus);
+    o.start();
+    return {
+      set(f, gain, pan = 0, tc = 0.05, cut){ const t = AC.currentTime; if (f > 0) o.frequency.setTargetAtTime(f, t, tc); g.gain.setTargetAtTime(gain, t, tc);
+        if (pn) pn.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan*width)), t, tc); if (cut) lp.frequency.setTargetAtTime(cut, t, tc); },
+      stop(){ const t = AC.currentTime; g.gain.setTargetAtTime(0, t, 0.1); o.stop(t + 1); }
+    };
+  }
+
+  // ---------- vídeo ----------
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const lay = document.createElement('canvas'), lctx = lay.getContext('2d');
+  const fbk = document.createElement('canvas'), fctx = fbk.getContext('2d');
+  const HAS_FILTER = 'filter' in lctx;
+  const V = { cv, ctx, lay, lctx, W: 0, H: 0, DPR: 1, resizers: [] };
+  function resize(){
+    V.DPR = Math.min(devicePixelRatio || 1, 2); V.W = innerWidth; V.H = innerHeight;
+    for (const c of [cv, lay, fbk]){ c.width = V.W*V.DPR; c.height = V.H*V.DPR; }
+    ctx.setTransform(V.DPR,0,0,V.DPR,0,0); lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    for (const fn of V.resizers) fn();
+  }
+  addEventListener('resize', resize); resize();
+  function applyVideo(){
+    cv.style.filter = `brightness(${P.vBri}) contrast(${P.vCon}) saturate(${P.vSat}) hue-rotate(${P.vHue}deg)${P.vInv ? ' invert(1)' : ''}`;
+    document.body.classList.toggle('semtexto', P.showTxt === false);
+  }
+  applyVideo();
+  // começa um quadro: devolve o contexto da camada onde a obra desenha (tamanho em pixels CSS)
+  V.begin = (clear = true) => {
+    const { W, H } = V;
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    if (P.vTrail > 0){
+      ctx.save(); ctx.globalAlpha = P.vTrail;
+      ctx.translate(W/2, H/2); ctx.rotate(P.vRot*Math.PI/180); ctx.scale(P.vZoom, P.vZoom); ctx.translate(-W/2, -H/2);
+      ctx.drawImage(fbk, 0, 0, W, H); ctx.restore();
+    }
+    lctx.setTransform(V.DPR,0,0,V.DPR,0,0);
+    lctx.globalCompositeOperation = 'source-over'; lctx.globalAlpha = 1; lctx.filter = 'none';
+    if (clear) lctx.clearRect(0, 0, W, H);
+    return lctx;
+  };
+  // fecha o quadro: brilho difuso, desfoque e espelho; guarda o quadro para o rastro
+  V.end = () => {
+    const { W, H } = V;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const m = +P.vMirror, mirrors = m === 4 ? [[1,1],[-1,1],[1,-1],[-1,-1]] : m === 2 ? [[1,1],[-1,1]] : [[1,1]];
+    for (const [sx, sy] of mirrors){
+      ctx.save(); ctx.translate(W/2, H/2); ctx.scale(sx, sy); ctx.translate(-W/2, -H/2);
+      const al = sx === 1 && sy === 1 ? 1 : 0.7;
+      if (HAS_FILTER && P.vGlow > 0){ ctx.filter = `blur(${P.vGlow}px)`; ctx.globalAlpha = 0.55*al; ctx.drawImage(lay, 0, 0, W, H); }
+      ctx.filter = HAS_FILTER && P.vBlur > 0 ? `blur(${P.vBlur}px)` : 'none';
+      ctx.globalAlpha = al; ctx.drawImage(lay, 0, 0, W, H);
+      ctx.restore();
+    }
+    ctx.restore(); ctx.filter = 'none';
+    if (P.vTrail > 0){ fctx.setTransform(1,0,0,1,0,0); fctx.globalCompositeOperation = 'copy'; fctx.drawImage(cv, 0, 0); fctx.globalCompositeOperation = 'source-over'; }
+  };
+  // cor da série (Gelo, Arco-íris, Brasa, Branco) para um valor u em [0,1)
+  V.cor = (u, a = 1, l = 66) => {
+    switch (P.color){
+      case 'arco': return `hsla(${(u*360 + 190) % 360},70%,${l}%,${a})`;
+      case 'brasa': return `hsla(${8 + 40*((u % 1 + 1) % 1)},85%,${l - 4}%,${a})`;
+      case 'branco': return `hsla(0,0%,${Math.min(96, l + 14)}%,${a})`;
+      default: { const k = (u % 1 + 1) % 1; return `hsla(${192 + 38*k},${60 - 26*k}%,${l + 10 - 18*k}%,${a})`; }
+    }
+  };
+
+  // ---------- tela, painel, teclas ----------
+  function toggleFull(){
+    const d = document;
+    try {
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) (d.documentElement.requestFullscreen || d.documentElement.webkitRequestFullscreen).call(d.documentElement);
+      else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } catch (e) {}
+  }
+  let running = false;
+  function setup(onStart, keys = {}){
+    $('start').addEventListener('pointerdown', e => { e.stopPropagation(); go(); });
+    function go(){ if (running) return; initAudio(); running = true; $('start').classList.add('hide'); onStart && onStart(); }
+    $('dot').addEventListener('click', () => $('panel').classList.toggle('on'));
+    const bf = $('bFull'); if (bf) bf.addEventListener('click', toggleFull);
+    const br = $('bRe'); if (br && keys.r) br.addEventListener('click', () => keys.r());
+    const st = $('showTxt');
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+      if (e.target.tagName === 'SELECT') return;
+      const k = e.key.toLowerCase();
+      if (k === 'm') $('panel').classList.toggle('on');
+      else if (k === 'f') toggleFull();
+      else if (k === 't' && st){ st.checked = !st.checked; st.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === ' ' && !running){ e.preventDefault(); go(); }
+      else if (keys[k] || keys[e.key]){ e.preventDefault(); if (running) (keys[k] || keys[e.key])(); }
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const fmt = v => typeof v === 'number' ? v.toLocaleString('pt-BR') : String(v);
+  return { P, V, readP, now, initAudio, applyMix, applyVideo, setDrone, freq, semi, chord, chordName, noteName, scale, SCALES, NOTAS, ROOT,
+    note, play, hit, kick, voz, setup, toggleFull, fmt, on: fn => listeners.push(fn),
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; }, get voices(){ return voices; } };
+}
+
+// ================= GIRASSOL =================
+// Unidades de mundo: o chão é y = 0, um girassol adulto tem perto de 2 de altura; x para a direita, z para quem olha.
+const O = Nucleo({
+  elementos: [
+    { k: 'Flo', nome: 'Flores do disco', timbre: 'kalimba', V: 0.55, D: 0.3 },
+    { k: 'Fol', nome: 'Folhas', timbre: 'harpa', V: 0.6, D: 0.3 },
+    { k: 'Pet', nome: 'Pétalas', timbre: 'celesta', V: 0.6, D: 0.35 },
+    { k: 'Rai', nome: 'Raízes', timbre: 'grave', V: 0.45, D: 0.1 },
+    { k: 'Sem', nome: 'Sementes maduras', timbre: 'vidro', vol: 0.8, V: 0.65, D: 0.4 },
+    { k: 'Que', nome: 'Sementes caindo', timbre: '-', vol: 0.8, V: 0.5, D: 0.1 },
+    { k: 'Sol', nome: 'Sol', timbre: 'sinoGrave', vol: 0.75, V: 0.75, D: 0.25 }
+  ],
+  padroes: { scale: 'lidio', verb: 0.6, vGlow: 4, dMix: 0.32, drone: 0.38 }
+});
+const P = O.P, V = O.V;
+
+const GA = 180*(3 - Math.sqrt(5));            // 137,5077…°
+const FIB = [5, 8, 13, 21, 34, 55, 89, 144, 233];
+const TONS = [0, 2, 4, 7, 9, 11, 14];
+const PROG = [0, 4, 5, 3, 0, 5, 1, 4];
+const TAU = Math.PI*2;
+const clamp = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x;
+const sm = (a, b, x) => { const t = clamp((x - a)/(b - a)); return t*t*(3 - 2*t); };
+const mix = (a, b, t) => a + (b - a)*t;
+const mixC = (c1, c2, t) => [mix(c1[0], c2[0], t), mix(c1[1], c2[1], t), mix(c1[2], c2[2], t)];
+const rgb = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const hash = n => { const s = Math.sin(n*12.9898 + 4.1)*43758.5453; return s - Math.floor(s); };
+function rng(s){ return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0)/4294967296; }; }
+
+// calendário (dias desde o plantio)
+const D = { incha: 2.5, hipo: 3.5, gancho: 7.5, botao: 38, abre: 52, petala: 54, flor0: 58, florDur: 14, murcha: 77, curva: 80, solta: 84, queda: 91, fim: 106 };
+const Y0 = -0.05;                              // profundidade da semente
+
+// paletas
+const PAL = {
+  natural: { raiz: [222, 172, 112], caule: [112, 196, 84], folha: [84, 186, 72], seca: [176, 140, 60], bract: [96, 170, 74], pet: [255, 196, 34], petM: [150, 96, 40],
+    fech: [128, 156, 58], flor: [255, 156, 34], polen: [255, 226, 96], sem: [116, 108, 102], casca: [214, 206, 190] },
+  ouro: { raiz: [200, 140, 60], caule: [210, 160, 70], folha: [200, 150, 60], seca: [130, 90, 40], bract: [200, 150, 70], pet: [255, 200, 90], petM: [140, 90, 40],
+    fech: [120, 86, 30], flor: [255, 186, 70], polen: [255, 230, 150], sem: [150, 108, 50], casca: [230, 200, 140] }
+};
+let pal = PAL.natural;
+
+// ---------- estado ----------
+let plantas = [], dia = 0, fase = 'cresce', fadeT = 0, lastT = 0, nextTick = 0, tickN = 0, grau = 0, info = null;
+let ceuT = 0, dayF = 1, semente = (Math.random()*1e9) | 0;
+const cam = { x: 0, y: -0.03, z: 0, sz: 0.28 };
+const Q = { Rai: [], Fol: [], Pet: [], Flo: [], Sem: [], Que: [] };
+const qpush = (k, e, max = 40) => { const q = Q[k]; q.push(e); if (q.length > max) q.shift(); };
+const soltas = [];                             // pétalas e sementes soltas no ar ou no chão
+const terraPts = [], estrelas = [];
+{ const R = rng(7); for (let i = 0; i < 700; i++) terraPts.push([(R() - 0.5)*9, -Math.pow(R(), 0.8)*1.8, (R() - 0.5)*3, R()]);
+  for (let i = 0; i < 160; i++) estrelas.push([R(), Math.pow(R(), 1.4)*0.62, R()*R()]); }
+
+// ---------- arranjo das flores (Vogel: raio = raiz(n), ângulo = n × divergência) ----------
+let cacheK = '', U = null, Vv = null, RH = null, NB1 = null, NB2 = null, SG1 = null, SG2 = null;
+function arranjo(){
+  const N = P.flores | 0, ang = P.angulo, k = N + '|' + ang;
+  if (k === cacheK) return; cacheK = k;
+  U = new Float32Array(N); Vv = new Float32Array(N); RH = new Float32Array(N);
+  NB1 = new Int16Array(N); NB2 = new Int16Array(N); SG1 = new Int8Array(N); SG2 = new Int8Array(N);
+  const a = ang*Math.PI/180;
+  for (let n = 0; n < N; n++){ const r = Math.sqrt((n + 0.5)/N), th = n*a; U[n] = r*Math.cos(th); Vv[n] = r*Math.sin(th); RH[n] = r; }
+  // vizinhos: as duas famílias de Fibonacci mais próximas (as parastíquias)
+  for (let n = 0; n < N; n++){
+    let b1 = -1, d1 = 1e9, b2 = -1, d2 = 1e9;
+    for (const F of FIB){
+      const m = n + F; if (m >= N) break;
+      const d = (U[m] - U[n])**2 + (Vv[m] - Vv[n])**2;
+      if (d < d1){ b2 = b1; d2 = d1; b1 = m; d1 = d; } else if (d < d2){ b2 = m; d2 = d; }
+    }
+    NB1[n] = b1; NB2[n] = b2;
+    const sg = m => m < 0 ? 0 : (U[n]*Vv[m] - Vv[n]*U[m]) > 0 ? 1 : -1;
+    SG1[n] = sg(b1); SG2[n] = sg(b2);
+  }
+}
+function familias(n){
+  if (!NB1 || n < 0 || n >= NB1.length) return null;
+  const a = NB1[n] - n, b = NB2[n] - n;
+  if (NB1[n] < 0 || NB2[n] < 0) return null;
+  return [Math.min(a, b), Math.max(a, b)];
+}
+
+// ---------- uma planta ----------
+function gerarRaizes(p, R){
+  const out = p.raizes, sc = p.H/1.9;
+  function raiz(x, y, z, vx, vy, vz, L, t0, rate, nivel){
+    const st = 0.02, n = Math.max(2, L/st | 0), pts = [x, y, z];
+    for (let k = 0; k < n; k++){
+      vx += (R() - 0.5)*0.3; vz += (R() - 0.5)*0.3; vy += (R() - 0.5)*0.16 - (nivel ? 0.035 : 0.09);
+      const m = Math.hypot(vx, vy, vz) || 1; vx /= m; vy /= m; vz /= m;
+      x += vx*st; y += vy*st; z += vz*st; if (y > Y0*0.4) y = Y0*0.4;
+      pts.push(x, y, z);
+    }
+    const r = { pts, n, t0, rate, nivel, st, ev: false }; out.push(r);
+    if (nivel >= 2) return;
+    const nl = nivel === 0 ? 16 : 2 + (R()*3 | 0);
+    for (let j = 0; j < nl; j++){
+      const f = nivel === 0 ? 0.06 + 0.86*j/nl + R()*0.03 : 0.2 + 0.7*R(), k = Math.min(n, f*n | 0);
+      const a = nivel === 0 ? j*GA*Math.PI/180 + R()*0.5 : Math.atan2(pts[k*3 + 2] - p.z, pts[k*3] - p.x) + (R() - 0.5)*1.6;
+      const Lc = nivel === 0 ? (0.62*(1 - f*0.55))*(0.7 + 0.6*R())*sc : (0.1 + 0.14*R())*sc;
+      raiz(pts[k*3], pts[k*3 + 1], pts[k*3 + 2], Math.cos(a)*0.9, -0.25 - 0.35*R(), Math.sin(a)*0.9,
+        Lc, t0 + k*st/rate + (nivel === 0 ? 1.2 : 2.5) + R()*1.5, rate*(nivel === 0 ? 0.62 : 0.5), nivel + 1);
+    }
+  }
+  raiz(p.x, Y0, p.z, 0, -1, 0, 0.95*sc, D.incha, 0.036*sc, 0);
+}
+function novaPlanta(i, n, R){
+  const sp = n === 3 ? 1.25 : 0.95;
+  const p = { i, x: n === 1 ? 0 : (i - (n - 1)/2)*sp + (R() - 0.5)*0.25, z: n === 1 ? 0 : (R() - 0.5)*0.9,
+    t0: i === 0 ? 0 : R()*6, H: (1.75 + R()*0.4)*P.altura, Rd: (0.24 + R()*0.06)*Math.sqrt(P.altura), nos: 15 + (R()*6 | 0),
+    psi0: R()*TAU, lean: (R() - 0.5)*0.1, phi: -1.1, ph: R()*TAU, raizes: [], folhas: [], petalas: [],
+    N: 0, iFlo: 0, iSem: 0, iQue: 0, caida: null, h: 0, dep: 0, cab: null, casca: null };
+  gerarRaizes(p, R);
+  for (let k = 0; k < p.nos; k++){
+    const f = k/(p.nos - 1);
+    p.folhas.push({ k, hN: 0.06 + 0.82*Math.pow(f, 1.12), psi: p.psi0 + k*GA*Math.PI/180, nasceu: false, ph: R()*TAU,
+      Lm: 0.4*p.H/1.9*(0.42 + 0.58*Math.pow(Math.sin(Math.PI*(k + 1.6)/(p.nos + 1.2)), 0.8))*(0.85 + 0.3*R()) });
+  }
+  const np = +P.petalas;
+  for (let k = 0; k < np; k++) p.petalas.push({ k, d: R()*3, m: R()*4, solta: D.solta + R()*6, ev: false, caiu: false, len: 0.85 + 0.3*R() });
+  return p;
+}
+function reset(){
+  semente = (semente*1103515245 + 12345) & 0x7fffffff;
+  const R = rng(semente), n = +P.plantas || 1;
+  plantas = []; for (let i = 0; i < n; i++) plantas.push(novaPlanta(i, n, R));
+  dia = 0; fase = 'cresce'; fadeT = 0; soltas.length = 0;
+  for (const k in Q) Q[k].length = 0;
+  const p0 = plantas[0]; cam.x = 0; cam.y = -0.03; cam.z = 0; cam.sz = n > 1 ? 1.2 : 0.28;
+  arranjo();
+}
+
+// ---------- projeção (2D de frente, ou a Vista 3D) ----------
+const T3 = Vista3D({ ligado: false, giro: 0.06, incl: 10, yaw: 0, nevoa: 0.2 });
+let PX = 0, PY = 0, PS = 1, PA = 1, K2 = 300, PXU = 300;
+function pj(x, y, z){
+  const u = (x - cam.x)/cam.sz, v = (y - cam.y)/cam.sz, w = (z - cam.z)/cam.sz;
+  if (T3.on){ if (!T3.p(u, v, w)) return false; PX = T3.X; PY = T3.Y; PS = T3.S; PA = T3.A; return true; }
+  PX = V.W/2 + u*K2; PY = V.H/2 - v*K2; PS = 1; PA = 1; return true;
+}
+let tem = false;
+const mv = (C, x, y, z) => { tem = pj(x, y, z); if (tem) C.moveTo(PX, PY); };
+const ln = (C, x, y, z) => { const ok = pj(x, y, z); if (ok){ tem ? C.lineTo(PX, PY) : C.moveTo(PX, PY); } tem = ok; };
+function ponto(C, x, y, z, r, cor, a){
+  if (!pj(x, y, z)) return; const rr = Math.max(0.5, r*PS), al = a*PA; if (al < 0.01) return;
+  C.globalAlpha = Math.min(1, al); C.fillStyle = cor;
+  if (rr < 1.6) C.fillRect(PX - rr, PY - rr, rr*2, rr*2); else { C.beginPath(); C.arc(PX, PY, rr, 0, TAU); C.fill(); }
+}
+
+// ---------- calendário da planta ----------
+function alturaCaule(p, d){
+  if (d < D.hipo) return 0;
+  const hip = 0.13*sm(D.hipo, D.gancho + 0.5, d);
+  const g = x => 1/(1 + Math.exp(-(x - 30)/6.5)), g0 = g(8), g1 = g(62);
+  return hip + (p.H - 0.13)*clamp((g(d) - g0)/(g1 - g0));
+}
+const gancho = d => d < D.hipo ? 0 : d < 6 ? 1 : 1 - sm(6, D.gancho + 0.3, d);
+function betaDe(d){
+  if (d < D.botao) return 1.42;
+  if (d < D.abre) return mix(1.42, 1.0, sm(D.botao, D.abre, d));
+  if (d < D.flor0) return mix(1.0, 0.18, sm(D.abre, D.flor0, d));
+  return mix(0.18, -0.8, sm(D.curva, D.queda + 5, d));
+}
+function sig(){ return TAU*ceuT/Math.max(4, P.ciclo) + 0.35; }
+
+// ---------- uma planta por quadro: geometria, eventos e desenho ----------
+function planta(C, p, dt, now, alfa, ev){
+  const d = dia - p.t0, lw = P.linha;
+  // heliotropismo: jovem segue o sol, à noite volta para o leste; depois de abrir fica no leste
+  const s = sig(), solAz = -Math.cos(s)*1.15;
+  let alvo = -0.32 + (p.i % 2 ? 0.08 : -0.06)*(p.i > 0);
+  if (d < D.abre - 2 && P.ceu && P.helio) alvo = Math.sin(s) > 0 ? solAz : -1.15;
+  else if (d < D.abre - 2) alvo = 0;
+  p.phi += (alvo - p.phi)*(1 - Math.exp(-dt*0.9));
+  const beta = betaDe(d), phi = p.phi;
+  const dX = Math.sin(phi), dZ = Math.cos(phi);
+
+  // ----- raízes -----
+  let dep = 0;
+  C.lineCap = 'round'; C.lineJoin = 'round';
+  for (const r of p.raizes){
+    if (d < r.t0) continue;
+    if (!r.ev){ r.ev = true; if (ev && r.nivel > 0 && r.nivel < 2) qpush('Rai', { x: r.pts[0], nivel: r.nivel }, 8); }
+    if (!P.raizV) continue;
+    const f = (d - r.t0)*r.rate/r.st, m = Math.min(r.n, f | 0);
+    if (m < 1 && f < 0.3) continue;
+    const c = r.nivel === 0 ? pal.raiz : mixC(pal.raiz, [150, 120, 90], r.nivel*0.25);
+    C.strokeStyle = rgb(c, 1); C.lineWidth = Math.max(0.6, (r.nivel === 0 ? 2.2 : r.nivel === 1 ? 1.25 : 0.7)*lw*Math.min(1.6, PXU*0.004 + 0.5));
+    C.globalAlpha = (r.nivel === 0 ? 0.75 : r.nivel === 1 ? 0.5 : 0.32)*alfa;
+    C.beginPath(); tem = false;
+    for (let k = 0; k <= m; k++) ln(C, r.pts[k*3], r.pts[k*3 + 1], r.pts[k*3 + 2]);
+    // ponta parcial
+    const k = Math.min(r.n, m + 1), fr = f - m;
+    if (k > m && fr > 0){ const a = m*3, b = k*3; ln(C, mix(r.pts[a], r.pts[b], fr), mix(r.pts[a + 1], r.pts[b + 1], fr), mix(r.pts[a + 2], r.pts[b + 2], fr)); }
+    C.stroke();
+    const yb = r.pts[Math.min(r.n, m + 1)*3 + 1]; if (yb < -dep) dep = -yb;
+    if (m < r.n){ const q = Math.min(r.n, m + 1)*3; ponto(C, r.pts[q], r.pts[q + 1], r.pts[q + 2], 1.8*lw, rgb(pal.polen, 1), 0.5*alfa); }
+  }
+  p.dep = Math.max(0.04, dep);
+
+  // ----- caule -----
+  const L = alturaCaule(p, d), hk = gancho(d), neck = Math.PI/2 - beta;
+  const ns = 40, ds = L/ns, sway = 0.025*Math.sin(now*0.6 + p.ph)*sm(10, 30, d);
+  const cp = new Float32Array((ns + 1)*3);
+  let x = p.x, y = Y0, z = p.z; cp[0] = x; cp[1] = y; cp[2] = z;
+  for (let i = 1; i <= ns; i++){
+    const sN = i/ns, a = (p.lean + sway)*sN + hk*Math.PI*0.95*sm(0.45, 1, sN) + (1 - hk)*neck*sm(0.68, 1, sN);
+    x += Math.sin(a)*ds*dX; z += Math.sin(a)*ds*dZ; y += Math.cos(a)*ds;
+    cp[i*3] = x; cp[i*3 + 1] = y; cp[i*3 + 2] = z;
+  }
+  p.h = y;
+  const tip = [x, y, z];
+  let tx = cp[ns*3] - cp[(ns - 1)*3], ty = cp[ns*3 + 1] - cp[(ns - 1)*3 + 1], tz = cp[ns*3 + 2] - cp[(ns - 1)*3 + 2];
+  { const m = Math.hypot(tx, ty, tz); if (m > 1e-6){ tx /= m; ty /= m; tz /= m; } else { tx = 0; ty = 1; tz = 0; } }
+  const e1 = [Math.cos(phi), 0, -Math.sin(phi)];
+  const e2 = [ty*e1[2] - tz*0, tz*e1[0] - tx*e1[2], tx*0 - ty*e1[0]];
+  const fol = d > D.murcha ? sm(D.murcha, D.fim, d) : 0;   // envelhecimento
+  const cCaule = mixC(pal.caule, pal.seca, fol*0.8);
+  if (L > 0.002){
+    const grossura = (0.006 + 0.016*sm(8, 50, d))*p.H/1.9;
+    // halo largo + fio
+    // na vista de frente, o trecho do caule atrás do capítulo fica escondido
+    const oculto = new Uint8Array(ns + 1);
+    if (!T3.on && d >= D.botao && ty > -0.999){
+      const Rd = p.Rd*(0.16 + 0.34*sm(D.botao, D.abre, d) + 0.5*sm(D.abre, D.flor0 + D.florDur, d))*(1.05 + 0.6*sm(D.petala, D.flor0, d));
+      const c0 = [x + tx*Rd*0.1, y + ty*Rd*0.1, z + tz*Rd*0.1];
+      if (Math.abs(tz) > 0.05) for (let i = 0; i <= ns; i++){
+        const px = cp[i*3], py = cp[i*3 + 1], pz = cp[i*3 + 2];
+        const tt = ((c0[0] - px)*tx + (c0[1] - py)*ty + (c0[2] - pz)*tz)/tz;
+        if (tt <= 0) continue;
+        const hx = px - c0[0], hy = py - c0[1], hz = pz + tt - c0[2];
+        if (hx*hx + hy*hy + hz*hz < Rd*Rd*0.55) oculto[i] = 1;
+      }
+    }
+    for (const [wMul, al] of [[1, 0.22], [0.28, 0.85]]){
+      C.strokeStyle = rgb(cCaule, 1); C.globalAlpha = al*alfa;
+      C.lineWidth = Math.max(0.8, grossura*PXU*wMul*lw);
+      C.beginPath(); tem = false;
+      for (let i = 0; i <= ns; i++){ if (oculto[i]){ tem = false; continue; } ln(C, cp[i*3], cp[i*3 + 1], cp[i*3 + 2]); }
+      C.stroke();
+    }
+  }
+
+  // ----- semente / casca -----
+  const inch = 1 + 0.28*sm(0, D.incha, d);
+  if (d < D.gancho + 1.2){
+    // antes de germinar fica deitada; depois a casca sobe presa aos cotilédones
+    let sx, sy, sz, ax, ay, az;
+    if (d < D.hipo){ sx = p.x; sy = Y0; sz = p.z; ax = 0.55; ay = -0.83; az = 0; }
+    else { sx = tip[0]; sy = tip[1]; sz = tip[2]; ax = tx; ay = ty; az = tz; }
+    const solta = d > D.gancho - 0.3;
+    if (solta && !p.casca){ p.casca = true; soltas.push({ tipo: 'casca', x: sx, y: sy, z: sz, vx: 0.05, vy: 0.1, vz: 0, r: 0, vr: 2, vida: 0, chao: 0 }); }
+    if (!solta) casca(C, sx, sy, sz, ax, ay, az, 0.034*inch, alfa*(0.6 + 0.4*Math.sin(now*3)*sm(0.3, 2.4, d)*(d < D.hipo)), d);
+  }
+  // ----- cotilédones -----
+  if (d > 6.2){
+    const ab = sm(6.2, 8.8, d), mur = sm(30, 46, d);
+    if (mur < 1) for (const sgn of [-1, 1]){
+      const psi = Math.atan2(e1[2]*sgn, e1[0]*sgn);
+      folha(C, tip, psi, 0.075*p.H/1.9*ab*(1 - 0.4*mur), 0.6 - 0.5*ab + mur*0.8, mixC(pal.folha, pal.seca, mur), alfa*(1 - mur), true, now, 0);
+    }
+  }
+  // ----- folhas -----
+  for (const f of p.folhas){
+    const alvoH = f.hN*p.H;
+    if (L < alvoH*0.92 || d < 9) continue;
+    if (!f.nasceu){ f.nasceu = true; f.tb = d; if (ev) qpush('Fol', { x: tip[0], psi: f.psi }, 6); }
+    const g = sm(0, 11, d - f.tb), sF = clamp(alvoH/L), k = Math.min(ns - 1, sF*ns | 0), fr = sF*ns - k;
+    const B = [mix(cp[k*3], cp[k*3 + 3], fr), mix(cp[k*3 + 1], cp[k*3 + 4], fr), mix(cp[k*3 + 2], cp[k*3 + 5], fr)];
+    const velha = sm(D.murcha - 20 + f.k*0.6, D.fim - 6 + f.k*0.4, d)*(1 - f.k/p.nos*0.5);
+    folha(C, B, f.psi, f.Lm*g, velha*0.9, mixC(pal.folha, pal.seca, velha), alfa*(1 - 0.35*velha), false, now, f.ph);
+  }
+
+  // ----- capítulo -----
+  p.cab = null;
+  if (d >= D.botao){
+    const Rdisc = p.Rd*(0.16 + 0.34*sm(D.botao, D.abre, d) + 0.5*sm(D.abre, D.flor0 + D.florDur, d));
+    const nn = [tx, ty, tz];
+    const C0 = [tip[0] + nn[0]*Rdisc*0.15, tip[1] + nn[1]*Rdisc*0.15, tip[2] + nn[2]*Rdisc*0.15];
+    p.cab = { x: C0[0], y: C0[1], z: C0[2], R: Rdisc };
+    capitulo(C, p, d, C0, e1, e2, nn, Rdisc, alfa, ev, now);
+  }
+  return d;
+}
+
+// casca da semente (aquênio): gota listrada
+function casca(C, x, y, z, ax, ay, az, Lg, a, d){
+  if (a <= 0.01) return;
+  const sx = -ay, sy = ax; // lado no plano da tela
+  const W = Lg*0.38, c = pal.casca;
+  C.globalAlpha = Math.min(1, a); C.strokeStyle = rgb(c, 1); C.fillStyle = rgb(c, 0.12); C.lineWidth = Math.max(0.8, PXU*0.0025*P.linha);
+  C.beginPath(); tem = false;
+  for (let i = 0; i <= 16; i++){ const u = i/16, w = W*Math.pow(Math.sin(Math.PI*u), 0.75)*(1.05 - 0.55*u); ln(C, x + ax*Lg*(u - 0.5) + sx*w, y + ay*Lg*(u - 0.5) + sy*w, z + az*Lg*(u - 0.5)); }
+  for (let i = 16; i >= 0; i--){ const u = i/16, w = W*Math.pow(Math.sin(Math.PI*u), 0.75)*(1.05 - 0.55*u); ln(C, x + ax*Lg*(u - 0.5) - sx*w, y + ay*Lg*(u - 0.5) - sy*w, z + az*Lg*(u - 0.5)); }
+  C.fill(); C.stroke();
+  C.globalAlpha = Math.min(1, a*0.5);
+  for (const q of [-0.45, 0, 0.45]){
+    C.beginPath(); tem = false;
+    for (let i = 2; i <= 13; i++){ const u = i/16, w = W*q*Math.pow(Math.sin(Math.PI*u), 0.75)*(1.05 - 0.55*u); ln(C, x + ax*Lg*(u - 0.5) + sx*w, y + ay*Lg*(u - 0.5) + sy*w, z + az*Lg*(u - 0.5)); }
+    C.stroke();
+  }
+}
+
+// folha cordiforme com pecíolo e nervuras
+function folha(C, B, psi, Lm, mur, cor, a, cotil, now, ph){
+  if (Lm < 0.004 || a < 0.01) return;
+  const ax = Math.cos(psi), az = Math.sin(psi), sx = -az, sz = ax;
+  const Lp = cotil ? 0.005 : Lm*0.34, Lb = Lm, W = Lm*(cotil ? 0.3 : 0.44);
+  const bal = 0.05*Math.sin(now*0.9 + ph);
+  const e0 = (cotil ? 0.2 : 0.8) - mur*0.7 + bal;
+  const P0 = [B[0] + ax*Lp*Math.cos(e0), B[1] + Lp*Math.sin(e0), B[2] + az*Lp*Math.cos(e0)];
+  const n = 12, M = [];
+  let x = P0[0], y = P0[1], z = P0[2];
+  for (let i = 0; i <= n; i++){
+    const u = i/n, e = (cotil ? 0.35 : 0.35) - (1.0 + mur)*u + bal*0.5;
+    if (i){ x += ax*Math.cos(e)*Lb/n; y += Math.sin(e)*Lb/n; z += az*Math.cos(e)*Lb/n; }
+    const w = W*Math.pow(Math.sin(Math.PI*Math.min(1, u*0.97 + 0.03)), cotil ? 1 : 0.65)*(cotil ? 1 : (1 - 0.42*u) + 0.18*Math.exp(-Math.pow((u - 0.06)/0.07, 2)));
+    M.push([x, y, z, w]);
+  }
+  const caida = 0.22 + mur*0.4;
+  C.globalAlpha = Math.min(1, a);
+  C.lineWidth = Math.max(0.6, PXU*0.0022*P.linha);
+  C.strokeStyle = rgb(cor, 0.6); C.fillStyle = rgb(cor, 0.075);
+  C.beginPath(); tem = false;
+  for (const m of M) ln(C, m[0] + sx*m[3], m[1] - m[3]*caida, m[2] + sz*m[3]);
+  for (let i = M.length - 1; i >= 0; i--){ const m = M[i]; ln(C, m[0] - sx*m[3], m[1] - m[3]*caida, m[2] - sz*m[3]); }
+  C.fill(); C.stroke();
+  // pecíolo e nervura central
+  C.strokeStyle = rgb(cor, 0.75); C.beginPath(); tem = false; ln(C, B[0], B[1], B[2]); for (const m of M) ln(C, m[0], m[1], m[2]); C.stroke();
+  if (cotil) return;
+  C.strokeStyle = rgb(cor, 0.32); C.beginPath();
+  for (const i of [2, 4, 6, 8]){
+    const m = M[i], o = M[Math.min(n, i + 2)];
+    for (const sg of [-1, 1]){ mv(C, m[0], m[1], m[2]); ln(C, o[0] + sg*sx*o[3]*0.82, o[1] - o[3]*caida*0.82, o[2] + sg*sz*o[3]*0.82); }
+  }
+  C.stroke();
+}
+
+// capítulo: brácteas, pétalas e as flores do disco em espiral
+function capitulo(C, p, d, C0, e1, e2, nn, R, alfa, ev, now){
+  arranjo();
+  const N = U.length;
+  if (p.N !== N){ // mudou o número de flores: reposiciona os contadores sem tocar
+    p.N = N; p.caida = new Uint8Array(N);
+    const nAb = Math.ceil(N*(1 - (d - D.flor0)/D.florDur));
+    p.iFlo = clamp(nAb, 0, N); p.iSem = clamp(Math.ceil(N*(1 - (d - D.flor0 - 10)/D.florDur)), 0, N); p.iQue = clamp(Math.ceil(N*(1 - (d - D.queda)/11)), 0, N);
+  }
+  const lw = P.linha, W3 = (u, v, h) => [C0[0] + e1[0]*u + e2[0]*v + nn[0]*h, C0[1] + e1[1]*u + e2[1]*v + nn[1]*h, C0[2] + e1[2]*u + e2[2]*v + nn[2]*h];
+  const abre = sm(D.abre - 1, D.flor0, d);
+
+  // brácteas (fechadas formam o botão; abrem e recuam)
+  const nb = 21;
+  C.lineWidth = Math.max(0.6, PXU*0.002*lw);
+  for (let k = 0; k < nb; k++){
+    const th = (N + 40 + k)*GA*Math.PI/180, cr = Math.cos(th), sr = Math.sin(th);
+    const rad = [e1[0]*cr + e2[0]*sr, e1[1]*cr + e2[1]*sr, e1[2]*cr + e2[2]*sr];
+    const tan = [-e1[0]*sr + e2[0]*cr, -e1[1]*sr + e2[1]*cr, -e1[2]*sr + e2[2]*cr];
+    const lb = R*(0.75 - 0.25*abre)*(k % 2 ? 0.9 : 1.05);
+    const dir = [0, 1, 2].map(i => mix(nn[i]*0.62 - rad[i]*0.78, rad[i]*0.85 - nn[i]*0.5, abre));
+    const B = W3(cr*R*0.98, sr*R*0.98, -R*0.05), w = R*0.17;
+    const cor = mixC(pal.bract, pal.seca, sm(D.murcha, D.fim, d));
+    C.globalAlpha = 0.85*alfa; C.strokeStyle = rgb(cor, 0.7); C.fillStyle = rgb(cor, 0.1);
+    C.beginPath(); tem = false;
+    ln(C, B[0] - tan[0]*w, B[1] - tan[1]*w, B[2] - tan[2]*w);
+    ln(C, B[0] + dir[0]*lb, B[1] + dir[1]*lb, B[2] + dir[2]*lb);
+    ln(C, B[0] + tan[0]*w, B[1] + tan[1]*w, B[2] + tan[2]*w);
+    C.fill(); C.stroke();
+  }
+  if (abre <= 0) return;
+
+  // pétalas (flores do raio), na mesma espiral, logo depois da última flor do disco
+  for (const pk of p.petalas){
+    const o = sm(D.petala + pk.d, D.petala + pk.d + 3.5, d);
+    if (o <= 0) continue;
+    const th = (N + pk.k)*GA*Math.PI/180, cr = Math.cos(th), sr = Math.sin(th);
+    if (!pk.ev && o > 0.5){ pk.ev = true; if (ev) qpush('Pet', { x: C0[0] + e1[0]*cr*R, th }, 10); }
+    const w = sm(D.murcha + pk.m, D.murcha + pk.m + 6, d);
+    const rad = [e1[0]*cr + e2[0]*sr, e1[1]*cr + e2[1]*sr, e1[2]*cr + e2[2]*sr];
+    const tan = [-e1[0]*sr + e2[0]*cr, -e1[1]*sr + e2[1]*cr, -e1[2]*sr + e2[2]*cr];
+    const ang = (1 - o)*1.3 + 0.12 - w*1.1;
+    const dir = [0, 1, 2].map(i => rad[i]*Math.cos(ang) + nn[i]*Math.sin(ang));
+    const B = W3(cr*R*0.96, sr*R*0.96, 0);
+    if (d >= pk.solta){
+      if (!pk.caiu){ pk.caiu = true; soltas.push({ tipo: 'petala', x: B[0], y: B[1], z: B[2], vx: dir[0]*0.08, vy: 0.04, vz: dir[2]*0.08, r: th, vr: (Math.random() - 0.5)*3, vida: 0, chao: 0, L: p.Rd*0.7*pk.len, cor: mixC(pal.pet, pal.petM, 0.85), ph: Math.random()*TAU }); }
+      continue;
+    }
+    const Lp = p.Rd*0.86*pk.len*(0.35 + 0.65*o)*(1 - 0.3*w), Wp = p.Rd*0.15*(0.45 + 0.55*o)*(1 - 0.4*w);
+    const cor = mixC(pal.pet, pal.petM, w);
+    C.globalAlpha = Math.min(1, alfa*(0.4 + 0.6*o));
+    C.strokeStyle = rgb(cor, 0.85); C.fillStyle = rgb(cor, 0.16);
+    C.beginPath(); tem = false;
+    for (let i = 0; i <= 10; i++){ const u = i/10, ww = Wp*Math.pow(Math.sin(Math.PI*u), 0.6)*(u < 0.12 ? 0.6 + u*3.3 : 1), cu = -Lp*0.08*u*u;
+      ln(C, B[0] + dir[0]*Lp*u + tan[0]*ww + nn[0]*cu, B[1] + dir[1]*Lp*u + tan[1]*ww + nn[1]*cu, B[2] + dir[2]*Lp*u + tan[2]*ww + nn[2]*cu); }
+    for (let i = 10; i >= 0; i--){ const u = i/10, ww = Wp*Math.pow(Math.sin(Math.PI*u), 0.6)*(u < 0.12 ? 0.6 + u*3.3 : 1), cu = -Lp*0.08*u*u;
+      ln(C, B[0] + dir[0]*Lp*u - tan[0]*ww + nn[0]*cu, B[1] + dir[1]*Lp*u - tan[1]*ww + nn[1]*cu, B[2] + dir[2]*Lp*u - tan[2]*ww + nn[2]*cu); }
+    C.fill(); C.stroke();
+    C.globalAlpha = Math.min(1, alfa*0.35*o); C.beginPath(); mv(C, B[0], B[1], B[2]); ln(C, B[0] + dir[0]*Lp*0.85, B[1] + dir[1]*Lp*0.85, B[2] + dir[2]*Lp*0.85); C.stroke();
+  }
+
+  // eventos: flores que abrem (da borda para o centro), sementes que amadurecem, sementes que caem
+  const nAb = clamp(Math.ceil(N*(1 - (d - D.flor0)/D.florDur)), 0, N);
+  while (p.iFlo > nAb){ p.iFlo--; if (ev) qpush('Flo', { n: p.iFlo, rho: RH[p.iFlo], x: C0[0] + e1[0]*U[p.iFlo]*R + e2[0]*Vv[p.iFlo]*R }, 40); }
+  const nSe = clamp(Math.ceil(N*(1 - (d - D.flor0 - 10)/D.florDur)), 0, N);
+  while (p.iSem > nSe){ p.iSem--; if (ev && p.iSem % 11 === 0) qpush('Sem', { n: p.iSem, x: C0[0] + e1[0]*U[p.iSem]*R }, 12); }
+  const nQu = clamp(Math.ceil(N*(1 - (d - D.queda)/11)), 0, N);
+  while (p.iQue > nQu){
+    p.iQue--; const n = p.iQue;
+    if (hash(n + p.i*7919) < 0.16 && !p.caida[n]){
+      p.caida[n] = 1; const w = W3(U[n]*R, Vv[n]*R, R*0.12*(1 - RH[n]*RH[n]));
+      if (soltas.length < 900) soltas.push({ tipo: 'semente', x: w[0], y: w[1], z: w[2], vx: nn[0]*0.12 + (Math.random() - 0.5)*0.12, vy: nn[1]*0.12, vz: nn[2]*0.12 + (Math.random() - 0.5)*0.12, r: Math.random()*TAU, vr: (Math.random() - 0.5)*8, vida: 0, chao: 0, n });
+    }
+  }
+
+  // flores do disco
+  const modo = P.cor, fam = +P.fam, base = PXU*R*1.55/Math.sqrt(N)*P.pontoT;
+  const pos = new Float32Array(N*3);
+  for (let n = 0; n < N; n++){ const h = R*0.12*(1 - RH[n]*RH[n]), w = W3(U[n]*R, Vv[n]*R, h); pos[n*3] = w[0]; pos[n*3 + 1] = w[1]; pos[n*3 + 2] = w[2]; }
+  // linhas das espirais
+  if (P.para !== 'nenhuma'){
+    C.lineWidth = Math.max(0.5, 0.9*lw);
+    for (const [NB, SG, cor, quer] of [[NB1, SG1, [255, 150, 70], 'hor'], [NB2, SG2, [255, 150, 70], 'hor'], [NB1, SG1, [110, 200, 255], 'anti'], [NB2, SG2, [110, 200, 255], 'anti']]){
+      if (P.para !== 'ambas' && P.para !== quer) continue;
+      const sgQ = quer === 'hor' ? -1 : 1;
+      C.strokeStyle = rgb(cor, 1); C.globalAlpha = 0.28*alfa*abre; C.beginPath();
+      for (let n = 0; n < N; n++){ const m = NB[n]; if (m < 0 || SG[n] !== sgQ || p.caida[n] || p.caida[m]) continue;
+        mv(C, pos[n*3], pos[n*3 + 1], pos[n*3 + 2]); ln(C, pos[m*3], pos[m*3 + 1], pos[m*3 + 2]); }
+      C.stroke();
+    }
+  }
+  const tN = n => D.flor0 + D.florDur*(1 - n/N);
+  for (let n = 0; n < N; n++){
+    if (p.caida[n]) continue;
+    const idade = d - tN(n);
+    let c, sz, a = alfa, glow = 0;
+    if (idade < 0){ c = pal.fech; sz = 0.55; a *= 0.55*abre; }
+    else if (idade < 2.5){ const k = sm(0, 0.6, idade); c = mixC(pal.fech, pal.flor, k); sz = 0.7 + 0.25*k; glow = Math.max(0, 1 - Math.abs(idade - 0.7)/1.4); }
+    else { const k = sm(2.5, 10, idade); c = mixC(pal.flor, pal.sem, k); sz = 0.95 + 0.12*k; a *= 1 - 0.4*k; }
+    if (modo === 'espirais'){ const h = (n % fam)/fam*360, l = idade < 0 ? 32 : idade < 2.5 ? 62 : 52; c = null;
+      C.globalAlpha = Math.min(1, a); ponto(C, pos[n*3], pos[n*3 + 1], pos[n*3 + 2], base*sz*0.5, `hsl(${h},75%,${l}%)`, a); }
+    else ponto(C, pos[n*3], pos[n*3 + 1], pos[n*3 + 2], base*sz*0.5, rgb(c, 1), a);
+    if (glow > 0.05) ponto(C, pos[n*3], pos[n*3 + 1], pos[n*3 + 2], base*(0.9 + glow), rgb(pal.polen, 1), 0.15*glow*alfa);
+  }
+}
+
+// pétalas e sementes soltas: caem, quicam e ficam no chão
+function fisica(dt){
+  for (let i = soltas.length - 1; i >= 0; i--){
+    const s = soltas[i]; s.vida += dt;
+    if (s.chao < 3){
+      if (s.tipo === 'petala'){ s.vy = Math.max(-0.22, s.vy - 0.35*dt); s.vx += Math.sin(s.vida*2.2 + s.ph)*0.15*dt; s.vz *= 0.99; }
+      else s.vy -= 1.4*dt;
+      s.x += s.vx*dt; s.y += s.vy*dt; s.z += s.vz*dt; s.r += s.vr*dt;
+      if (s.y <= 0.004){
+        s.y = 0.004;
+        if (s.tipo === 'semente' && s.chao === 0 && O.running) qpush('Que', { x: s.x }, 10);
+        if (s.tipo === 'petala' || s.chao >= 2){ s.chao = 3; s.vx = s.vy = s.vz = 0; s.vr = 0; }
+        else { s.chao++; s.vy = -s.vy*0.32; s.vx *= 0.5; s.vz *= 0.5; s.vr *= 0.5; }
+      }
+    }
+    if (s.tipo === 'casca' && s.vida > 14) soltas.splice(i, 1);
+  }
+}
+function desenhaSoltas(C, alfa){
+  for (const s of soltas){
+    if (s.tipo === 'semente'){ const L = 0.018; C.strokeStyle = rgb(pal.sem, 1); C.lineWidth = Math.max(1, PXU*0.006*P.pontoT); C.globalAlpha = 0.85*alfa;
+      C.beginPath(); mv(C, s.x - Math.cos(s.r)*L/2, s.y - Math.sin(s.r)*L/2*(s.chao >= 3 ? 0.2 : 1), s.z); ln(C, s.x + Math.cos(s.r)*L/2, s.y + Math.sin(s.r)*L/2*(s.chao >= 3 ? 0.2 : 1), s.z); C.stroke(); }
+    else if (s.tipo === 'petala'){ const L = s.L, f = s.chao >= 3 ? 0.15 : 1; C.strokeStyle = rgb(s.cor, 1); C.lineWidth = Math.max(1, PXU*0.01*P.linha); C.globalAlpha = 0.55*alfa*(s.chao >= 3 ? 0.6 : 1);
+      C.beginPath(); mv(C, s.x - Math.cos(s.r)*L/2, s.y - Math.sin(s.r)*L/2*f, s.z); ln(C, s.x + Math.cos(s.r)*L/2, s.y + Math.sin(s.r)*L/2*f, s.z); C.stroke(); }
+    else if (s.tipo === 'casca'){ const a = alfa*clamp(1 - (s.vida - 9)/5); casca(C, s.x, s.y, s.z, Math.cos(s.r), Math.sin(s.r)*(s.chao >= 3 ? 0.3 : 1), 0, 0.044, a, 99); }
+  }
+}
+
+// ---------- câmera automática ----------
+function alvoCam(){
+  if (!plantas.length) return cam;
+  let xmin = 1e9, xmax = -1e9, h = 0, dep = 0.05;
+  for (const p of plantas){ xmin = Math.min(xmin, p.x); xmax = Math.max(xmax, p.x); h = Math.max(h, p.h); dep = Math.max(dep, p.dep); }
+  const xc = (xmin + xmax)/2, xw = (xmax - xmin)/2, d = dia - plantas[0].t0, multi = plantas.length > 1;
+  const topo = h + (d > D.botao ? plantas[0].Rd*0.9 : 0.02);
+  const solo = P.raizV ? dep : 0.06;
+  const inteira = { x: xc, y: (topo - solo)/2, z: 0, sz: Math.max(0.24, (topo + solo)/2*1.12 + 0.06, xw*1.05 + 0.5) };
+  const germ = { x: xc, y: -0.035 + Math.max(0, h)*0.35, z: 0, sz: Math.max(0.17 + h*0.6 + solo*0.35, multi ? xw*1.05 + 0.45 : 0) };
+  const raiz = { x: xc, y: -solo*0.48, z: 0, sz: Math.max(solo*0.62 + 0.08, xw*1.05 + 0.45) };
+  const cabs = plantas.map(p => p.cab).filter(Boolean);
+  let flor = null;
+  if (cabs.length){
+    let fx0 = 1e9, fx1 = -1e9, fy0 = 1e9, fy1 = -1e9, fz = 0, Rm = 0;
+    for (const c of cabs){ const r = plantas[0].Rd*1.9; fx0 = Math.min(fx0, c.x - r); fx1 = Math.max(fx1, c.x + r); fy0 = Math.min(fy0, c.y - r); fy1 = Math.max(fy1, c.y + r); fz += c.z; Rm = Math.max(Rm, r); }
+    flor = { x: (fx0 + fx1)/2, y: (fy0 + fy1)/2, z: fz/cabs.length, sz: Math.max((fx1 - fx0)/2, (fy1 - fy0)/2)*0.9 };
+  }
+  const lerpC = (a, b, t) => ({ x: mix(a.x, b.x, t), y: mix(a.y, b.y, t), z: mix(a.z, b.z, t), sz: mix(a.sz, b.sz, t) });
+  const m = P.enq;
+  if (m === 'inteira') return inteira;
+  if (m === 'raiz') return raiz;
+  if (m === 'flor') return flor || inteira;
+  let alvo = lerpC(germ, inteira, sm(6, 14, d));
+  if (flor){ const k = sm(D.abre - 2, D.flor0 + 0.5, d)*(1 - sm(D.flor0 + D.florDur + 3, D.flor0 + D.florDur + 8, d)); alvo = lerpC(alvo, flor, k); }
+  return alvo;
+}
+
+// ---------- céu e terra ----------
+function fundo(C, alfa){
+  const W = V.W, H = V.H, s = sig(), su = Math.sin(s);
+  dayF = P.ceu ? sm(-0.12, 0.3, su) : 0.7;
+  pj(cam.x, 0, cam.z); const gy = T3.on ? H*0.62 : PY;
+  if (P.ceu){
+    const hz = clamp(gy, H*0.3, H*1.05);
+    // céu: um azul muito escuro de dia, preto à noite; um calor no horizonte no nascer e no pôr
+    const g = C.createLinearGradient(0, 0, 0, hz);
+    g.addColorStop(0, `rgba(8,16,34,${0.9*dayF*alfa})`); g.addColorStop(1, `rgba(${30 + 40*(1 - Math.abs(su))*dayF | 0},22,${26 - 10*dayF | 0},${0.9*dayF*alfa})`);
+    C.fillStyle = g; C.fillRect(0, 0, W, hz);
+    const noite = (1 - dayF)*alfa;
+    if (noite > 0.02){ C.fillStyle = '#fff'; for (const e of estrelas){ const y = e[1]*hz; if (y > hz - 4) continue; C.globalAlpha = noite*(0.15 + 0.6*e[2])*(0.75 + 0.25*Math.sin(ceuT*2 + e[0]*40)); C.fillRect(e[0]*W, y, 1.3, 1.3); } C.globalAlpha = 1; }
+    // sol
+    if (su > -0.15){
+      let sx, sy, ok = true, r = Math.min(W, H)*0.1;
+      if (T3.on){ ok = T3.p(-Math.cos(s)*2.4, Math.sin(s)*1.9 - 0.1, -1.6); sx = T3.X; sy = T3.Y; }
+      else { sx = W*(0.5 - 0.44*Math.cos(s)); sy = hz - su*hz*0.82; }
+      if (ok){ const k = sm(-0.15, 0.1, su)*alfa, gr = C.createRadialGradient(sx, sy, 0, sx, sy, r);
+        gr.addColorStop(0, `rgba(255,236,190,${0.9*k})`); gr.addColorStop(0.12, `rgba(255,206,120,${0.55*k})`); gr.addColorStop(1, 'rgba(255,150,60,0)');
+        C.fillStyle = gr; C.beginPath(); C.arc(sx, sy, r, 0, TAU); C.fill(); }
+    }
+  }
+  // terra em corte
+  if (P.terra){
+    if (!T3.on){
+      if (gy < H){ const g = C.createLinearGradient(0, gy, 0, H); g.addColorStop(0, `rgba(58,38,20,${0.55*alfa})`); g.addColorStop(1, `rgba(18,11,6,${0.35*alfa})`);
+        C.fillStyle = g; C.fillRect(0, Math.max(0, gy), W, H - Math.max(0, gy));
+        C.strokeStyle = `rgba(214,180,130,${0.3*alfa})`; C.lineWidth = 1; C.beginPath(); C.moveTo(0, gy); C.lineTo(W, gy); C.stroke(); }
+    } else { T3.chao(C, (0 - cam.y)/cam.sz, Math.min(3, 2.2/cam.sz), 12, 'rgba(214,180,130,1)', 0.08*alfa); }
+    C.fillStyle = 'rgb(190,150,100)';
+    for (const t of terraPts){ if (!pj(t[0] + cam.x*0, t[1], T3.on ? t[2] : 0)) continue; if (PX < -2 || PY < -2 || PX > W + 2 || PY > H + 2) continue;
+      C.globalAlpha = (0.08 + 0.18*t[3])*alfa*PA; const r = Math.max(0.6, PXU*0.004*(0.4 + t[3])*PS); C.fillRect(PX - r/2, PY - r/2, r, r); }
+    C.globalAlpha = 1;
+  }
+}
+
+// ---------- música ----------
+const idxFrac = f => Math.min(TONS.length - 1, Math.floor((((f % 1) + 1) % 1)*TONS.length));
+const pan = x => clamp((x - cam.x)/cam.sz*0.75, -1, 1);
+function tick(t, dtk){
+  const tempo = tickN/2; tickN++;
+  const passos = Math.max(1, P.acStep | 0);
+  if (tickN % 2 === 1 && tempo % passos === 0){
+    grau = PROG[((tempo/passos) | 0) % PROG.length];
+    const cresc = plantas.length ? clamp(plantas[0].h/plantas[0].H) : 0;
+    O.setDrone(O.semi(grau), 7, 2.5, 150 + 650*dayF + 450*cresc);
+  }
+  const off = tickN % 2 === 0 ? dtk*0.12 : 0;
+  let voz = P.vozes | 0;
+  const f = Q.Fol.shift();
+  if (f){ const i = idxFrac(f.psi/TAU); O.play('Fol', grau + TONS[i], t, 0.6, pan(f.x) - 0.2, 1.3); O.play('Fol', grau + TONS[i] + 4, t + dtk*0.5, 0.38, pan(f.x) + 0.2, 1.1); voz--; }
+  const pe = Q.Pet.shift();
+  if (pe && voz > 0){ O.play('Pet', grau + 7 + TONS[idxFrac(pe.th/TAU)], t + off, 0.4 + Math.random()*0.25, pan(pe.x), 1); voz--; }
+  if (Q.Flo.length > 16) Q.Flo.splice(0, Q.Flo.length - 16);
+  let k = 0;
+  while (voz > 0 && Q.Flo.length && k < 4){
+    k++; const e = Q.Flo.pop();
+    if (Math.random() > P.dens) continue;
+    const i = idxFrac(e.n*P.angulo/360), reg = e.rho > 0.72 ? 7 : e.rho > 0.42 ? 0 : -7;
+    O.play('Flo', grau + TONS[i] + reg, t + (voz % 2 ? 0 : off) + (k > 1 ? dtk*0.5 : 0), 0.28 + 0.4*Math.random(), pan(e.x), 0.9);
+    voz--;
+  }
+  const r = Q.Rai.shift();
+  if (r && Math.random() < 0.75) O.play('Rai', grau - 7 + [0, 0, 4][r.nivel], t, 0.6 - r.nivel*0.1, pan(r.x)*0.7, 1.4);
+  const s = Q.Sem.shift();
+  if (s && Math.random() < 0.7) O.play('Sem', grau + 14 + TONS[idxFrac(s.n*P.angulo/360)], t + dtk*Math.random()*0.5, 0.22 + Math.random()*0.2, pan(s.x), 1.5);
+  for (let j = 0; j < 2 && Q.Que.length; j++){ const q = Q.Que.shift(); O.hit('Que', t + Math.random()*dtk, 0.3 + Math.random()*0.35, pan(q.x), 700 + Math.random()*1500, 0.05 + Math.random()*0.04); }
+}
+
+// ---------- textos ----------
+function faseTxt(d, p){
+  if (d < 0) return 'A semente espera na terra';
+  if (d < D.incha) return 'A semente bebe água e incha';
+  if (d < D.hipo) return 'Germinação: a radícula rompe a casca e desce';
+  if (d < D.gancho) return 'O caule sobe curvado em gancho, protegendo os cotilédones';
+  if (d < 13) return 'Os cotilédones se abrem para a luz';
+  if (d < D.botao) return P.ceu && P.helio ? 'Folhas em espiral, cada uma a 137,5° da anterior · a planta jovem segue o sol' : 'Folhas em espiral, cada uma a 137,5° da anterior';
+  if (d < D.abre) return 'Botão floral: as brácteas fechadas em espiral';
+  if (d < D.flor0) return 'As pétalas se abrem · o capítulo se volta para o leste';
+  if (d < D.flor0 + D.florDur){ const N = p.N || (P.flores | 0); return `Floração: as flores abrem da borda para o centro · ${O.fmt(N - p.iFlo)} de ${O.fmt(N)}`; }
+  if (d < D.queda) return 'As flores viram sementes · as pétalas murcham e caem · o capítulo se curva';
+  return 'As sementes voltam para a terra';
+}
+
+// ---------- quadro ----------
+function frame(){
+  const t = O.now(), dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
+  let alfa = 1;
+  pal = PAL[P.cor] || PAL.natural;
+  const maxT0 = plantas.reduce((m, p) => Math.max(m, p.t0), 0);
+  if (O.running && plantas.length){
+    if (fase === 'cresce'){
+      dia += dt*P.speed*(P.lenta ? (() => { const d = dia - plantas[0].t0; return d < 9 ? 0.45 : d < D.abre - 2 ? 1 : d < D.flor0 ? 0.6 : d < D.flor0 + D.florDur + 2 ? 0.38 : 0.85; })() : 1);
+      if (P.ceu){ const s0 = Math.sin(sig()); ceuT += dt; const s1 = Math.sin(sig());
+        if (s0 <= 0 && s1 > 0) O.play('Sol', grau + 7, t + 0.02, 0.6, -0.7, 2.2);
+        if (s0 > 0 && s1 <= 0) O.play('Sol', grau, t + 0.02, 0.45, 0.7, 2.2); }
+      if (dia >= D.fim + maxT0){ if (P.auto){ fase = 'fim'; fadeT = 0; O.play('Sol', grau - 7, t + 0.05, 0.6, 0, 2.5); } else dia = D.fim + maxT0; }
+    } else {
+      fadeT += dt/5; alfa = Math.max(0, 1 - fadeT);
+      if (fadeT >= 1.1) reset();
+    }
+    const dtk = 60/P.bpm/2;
+    if (nextTick < t - 0.5) nextTick = t + 0.05;
+    while (nextTick < t + 0.12){ tick(nextTick, dtk); nextTick += dtk; }
+  } else if (P.ceu && !O.running){ /* parado antes de começar */ }
+  fisica(O.running ? dt : 0);
+  // câmera
+  const a = alvoCam(), kc = 1 - Math.exp(-dt*1.1);
+  cam.x += (a.x - cam.x)*kc; cam.y += (a.y - cam.y)*kc; cam.z += (a.z - cam.z)*kc; cam.sz *= Math.exp((Math.log(a.sz) - Math.log(cam.sz))*kc);
+  if (T3.on) T3.quadro(V.W, V.H);
+  K2 = Math.min(V.W, V.H)*0.46; PXU = (T3.on ? T3.R : K2)/cam.sz;
+  const C = V.begin();
+  C.save();
+  fundo(C, alfa);
+  C.globalCompositeOperation = 'lighter';
+  const luz = 0.72 + 0.28*dayF;
+  let d0 = 0;
+  for (const p of plantas){ const d = planta(C, p, dt, t, alfa*luz, O.running && fase === 'cresce'); if (p.i === 0) d0 = d; }
+  desenhaSoltas(C, alfa*luz);
+  C.restore();
+  V.end();
+  if (plantas.length && (t*2 | 0) !== (info && info.k)){
+    info = { k: t*2 | 0 };
+    const p0 = plantas[0], d = dia - p0.t0;
+    $('num').textContent = `dia ${Math.max(1, Math.floor(d) + 1)}` + (plantas.length > 1 ? ` · ${plantas.length} girassóis` : '') + (P.ceu ? (dayF > 0.5 ? ' · ☀' : ' · ☾') : '');
+    $('op').textContent = faseTxt(d, p0);
+    let fam = null;
+    if (d >= D.abre && NB1){ const N = NB1.length, nf = d < D.flor0 ? N - 1 : d < D.flor0 + D.florDur ? Math.max(1, p0.iFlo) : (N*0.7 | 0); fam = familias(Math.min(N - 1, nf)) || familias(N*0.6 | 0); }
+    $('seq').textContent = `${O.chordName(grau)} · ângulo ${P.angulo.toFixed(3).replace('.', ',')}°` + (fam ? ` · espirais ${fam[0]} × ${fam[1]}` : '');
+  }
+  requestAnimationFrame(frame);
+}
+
+O.on(k => { if (k === 'plantas' || k === 'altura' || k === 'petalas') reset(); });
+$('bOuro').addEventListener('click', () => { const el = $('angulo'); el.value = 137.508; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+O.setup(() => { lastT = O.now(); nextTick = O.now() + 0.1; O.setDrone(O.semi(grau), 7, 0.1, 160); }, { r: reset });
+reset();
+window.girassol = { reset, get dia(){ return dia; }, set dia(v){ dia = v; }, get plantas(){ return plantas; }, cam };
+requestAnimationFrame(frame);
+})();
+</script>
+<script>
+// ---------- banco de configurações (comum a todas as conjecturas) ----------
+// Lê e aplica todos os controles do painel (#panel) com id. Salva configurações com nome, carrega pelas teclas 1–9,
+// exporta/importa em .json e lembra os últimos ajustes ao reabrir. Para aplicar, muda o valor do controle e dispara
+// os eventos input/change, então cada obra reage como se a pessoa tivesse mexido no painel.
+(() => {
+  const panel = document.getElementById('panel');
+  if (!panel || window.__banco) return;
+  window.__banco = true;
+  const obra = (location.pathname.split('/').filter(Boolean).filter(s => s !== 'index.html').pop() || 'obra');
+  const KB = 'conjecturas-banco-' + obra, KA = 'conjecturas-atual-' + obra, KL = 'conjecturas-lembrar-' + obra;
+  const ls = {
+    get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const ctrls = () => [...panel.querySelectorAll('input[id],select[id],textarea[id]')]
+    .filter(el => !el.id.startsWith('bk') && el.type !== 'file' && el.type !== 'button' && el.type !== 'submit');
+  const val = el => el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value;
+  const estado = () => { const s = {}; for (const el of ctrls()) s[el.id] = val(el); return s; };
+  const igual = (el, v) => el.type === 'checkbox' || el.type === 'radio' ? el.checked === !!v : String(el.value) === String(v);
+  const fire = el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+  let aplicando = false;
+  function aplicar(s){
+    if (!s) return;
+    aplicando = true;
+    try {
+      // duas passadas: se um controle muda outros (ex.: um modo que reposiciona sliders), a segunda corrige
+      for (let pass = 0; pass < 2; pass++){
+        for (const el of ctrls()){
+          if (!(el.id in s) || igual(el, s[el.id])) continue;
+          if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!s[el.id];
+          else if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(s[el.id]))) continue;
+          else el.value = s[el.id];
+          try { fire(el); } catch (e) { console.warn('banco:', el.id, e); }
+        }
+      }
+    } finally { aplicando = false; }
+    guardarAtual();
+  }
+  const PADRAO = estado();
+
+  // ---------- interface ----------
+  const css = document.createElement('style');
+  css.textContent = `
+    #bkBox{border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:12px;margin-bottom:6px}
+    #bkBox .row label{flex:0 0 52px}
+    #bkBox .btns{margin-top:6px}
+    #bkMsg{min-height:1em;opacity:.55;font-size:10.5px;margin-top:6px;transition:opacity .4s}
+    #bkBox .lembrar{display:flex;align-items:center;gap:6px;opacity:.7;margin-top:8px;font-size:11px}
+    #bkBox .lembrar input{accent-color:#9fb8d0;margin:0}`;
+  document.head.appendChild(css);
+  const box = document.createElement('div');
+  box.id = 'bkBox';
+  box.innerHTML = `
+    <h2>Configurações</h2>
+    <div class="row"><label for="bkSel">salvas</label><select id="bkSel"></select></div>
+    <div class="row"><label for="bkNome">nome</label><input id="bkNome" type="text" placeholder="nome da configuração" autocomplete="off" spellcheck="false"></div>
+    <div class="btns"><button id="bkSalvar" type="button">Salvar</button><button id="bkApagar" type="button">Apagar</button></div>
+    <div class="btns"><button id="bkExp" type="button">Exportar</button><button id="bkImp" type="button">Importar</button><input id="bkArq" type="file" accept=".json,application/json" style="display:none"></div>
+    <label class="lembrar"><input id="bkLembrar" type="checkbox"> lembrar os ajustes ao reabrir</label>
+    <div id="bkMsg"></div>
+    <div class="hint" style="margin-top:4px">Teclas 1–9 carregam as configurações salvas, na ordem da lista; 0 volta ao padrão. Exporte o .json para levar para outro aparelho.</div>`;
+  panel.insertBefore(box, panel.firstChild);
+  const $b = id => document.getElementById(id);
+  const sel = $b('bkSel'), nome = $b('bkNome'), bSalvar = $b('bkSalvar'), msgEl = $b('bkMsg'), lembrar = $b('bkLembrar');
+  let msgT;
+  const msg = t => { msgEl.textContent = t; msgEl.style.opacity = .7; clearTimeout(msgT); msgT = setTimeout(() => { msgEl.style.opacity = 0; }, 2600); };
+
+  let banco = ls.get(KB, []);
+  if (!Array.isArray(banco)) banco = [];
+  const gravarBanco = () => ls.set(KB, banco);
+  function lista(escolhido){
+    sel.innerHTML = '<option value="">— atual —</option><option value="__padrao">Padrão</option>' +
+      banco.map((c, i) => `<option value="${i}">${i < 9 ? (i + 1) + ' · ' : ''}${c.nome.replace(/[<&]/g, ch => ch === '<' ? '&lt;' : '&amp;')}</option>`).join('');
+    sel.value = escolhido == null ? '' : String(escolhido);
+    rotulo();
+  }
+  function rotulo(){ bSalvar.textContent = banco.some(c => c.nome === nome.value.trim()) ? 'Regravar' : 'Salvar'; }
+  function carregar(i){
+    if (i === '__padrao'){ aplicar(PADRAO); lista('__padrao'); nome.value = ''; rotulo(); msg('Padrão restaurado'); return; }
+    const c = banco[i]; if (!c) return;
+    aplicar(c.valores); lista(i); nome.value = c.nome; rotulo(); msg('Carregada: ' + c.nome);
+  }
+  sel.addEventListener('change', () => { if (sel.value !== '') carregar(sel.value === '__padrao' ? '__padrao' : +sel.value); });
+  nome.addEventListener('input', rotulo);
+  nome.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') bSalvar.click(); });
+  bSalvar.addEventListener('click', () => {
+    let n = nome.value.trim();
+    if (!n){ let k = banco.length + 1; while (banco.some(c => c.nome === 'Configuração ' + k)) k++; n = 'Configuração ' + k; }
+    const c = { nome: n, valores: estado(), data: new Date().toISOString() };
+    const j = banco.findIndex(x => x.nome === n);
+    if (j >= 0) banco[j] = c; else banco.push(c);
+    gravarBanco(); nome.value = n; lista(j >= 0 ? j : banco.length - 1);
+    msg((j >= 0 ? 'Regravada: ' : 'Salva: ') + n + ((j >= 0 ? j : banco.length - 1) < 9 ? ' (tecla ' + ((j >= 0 ? j : banco.length - 1) + 1) + ')' : ''));
+  });
+  $b('bkApagar').addEventListener('click', () => {
+    const i = sel.value === '' || sel.value === '__padrao' ? banco.findIndex(c => c.nome === nome.value.trim()) : +sel.value;
+    if (i < 0 || !banco[i]){ msg('Escolha na lista a configuração para apagar'); return; }
+    if ($b('bkApagar').dataset.ok !== String(i)){ // segundo toque confirma (sem janela de confirmação)
+      $b('bkApagar').dataset.ok = String(i); $b('bkApagar').textContent = 'Apagar mesmo?';
+      setTimeout(() => { delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar'; }, 3000); return;
+    }
+    const n = banco[i].nome; banco.splice(i, 1); gravarBanco(); nome.value = '';
+    delete $b('bkApagar').dataset.ok; $b('bkApagar').textContent = 'Apagar';
+    lista(); msg('Apagada: ' + n);
+  });
+  $b('bkExp').addEventListener('click', async () => {
+    const dados = { obra, versao: 1, exportado: new Date().toISOString(), atual: estado(), configuracoes: banco };
+    const txt = JSON.stringify(dados, null, 2), arq = obra + '-configuracoes.json';
+    const blob = new Blob([txt], { type: 'application/json' });
+    try {
+      const f = new File([blob], arq, { type: 'application/json' });
+      if (/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: arq }); msg('Exportado'); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = arq;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg('Exportado: ' + arq);
+  });
+  $b('bkImp').addEventListener('click', () => $b('bkArq').click());
+  $b('bkArq').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      const vem = Array.isArray(d) ? d : Array.isArray(d.configuracoes) ? d.configuracoes : [];
+      if (d && d.obra && d.obra !== obra && !vem.length) throw new Error('outra obra');
+      let novas = 0, troc = 0;
+      for (const c of vem){
+        if (!c || typeof c.nome !== 'string' || !c.valores) continue;
+        const j = banco.findIndex(x => x.nome === c.nome);
+        if (j >= 0){ banco[j] = c; troc++; } else { banco.push(c); novas++; }
+      }
+      gravarBanco(); lista();
+      msg(novas + troc ? `Importadas: ${novas} novas${troc ? ', ' + troc + ' substituídas' : ''}${d.obra && d.obra !== obra ? ' (arquivo de ' + d.obra + ')' : ''}` : 'Nenhuma configuração no arquivo');
+    } catch (err) { msg('Não consegui ler esse arquivo'); }
+  });
+
+  // ---------- lembrar ao reabrir ----------
+  lembrar.checked = ls.get(KL, true) !== false;
+  lembrar.addEventListener('change', () => { ls.set(KL, lembrar.checked); if (lembrar.checked) guardarAtual(); });
+  let tA;
+  function guardarAtual(){ if (!lembrar.checked) return; clearTimeout(tA); tA = setTimeout(() => ls.set(KA, estado()), 300); }
+  panel.addEventListener('input', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')){ guardarAtual(); if (sel.value !== '') sel.value = ''; } }, true);
+  panel.addEventListener('change', e => { if (!aplicando && e.target.id && !e.target.id.startsWith('bk')) guardarAtual(); }, true);
+  addEventListener('pagehide', () => { if (lembrar.checked) ls.set(KA, estado()); });
+
+  // ---------- teclas 1–9 e 0 ----------
+  addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && t.type !== 'range' && t.type !== 'checkbox'))) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^[1-9]$/.test(e.key)){ const i = +e.key - 1; if (banco[i]){ e.preventDefault(); carregar(i); } }
+    else if (e.key === '0'){ e.preventDefault(); carregar('__padrao'); }
+  });
+
+  lista();
+  if (lembrar.checked){ const a = ls.get(KA, null); if (a) aplicar(a); }
+})();
+
+</script>
+</body>
+</html>

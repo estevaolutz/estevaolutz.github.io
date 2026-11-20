@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Mapping</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{--bg:#000;--pn:#12151cee;--ln:#2a303c;--tx:#e9ecf2;--mt:#8b93a3;--ac:#e8b04a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;color:var(--tx);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;touch-action:none}
+#palco{position:absolute;background:#000}
+#palco canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#ov{touch-action:none}
+#pt{position:fixed;top:10px;right:10px;width:38px;height:38px;border-radius:50%;border:1px solid var(--ln);background:#12151c99;color:var(--tx);font-size:18px;z-index:20;cursor:pointer}
+body.limpo #pt{opacity:0}
+body.limpo #pt:hover{opacity:1}
+#painel{position:fixed;top:0;right:0;bottom:0;width:min(340px,100vw);background:var(--pn);border-left:1px solid var(--ln);overflow-y:auto;z-index:19;padding:56px 14px 40px;transform:translateX(100%);transition:transform .2s;touch-action:pan-y;backdrop-filter:blur(6px)}
+#painel.ab{transform:none}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--ac);margin:18px 0 8px;font-weight:600}
+h2:first-child{margin-top:0}
+.lin{display:flex;align-items:center;gap:8px;margin:6px 0}
+.lin label{flex:0 0 96px;color:var(--mt);font-size:13px}
+.lin input[type=range]{flex:1;accent-color:var(--ac)}
+.lin select,.lin input[type=text]{flex:1;background:#0b0d12;color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:6px 8px;font:inherit}
+.lin input[type=color]{width:44px;height:30px;border:1px solid var(--ln);border-radius:6px;background:none;padding:0}
+.lin output{width:38px;text-align:right;color:var(--mt);font-size:12px}
+button.b{background:#1b2029;border:1px solid var(--ln);border-radius:8px;color:var(--tx);font:inherit;font-size:13px;padding:7px 10px;cursor:pointer}
+button.b:hover,button.b:focus{border-color:var(--ac);outline:none}
+button.b.on{background:var(--ac);color:#111;border-color:var(--ac)}
+.bts{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+#lista{display:flex;flex-wrap:wrap;gap:6px}
+#lista button{min-width:40px}
+.ck{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--mt);font-size:13px}
+.ck input{accent-color:var(--ac);width:18px;height:18px}
+.dica{color:var(--mt);font-size:12px;line-height:1.5}
+.dica b{color:var(--tx);font-weight:500}
+#sala{font-size:26px;letter-spacing:.2em;color:var(--ac);font-weight:700}
+#estado{font-size:12px;color:var(--mt)}
+#aviso{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#12151cee;border:1px solid var(--ln);border-radius:10px;padding:8px 14px;z-index:30;opacity:0;transition:opacity .3s;pointer-events:none;font-size:13px}
+#aviso.v{opacity:1}
+#medidor{height:6px;background:#0b0d12;border-radius:3px;overflow:hidden;flex:1}
+#medidor i{display:block;height:100%;width:0;background:var(--ac)}
+</style>
+</head>
+<body>
+<div id="palco"><canvas id="gl"></canvas><canvas id="ov"></canvas></div>
+<button id="pt" title="Painel (M)">☰</button>
+<div id="painel">
+  <h2>Superfícies</h2>
+  <div id="lista"></div>
+  <div class="bts">
+    <button class="b" id="bAdd">+ Nova</button>
+    <button class="b" id="bDup">Duplicar</button>
+    <button class="b" id="bDel">Apagar</button>
+    <button class="b" id="bSobe">↑ Frente</button>
+    <button class="b" id="bDesce">↓ Trás</button>
+  </div>
+
+  <h2>Superfície selecionada</h2>
+  <div class="lin"><label>Conteúdo</label><select id="sMode">
+    <option value="0">Grade de teste</option>
+    <option value="4">Contorno com luz que corre</option>
+    <option value="2">Linhas que correm</option>
+    <option value="3">Pulso (anéis)</option>
+    <option value="6">Listras girando</option>
+    <option value="5">Fumaça / fluxo</option>
+    <option value="7">Gradiente de cor</option>
+    <option value="10">Pontos (estrelas)</option>
+    <option value="1">Cor sólida</option>
+    <option value="8">Vídeo / imagem / câmera</option>
+    <option value="9">Preto (máscara)</option>
+  </select></div>
+  <div class="lin"><label>Cor 1</label><input type="color" id="sC1"><label style="flex:0 0 auto">Cor 2</label><input type="color" id="sC2"></div>
+  <div class="lin"><label>Velocidade</label><input type="range" id="sVel" min="0" max="3" step="0.01"><output></output></div>
+  <div class="lin"><label>Densidade</label><input type="range" id="sDen" min="1" max="40" step="0.5"><output></output></div>
+  <div class="lin"><label>Intensidade</label><input type="range" id="sInt" min="0" max="1.5" step="0.01"><output></output></div>
+  <div class="lin"><label>Borda suave</label><input type="range" id="sPen" min="0" max="0.3" step="0.005"><output></output></div>
+  <label class="ck"><input type="checkbox" id="sSom"> Reage ao som</label>
+  <label class="ck"><input type="checkbox" id="sSeq" checked> Entra na sequência</label>
+  <div class="bts">
+    <button class="b" id="bArq">Vídeo/imagem…</button>
+    <button class="b" id="bCam">Câmera</button>
+    <button class="b" id="bTiraMid">Tirar mídia</button>
+    <input type="file" id="fArq" accept="video/*,image/*" hidden>
+  </div>
+  <div class="bts">
+    <button class="b" id="bRet">Endireitar</button>
+    <button class="b" id="bEsp">Espelhar</button>
+    <button class="b" id="bGira">Girar 90°</button>
+  </div>
+
+  <h2>Edição</h2>
+  <label class="ck"><input type="checkbox" id="gEdit" checked> Mostrar alças (E)</label>
+  <label class="ck"><input type="checkbox" id="gGrade"> Grade de teste em todas (G)</label>
+  <div class="lin"><label>Proporção</label><select id="gAsp"><option value="1.7778">16:9 (HY300)</option><option value="1.3333">4:3</option><option value="0">Tela inteira</option></select></div>
+  <p class="dica"><b>Mouse/dedo:</b> arraste os cantos; arraste o meio para mover a superfície.<br>
+  <b>Controle do projetor/teclado:</b> OK/Enter troca de canto, setas movem (Shift = 10×), N = próxima superfície, E = alças, G = grade, M = painel, F = tela cheia.</p>
+
+  <h2>Sequência e ritmo</h2>
+  <div class="lin"><label>Modo</label><select id="gSeq">
+    <option value="0">Desligada (tudo aceso)</option>
+    <option value="1">Uma de cada vez, em ordem</option>
+    <option value="2">Uma de cada vez, ao acaso</option>
+    <option value="3">Vai e volta</option>
+    <option value="4">Pisca tudo no tempo</option>
+    <option value="5">Acende no grave do som</option>
+  </select></div>
+  <div class="lin"><label>BPM</label><input type="range" id="gBpm" min="30" max="200" step="1"><output></output></div>
+  <div class="lin"><label>Passos por batida</label><select id="gDiv"><option value="0.25">1 a cada 4</option><option value="0.5">1 a cada 2</option><option value="1">1</option><option value="2">2</option><option value="4">4</option></select></div>
+  <div class="lin"><label>Queda</label><input type="range" id="gQueda" min="0.02" max="1.5" step="0.01"><output></output></div>
+  <div class="bts"><button class="b" id="bTap">Bater o tempo (T)</button></div>
+
+  <h2>Som</h2>
+  <div class="bts"><button class="b" id="bMic">Ligar microfone</button></div>
+  <div class="lin"><label>Nível</label><div id="medidor"><i></i></div></div>
+  <div class="lin"><label>Sensibilidade</label><input type="range" id="gSens" min="0.2" max="6" step="0.05"><output></output></div>
+
+  <h2>Geral</h2>
+  <div class="lin"><label>Brilho geral</label><input type="range" id="gBri" min="0" max="1.5" step="0.01"><output></output></div>
+  <div class="bts"><button class="b" id="bFull">Tela cheia (F)</button><button class="b" id="bLimpo">Esconder botão</button></div>
+
+  <h2>Controle pelo celular</h2>
+  <p class="dica">No projetor, toque em <b>Abrir sala</b>. No celular, abra esta mesma página e digite o código em <b>Entrar</b>. Tudo o que mexer num aparelho aparece no outro (vídeos e câmera ficam só no aparelho onde foram escolhidos).</p>
+  <div class="bts"><button class="b" id="bSala">Abrir sala</button></div>
+  <div id="sala"></div>
+  <div class="lin"><input type="text" id="cod" maxlength="4" placeholder="Código" style="text-transform:uppercase"><button class="b" id="bEntra">Entrar</button></div>
+  <div id="estado">Desconectado</div>
+
+  <h2>Arquivo</h2>
+  <div class="bts">
+    <button class="b" id="bExp">Exportar .json</button>
+    <button class="b" id="bImp">Importar</button>
+    <button class="b" id="bZera">Recomeçar</button>
+    <input type="file" id="fImp" accept=".json,application/json" hidden>
+  </div>
+  <p class="dica">Os ajustes ficam salvos neste aparelho. No projetor HY300: desligue o <b>keystone automático</b> e o <b>foco automático</b> antes de mapear, e não mexa mais no projetor.</p>
+</div>
+<div id="aviso"></div>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function(){
+'use strict';
+var K='mapping-v1', $=function(i){return document.getElementById(i)};
+var palco=$('palco'), cv=$('gl'), ov=$('ov'), ctx=ov.getContext('2d');
+var gl=cv.getContext('webgl',{antialias:true,premultipliedAlpha:false,preserveDrawingBuffer:false});
+if(!gl){alert('Este navegador não tem WebGL.');return}
+
+/* ---------- estado ---------- */
+var uid=function(){return Math.random().toString(36).slice(2,9)};
+function novaSup(x,y,w,h,mode){
+  return {id:uid(),pts:[[x,y],[x+w,y],[x+w,y+h],[x,y+h]],mode:mode==null?0:mode,c1:'#e8b04a',c2:'#3a7bff',vel:0.5,den:8,int:1,pen:0.01,som:false,seq:true};
+}
+function padrao(){
+  return {sups:[novaSup(.3,.25,.4,.5,0)],edit:true,grade:false,asp:1.7778,seq:0,bpm:100,div:1,queda:0.35,sens:1.5,bri:1};
+}
+var S;
+try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+if(!S||!S.sups)S=padrao();
+var sel=0, canto=0, midias={};   // midias[id] = {tex, el, tipo}
+function salvar(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}enviar()}
+function sup(){return S.sups[sel]}
+
+/* ---------- tamanho do palco ---------- */
+var W=1,H=1,dpr=1;
+function medir(){
+  var vw=innerWidth,vh=innerHeight,a=+S.asp,w=vw,h=vh;
+  if(a){ if(vw/vh>a){h=vh;w=Math.round(vh*a)}else{w=vw;h=Math.round(vw/a)} }
+  palco.style.width=w+'px';palco.style.height=h+'px';
+  palco.style.left=((vw-w)/2)+'px';palco.style.top=((vh-h)/2)+'px';
+  dpr=Math.min(devicePixelRatio||1,2);W=w;H=h;
+  cv.width=ov.width=Math.round(w*dpr);cv.height=ov.height=Math.round(h*dpr);
+}
+addEventListener('resize',medir);medir();
+
+/* ---------- homografia ---------- */
+function quadH(p){ // quadrado unitário -> quadrilátero (Heckbert)
+  var x0=p[0][0],y0=p[0][1],x1=p[1][0],y1=p[1][1],x2=p[2][0],y2=p[2][1],x3=p[3][0],y3=p[3][1];
+  var sx=x0-x1+x2-x3,sy=y0-y1+y2-y3,dx1=x1-x2,dx2=x3-x2,dy1=y1-y2,dy2=y3-y2,den=dx1*dy2-dx2*dy1;
+  if(Math.abs(den)<1e-12)den=1e-12;
+  var g=(sx*dy2-dx2*sy)/den,h=(dx1*sy-sx*dy1)/den;
+  return [[x1-x0+g*x1, x3-x0+h*x3, x0],[y1-y0+g*y1, y3-y0+h*y3, y0],[g,h,1]];
+}
+function inv3(m){
+  var a=m[0][0],b=m[0][1],c=m[0][2],d=m[1][0],e=m[1][1],f=m[1][2],g=m[2][0],h=m[2][1],i=m[2][2];
+  var A=e*i-f*h,B=-(d*i-f*g),C=d*h-e*g,det=a*A+b*B+c*C;if(Math.abs(det)<1e-12)det=1e-12;
+  return [[A/det,-(b*i-c*h)/det,(b*f-c*e)/det],[B/det,(a*i-c*g)/det,-(a*f-c*d)/det],[C/det,-(a*h-b*g)/det,(a*e-b*d)/det]];
+}
+function colMaj(m){return [m[0][0],m[1][0],m[2][0],m[0][1],m[1][1],m[2][1],m[0][2],m[1][2],m[2][2]]}
+
+/* ---------- WebGL ---------- */
+var VS='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+var FS=[
+'precision highp float;',
+'uniform vec2 uRes;uniform mat3 uHi;uniform float uT,uMode,uVel,uDen,uInt,uPen,uGate,uLvl,uBass,uHasTex,uIdx;',
+'uniform vec3 uC1,uC2;uniform sampler2D uTex;',
+'float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}',
+'float nz(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}',
+'float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*nz(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}',
+'vec3 hue(float h){return clamp(abs(mod(h*6.+vec3(0,4,2),6.)-3.)-1.,0.,1.);}',
+'void main(){',
+' vec2 p=vec2(gl_FragCoord.x/uRes.x,1.-gl_FragCoord.y/uRes.y);',
+' vec3 q=uHi*vec3(p,1.);if(q.z<=0.)discard;vec2 s=q.xy/q.z;',
+' if(s.x<0.||s.x>1.||s.y<0.||s.y>1.)discard;',
+' float t=uT*uVel;vec3 c=vec3(0);int m=int(uMode+.5);',
+' float e=min(min(s.x,1.-s.x),min(s.y,1.-s.y));',
+' if(m==0){',
+'  vec2 g=abs(fract(s*8.+.5)-.5);float l=1.-smoothstep(.0,.03,min(g.x,g.y));',
+'  float b=1.-smoothstep(.0,.012,e);',
+'  float dg=1.-smoothstep(.0,.006,min(abs(s.x-s.y),abs(s.x+s.y-1.)));',
+'  float ci=1.-smoothstep(.0,.008,abs(length(s-.5)-.3));',
+'  c=vec3(.35)*l+vec3(1)*max(b,max(dg*.5,ci));',
+'  vec3 k=vec3(1,0,0);',
+'  if(s.x>.5&&s.y<.5)k=vec3(0,1,0);if(s.x>.5&&s.y>.5)k=vec3(.2,.4,1);if(s.x<.5&&s.y>.5)k=vec3(1,1,0);',
+'  float cn=1.-smoothstep(.07,.08,length(vec2(min(s.x,1.-s.x),min(s.y,1.-s.y))));c=mix(c,k,cn);',
+' }else if(m==1){c=uC1;',
+' }else if(m==2){float f=fract(s.y*uDen*.5-t);c=mix(uC2*.15,uC1,smoothstep(.0,.08,f)*smoothstep(.35,.1,f));',
+' }else if(m==3){float d=length(s-.5)*2.;float f=fract(d*uDen*.25-t);c=mix(uC2*.1,uC1,pow(1.-f,4.)*smoothstep(1.42,1.,d));',
+' }else if(m==4){',
+'  float per;if(s.y<=s.x&&s.y<=1.-s.x)per=s.x;else if(1.-s.x<=s.y&&1.-s.x<=1.-s.y)per=1.+s.y;else if(1.-s.y<=s.x&&1.-s.y<=1.-s.x)per=3.-s.x;else per=4.-s.y;',
+'  float gw=exp(-e*(30.+uDen*6.));float sp=pow(.5+.5*cos((per*.25-t*.25)*6.2831*max(1.,floor(uDen/8.)+1.)),24.);',
+'  c=uC1*gw*.6+mix(uC1,vec3(1),.5)*sp*smoothstep(.06,.0,e)+uC2*gw*.25;',
+' }else if(m==5){vec2 r=s*uDen*.3;float n=fbm(r+vec2(t*.3,-t*.2)+fbm(r*1.5-t*.15)*1.5);c=mix(uC2*.1,uC1,smoothstep(.3,.9,n))+uC2*smoothstep(.75,1.,n)*.6;',
+' }else if(m==6){vec2 r=s-.5;float a=t*.5;r=mat2(cos(a),-sin(a),sin(a),cos(a))*r;float f=step(.5,fract(r.x*uDen));c=mix(uC2,uC1,f);',
+' }else if(m==7){c=hue(fract(s.x*.5+s.y*.25+t*.1+uIdx*.13))*mix(.6,1.,s.y);c=mix(c,mix(uC1,uC2,s.x),.25);',
+' }else if(m==8){c=uHasTex>.5?texture2D(uTex,s).rgb:vec3(.1,.1,.12)+vec3(.15)*step(.5,fract((s.x+s.y)*10.));',
+' }else if(m==9){c=vec3(0);',
+' }else if(m==10){vec2 g=s*uDen*2.;vec2 id=floor(g);float r=h21(id);vec2 o=vec2(h21(id+3.1),h21(id+7.7))*.6+.2;',
+'  float tw=.5+.5*sin(t*6.*(.3+r)+r*40.);float d=length(fract(g)-o);c=uC1*smoothstep(.12,.0,d)*tw+uC2*smoothstep(.35,.0,d)*tw*.2;}',
+' float k=uInt*uGate;',
+' float a=uPen>0.?smoothstep(0.,uPen,e):1.;',
+' gl_FragColor=vec4(c*k,a);',
+'}'].join('\n');
+function sh(t,src){var s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(s));return s}
+var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr);
+var buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+var al=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+var U={};['uRes','uHi','uT','uMode','uVel','uDen','uInt','uPen','uGate','uLvl','uBass','uHasTex','uIdx','uC1','uC2','uTex'].forEach(function(n){U[n]=gl.getUniformLocation(pr,n)});
+gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+function hex(c){c=parseInt((c||'#ffffff').slice(1),16);return[(c>>16&255)/255,(c>>8&255)/255,(c&255)/255]}
+
+/* ---------- mídia ---------- */
+function texNova(){var t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);return t}
+function tirarMidia(id){var m=midias[id];if(!m)return;
+  if(m.el&&m.el.srcObject)m.el.srcObject.getTracks().forEach(function(x){x.stop()});
+  if(m.url)URL.revokeObjectURL(m.url);gl.deleteTexture(m.tex);delete midias[id]}
+function porMidia(id,el,tipo,url){tirarMidia(id);midias[id]={tex:texNova(),el:el,tipo:tipo,url:url,ok:false}}
+$('bArq').onclick=function(){$('fArq').click()};
+$('fArq').onchange=function(){var f=this.files[0];if(!f)return;var s=sup(),url=URL.createObjectURL(f);
+  if(f.type.indexOf('image')===0){var im=new Image();im.onload=function(){porMidia(s.id,im,'img',url)};im.src=url}
+  else{var v=document.createElement('video');v.src=url;v.loop=true;v.muted=true;v.playsInline=true;v.play();porMidia(s.id,v,'vid',url)}
+  s.mode=8;ui();salvar();this.value=''};
+$('bCam').onclick=function(){var s=sup();
+  navigator.mediaDevices.getUserMedia({video:{width:1280,height:720},audio:false}).then(function(st){
+    var v=document.createElement('video');v.srcObject=st;v.muted=true;v.playsInline=true;v.play();porMidia(s.id,v,'vid');s.mode=8;ui();salvar()
+  }).catch(function(){aviso('Não consegui abrir a câmera')})};
+$('bTiraMid').onclick=function(){tirarMidia(sup().id)};
+
+/* ---------- som ---------- */
+var an=null,fd=null,lvl=0,bass=0,bassMed=0,bassTrig=0;
+$('bMic').onclick=function(){
+  if(an){return}
+  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(st){
+    var ac=new (window.AudioContext||window.webkitAudioContext)();an=ac.createAnalyser();an.fftSize=1024;an.smoothingTimeConstant=.6;
+    ac.createMediaStreamSource(st).connect(an);fd=new Uint8Array(an.frequencyBinCount);$('bMic').textContent='Microfone ligado';$('bMic').classList.add('on');
+  }).catch(function(){aviso('Sem microfone neste aparelho')})};
+function ouvir(){
+  if(!an){lvl*=.9;bass*=.9;return}
+  an.getByteFrequencyData(fd);var sm=0,sb=0,n=fd.length;
+  for(var i=0;i<n;i++)sm+=fd[i];for(i=1;i<8;i++)sb+=fd[i];
+  var L=Math.min(1,sm/n/255*S.sens*2.2),B=Math.min(1,sb/7/255*S.sens);
+  lvl+= (L-lvl)*(L>lvl?.5:.12);bass+=(B-bass)*(B>bass?.6:.15);
+  bassMed+= (bass-bassMed)*.02;
+  if(bass>bassMed*1.25+.06&&bassTrig<=0){bassTrig=.18;if(S.seq==5)onBatida()}
+  bassTrig-=1/60;
+  $('medidor').firstChild.style.width=(lvl*100)+'%';
+}
+
+/* ---------- sequência ---------- */
+var gates=[],passo=0,dir=1,ultBat=0,aceso=-1;
+function participantes(){var r=[];S.sups.forEach(function(s,i){if(s.seq)r.push(i)});return r}
+function onBatida(){
+  var P=participantes();if(!P.length)return;
+  if(S.seq==1){passo=(passo+1)%P.length;aceso=P[passo]}
+  else if(S.seq==2){var n=P[Math.floor(Math.random()*P.length)];if(P.length>1&&n===aceso)n=P[(P.indexOf(n)+1)%P.length];aceso=n}
+  else if(S.seq==3){if(P.length>1){passo+=dir;if(passo>=P.length-1||passo<=0)dir=-dir;passo=Math.max(0,Math.min(P.length-1,passo))}aceso=P[passo]}
+  else if(S.seq==4||S.seq==5){P.forEach(function(i){gates[i]=1});return}
+  if(aceso>=0)gates[aceso]=1;
+}
+var taps=[];
+function tap(){var n=performance.now();taps=taps.filter(function(x){return n-x<2500});taps.push(n);
+  if(taps.length>1){var d=(taps[taps.length-1]-taps[0])/(taps.length-1);S.bpm=Math.round(Math.max(30,Math.min(200,60000/d)));ui();salvar()}
+  ultBat=n;aviso(S.bpm+' BPM')}
+$('bTap').onclick=tap;
+
+/* ---------- desenho ---------- */
+var t0=performance.now(),tAnt=t0;
+function frame(now){
+  requestAnimationFrame(frame);
+  var dt=Math.min(.1,(now-tAnt)/1000);tAnt=now;ouvir();
+  // relógio da sequência
+  if(S.seq>0&&S.seq<5){var per=60000/S.bpm/S.div;if(now-ultBat>=per){ultBat+= per*Math.floor((now-ultBat)/per);onBatida()}}
+  var dec=Math.exp(-dt/Math.max(.02,S.queda));
+  gl.viewport(0,0,cv.width,cv.height);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.uniform2f(U.uRes,cv.width,cv.height);gl.uniform1f(U.uT,(now-t0)/1000);gl.uniform1f(U.uLvl,lvl);gl.uniform1f(U.uBass,bass);
+  S.sups.forEach(function(s,i){
+    if(gates[i]==null)gates[i]=0;
+    var g=1;
+    if(S.seq>0&&s.seq){g=gates[i];gates[i]*=dec}
+    if(S.grade)g=1;
+    var it=s.int*S.bri;
+    if(s.som)it*= .15+lvl*1.6;
+    var m=S.grade?0:s.mode,md=midias[s.id],has=0;
+    if(m==8&&md){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,md.tex);
+      try{if(md.tipo==='vid'){if(md.el.readyState>=2){gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,md.el);md.ok=true}}
+        else if(!md.ok){gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,md.el);md.ok=true}}catch(e){}
+      has=md.ok?1:0}
+    gl.uniform1i(U.uTex,0);gl.uniform1f(U.uHasTex,has);
+    gl.uniformMatrix3fv(U.uHi,false,colMaj(inv3(quadH(s.pts))));
+    gl.uniform1f(U.uMode,m);gl.uniform1f(U.uVel,s.vel*(s.som?1+lvl*2:1));gl.uniform1f(U.uDen,s.den);gl.uniform1f(U.uInt,it);
+    gl.uniform1f(U.uPen,s.pen);gl.uniform1f(U.uGate,g);gl.uniform1f(U.uIdx,i);
+    gl.uniform3fv(U.uC1,hex(s.c1));gl.uniform3fv(U.uC2,hex(s.c2));
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  });
+  desenhaAlcas();
+}
+
+function desenhaAlcas(){
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,ov.width,ov.height);
+  if(!S.edit)return;ctx.scale(dpr,dpr);
+  S.sups.forEach(function(s,i){
+    var on=i===sel,P=s.pts.map(function(p){return[p[0]*W,p[1]*H]});
+    ctx.beginPath();P.forEach(function(p,j){j?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])});ctx.closePath();
+    ctx.lineWidth=on?2:1;ctx.strokeStyle=on?'#e8b04a':'rgba(255,255,255,.45)';ctx.stroke();
+    var cx=0,cy=0;P.forEach(function(p){cx+=p[0]/4;cy+=p[1]/4});
+    ctx.fillStyle=on?'#e8b04a':'rgba(255,255,255,.7)';ctx.font='600 16px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(String(i+1),cx,cy);
+    if(on)P.forEach(function(p,j){
+      ctx.beginPath();ctx.arc(p[0],p[1],j===canto?13:10,0,7);ctx.fillStyle=j===canto?'#e8b04a':'rgba(0,0,0,.6)';ctx.fill();
+      ctx.lineWidth=2;ctx.strokeStyle='#e8b04a';ctx.stroke();
+      ctx.beginPath();ctx.moveTo(p[0]-22,p[1]);ctx.lineTo(p[0]+22,p[1]);ctx.moveTo(p[0],p[1]-22);ctx.lineTo(p[0],p[1]+22);ctx.lineWidth=1;ctx.stroke();
+    });
+  });
+}
+
+/* ---------- arrastar ---------- */
+var arr=null;
+function pos(e){var r=palco.getBoundingClientRect();return[(e.clientX-r.left)/W,(e.clientY-r.top)/H]}
+function dentro(p,Q){var c=false;for(var i=0,j=3;i<4;j=i++){var a=Q[i],b=Q[j];if((a[1]>p[1])!=(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
+ov.addEventListener('pointerdown',function(e){
+  if(!S.edit)return;var p=pos(e),best=null,bd=(e.pointerType==='mouse'?16:30);
+  S.sups.forEach(function(s,i){s.pts.forEach(function(q,j){var d=Math.hypot((q[0]-p[0])*W,(q[1]-p[1])*H);
+    if(d<bd||(d<bd*1.4&&i===sel&&!(best&&best.i===sel))){bd=d;best={i:i,j:j}}})});
+  if(best){sel=best.i;canto=best.j;arr={t:'c',p:p}}
+  else{for(var i=S.sups.length-1;i>=0;i--)if(dentro(p,S.sups[i].pts)){sel=i;arr={t:'m',p:p};break}}
+  if(arr){ov.setPointerCapture(e.pointerId);ui()}
+});
+ov.addEventListener('pointermove',function(e){if(!arr)return;var p=pos(e),dx=p[0]-arr.p[0],dy=p[1]-arr.p[1],s=sup();
+  if(arr.t==='c'){var f=e.shiftKey?.25:1;s.pts[canto][0]+=dx*f;s.pts[canto][1]+=dy*f}
+  else s.pts.forEach(function(q){q[0]+=dx;q[1]+=dy});
+  arr.p=p;enviarJa()});
+ov.addEventListener('pointerup',function(){if(arr){arr=null;salvar()}});
+ov.addEventListener('pointercancel',function(){arr=null});
+
+/* ---------- teclado / controle remoto do projetor ---------- */
+addEventListener('keydown',function(e){
+  var tg=e.target.tagName;if(tg==='INPUT'&&e.target.type==='text')return;
+  var k=e.key,step=(e.shiftKey?10:1)/W,stepy=(e.shiftKey?10:1)/H,s=sup(),fe=document.activeElement&&$('painel').contains(document.activeElement);
+  if(k==='m'||k==='M'||k==='ContextMenu'){$('painel').classList.toggle('ab');e.preventDefault();return}
+  if(fe&&$('painel').classList.contains('ab'))return; // controle navega no painel
+  if(k==='e'||k==='E'){S.edit=!S.edit;ui();salvar();return}
+  if(k==='g'||k==='G'){S.grade=!S.grade;ui();salvar();return}
+  if(k==='f'||k==='F'){tela();return}
+  if(k==='t'||k==='T'){tap();return}
+  if(k==='n'||k==='N'){sel=(sel+1)%S.sups.length;canto=0;ui();return}
+  if(!s||!S.edit)return;
+  if(k==='Enter'||k===' '||k==='Tab'){canto=(canto+(e.shiftKey?3:1))%4;if(canto===0&&k==='Enter'&&S.sups.length>1&&!e.shiftKey){}e.preventDefault();return}
+  var mv={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-stepy],ArrowDown:[0,stepy]}[k];
+  if(mv){e.preventDefault();var ac=e.repeat?3:1;s.pts[canto][0]+=mv[0]*ac;s.pts[canto][1]+=mv[1]*ac;enviarJa();clearTimeout(frame.sv);frame.sv=setTimeout(salvar,400)}
+});
+function tela(){var d=document.documentElement;if(!document.fullscreenElement){(d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)}else document.exitFullscreen()}
+$('bFull').onclick=tela;
+$('pt').onclick=function(){$('painel').classList.toggle('ab')};
+$('bLimpo').onclick=function(){document.body.classList.toggle('limpo');$('painel').classList.remove('ab')};
+
+/* ---------- painel ---------- */
+var liga=[['sVel','vel'],['sDen','den'],['sInt','int'],['sPen','pen']],ligaG=[['gBpm','bpm'],['gQueda','queda'],['gSens','sens'],['gBri','bri']];
+function out(el){var o=el.parentNode.querySelector('output');if(o)o.textContent=(+el.value).toFixed(el.step>=1?0:2).replace(/\.?0+$/,'')||'0'}
+function ui(){
+  if(sel>=S.sups.length)sel=S.sups.length-1;
+  var L=$('lista');L.innerHTML='';
+  S.sups.forEach(function(s,i){var b=document.createElement('button');b.className='b'+(i===sel?' on':'');b.textContent=i+1;b.onclick=function(){sel=i;canto=0;ui()};L.appendChild(b)});
+  var s=sup();if(!s)return;
+  $('sMode').value=s.mode;$('sC1').value=s.c1;$('sC2').value=s.c2;$('sSom').checked=s.som;$('sSeq').checked=s.seq;
+  liga.forEach(function(x){$(x[0]).value=s[x[1]];out($(x[0]))});
+  ligaG.forEach(function(x){$(x[0]).value=S[x[1]];out($(x[0]))});
+  $('gEdit').checked=S.edit;$('gGrade').checked=S.grade;$('gAsp').value=String(S.asp);$('gSeq').value=S.seq;$('gDiv').value=String(S.div);
+}
+liga.forEach(function(x){$(x[0]).oninput=function(){sup()[x[1]]=+this.value;out(this);enviarJa()};$(x[0]).onchange=salvar});
+ligaG.forEach(function(x){$(x[0]).oninput=function(){S[x[1]]=+this.value;out(this);enviarJa()};$(x[0]).onchange=salvar});
+$('sMode').onchange=function(){sup().mode=+this.value;salvar()};
+$('sC1').oninput=function(){sup().c1=this.value;enviarJa()};$('sC1').onchange=salvar;
+$('sC2').oninput=function(){sup().c2=this.value;enviarJa()};$('sC2').onchange=salvar;
+$('sSom').onchange=function(){sup().som=this.checked;salvar()};
+$('sSeq').onchange=function(){sup().seq=this.checked;salvar()};
+$('gEdit').onchange=function(){S.edit=this.checked;salvar()};
+$('gGrade').onchange=function(){S.grade=this.checked;salvar()};
+$('gAsp').onchange=function(){S.asp=+this.value;medir();salvar()};
+$('gSeq').onchange=function(){S.seq=+this.value;gates=[];salvar()};
+$('gDiv').onchange=function(){S.div=+this.value;salvar()};
+$('bAdd').onclick=function(){var n=S.sups.length,o=(n%5)*.04;S.sups.push(novaSup(.15+o,.15+o,.3,.35,[4,2,3,5,6,7][n%6]));sel=S.sups.length-1;canto=0;ui();salvar()};
+$('bDup').onclick=function(){var c=JSON.parse(JSON.stringify(sup()));c.id=uid();c.pts.forEach(function(q){q[0]+=.03;q[1]+=.03});S.sups.splice(sel+1,0,c);sel++;ui();salvar()};
+$('bDel').onclick=function(){if(S.sups.length<2){aviso('Precisa ficar pelo menos uma');return}tirarMidia(sup().id);S.sups.splice(sel,1);sel=Math.max(0,sel-1);ui();salvar()};
+$('bSobe').onclick=function(){if(sel<S.sups.length-1){var a=S.sups.splice(sel,1)[0];S.sups.splice(sel+1,0,a);sel++;ui();salvar()}};
+$('bDesce').onclick=function(){if(sel>0){var a=S.sups.splice(sel,1)[0];S.sups.splice(sel-1,0,a);sel--;ui();salvar()}};
+$('bRet').onclick=function(){var P=sup().pts,x0=Math.min(P[0][0],P[3][0]),x1=Math.max(P[1][0],P[2][0]),y0=Math.min(P[0][1],P[1][1]),y1=Math.max(P[2][1],P[3][1]);sup().pts=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];salvar()};
+$('bEsp').onclick=function(){var P=sup().pts;sup().pts=[P[1],P[0],P[3],P[2]];salvar()};
+$('bGira').onclick=function(){var P=sup().pts;sup().pts=[P[3],P[0],P[1],P[2]];salvar()};
+$('bExp').onclick=function(){var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download='mapping.json';a.click()};
+$('bImp').onclick=function(){$('fImp').click()};
+$('fImp').onchange=function(){var f=this.files[0];if(!f)return;f.text().then(function(t){try{var n=JSON.parse(t);if(!n.sups)throw 0;S=n;sel=0;medir();ui();salvar();aviso('Importado')}catch(e){aviso('Arquivo inválido')}});this.value=''};
+$('bZera').onclick=function(){if(!confirm('Apagar todas as superfícies e recomeçar?'))return;Object.keys(midias).forEach(tirarMidia);S=padrao();sel=0;medir();ui();salvar()};
+var avT;function aviso(t){var a=$('aviso');a.textContent=t;a.classList.add('v');clearTimeout(avT);avT=setTimeout(function(){a.classList.remove('v')},1800)}
+
+/* ---------- controle pelo celular (PeerJS) ---------- */
+var peer=null,conns=[],souSala=false,recebendo=false,envT=0,envPend=false;
+function estado(t){$('estado').textContent=t}
+function codigo(){var a='ABCDEFGHJKLMNPQRSTUVWXYZ',s='';for(var i=0;i<4;i++)s+=a[Math.floor(Math.random()*a.length)];return s}
+function prepConn(c){
+  c.on('open',function(){conns.push(c);estado('Conectado ('+conns.length+')');if(souSala)c.send({t:'estado',s:S})});
+  c.on('data',function(d){if(d&&d.t==='estado'&&d.s&&d.s.sups){recebendo=true;var asp=S.asp;S=d.s;if(sel>=S.sups.length)sel=0;if(S.asp!==asp)medir();
+    try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}
+    if(!document.activeElement||!$('painel').contains(document.activeElement)||document.activeElement.type==='button')ui();
+    recebendo=false;conns.forEach(function(o){if(o!==c&&o.open)o.send(d)})}});
+  c.on('close',function(){conns=conns.filter(function(x){return x!==c});estado(conns.length?'Conectado ('+conns.length+')':'Desconectado')});
+}
+function enviar(){if(recebendo||!conns.length)return;conns.forEach(function(c){if(c.open)c.send({t:'estado',s:S})})}
+function enviarJa(){var n=performance.now();if(n-envT>40){envT=n;enviar()}else if(!envPend){envPend=true;setTimeout(function(){envPend=false;envT=performance.now();enviar()},45)}}
+function abrirSala(cod){
+  if(typeof Peer==='undefined'){aviso('Sem internet para o controle remoto');return}
+  if(peer)peer.destroy();souSala=true;cod=cod||codigo();
+  peer=new Peer('mapping-estevao-'+cod);
+  peer.on('open',function(){$('sala').textContent=cod;estado('Sala aberta — esperando o celular');try{localStorage.setItem(K+'-sala',cod)}catch(e){}});
+  peer.on('connection',prepConn);
+  peer.on('error',function(e){if(e.type==='unavailable-id'){abrirSala()}else estado('Erro: '+e.type)});
+}
+function entrar(cod){
+  if(typeof Peer==='undefined'){aviso('Sem internet para o controle remoto');return}
+  cod=(cod||'').toUpperCase().trim();if(cod.length!==4){aviso('O código tem 4 letras');return}
+  if(peer)peer.destroy();souSala=false;peer=new Peer();
+  peer.on('open',function(){estado('Conectando…');prepConn(peer.connect('mapping-estevao-'+cod,{reliable:true}))});
+  peer.on('error',function(e){estado(e.type==='peer-unavailable'?'Sala '+cod+' não encontrada':'Erro: '+e.type)});
+}
+$('bSala').onclick=function(){var c=null;try{c=localStorage.getItem(K+'-sala')}catch(e){}abrirSala(c)};
+$('bEntra').onclick=function(){entrar($('cod').value)};
+var qs=new URLSearchParams(location.search);
+if(qs.get('sala'))setTimeout(function(){entrar(qs.get('sala'))},300);
+
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+ui();requestAnimationFrame(frame);
+if(innerWidth<700)aviso('Toque em ☰ para o painel');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mapping de corredor — modelo</title>
+<style>
+:root{--tx:#e6e9ef;--mu:#8a909c;--ac:#7fd8f0}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--tx);font:13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif}
+body.out{overflow:hidden;cursor:crosshair}
+body.out.show{cursor:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ctl{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;padding:14px;min-height:100%;background:#07080d}
+h1{font-size:16px;margin:0 0 4px}
+.sub{color:var(--mu);font-size:12px;margin-bottom:10px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ac);margin:16px 0 6px;font-weight:600}
+.row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.row label{flex:0 0 120px;color:#cdd2da}
+.row input[type=range]{flex:1;accent-color:var(--ac);min-width:0}
+.row .v{flex:0 0 46px;text-align:right;color:var(--mu);font-variant-numeric:tabular-nums}
+.row select{flex:1}
+select,button,input[type=text]{background:#161a24;color:var(--tx);border:1px solid #2c3242;border-radius:6px;padding:7px 9px;font:inherit}
+button{cursor:pointer}
+button.on{background:var(--ac);color:#071018;border-color:var(--ac)}
+button.big{font-size:14px;padding:10px 14px}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+#prev{width:100%;aspect-ratio:16/9;background:#000;border:1px solid #2c3242;border-radius:6px;touch-action:none;cursor:crosshair;display:block}
+.pts{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
+.pts button{padding:6px 4px;font-size:12px}
+.hint{color:#9aa1ad;font-size:12px;margin:8px 0;line-height:1.5}
+.hint b{color:#e6e9ef}
+#side{overflow-y:auto;max-height:calc(100vh - 28px)}
+#st{color:#ffc46b;font-size:12px;margin:6px 0}
+.src{border:1px solid #222838;border-radius:8px;padding:8px;margin:6px 0}
+.src .nm{font-weight:600;margin-bottom:4px}
+.src .stt{color:var(--mu);font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<canvas id="gl" style="display:none"></canvas>
+
+<div id="ctl" style="display:none">
+ <div>
+  <h1>Mapping de corredor — modelo</h1>
+  <div class="sub">Calibração de 8 pontos · controle no Mac · qualquer projeto como conteúdo (aba capturada, vídeo, imagem, câmera ou ondas)</div>
+  <div class="btns">
+   <button class="big" id="open">1 · Abrir janela de projeção</button>
+   <button class="big on" id="calib">Calibrar</button>
+   <button class="big" id="black">Blackout (B)</button>
+  </div>
+  <div id="st"></div>
+  <canvas id="prev" width="1280" height="720"></canvas>
+  <div class="pts" id="pts"></div>
+  <div class="hint">
+   Arraste os pontos aqui ou direto na projeção · <b>Setas</b> 1 pixel · <b>Shift + setas</b> 10 pixels · <b>Tab</b> próximo ponto · <b>C</b> calibrar · <b>B</b> blackout.<br>
+   <b>Fundo</b> = 4 cantos da parede do fundo · <b>Boca</b> = 4 cantos da entrada do corredor.<br>
+   <b>Para usar outro projeto:</b> abra o projeto numa aba do Chrome, clique em <b>Capturar aba/janela</b> numa das fontes e escolha essa aba. Deixe esta janela de controle aberta enquanto a captura estiver rodando.
+  </div>
+ </div>
+ <div id="side">
+  <h2>Fontes de conteúdo</h2>
+  <div class="src" id="srcA"></div>
+  <div class="src" id="srcB"></div>
+  <h2>O que vai em cada superfície</h2>
+  <div id="assign"></div>
+  <div class="row"><label>Modo da fonte A</label><select data-s="mapA"><option value="0">Esticada em cada face</option><option value="1">Faixa contínua (esq → teto → dir)</option></select></div>
+  <div class="row"><label>Modo da fonte B</label><select data-s="mapB"><option value="0">Esticada em cada face</option><option value="1">Faixa contínua (esq → teto → dir)</option></select></div>
+  <div class="row"><label>Brilho fonte A</label><input type="range" data-k="gA" min="0" max="2" step="0.01"><span class="v"></span></div>
+  <div class="row"><label>Brilho fonte B</label><input type="range" data-k="gB" min="0" max="2" step="0.01"><span class="v"></span></div>
+  <div class="row"><label>Recorte da captura</label><input type="range" data-k="crop" min="0" max="0.2" step="0.005"><span class="v"></span></div>
+
+  <h2>Gerador de ondas</h2>
+  <div class="row"><label>Cor 1</label><input type="color" data-c="c1"></div>
+  <div class="row"><label>Cor 2</label><input type="color" data-c="c2"></div>
+  <div class="row"><label>Intensidade</label><input type="range" data-k="waves.gain" min="0" max="4" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Comprimento de onda</label><input type="range" data-k="waves.lam" min="0.1" max="2" step="0.01"><span class="v"></span></div>
+  <div class="row"><label>Velocidade</label><input type="range" data-k="waves.spd" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Alcance</label><input type="range" data-k="waves.range" min="1" max="12" step="0.1"><span class="v"></span></div>
+  <div class="row"><label>Altura da origem</label><input type="range" data-k="waves.oy" min="0" max="1" step="0.01"><span class="v"></span></div>
+  <div class="row"><label>Contorno das quinas</label><input type="range" data-k="edge" min="0" max="1.5" step="0.05"><span class="v"></span></div>
+
+  <h2>Medidas do corredor</h2>
+  <div class="row"><label>Largura</label><input type="range" data-k="dims.W" min="0.8" max="4" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Altura</label><input type="range" data-k="dims.H" min="1.8" max="5" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Profundidade</label><input type="range" data-k="dims.D" min="1" max="12" step="0.1"><span class="v"></span></div>
+
+  <h2>Áudio (microfone ou arquivo)</h2>
+  <div class="btns"><button id="mic">Ligar microfone</button><button id="filebtn">Arquivo de áudio…</button><input type="file" id="afile" accept="audio/*,video/*" hidden></div>
+  <audio id="player" controls loop style="width:100%;display:none;margin:4px 0"></audio>
+  <div style="height:8px;background:#161a24;border-radius:4px;overflow:hidden;margin:6px 0"><div id="meter" style="height:100%;width:0;background:linear-gradient(90deg,#50ff80,#ffa040,#ff50d0)"></div></div>
+  <div class="row"><label>Sensibilidade</label><input type="range" data-k="aud.sens" min="0.2" max="5" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>→ Ondas</label><input type="range" data-k="aud.waves" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>→ Brilho das fontes</label><input type="range" data-k="aud.bright" min="0" max="2" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>→ Quinas (graves)</label><input type="range" data-k="aud.edge" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Brilho geral</label><input type="range" data-k="master" min="0" max="1.5" step="0.01"><span class="v"></span></div>
+
+  <h2>Calibrações salvas</h2>
+  <div class="row"><input type="text" id="pname" placeholder="nome do lugar / projeto" style="flex:1"><button id="psave">Salvar</button></div>
+  <div class="row"><select id="plist"></select><button id="pload">Abrir</button><button id="pdel">Apagar</button></div>
+  <div class="btns"><button id="exp">Exportar .json</button><button id="impb">Importar .json</button><input type="file" id="imp" accept=".json" hidden><button id="reset">Pontos iniciais</button></div>
+ </div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+const OUT=location.search.includes('saida');
+const KEY='mapping-corredor-v1',PKEY='mapping-corredor-presets';
+const NAMES=['Fundo ↖','Fundo ↗','Fundo ↘','Fundo ↙','Boca ↖','Boca ↗','Boca ↘','Boca ↙'];
+const DEF_PTS=[[.40,.30],[.60,.30],[.60,.84],[.40,.84],[.24,.03],[.76,.03],[.76,.98],[.24,.98]];
+const DEF={pts:DEF_PTS.map(p=>p.slice()),sel:0,calib:true,black:false,
+  faces:{fundo:true,teto:true,esq:true,dir:true,chao:false},
+  assign:{fundo:1,teto:3,esq:3,dir:3,chao:0},mapA:0,mapB:1,gA:1,gB:1,crop:0,
+  dims:{W:1.5,H:2.6,D:4},
+  waves:{gain:1.5,lam:.45,spd:1,range:5,oy:.6,c1:'#7fd8f0',c2:'#ff50d0'},edge:.3,
+  aud:{sens:1,waves:1,bright:.5,edge:1},master:1};
+let S;
+function fill(o){const r=structuredClone(DEF);for(const k in o){if(r[k]&&typeof r[k]==='object'&&!Array.isArray(r[k]))Object.assign(r[k],o[k]);else r[k]=o[k];}return r;}
+try{S=fill(JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(e){S=structuredClone(DEF);}
+const bc=('BroadcastChannel' in window)?new BroadcastChannel('mapping-corredor'):null;
+let onState=()=>{};
+function save(send=true){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(send&&bc)bc.postMessage({t:'state',S});}
+if(bc)bc.onmessage=e=>{const m=e.data;if(m.t==='state'){S=m.S;onState();}else if(m.t==='hello'&&!OUT){bc.postMessage({t:'state',S});}};
+const get=(o,p)=>p.split('.').reduce((a,k)=>a[k],o);
+const set=(o,p,v)=>{const ks=p.split('.');const l=ks.pop();ks.reduce((a,k)=>a[k],o)[l]=v;};
+function nudge(dx,dy){const p=S.pts[S.sel];p[0]=Math.min(1.05,Math.max(-.05,p[0]+dx/1920));p[1]=Math.min(1.05,Math.max(-.05,p[1]+dy/1080));save();onState();}
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+  const k=e.key,st=e.shiftKey?10:1;
+  if(k==='ArrowLeft'){nudge(-st,0);e.preventDefault();}else if(k==='ArrowRight'){nudge(st,0);e.preventDefault();}
+  else if(k==='ArrowUp'){nudge(0,-st);e.preventDefault();}else if(k==='ArrowDown'){nudge(0,st);e.preventDefault();}
+  else if(k==='Tab'){S.sel=(S.sel+(e.shiftKey?7:1))%8;save();onState();e.preventDefault();}
+  else if(k.toLowerCase()==='b'){S.black=!S.black;save();onState();}
+  else if(k.toLowerCase()==='c'){S.calib=!S.calib;save();onState();}
+  else if(k.toLowerCase()==='f'&&OUT){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});}
+});
+function dragOn(el,mapEv,enabled){
+  let drag=-1;
+  el.addEventListener('pointerdown',e=>{if(!enabled())return;const [x,y]=mapEv(e);let best=-1,bd=1e9;
+    S.pts.forEach((p,i)=>{const d=Math.hypot((p[0]-x)*16,(p[1]-y)*9);if(d<bd){bd=d;best=i;}});
+    if(bd<1.2){drag=best;S.sel=best;el.setPointerCapture(e.pointerId);save();onState();}});
+  el.addEventListener('pointermove',e=>{if(drag<0)return;const [x,y]=mapEv(e);S.pts[drag]=[x,y];save();onState();});
+  el.addEventListener('pointerup',()=>drag=-1);
+}
+
+/* =================== CONTROLE =================== */
+if(!OUT){
+  document.getElementById('ctl').style.display='grid';
+  const $=id=>document.getElementById(id);
+  const prev=$('prev'),px=prev.getContext('2d');
+  const FC={fundo:'#7fd8f0',teto:'#ffa040',esq:'#50ff80',dir:'#ff50d0',chao:'#a0a0ff'};
+  const FN={fundo:'Fundo',teto:'Teto',esq:'Parede esquerda',dir:'Parede direita',chao:'Chão'};
+  const FI={fundo:[0,1,2,3],teto:[4,5,1,0],esq:[4,0,3,7],dir:[1,5,6,2],chao:[3,2,6,7]};
+  $('pts').innerHTML=NAMES.map((n,i)=>`<button data-p="${i}">${i+1} ${n}</button>`).join('');
+  $('assign').innerHTML=Object.keys(FN).map(k=>`<div class="row"><label style="color:${FC[k]}">${FN[k]}</label><select data-a="${k}"><option value="0">Nada (preto)</option><option value="1">Fonte A</option><option value="2">Fonte B</option><option value="3">Ondas</option></select></div>`).join('');
+  for(const sl of ['A','B'])$('src'+sl).innerHTML=`<div class="nm">Fonte ${sl}</div><div class="btns"><button data-cap="${sl}">Capturar aba/janela</button><button data-cam="${sl}">Câmera</button><button data-fl="${sl}">Arquivo…</button><button data-clr="${sl}">Limpar</button></div><input type="file" data-fi="${sl}" accept="video/*,image/*" hidden><div class="stt" id="stt${sl}">vazia</div>`;
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.sel=+b.dataset.p;save();sync();});
+  document.querySelectorAll('[data-a]').forEach(el=>el.onchange=()=>{S.assign[el.dataset.a]=+el.value;S.faces[el.dataset.a]=+el.value>0;save();sync();});
+  document.querySelectorAll('select[data-s]').forEach(el=>el.onchange=()=>{S[el.dataset.s]=+el.value;save();sync();});
+  document.querySelectorAll('input[data-k]').forEach(el=>el.oninput=()=>{set(S,el.dataset.k,+el.value);save();sync();});
+  document.querySelectorAll('input[data-c]').forEach(el=>el.oninput=()=>{S.waves[el.dataset.c]=el.value;save();sync();});
+  $('calib').onclick=()=>{S.calib=!S.calib;save();sync();};
+  $('black').onclick=()=>{S.black=!S.black;save();sync();};
+  $('reset').onclick=()=>{S.pts=DEF_PTS.map(p=>p.slice());save();sync();};
+
+  // janela de projeção e envio de mídia (mesma origem → objetos passam direto)
+  let win=null;
+  const outWin=()=>(win&&!win.closed&&win.setSource)?win:null;
+  $('open').onclick=()=>{win=window.open(location.pathname+'?saida','mapping_saida','popup,width=960,height=540');
+    $('st').innerHTML='Arraste a janela nova para a tela do projetor e dê <b>dois cliques</b> nela (ou F) para tela cheia.';};
+  const need=()=>{const w=outWin();if(!w)$('st').textContent='Abra primeiro a janela de projeção (botão 1) por esta janela de controle.';return w;};
+  document.querySelectorAll('[data-cap]').forEach(b=>b.onclick=async()=>{const sl=b.dataset.cap,w=need();if(!w)return;
+    try{const st=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:60,cursor:'never'},audio:false,preferCurrentTab:false,selfBrowserSurface:'exclude'});
+      w.setSource(sl,'stream',st);$('stt'+sl).textContent='captura: '+(st.getVideoTracks()[0].label||'aba/janela');
+      st.getVideoTracks()[0].onended=()=>{$('stt'+sl).textContent='captura encerrada';};}catch(e){$('stt'+sl).textContent='captura cancelada';}});
+  document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=async()=>{const sl=b.dataset.cam,w=need();if(!w)return;
+    try{const st=await navigator.mediaDevices.getUserMedia({video:{width:1920,height:1080}});w.setSource(sl,'stream',st);$('stt'+sl).textContent='câmera: '+st.getVideoTracks()[0].label;}
+    catch(e){$('stt'+sl).textContent='câmera bloqueada';}});
+  document.querySelectorAll('[data-fl]').forEach(b=>b.onclick=()=>document.querySelector(`[data-fi="${b.dataset.fl}"]`).click());
+  document.querySelectorAll('[data-fi]').forEach(el=>el.onchange=()=>{const sl=el.dataset.fi,f=el.files[0],w=need();if(!f||!w)return;w.setSource(sl,'file',f);$('stt'+sl).textContent='arquivo: '+f.name;});
+  document.querySelectorAll('[data-clr]').forEach(b=>b.onclick=()=>{const w=outWin();w&&w.setSource(b.dataset.clr,'none');$('stt'+b.dataset.clr).textContent='vazia';});
+
+  // calibrações salvas
+  const presets=()=>{try{return JSON.parse(localStorage.getItem(PKEY)||'{}');}catch(e){return {};}};
+  const listP=()=>{const p=presets();$('plist').innerHTML=Object.keys(p).map(n=>`<option>${n.replace(/</g,'&lt;')}</option>`).join('')||'<option value="">(nenhuma)</option>';};
+  $('psave').onclick=()=>{const n=$('pname').value.trim();if(!n)return;const p=presets();p[n]=S;try{localStorage.setItem(PKEY,JSON.stringify(p));}catch(e){}listP();$('plist').value=n;$('st').textContent='Calibração "'+n+'" salva neste navegador.';};
+  $('pload').onclick=()=>{const p=presets()[$('plist').value];if(p){S=fill(p);save();sync();}};
+  $('pdel').onclick=()=>{const p=presets();delete p[$('plist').value];try{localStorage.setItem(PKEY,JSON.stringify(p));}catch(e){}listP();};
+  $('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download=($('pname').value.trim()||'mapping-corredor')+'.json';a.click();};
+  $('impb').onclick=()=>$('imp').click();
+  $('imp').onchange=async()=>{const f=$('imp').files[0];if(!f)return;try{S=fill(JSON.parse(await f.text()));save();sync();}catch(e){$('st').textContent='Arquivo inválido.';}};
+  listP();
+
+  // áudio → níveis
+  let an=null,actx=null,elSrc=null,buf,fb,avgLow=0,mode='',micStream=null;
+  const ensureCtx=()=>{if(!actx)actx=new AudioContext();if(actx.state==='suspended')actx.resume();return actx;};
+  function startAnalysis(node,m){const ctx=ensureCtx();if(an){try{an.src.disconnect(an.a);}catch(e){}}
+    const a=ctx.createAnalyser();a.fftSize=2048;a.smoothingTimeConstant=.6;node.connect(a);an={a,src:node};mode=m;buf=new Float32Array(a.fftSize);fb=new Uint8Array(a.frequencyBinCount);
+    const hz=ctx.sampleRate/a.fftSize;
+    const loop=()=>{if(!an||an.a!==a)return;a.getFloatTimeDomainData(buf);a.getByteFrequencyData(fb);let s2=0;for(const v of buf)s2+=v*v;const sens=S.aud.sens;
+      const band=(f0,f1)=>{let t=0,n=0;for(let i=Math.floor(f0/hz);i<=Math.ceil(f1/hz)&&i<fb.length;i++){t+=fb[i];n++;}return n?t/n/255:0;};
+      const lvl=Math.min(1,Math.sqrt(s2/buf.length)*5*sens),low=Math.min(1,band(30,160)*1.3*sens);const kick=low>avgLow*1.35+.08?1:0;avgLow=avgLow*.93+low*.07;
+      $('meter').style.width=(lvl*100)+'%';bc&&bc.postMessage({t:'aud',lvl,low,kick});requestAnimationFrame(loop);};loop();}
+  function stopAnalysis(){if(an){try{an.src.disconnect(an.a);}catch(e){}}an=null;mode='';$('meter').style.width='0';bc&&bc.postMessage({t:'aud',lvl:0,low:0,kick:0});}
+  $('mic').onclick=async()=>{
+    if(mode==='mic'){stopAnalysis();micStream&&micStream.getTracks().forEach(t=>t.stop());$('mic').classList.remove('on');$('mic').textContent='Ligar microfone';return;}
+    try{micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});$('player').pause();
+      startAnalysis(ensureCtx().createMediaStreamSource(micStream),'mic');$('mic').classList.add('on');$('mic').textContent='Microfone ligado';}catch(e){$('mic').textContent='Microfone bloqueado';}};
+  const player=$('player');
+  $('filebtn').onclick=()=>$('afile').click();
+  $('afile').onchange=()=>{const f=$('afile').files[0];if(!f)return;if(mode==='mic')$('mic').click();
+    player.src=URL.createObjectURL(f);player.style.display='block';const ctx=ensureCtx();if(!elSrc){elSrc=ctx.createMediaElementSource(player);elSrc.connect(ctx.destination);}
+    startAnalysis(elSrc,'file');player.play().catch(()=>{});$('filebtn').classList.add('on');$('filebtn').textContent='♪ '+f.name.slice(0,28);};
+  player.onplay=()=>{if(mode!=='file'&&elSrc){if(mode==='mic')$('mic').click();startAnalysis(elSrc,'file');}};
+
+  function draw(){
+    const W=prev.width,H=prev.height;px.fillStyle='#000';px.fillRect(0,0,W,H);
+    for(const k of ['chao','teto','esq','dir','fundo']){const idx=FI[k],on=S.assign[k]>0;
+      px.beginPath();idx.forEach((i,j)=>{const p=S.pts[i];j?px.lineTo(p[0]*W,p[1]*H):px.moveTo(p[0]*W,p[1]*H);});px.closePath();
+      px.globalAlpha=on?.18:.04;px.fillStyle=FC[k];px.fill();px.globalAlpha=1;px.strokeStyle=on?FC[k]:'#333';px.lineWidth=2;px.stroke();
+      if(on){const c=idx.reduce((a,i)=>[a[0]+S.pts[i][0]/4,a[1]+S.pts[i][1]/4],[0,0]);px.fillStyle=FC[k];px.font='22px system-ui';px.textAlign='center';
+        px.fillText(FN[k]+' · '+['','A','B','ondas'][S.assign[k]],c[0]*W,c[1]*H);}}
+    S.pts.forEach((p,i)=>{px.beginPath();px.arc(p[0]*W,p[1]*H,i===S.sel?14:10,0,7);px.fillStyle=i===S.sel?'#fff':(i<4?'#7fd8f0':'#ffc46b');px.fill();
+      px.fillStyle='#000';px.font='bold 14px system-ui';px.textAlign='center';px.fillText(i+1,p[0]*W,p[1]*H+5);});
+  }
+  function sync(){
+    document.querySelectorAll('input[data-k]').forEach(el=>{const v=get(S,el.dataset.k);if(document.activeElement!==el)el.value=v;el.nextElementSibling.textContent=(+v).toFixed(2);});
+    document.querySelectorAll('input[data-c]').forEach(el=>el.value=S.waves[el.dataset.c]);
+    document.querySelectorAll('[data-a]').forEach(el=>el.value=S.assign[el.dataset.a]);
+    document.querySelectorAll('select[data-s]').forEach(el=>el.value=S[el.dataset.s]);
+    document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('on',+b.dataset.p===S.sel));
+    $('calib').classList.toggle('on',S.calib);$('calib').textContent=S.calib?'Calibrar (ligado)':'Calibrar';$('black').classList.toggle('on',S.black);
+    draw();
+  }
+  onState=sync;
+  dragOn(prev,e=>{const r=prev.getBoundingClientRect();return [(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height];},()=>true);
+  sync();
+}
+
+/* =================== PROJEÇÃO =================== */
+if(OUT){
+  document.body.classList.add('out');
+  const canvas=document.getElementById('gl');canvas.style.display='block';
+  const THREE=await import('three');
+  if(bc)bc.postMessage({t:'hello'});
+  const A={lvl:0,low:0,k:0},sm={lvl:0};
+  if(bc)bc.addEventListener('message',e=>{if(e.data.t==='aud'){A.lvl=e.data.lvl;A.low=e.data.low;if(e.data.kick)A.k=1;}});
+  canvas.addEventListener('dblclick',()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});});
+  dragOn(canvas,e=>[e.clientX/innerWidth,e.clientY/innerHeight],()=>S.calib);
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:false});renderer.setPixelRatio(1);
+
+  // fontes A e B
+  const blank=new THREE.DataTexture(new Uint8Array([0,0,0,255]),1,1);blank.needsUpdate=true;
+  const SRC={A:{tex:blank,el:null},B:{tex:blank,el:null}};
+  window.setSource=(sl,kind,payload)=>{
+    const s=SRC[sl];if(s.el){try{s.el.pause();s.el.srcObject=null;s.el.removeAttribute('src');}catch(e){}}
+    if(s.tex!==blank)s.tex.dispose();s.tex=blank;s.el=null;
+    if(kind==='stream'||(kind==='file'&&!payload.type.startsWith('image'))){
+      const v=document.createElement('video');v.muted=true;v.loop=true;v.playsInline=true;
+      if(kind==='stream')v.srcObject=payload;else v.src=URL.createObjectURL(payload);
+      v.play().catch(()=>{});s.el=v;s.tex=new THREE.VideoTexture(v);s.tex.colorSpace=THREE.SRGBColorSpace;
+    }else if(kind==='file'){const img=new Image();img.onload=()=>{const t=new THREE.Texture(img);t.colorSpace=THREE.SRGBColorSpace;t.needsUpdate=true;s.tex=t;applyState();};img.src=URL.createObjectURL(payload);}
+    applyState();
+  };
+
+  const FACE_FS=`
+#define PI 3.14159265
+uniform mat3 uHinv; uniform vec3 uP0,uP1,uP2,uP3; uniform vec2 uSize; uniform vec3 uDims;
+uniform float uCalib,uMode,uMapA,uMapB,uGA,uGB,uCrop,uFaceId,uEdge,uMaster,uT2,uC2,uLam,uRange,uWGain;
+uniform vec3 uFaceCol,uSrc,uC1,uC2c; uniform sampler2D uTexA,uTexB;
+vec2 stripUV(vec2 uv){ // faixa contínua: x = esq(baixo→cima) → teto(esq→dir) → dir(cima→baixo); y = fundo→boca
+  float H=uDims.y,W=uDims.x,P=2.*H+W; float s=0.,d=0.;
+  if(uFaceId<1.5){ s=0.; d=0.; }
+  if(abs(uFaceId-2.)<.5){ s=H*(1.-uv.y)/P; d=1.-uv.x; }      // esquerda [F0,B0,B3,F3]
+  else if(abs(uFaceId-1.)<.5){ s=(H+W*uv.x)/P; d=1.-uv.y; }   // teto [F0,F1,B1,B0]
+  else if(abs(uFaceId-3.)<.5){ s=(H+W+H*uv.y)/P; d=uv.x; }    // direita [B1,F1,F2,B2]
+  else { s=uv.x; d=uv.y; }
+  return vec2(s,d);
+}
+vec3 samp(sampler2D t,vec2 uv,float mp){ vec2 q= mp>.5 ? stripUV(uv) : uv; q=mix(vec2(uCrop),vec2(1.-uCrop),q); return texture2D(t,vec2(q.x,1.-q.y)).rgb; }
+void main(){
+  vec3 q=uHinv*vec3(gl_FragCoord.xy,1.); vec2 uv=q.xy/q.z;
+  if(q.z<=0.||uv.x<-.002||uv.y<-.002||uv.x>1.002||uv.y>1.002) discard;
+  uv=clamp(uv,0.,1.);
+  vec3 P=mix(mix(uP0,uP1,uv.x),mix(uP3,uP2,uv.x),uv.y);
+  vec2 m=uv*uSize; float de=min(min(m.x,uSize.x-m.x),min(m.y,uSize.y-m.y));
+  vec3 col=vec3(0.);
+  if(uCalib>.5){
+    float c=mod(floor(P.x/.25+50.)+floor(P.y/.25+50.)+floor(P.z/.25+50.),2.);
+    col=uFaceCol*(.18+.32*c)+vec3(1.)*smoothstep(.025,.0,de);
+  } else {
+    if(uMode>.5&&uMode<1.5) col=samp(uTexA,uv,uMapA)*uGA;
+    else if(uMode>1.5&&uMode<2.5) col=samp(uTexB,uv,uMapB)*uGB;
+    else if(uMode>2.5){
+      float r=length(P-uSrc); float u=(r-uC2*uT2)/uLam; float att=1./(1.+r*r/(uRange*uRange));
+      float w1=pow(.5+.5*cos(6.2832*u),6.), w2=pow(.5+.5*cos(6.2832*(u*.62+.3)),8.);
+      col=(uC1*w1+uC2c*w2*.8)*att*uWGain;
+    }
+    col+=vec3(.45,.8,1.)*uEdge*exp(-de*40.);
+  }
+  gl_FragColor=vec4(col*uMaster,1.);
+}`;
+  const fScene=new THREE.Scene(),fCam=new THREE.OrthographicCamera(-1,1,1,-1,0,2);
+  const FACES={fundo:{idx:[0,1,2,3],col:[.5,.85,.95],id:0},teto:{idx:[4,5,1,0],col:[1,.63,.25],id:1},esq:{idx:[4,0,3,7],col:[.3,1,.5],id:2},dir:{idx:[1,5,6,2],col:[1,.31,.82],id:3},chao:{idx:[3,2,6,7],col:[.6,.6,1],id:4}};
+  const shared={uT2:{value:0},uDims:{value:new THREE.Vector3()},uSrc:{value:new THREE.Vector3()}};
+  for(const [k,f] of Object.entries(FACES)){
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(12),3));g.setIndex([0,1,2,0,2,3]);
+    f.u={...shared,uHinv:{value:new THREE.Matrix3()},uP0:{value:new THREE.Vector3()},uP1:{value:new THREE.Vector3()},uP2:{value:new THREE.Vector3()},uP3:{value:new THREE.Vector3()},
+      uSize:{value:new THREE.Vector2()},uCalib:{value:1},uMode:{value:0},uMapA:{value:0},uMapB:{value:0},uGA:{value:1},uGB:{value:1},uCrop:{value:0},uFaceId:{value:f.id},
+      uEdge:{value:0},uMaster:{value:1},uC2:{value:.8},uLam:{value:.45},uRange:{value:5},uWGain:{value:1},
+      uFaceCol:{value:new THREE.Vector3(...f.col)},uC1:{value:new THREE.Color()},uC2c:{value:new THREE.Color()},uTexA:{value:blank},uTexB:{value:blank}};
+    f.mesh=new THREE.Mesh(g,new THREE.ShaderMaterial({uniforms:f.u,vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:FACE_FS,side:THREE.DoubleSide,depthTest:false}));
+    f.mesh.frustumCulled=false;fScene.add(f.mesh);
+  }
+  const mk=document.createElement('canvas');mk.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none';document.body.appendChild(mk);const mx=mk.getContext('2d');
+  function sq2q(p){const [x0,y0]=p[0],[x1,y1]=p[1],[x2,y2]=p[2],[x3,y3]=p[3];const sx=x0-x1+x2-x3,sy=y0-y1+y2-y3;let a,b,c,d,e,f,g,h;
+    if(Math.abs(sx)<1e-9&&Math.abs(sy)<1e-9){a=x1-x0;b=x3-x0;c=x0;d=y1-y0;e=y3-y0;f=y0;g=0;h=0;}
+    else{const dx1=x1-x2,dx2=x3-x2,dy1=y1-y2,dy2=y3-y2,den=dx1*dy2-dx2*dy1;g=(sx*dy2-dx2*sy)/den;h=(dx1*sy-sx*dy1)/den;a=x1-x0+g*x1;b=x3-x0+h*x3;c=x0;d=y1-y0+g*y1;e=y3-y0+h*y3;f=y0;}
+    return new THREE.Matrix3().set(a,b,c,d,e,f,g,h,1);}
+  let BW=1,BH=1;
+  function resize(){renderer.setSize(innerWidth,innerHeight,false);const v=renderer.getDrawingBufferSize(new THREE.Vector2());BW=v.x;BH=v.y;mk.width=innerWidth*devicePixelRatio;mk.height=innerHeight*devicePixelRatio;}
+  addEventListener('resize',()=>{resize();applyState();});resize();
+  function applyState(){
+    const {W,H,D}=S.dims,w=W/2,C3=[[-w,H,0],[w,H,0],[w,0,0],[-w,0,0],[-w,H,D],[w,H,D],[w,0,D],[-w,0,D]];
+    shared.uDims.value.set(W,H,D);shared.uSrc.value.set(0,H*S.waves.oy,.02);
+    for(const [k,f] of Object.entries(FACES)){
+      const mode=S.assign[k]||0;f.mesh.visible=S.calib?true:mode>0;if(S.calib&&k==='chao'&&!mode)f.mesh.visible=false;
+      const P=f.idx.map(i=>S.pts[i]),pa=f.mesh.geometry.attributes.position;P.forEach((p,j)=>pa.setXYZ(j,p[0]*2-1,1-p[1]*2,0));pa.needsUpdate=true;
+      f.u.uHinv.value.copy(sq2q(P.map(p=>[p[0]*BW,(1-p[1])*BH]))).invert();
+      const Q=f.idx.map(i=>C3[i]);f.u.uP0.value.set(...Q[0]);f.u.uP1.value.set(...Q[1]);f.u.uP2.value.set(...Q[2]);f.u.uP3.value.set(...Q[3]);
+      f.u.uSize.value.set(f.u.uP1.value.distanceTo(f.u.uP0.value),f.u.uP3.value.distanceTo(f.u.uP0.value));
+      f.u.uCalib.value=S.calib?1:0;f.u.uMode.value=mode;f.u.uMapA.value=S.mapA;f.u.uMapB.value=S.mapB;f.u.uCrop.value=S.crop;
+      f.u.uTexA.value=SRC.A.tex;f.u.uTexB.value=SRC.B.tex;f.u.uLam.value=S.waves.lam;f.u.uRange.value=S.waves.range;
+      f.u.uC1.value.set(S.waves.c1);f.u.uC2c.value.set(S.waves.c2);
+    }
+    document.body.classList.toggle('show',!S.calib);
+  }
+  onState=applyState;applyState();
+  const clock=new THREE.Clock();
+  function frame(){
+    const dt=Math.min(clock.getDelta(),.05);A.k*=Math.exp(-dt*4);sm.lvl+=(A.lvl-sm.lvl)*.25;
+    shared.uT2.value+=dt*S.waves.spd*(1+sm.lvl*S.aud.waves);
+    const aB=1+S.aud.bright*sm.lvl*1.5;
+    for(const f of Object.values(FACES)){f.u.uWGain.value=S.waves.gain*(1+S.aud.waves*sm.lvl*3);f.u.uGA.value=S.gA*aB;f.u.uGB.value=S.gB*aB;
+      f.u.uEdge.value=S.edge*(1+S.aud.edge*A.k*2);f.u.uMaster.value=S.black?0:S.master;f.u.uC2.value=.8;}
+    renderer.setClearColor(0x000000,1);renderer.clear();renderer.render(fScene,fCam);
+    mx.clearRect(0,0,mk.width,mk.height);
+    if(S.calib&&!S.black){const W=mk.width,H=mk.height,r=Math.max(10,H/60);
+      S.pts.forEach((p,i)=>{const x=p[0]*W,y=p[1]*H;mx.strokeStyle=i===S.sel?'#fff':(i<4?'#7fd8f0':'#ffc46b');mx.lineWidth=i===S.sel?3:2;
+        mx.beginPath();mx.arc(x,y,r,0,7);mx.stroke();mx.beginPath();mx.moveTo(x-r*2,y);mx.lineTo(x+r*2,y);mx.moveTo(x,y-r*2);mx.lineTo(x,y+r*2);mx.stroke();
+        mx.fillStyle=mx.strokeStyle;mx.font=`bold ${Math.round(r*1.4)}px system-ui`;mx.fillText(String(i+1),x+r*1.3,y-r*1.3);});}
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+</script>
+</body>
+</html>

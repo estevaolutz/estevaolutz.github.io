@@ -9,9 +9,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#e9ecf2;fon
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #ov{touch-action:none}
 body.limpo{cursor:none}
-#ajuda{position:fixed;left:14px;top:12px;background:#0b0d12e6;border:1px solid #2a303c;border-radius:10px;padding:10px 14px;font-size:13px;max-width:460px;pointer-events:none}
+#ajuda{position:fixed;left:14px;top:12px;transition:left .25s,top .25s,opacity .25s;background:#0b0d12e6;border:1px solid #2a303c;border-radius:10px;padding:10px 14px;font-size:13px;max-width:460px;pointer-events:none}
 #ajuda b{color:#e8b04a}
-body.limpo #ajuda{display:none}
+body.limpo #ajuda,body.semajuda #ajuda{display:none}
 #msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);text-align:center;font-size:17px;color:#8b93a3;display:none;max-width:80vw}
 #dicaFS{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;background:#12151cf2;border:2px solid #e8b04a;border-radius:14px;padding:18px 26px;font:500 18px/1.45 system-ui,sans-serif;text-align:center;cursor:pointer;max-width:80vw}
 #dicaFS b{color:#e8b04a}
@@ -101,11 +101,25 @@ function alcas(){
   cx.setTransform(1,0,0,1,0,0);cx.clearRect(0,0,ov.width,ov.height);
   document.body.classList.toggle('limpo',!S.edit);
   if(!S.edit||preto)return;cx.scale(dpr,dpr);
+  posAjuda();
   var P=S.pts.map(function(p){return[p[0]*W,p[1]*H]});
   cx.beginPath();P.forEach(function(p,j){j?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});cx.closePath();cx.lineWidth=2;cx.strokeStyle='#e8b04a';cx.stroke();
   P.forEach(function(p,j){cx.beginPath();cx.arc(p[0],p[1],j===canto?13:10,0,7);cx.fillStyle=j===canto?'#e8b04a':'rgba(0,0,0,.6)';cx.fill();cx.lineWidth=2;cx.strokeStyle='#e8b04a';cx.stroke();
     cx.beginPath();cx.moveTo(p[0]-24,p[1]);cx.lineTo(p[0]+24,p[1]);cx.moveTo(p[0],p[1]-24);cx.lineTo(p[0],p[1]+24);cx.lineWidth=1;cx.stroke();
     cx.fillStyle='#e8b04a';cx.font='600 14px system-ui';cx.fillText(String(j+1),p[0]+14,p[1]-14)});
+}
+// a caixa de ajuda vai para o canto da tela mais longe dos pontos de ajuste
+var ajT=0,ajLado='';
+function posAjuda(){
+  if(++ajT%15)return;var a=$('ajuda'),aw=a.offsetWidth,ah=a.offsetHeight,m=14;if(!aw)return;
+  var cand={tl:[m,m],tr:[W-aw-m,m],bl:[m,H-ah-m],br:[W-aw-m,H-ah-m],tc:[(W-aw)/2,m],bc:[(W-aw)/2,H-ah-m]},best='',bd=-1;
+  var P=S.pts.map(function(p){return[p[0]*W,p[1]*H]});
+  var D={};Object.keys(cand).forEach(function(k){var x=cand[k][0],y=cand[k][1],d=1e9;
+    P.forEach(function(p){var dx=Math.max(x-p[0],0,p[0]-(x+aw)),dy=Math.max(y-p[1],0,p[1]-(y+ah));d=Math.min(d,Math.hypot(dx,dy))});
+    D[k]=d;if(d>bd){bd=d;best=k}});
+  if(ajLado&&D[ajLado]>=bd-20){best=ajLado;bd=D[ajLado]}
+  if(best&&best!==ajLado){ajLado=best;a.style.left=cand[best][0]+'px';a.style.top=cand[best][1]+'px'}
+  a.style.opacity=bd<30?'.35':'1';
 }
 requestAnimationFrame(frame);
 
@@ -131,7 +145,8 @@ document.addEventListener('fullscreenchange',fsCheck);fsCheck();
 addEventListener('keydown',function(e){
   var k=e.key,st=(e.shiftKey?10:1);
   if(k==='f'||k==='F'){tela();return}
-  if(k==='e'||k==='E'||k==='h'||k==='H'){S.edit=!S.edit;salvar();return}
+  if(k==='e'||k==='E'){S.edit=!S.edit;salvar();return}
+  if(k==='h'||k==='H'){document.body.classList.toggle('semajuda');return}
   if(k==='g'||k==='G'){S.grade=!S.grade;salvar();return}
   if(k==='b'||k==='B'){preto=!preto;return}
   if(k==='r'||k==='R'){if(confirm('Voltar os 4 cantos para o encaixe inicial?'))encaixar();return}
@@ -143,7 +158,7 @@ addEventListener('keydown',function(e){
 });
 $('ajuda').innerHTML='<b>Projeção'+(TIT?' — '+TIT.replace(/</g,'&lt;'):'')+'</b><br>Arraste os 4 cantos até a superfície (arraste o meio para mover; Shift = fino).<br>'+
   '<b>Tab</b> próximo canto · <b>1–4</b> escolhe o canto · <b>setas</b> 1 px (Shift 10) · <b>G</b> grade · <b>B</b> blackout · <b>R</b> recomeçar<br>'+
-  '<b>E</b> esconde/mostra os cantos e esta ajuda · <b>F</b> tela cheia. A calibração fica salva para esta obra.';
+  '<b>E</b> esconde/mostra os cantos · <b>H</b> esconde esta ajuda · <b>F</b> tela cheia. A calibração fica salva para esta obra.';
 })();
 </script>
 </body>

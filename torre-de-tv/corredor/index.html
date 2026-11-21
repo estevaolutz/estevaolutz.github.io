@@ -69,6 +69,7 @@ button.big{font-size:14px;padding:10px 14px}
   <div class="row"><label>Tamanho dos pontos</label><input type="range" data-k="tower.size" min="0.3" max="3" step="0.05"><span class="v"></span></div>
   <h2>Radiação (laterais e teto)</h2>
   <div class="btns" id="layers"></div>
+  <div class="btns"><button id="solid">Laterais e teto em faixas contínuas</button></div>
   <div class="row"><label>Intensidade</label><input type="range" data-k="waves.gain" min="0" max="3" step="0.05"><span class="v"></span></div>
   <div class="row"><label>Ondas no fundo</label><input type="range" data-k="waves.back" min="0" max="3" step="0.05"><span class="v"></span></div>
   <div class="row"><label>Laterais e teto</label><input type="range" data-k="waves.sides" min="0" max="5" step="0.05"><span class="v"></span></div>
@@ -97,7 +98,7 @@ const DEF={pts:DEF_PTS.map(p=>p.slice()),sel:0,calib:true,black:false,
   dims:{W:1.5,H:2.6,D:4},
   tower:{frac:.92,spin:.12,explode:0,sway:.8,gain:1,size:1},
   layers:{fm:true,tv:true,cel:true,mw:true},
-  waves:{gain:1,lam:1,spd:1,range:5,dot:3,dsize:.8,back:.7,sides:2.2},edge:.3,master:1};
+  waves:{gain:1,lam:1,spd:1,range:5,dot:3,dsize:.8,back:.7,sides:2.2,solid:true},edge:.3,master:1};
 let S;
 try{S=Object.assign(structuredClone(DEF),JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(e){S=structuredClone(DEF);}
 for(const k of ['faces','dims','tower','layers','waves'])S[k]=Object.assign(structuredClone(DEF[k]),S[k]||{});
@@ -147,6 +148,7 @@ if(!OUT){
   document.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{S.layers[b.dataset.l]=!S.layers[b.dataset.l];save();sync();});
   document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.sel=+b.dataset.p;save();sync();});
   document.querySelectorAll('input[data-k]').forEach(el=>{el.oninput=()=>{set(S,el.dataset.k,+el.value);save();sync();};});
+  $('solid').onclick=()=>{S.waves.solid=!S.waves.solid;save();sync();};
   $('calib').onclick=()=>{S.calib=!S.calib;save();sync();};
   $('black').onclick=()=>{S.black=!S.black;save();sync();};
   $('reset').onclick=()=>{S.pts=DEF_PTS.map(p=>p.slice());save();sync();};
@@ -170,7 +172,7 @@ if(!OUT){
     document.querySelectorAll('[data-l]').forEach(b=>b.classList.toggle('on',!!S.layers[b.dataset.l]));
     document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('on',+b.dataset.p===S.sel));
     $('calib').classList.toggle('on',S.calib);$('calib').textContent=S.calib?'Calibrar (ligado)':'Calibrar';
-    $('black').classList.toggle('on',S.black);
+    $('black').classList.toggle('on',S.black);$('solid').classList.toggle('on',!!S.waves.solid);
     draw();
   }
   onState=sync;
@@ -246,7 +248,7 @@ vec3 cfield(vec3 p,float seed){
   const FACE_FS=`
 ${CF}
 uniform mat3 uHinv; uniform vec3 uP0,uP1,uP2,uP3; uniform vec2 uSize;
-uniform float uCalib,uIsBack,uDot,uDSize,uWGain,uTGain,uEdge,uMaster,uSel; uniform vec3 uFaceCol;
+uniform float uFill,uCalib,uIsBack,uDot,uDSize,uWGain,uTGain,uEdge,uMaster,uSel; uniform vec3 uFaceCol;
 uniform sampler2D uTower;
 void main(){
   vec3 q=uHinv*vec3(gl_FragCoord.xy,1.); vec2 uv=q.xy/q.z;
@@ -265,6 +267,9 @@ void main(){
     vec3 f=cfield(P,sd)*uWGain; float l=max(f.r,max(f.g,f.b));
     float rad=uDSize*.5*clamp(.25+l,0.,1.);
     float dm=smoothstep(rad,rad*.55,length(cell));
+    float w=max(fwidth(g.x),fwidth(g.y));
+    float fill=max(uFill,smoothstep(.12,.45,w));
+    dm=mix(dm,.55+.45*clamp(l,0.,1.),fill);
     col=f*dm*1.5+f*.06;
     if(uIsBack>.5) col+=texture2D(uTower,vec2(uv.x,1.-uv.y)).rgb*uTGain;
     col+=vec3(.45,.8,1.)*uEdge*exp(-de*40.)*(.6+.4*sin(uT2*2.+P.z*3.));
@@ -280,7 +285,7 @@ void main(){
   for(const [k,f] of Object.entries(FACES)){
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(12),3));g.setIndex([0,1,2,0,2,3]);
     f.u={...CU,uHinv:{value:new THREE.Matrix3()},uP0:{value:new THREE.Vector3()},uP1:{value:new THREE.Vector3()},uP2:{value:new THREE.Vector3()},uP3:{value:new THREE.Vector3()},
-      uSize:{value:new THREE.Vector2()},uCalib:{value:1},uIsBack:{value:k==='fundo'?1:0},uDot:{value:3},uDSize:{value:.8},uWGain:{value:1},uTGain:{value:1},uEdge:{value:.3},uMaster:{value:1},
+      uSize:{value:new THREE.Vector2()},uFill:{value:0},uCalib:{value:1},uIsBack:{value:k==='fundo'?1:0},uDot:{value:3},uDSize:{value:.8},uWGain:{value:1},uTGain:{value:1},uEdge:{value:.3},uMaster:{value:1},
       uFaceCol:{value:new THREE.Vector3(...f.col)},uSel:{value:0},uTower:{value:null}};
     f.mesh=new THREE.Mesh(g,new THREE.ShaderMaterial({uniforms:f.u,vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:FACE_FS,side:THREE.DoubleSide,depthTest:false}));
     f.mesh.frustumCulled=false;fScene.add(f.mesh);
@@ -309,7 +314,7 @@ void main(){
       f.u.uHinv.value.copy(sq2q(P.map(p=>[p[0]*BW,(1-p[1])*BH]))).invert();
       const Q=f.idx.map(i=>C3[i]);f.u.uP0.value.set(...Q[0]);f.u.uP1.value.set(...Q[1]);f.u.uP2.value.set(...Q[2]);f.u.uP3.value.set(...Q[3]);
       f.u.uSize.value.set(f.u.uP1.value.distanceTo(f.u.uP0.value),f.u.uP3.value.distanceTo(f.u.uP0.value));
-      f.u.uCalib.value=S.calib?1:0;f.u.uDot.value=S.waves.dot;f.u.uDSize.value=S.waves.dsize;f.u.uWGain.value=S.waves.gain*(k==='fundo'?S.waves.back:S.waves.sides);
+      f.u.uCalib.value=S.calib?1:0;f.u.uFill.value=(k!=='fundo'&&S.waves.solid)?1:0;f.u.uDot.value=S.waves.dot;f.u.uDSize.value=S.waves.dsize;f.u.uWGain.value=S.waves.gain*(k==='fundo'?S.waves.back:S.waves.sides);
       f.u.uTGain.value=S.tower.gain;f.u.uEdge.value=S.edge;f.u.uMaster.value=S.black?0:S.master;
     }
     CU.uR2.value=S.waves.range;

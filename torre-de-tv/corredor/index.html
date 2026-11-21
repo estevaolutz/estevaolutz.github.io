@@ -101,6 +101,10 @@ button.big{font-size:14px;padding:10px 14px}
   <div class="row"><label>→ Explosão (graves)</label><input type="range" data-k="aud.explode" min="0" max="2" step="0.05"><span class="v"></span></div>
   <div class="row"><label>→ Brilho da antena</label><input type="range" data-k="aud.bright" min="0" max="3" step="0.05"><span class="v"></span></div>
   <div class="row"><label>→ Velocidade</label><input type="range" data-k="aud.speed" min="0" max="2" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>→ Giro (volume)</label><input type="range" data-k="aud.spin" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>→ Oscilação (graves)</label><input type="range" data-k="aud.sway" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>→ Pontos (agudos)</label><input type="range" data-k="aud.size" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>→ Pulsação (batida)</label><input type="range" data-k="aud.pulse" min="0" max="3" step="0.05"><span class="v"></span></div>
   <h2>Calibração</h2>
   <div class="btns"><button id="reset">Pontos iniciais</button><button id="copy">Copiar calibração</button></div>
  </div>
@@ -120,7 +124,7 @@ const DEF={pts:DEF_PTS.map(p=>p.slice()),sel:0,calib:true,black:false,
   tower:{frac:.92,spin:.12,explode:0,vgap:7,rgap:9,sway:.8,gain:1,size:1,induced:.5,feed:true,beacon:true},
   gains:{fm:1,tv:1,cel:1,mw:1},
   seq:{on:false,dur:20},
-  aud:{sens:1,waves:1,explode:.6,bright:.6,speed:.5},
+  aud:{sens:1,waves:1,explode:.8,bright:.6,speed:.3,spin:.6,sway:.6,size:.6,pulse:.6},
   layers:{fm:true,tv:true,cel:true,mw:true},
   waves:{gain:1,lam:1,spd:1,range:5,dot:3,dsize:.8,back:.7,sides:2.2,solid:true},edge:.3,master:1};
 let S;
@@ -191,10 +195,10 @@ if(!OUT){
       const band=(f0,f1)=>{let t=0,n=0;for(let i=Math.floor(f0/hz);i<=Math.ceil(f1/hz)&&i<fb.length;i++){t+=fb[i];n++;}return n?t/n/255:0;};
       const lvl=Math.min(1,Math.sqrt(s2/buf.length)*5*sens),low=Math.min(1,band(30,160)*1.3*sens),high=Math.min(1,band(3000,10000)*2.2*sens);
       const kick=low>avgLow*1.35+.08?1:0;avgLow=avgLow*.93+low*.07;
-      $('meter').style.width=(lvl*100)+'%';bc&&bc.postMessage({t:'aud',lvl,low,high,kick});requestAnimationFrame(loop);};
+      $('meter').style.width=(lvl*100)+'%';bc&&bc.postMessage({t:'aud',lvl,low,high,kick,on:true});requestAnimationFrame(loop);};
     loop();
   }
-  function stopAnalysis(){if(an){try{an.src.disconnect(an.a);}catch(e){}}an=null;mode='';$('meter').style.width='0';bc&&bc.postMessage({t:'aud',lvl:0,low:0,high:0,kick:0});}
+  function stopAnalysis(){if(an){try{an.src.disconnect(an.a);}catch(e){}}an=null;mode='';$('meter').style.width='0';bc&&bc.postMessage({t:'aud',lvl:0,low:0,high:0,kick:0,on:false});}
   let micStream=null,micNode=null;
   $('mic').onclick=async()=>{
     if(mode==='mic'){stopAnalysis();micStream&&micStream.getTracks().forEach(t=>t.stop());micStream=null;$('mic').classList.remove('on');$('mic').textContent='Ligar microfone';return;}
@@ -252,8 +256,8 @@ if(OUT){
   const G=await import('./torre-geo.js');
   const {MeshSurfaceSampler}=await import('three/addons/math/MeshSurfaceSampler.js');
   if(bc)bc.postMessage({t:'hello'});
-  const A={lvl:0,low:0,high:0,kick:0,k:0};
-  if(bc)bc.addEventListener('message',e=>{if(e.data.t==='aud'){const m=e.data;A.lvl=m.lvl;A.low=m.low;A.high=m.high;if(m.kick)A.k=1;}});
+  const A={lvl:0,low:0,high:0,kick:0,k:0,on:false};
+  if(bc)bc.addEventListener('message',e=>{if(e.data.t==='aud'){const m=e.data;A.lvl=m.lvl;A.low=m.low;A.high=m.high;A.on=m.on!==false&&!!m.on;if(m.kick)A.k=1;}});
   canvas.addEventListener('dblclick',()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});});
   dragOn(canvas,e=>[e.clientX/innerWidth,e.clientY/innerHeight],()=>S.calib);
 
@@ -294,7 +298,7 @@ if(OUT){
 #define NC ${NC}
 #define PI 3.14159265
 uniform vec3 cP[NC];uniform vec3 cC[NC];uniform vec4 cA[NC];uniform float cL[NC];
-uniform float uT2,uC2,uR2;
+uniform float uT2,uC2,uR2,uAudMode,uHR,uHN; uniform sampler2D uHist;
 float h11(float n){return fract(sin(n*127.1+.31)*43758.5453);}
 vec3 cfield(vec3 p,float seed){
   vec3 acc=vec3(0.);
@@ -302,11 +306,14 @@ vec3 cfield(vec3 p,float seed){
     vec3 d=p-cP[i]; float r=max(length(d),.03); vec3 n=d/r;
     float el=asin(clamp(n.y,-1.,1.)), az=atan(n.x,n.z);
     float u=(r-uC2*uT2)/cL[i], tr=uT2-r/uC2; int ty=int(a.x+.5); float pat=1., s=0.;
+    vec3 hv=texture2D(uHist,vec2((tr*uHR+.5)/uHN,.5)).rgb;
+    float env= ty==0 ? .5*(hv.r+hv.g) : (ty==1 ? hv.r : hv.b);
     if(ty==0){pat=.35+.65*pow(cos(el),2.); u+=.3*sin(6.2832*.22*tr); s=pow(.5+.5*cos(6.2832*u),6.);}
     else if(ty==1){pat=.35+.65*pow(cos(el),2.); s=pow(.5+.5*cos(6.2832*u),5.)*step(.25,fract(tr*.8))*(.3+h11(seed+floor(uT2*9.)));}
     else if(ty==2){float da=mod(az+PI/3.,2.*PI/3.)-PI/3.; pat=exp(-da*da/.15); s=pow(.5+.5*cos(6.2832*u),6.)*step(fract(tr*1.3),.45);}
     else {vec3 b=vec3(sin(a.z)*cos(a.w),sin(a.w),cos(a.z)*cos(a.w)); float c=dot(n,b); pat=exp(-(1.-c)/.004);
       s=step(.45,fract(u))*step(.3,h11(floor(u)+float(i)*7.));}
+    if(uAudMode>.5){ float car = ty==3 ? step(.45,fract(u)) : pow(.5+.5*cos(6.2832*u),3.); s=car*env*2.5; }
     float att=ty==3?1./(1.+r/(uR2*2.)):1./(1.+r*r/(uR2*uR2));
     acc+=cC[i]*a.y*pat*att*s;}
   return acc;}
@@ -343,7 +350,8 @@ void main(){
   gl_FragColor=vec4(col*uMaster,1.);
 }`;
   const fScene=new THREE.Scene(),fCam=new THREE.OrthographicCamera(-1,1,1,-1,0,2);
-  const CU={uT2:{value:0},uC2:{value:.8},uR2:{value:4},
+  const HN=1024,HR=60,hist=new Uint8Array(HN*4),histTex=new THREE.DataTexture(hist,HN,1);histTex.wrapS=THREE.RepeatWrapping;histTex.magFilter=histTex.minFilter=THREE.LinearFilter;histTex.needsUpdate=true;let lastIdx=-1;
+  const CU={uAudMode:{value:0},uHR:{value:HR},uHN:{value:HN},uHist:{value:histTex},uT2:{value:0},uC2:{value:.8},uR2:{value:4},
     cP:{value:Array.from({length:NC},()=>new THREE.Vector3())},cC:{value:[[1,.6,.2],[1,.25,.85],[.3,1,.5],[.55,.85,1],[.55,.85,1],[.55,.85,1]].map(c=>new THREE.Vector3(...c))},
     cA:{value:[[0,1,0,0],[1,1,0,0],[2,1,0,0],[3,1,0,.75],[3,1,-.75,.25],[3,1,.8,.4]].map(a=>new THREE.Vector4(...a))},cL:{value:[.45,.3,.2,.12,.12,.12]}};
   const BASE_L=[.45,.3,.2,.12,.12,.12];
@@ -399,7 +407,7 @@ void main(){
     {name:'Explosão',wave:.8,spd:.8,ex:1,spin:1.2,lam:1,edge:.8,tower:1.2},
     {name:'Tempestade',wave:2.2,spd:1.9,ex:.2,spin:2.5,lam:.6,edge:1.6,tower:1.3},
     {name:'Respiro',wave:.12,spd:.35,ex:0,spin:.25,lam:1.8,edge:0,tower:.35}];
-  let seqT=0,lastScene=-1;const sm={lvl:0,low:0};
+  let seqT=0,lastScene=-1;const sm={lvl:0,low:0,high:0};
   const clock=new THREE.Clock();let ang=0;const tmpV=new THREE.Vector3(),right=new THREE.Vector3();
   function frame(){
     const dt=Math.min(clock.getDelta(),.05);
@@ -410,17 +418,24 @@ void main(){
       if(i!==lastScene){lastScene=i;bc&&bc.postMessage({t:'scene',name:a.name});}}
     else{seqT=0;lastScene=-1;}
     // ---- áudio
-    A.k*=Math.exp(-dt*4);sm.lvl+=(A.lvl-sm.lvl)*.25;sm.low+=(A.low-sm.low)*.3;
-    const aW=1+S.aud.waves*sm.lvl*3,aB=1+S.aud.bright*(sm.lvl*1.5+A.k),aS=1+S.aud.speed*sm.lvl*2;
-    const ex=Math.min(1,Math.max(S.tower.explode,M.ex)+S.aud.explode*(A.k*.35+sm.low*.25));
+    A.k*=Math.exp(-dt*4);sm.lvl+=(A.lvl-sm.lvl)*.35;sm.low+=(A.low-sm.low)*.35;sm.high+=(A.high-sm.high)*.35;CU.uAudMode.value=A.on?1:0;
+    const aW=A.on?S.aud.waves:1+S.aud.waves*sm.lvl*3,aB=1+S.aud.bright*(sm.lvl*1.5+A.k),aS=1+S.aud.speed*sm.lvl*2;
+    const ex=Math.min(1,Math.max(S.tower.explode,M.ex)+S.aud.explode*(A.k*.4+sm.low*.6));
+    U.uSway.value=S.tower.sway+S.aud.sway*sm.low*6;U.uSize.value=S.tower.size*(1+S.aud.size*sm.high*2.5);
+    const frac=S.tower.frac*(1+S.aud.pulse*A.k*.1);
     U.uExplode.value+=(ex-U.uExplode.value)*Math.min(1,dt*6);U.uAudio.value=sm.lvl;
     for(const [k,f] of Object.entries(FACES)){f.u.uWGain.value=S.waves.gain*(k==='fundo'?S.waves.back:S.waves.sides)*M.wave*aW;
-      f.u.uTGain.value=S.tower.gain*M.tower*aB;f.u.uEdge.value=S.edge*M.edge*(1+A.k*2);}
+      f.u.uTGain.value=S.tower.gain*M.tower*aB;f.u.uEdge.value=S.edge*M.edge*(A.on?sm.lvl*2+A.k*2:1+A.k*2);}
     const lay=['fm','tv','cel','mw','mw','mw'];lay.forEach((l,i)=>{CU.cA.value[i].y=S.layers[l]?S.gains[l]:0;CU.cL.value[i]=BASE_L[i]*S.waves.lam*M.lam;});
     for(const [k,idx] of Object.entries(G.LAYERS))for(const i of idx)U.uEA.value[i].y=S.layers[k]?S.gains[k]:0;
-    U.uT.value+=dt;CU.uT2.value+=dt*S.waves.spd*M.spd*aS;ang+=dt*S.tower.spin*M.spin;
+    U.uT.value+=dt;CU.uT2.value+=dt*S.waves.spd*M.spd*aS;
+    {const idx=Math.floor(CU.uT2.value*HR);if(lastIdx<0||idx-lastIdx>HN)lastIdx=idx-1;
+      for(let k=lastIdx+1;k<=idx;k++){const j=((k%HN)+HN)%HN;hist[j*4]=Math.min(255,sm.lvl*255);hist[j*4+1]=Math.min(255,sm.low*255);hist[j*4+2]=Math.min(255,sm.high*255);hist[j*4+3]=255;}
+      if(idx>lastIdx){lastIdx=idx;histTex.needsUpdate=true;}}
+    // com áudio ligado, a antena também só brilha com o som
+    U.uInduced.value=S.tower.induced*(A.on?sm.lvl*3:1);for(const [k,idx] of Object.entries(G.LAYERS))for(const i of idx)U.uEA.value[i].y=(S.layers[k]?S.gains[k]:0)*(A.on?Math.min(1.5,sm.lvl*3):1);ang+=dt*S.tower.spin*M.spin*(1+S.aud.spin*sm.lvl*4);
     // câmera ortográfica girando em volta da torre
-    const b=4,Hv=(224+b+U.uExplode.value*U.uVGap.value*17)/S.tower.frac,asp=S.dims.W/S.dims.H,hw=Hv*asp/2;
+    const b=4,Hv=(224+b+U.uExplode.value*U.uVGap.value*17)/frac,asp=S.dims.W/S.dims.H,hw=Hv*asp/2;
     tCam.left=-hw;tCam.right=hw;tCam.top=Hv-b;tCam.bottom=-b;tCam.position.set(Math.sin(ang)*600,0,Math.cos(ang)*600);tCam.lookAt(0,0,0);tCam.updateProjectionMatrix();
     right.set(Math.cos(ang),0,-Math.sin(ang));
     const e=U.uExplode.value;

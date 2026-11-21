@@ -357,11 +357,13 @@ window.Vista3D = function(opt = {}){
       arp: 0.8, bai: 0.7, pad: 0.55, vid: 0.8, rit: 0.25 };
     Object.assign(S, cfg.padroes || {});
     const ouvintes = { nota: [], passo: [], acorde: [] };
-    const emit = (tipo, d, t) => {
-      const fns = ouvintes[tipo]; if (!fns.length) return;
+    const emit = (tipo, d, t) => { if (ouvintes[tipo] && ouvintes[tipo].length) loteEmit.push([tipo, d]); };
+    let loteEmit = [];
+    function soltarLote(t) {
+      if (!loteEmit.length) return; const lote = loteEmit; loteEmit = [];
       const ms = AC ? Math.max(0, (t - AC.currentTime) * 1000) : 0;
-      setTimeout(() => { for (const fn of fns) try { fn(d); } catch (e) {} }, ms);
-    };
+      setTimeout(() => { for (const [tipo, d] of lote) for (const fn of ouvintes[tipo]) try { fn(d); } catch (e) {} }, ms);
+    }
 
     // ---------- áudio ----------
     let AC = null, master, saida, analisador, somaArp, somaPad, pumpG, delayIn, verbIn, delRet, verbRet, dL, dR, dFbL, dFbR;
@@ -371,7 +373,7 @@ window.Vista3D = function(opt = {}){
     let grauAcorde = 0, acordePedido = null, acordeObraAte = -1;
     let atividade = 0, energiaObra = 0, ultimaAtiv = 0, flash = 0;
     const filaVidro = [];
-    let vozes = 0; const MAXV = cfg.maxVozes || 64;
+    let vozes = 0; const MAXV = cfg.maxVozes || 44;
     const cena = () => CENAS[S.cena] || CENAS.hipnose;
     const spb = () => 60 / S.bpm;                      // segundos por tempo
     const raiz = () => RE2 * Math.pow(2, (S.tom > 6 ? S.tom - 12 : S.tom) / 12);
@@ -420,7 +422,7 @@ window.Vista3D = function(opt = {}){
       delayIn.connect(hp); hp.connect(dL); dL.connect(lpL); lpL.connect(dFbL); dFbL.connect(dR); dR.connect(lpR); lpR.connect(dFbR); dFbR.connect(dL);
       lpL.connect(mg, 0, 0); lpR.connect(mg, 0, 1); mg.connect(delRet); delRet.connect(soma);
       // reverb longo e escuro
-      verbIn = AC.createGain(); const conv = AC.createConvolver(); conv.buffer = irGerado(4.2, 2.6);
+      verbIn = AC.createGain(); const conv = AC.createConvolver(); conv.buffer = irGerado(3.2, 2.4);
       verbRet = AC.createGain(); verbIn.connect(conv); conv.connect(verbRet); verbRet.connect(soma);
       delRet.connect(verbIn);
       // camadas: cada uma com volume e envios fixos (o "Espaço" regula as voltas)
@@ -466,27 +468,31 @@ window.Vista3D = function(opt = {}){
 
     // ---------- vozes ----------
     const dur = (end) => { vozes++; setTimeout(() => vozes--, Math.max(60, (end - AC.currentTime) * 1000 + 80)); };
-    const livre = () => vozes < MAXV;
+    const livre = () => vozes < (leve ? 22 : MAXV);
+    const panFixos = {};
     function painel(node, pan, k) {
-      if (AC.createStereoPanner && pan) { const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); node.connect(p); p.connect(bus[k]); }
-      else node.connect(bus[k]);
+      const i = Math.max(-2, Math.min(2, Math.round((pan || 0) * 2)));
+      if (!i || !AC.createStereoPanner) { node.connect(bus[k]); return; }
+      const ch = k + i;
+      if (!panFixos[ch]) { const p = AC.createStereoPanner(); p.pan.value = i / 2.2; p.connect(bus[k]); panFixos[ch] = p; }
+      node.connect(panFixos[ch]);
     }
     // sintetizador analógico arpejado: serra + pulso, filtro passa-baixa de 24 dB com envelope
     function pluck(k, f, t, vel, pan, o) {
       if (!livre()) return;
       const m = Math.pow(2, (S.bri - 0.5) * 4) * (1 + flash * 0.8);
       const base = Math.min(9000, f * 1.1 * m + 120 * m), pico = Math.min(16000, base * (2 + o.env * 3));
-      const g = AC.createGain(), f1 = AC.createBiquadFilter(), f2 = AC.createBiquadFilter();
-      f1.type = f2.type = 'lowpass'; f1.Q.value = o.res * (0.7 + 0.3 * S.bri); f2.Q.value = 0.6;
+      const g = AC.createGain(), f1 = AC.createBiquadFilter();
+      f1.type = 'lowpass'; f1.Q.value = o.res * (0.7 + 0.3 * S.bri);
       const a = AC.createOscillator(); a.type = 'sawtooth'; a.frequency.value = f; a.detune.value = (Math.random() - 0.5) * 9;
       const b = AC.createOscillator(); b.type = 'square'; b.frequency.value = f; b.detune.value = 6 + (Math.random() - 0.5) * 7;
       const bg = AC.createGain(); bg.gain.value = o.w2;
-      a.connect(f1); b.connect(bg); bg.connect(f1); f1.connect(f2); f2.connect(g);
+      a.connect(f1); b.connect(bg); bg.connect(f1); f1.connect(g);
       const d = o.dec * (0.8 + S.esp * 0.4);
-      for (const fl of [f1, f2]) { fl.frequency.setValueAtTime(pico, t); fl.frequency.setTargetAtTime(base, t + 0.002, d * 0.3); }
+      f1.frequency.setValueAtTime(pico, t); f1.frequency.setTargetAtTime(base, t + 0.002, d * 0.3);
       const lvl = 0.085 * vel;
       g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + 0.003); g.gain.setTargetAtTime(0, t + 0.012, d * 0.45);
-      const end = t + d * 3 + 0.05;
+      const end = t + d * 2.2 + 0.03;
       painel(g, pan, k); dur(end);
       a.start(t); b.start(t); a.stop(end); b.stop(end);
     }
@@ -500,21 +506,30 @@ window.Vista3D = function(opt = {}){
       s.connect(sg); sg.connect(g); w.connect(wg); wg.connect(lp); lp.connect(g);
       lp.frequency.setValueAtTime(Math.min(4000, f * 9 * m), t); lp.frequency.setTargetAtTime(f * 1.6 * m, t + 0.002, 0.06);
       const lvl = 0.13 * vel; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + 0.004); g.gain.setTargetAtTime(0, t + d * 0.6, d * 0.35);
-      const end = t + d * 2 + 0.1; g.connect(bus.bai); dur(end);
+      const end = t + d * 1.6 + 0.08; g.connect(bus.bai); dur(end);
       s.start(t); w.start(t); s.stop(end); w.stop(end);
     }
-    // vidro: seno com parciais de vidro, vibrato lento e coro (aproximação do Cristal Baschet)
+    // vidro: onda com parciais de vidro + uma cópia desafinada (coro) e vibrato comum a todas as notas
+    // (2 osciladores por nota: leve o bastante para muitas notas ao mesmo tempo)
+    let ondaVidro = null, vibVidro = null, vidrosAtivos = 0;
     function vidro(f, t, vel, pan) {
-      if (!livre()) return;
-      const g = AC.createGain(), lvl = 0.07 * vel;
-      const vib = AC.createOscillator(), vg = AC.createGain(); vib.frequency.value = 4.6 + Math.random(); vg.gain.value = f * 0.004;
-      vib.connect(vg);
-      const parts = [[1, 1, 0], [1.0035, 0.55, 0], [2.0, 0.22, 0], [3.01, 0.09, 0], [4.95, 0.04, 0]];
-      const os = parts.map(([r, a]) => { const o = AC.createOscillator(); o.frequency.value = f * r; vg.connect(o.frequency); const og = AC.createGain(); og.gain.value = a; o.connect(og); og.connect(g); return o; });
-      const d = 2.6 + S.esp * 2;
-      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + 0.045); g.gain.setTargetAtTime(lvl * 0.45, t + 0.05, 0.25); g.gain.setTargetAtTime(0, t + 0.4, d * 0.3);
-      const end = t + d + 0.2; painel(g, pan, 'vid'); dur(end);
-      vib.start(t); vib.stop(end); for (const o of os) { o.start(t); o.stop(end); }
+      if (!livre() || vidrosAtivos >= (leve ? 5 : 10)) return;
+      if (!ondaVidro) {
+        const re = new Float32Array([0, 1, 0.22, 0.09, 0, 0.04]), im = new Float32Array(re.length);
+        ondaVidro = AC.createPeriodicWave(im, re);
+        const lfo = AC.createOscillator(); lfo.frequency.value = 5.1; vibVidro = AC.createGain(); vibVidro.gain.value = 9; lfo.connect(vibVidro); lfo.start();
+      }
+      const g = AC.createGain(), lvl = 0.075 * vel;
+      const a = AC.createOscillator(); a.setPeriodicWave(ondaVidro); a.frequency.value = f;
+      const b = AC.createOscillator(); b.frequency.value = f * 1.0035;
+      const bg = AC.createGain(); bg.gain.value = 0.5;
+      vibVidro.connect(a.detune); vibVidro.connect(b.detune);
+      a.connect(g); b.connect(bg); bg.connect(g);
+      const d = 1.4 + S.esp * 1.2;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + 0.04); g.gain.setTargetAtTime(lvl * 0.45, t + 0.05, 0.2); g.gain.setTargetAtTime(0, t + 0.3, d * 0.28);
+      const end = t + d + 0.1; painel(g, pan, 'vid'); dur(end);
+      vidrosAtivos++; setTimeout(() => { vidrosAtivos--; try { vibVidro.disconnect(a.detune); vibVidro.disconnect(b.detune); } catch (e) {} }, Math.max(60, (end - AC.currentTime) * 1000 + 80));
+      a.start(t); b.start(t); a.stop(end); b.stop(end);
     }
     let ruido = null;
     function tique(t, vel, pan) {
@@ -572,7 +587,7 @@ window.Vista3D = function(opt = {}){
       }
       // arpejo B (agudo, comprimento diferente → fase que gira)
       const B = c.arpB, iB = Math.floor(p / B.div);
-      if (p % B.div === 0 && Math.random() < B.prob * entra(E, 0.42)) {
+      if (p % B.div === 0 && Math.random() < B.prob * entra(E, 0.42) * (leve ? 0.4 : 1)) {
         const g = grauDoAcorde(B.pat[iB % B.pat.length]), f = hz(g, B.oit), v = 0.55 + 0.35 * E;
         pluck('arpB', f, t + q * 0.02, v, iB % 2 ? 0.6 : -0.6, B); notas.push({ camada: 'arpB', grau: g, freq: f, forca: v });
       }
@@ -602,10 +617,28 @@ window.Vista3D = function(opt = {}){
       flash *= 0.85;
       for (const n of notas) emit('nota', n, t);
       emit('passo', { passo: p, compasso, tempo: pc >> 2, energia: E, acorde: grauAcorde }, t);
+      soltarLote(t);
     }
     function relogio() {
       if (!AC || !rodando) return;
-      while (proxT < AC.currentTime + 0.14) { agendar(passo, proxT); proxT += spb() / 4; passo++; }
+      const agora = AC.currentTime;
+      if (proxT < agora - 0.05) {                  // engasgou: pula os passos perdidos em vez de tocá-los todos de uma vez
+        const q = spb() / 4, n = Math.ceil((agora - proxT) / q); proxT += n * q; passo += n; atrasos++;
+      }
+      let k = 0;
+      while (proxT < agora + 0.14 && k++ < 8) { agendar(passo, proxT); proxT += spb() / 4; passo++; }
+      vigiar(agora);
+    }
+    // vigia: compara o relógio do áudio com o relógio real; se o áudio atrasa (processador sem folga)
+    // ou o relógio engasga muitas vezes, o motor passa sozinho para o modo leve (menos vozes ao mesmo tempo)
+    let leve = !!cfg.leve, atrasos = 0, vigT0 = 0, vigA0 = 0;
+    function vigiar(agora) {
+      const r = performance.now() / 1000;
+      if (!vigT0) { vigT0 = r; vigA0 = agora; return; }
+      if (r - vigT0 < 4) return;
+      const razao = (agora - vigA0) / (r - vigT0);
+      if (!leve && (razao < 0.96 || atrasos >= 3)) { leve = true; if (global.console) console.info('Motor Knick: modo leve'); }
+      vigT0 = r; vigA0 = agora; atrasos = 0;
     }
     function ligarRelogio() {
       // Worker para o relógio não engasgar quando a aba perde o foco
@@ -653,6 +686,7 @@ window.Vista3D = function(opt = {}){
       barramento(k) { return bus[k || 'vid']; },
       energia(x) { energiaObra = Math.max(0, Math.min(1, x)); },
       on(tipo, fn) { (ouvintes[tipo] = ouvintes[tipo] || []).push(fn); },
+      get leve() { return leve; }, set leve(v) { leve = !!v; },
       hz, semi, grauDoAcorde, get grauAcorde() { return grauAcorde; },
       nomeAcorde() {
         const r0 = semi(grauAcorde), t3 = semi(grauAcorde + 2) - r0, t5 = semi(grauAcorde + 4) - r0;

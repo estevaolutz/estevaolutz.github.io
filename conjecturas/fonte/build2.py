@@ -9,7 +9,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 REPO = next((a[7:] for a in sys.argv[1:] if a.startswith('--repo=')), os.path.join(AQUI, '..', '..'))
 DESTINO = os.path.join(REPO, 'conjecturas')
 CSS = open(os.path.join(AQUI, 'core.css')).read()
-NUCLEO = open(os.path.join(AQUI, 'nucleo2.js')).read()
+NUCLEO = open(os.path.join(AQUI, '..', '..', 'lib', 'motor-knick.js')).read() + '\n' + open(os.path.join(AQUI, 'nucleo2.js')).read()  # som = Motor Knick
 BANCO = open(os.path.join(AQUI, 'banco.js')).read()
 VISTA3D = '<script>\n' + open(os.path.join(AQUI, 'vista3d.js')).read() + '</script>\n'  # câmera 3D comum (só nas obras que chamam Vista3D)
 

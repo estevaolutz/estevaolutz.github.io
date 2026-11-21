@@ -35,6 +35,10 @@ button.big{font-size:14px;padding:10px 14px}
 .src{border:1px solid #222838;border-radius:8px;padding:8px;margin:6px 0}
 .src .nm{font-weight:600;margin-bottom:4px}
 .src .stt{color:var(--mu);font-size:12px;margin-top:4px}
+.rgw{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:6px;overflow:hidden;margin-top:6px}
+.rgw video{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
+.rgw canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
+.rg .hint{margin:4px 0}
 </style>
 </head>
 <body>
@@ -55,7 +59,7 @@ button.big{font-size:14px;padding:10px 14px}
   <div class="hint">
    Arraste os pontos aqui ou direto na projeção · <b>Setas</b> 1 pixel · <b>Shift + setas</b> 10 pixels · <b>Tab</b> próximo ponto · <b>C</b> calibrar · <b>B</b> blackout.<br>
    <b>Fundo</b> = 4 cantos da parede do fundo · <b>Boca</b> = 4 cantos da entrada do corredor.<br>
-   <b>Para usar outro projeto:</b> abra o projeto numa aba do Chrome, clique em <b>Capturar aba/janela</b> numa das fontes e escolha essa aba. Deixe esta janela de controle aberta enquanto a captura estiver rodando.
+   <b>Para usar outro projeto:</b> abra o projeto numa aba do Chrome (não precisa tela cheia), clique em <b>Capturar aba/janela</b> numa das fontes e escolha essa aba na lista de <b>abas do Chrome</b>. Depois marque na miniatura da fonte só a área da imagem — os controles do projeto continuam funcionando na aba dele. Deixe esta janela de controle aberta enquanto a captura estiver rodando.
   </div>
  </div>
  <div id="side">
@@ -112,7 +116,7 @@ const NAMES=['Fundo ↖','Fundo ↗','Fundo ↘','Fundo ↙','Boca ↖','Boca �
 const DEF_PTS=[[.40,.30],[.60,.30],[.60,.84],[.40,.84],[.24,.03],[.76,.03],[.76,.98],[.24,.98]];
 const DEF={pts:DEF_PTS.map(p=>p.slice()),sel:0,calib:true,black:false,
   faces:{fundo:true,teto:true,esq:true,dir:true,chao:false},
-  assign:{fundo:1,teto:3,esq:3,dir:3,chao:0},mapA:0,mapB:1,gA:1,gB:1,crop:0,
+  assign:{fundo:1,teto:3,esq:3,dir:3,chao:0},mapA:0,mapB:1,gA:1,gB:1,crop:0,rA:[0,0,1,1],rB:[0,0,1,1],
   dims:{W:1.5,H:2.6,D:4},
   waves:{gain:1.5,lam:.45,spd:1,range:5,oy:.6,c1:'#7fd8f0',c2:'#ff50d0'},edge:.3,
   aud:{sens:1,waves:1,bright:.5,edge:1},master:1};
@@ -155,7 +159,7 @@ if(!OUT){
   const FI={fundo:[0,1,2,3],teto:[4,5,1,0],esq:[4,0,3,7],dir:[1,5,6,2],chao:[3,2,6,7]};
   $('pts').innerHTML=NAMES.map((n,i)=>`<button data-p="${i}">${i+1} ${n}</button>`).join('');
   $('assign').innerHTML=Object.keys(FN).map(k=>`<div class="row"><label style="color:${FC[k]}">${FN[k]}</label><select data-a="${k}"><option value="0">Nada (preto)</option><option value="1">Fonte A</option><option value="2">Fonte B</option><option value="3">Ondas</option></select></div>`).join('');
-  for(const sl of ['A','B'])$('src'+sl).innerHTML=`<div class="nm">Fonte ${sl}</div><div class="btns"><button data-cap="${sl}">Capturar aba/janela</button><button data-cam="${sl}">Câmera</button><button data-fl="${sl}">Arquivo…</button><button data-clr="${sl}">Limpar</button></div><input type="file" data-fi="${sl}" accept="video/*,image/*" hidden><div class="stt" id="stt${sl}">vazia</div>`;
+  for(const sl of ['A','B'])$('src'+sl).innerHTML=`<div class="nm">Fonte ${sl}</div><div class="btns"><button data-cap="${sl}">Capturar aba/janela</button><button data-cam="${sl}">Câmera</button><button data-fl="${sl}">Arquivo…</button><button data-clr="${sl}">Limpar</button></div><input type="file" data-fi="${sl}" accept="video/*,image/*" hidden><div class="stt" id="stt${sl}">vazia</div><div class="rg" id="rg${sl}" hidden><div class="rgw"><video muted playsinline autoplay></video><canvas></canvas></div><div class="hint"><b>Região da captura:</b> arraste na miniatura para marcar só a parte que vai para a projeção (sem os controles do projeto). Puxe os cantos para ajustar, arraste o meio para mover.</div><div class="btns"><button data-rr="${sl}">Usar a imagem inteira</button></div></div>`;
   document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.sel=+b.dataset.p;save();sync();});
   document.querySelectorAll('[data-a]').forEach(el=>el.onchange=()=>{S.assign[el.dataset.a]=+el.value;S.faces[el.dataset.a]=+el.value>0;save();sync();});
   document.querySelectorAll('select[data-s]').forEach(el=>el.onchange=()=>{S[el.dataset.s]=+el.value;save();sync();});
@@ -165,6 +169,41 @@ if(!OUT){
   $('black').onclick=()=>{S.black=!S.black;save();sync();};
   $('reset').onclick=()=>{S.pts=DEF_PTS.map(p=>p.slice());save();sync();};
 
+  // região da captura (recorte retangular de cada fonte)
+  const RG={};
+  for(const sl of ['A','B']){
+    const box=$('rg'+sl),wrap=box.querySelector('.rgw'),v=box.querySelector('video'),cv=box.querySelector('canvas'),cx=cv.getContext('2d'),key='r'+sl;let drag=null;
+    const pos=e=>{const r=cv.getBoundingClientRect();return [Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))];};
+    const paint=()=>{if(box.hidden)return;const W=cv.width=Math.max(1,cv.clientWidth*devicePixelRatio),H=cv.height=Math.max(1,cv.clientHeight*devicePixelRatio);const [a,b,c,d]=S[key];
+      cx.clearRect(0,0,W,H);cx.fillStyle='rgba(0,0,0,.65)';cx.fillRect(0,0,W,H);cx.clearRect(a*W,b*H,(c-a)*W,(d-b)*H);
+      cx.strokeStyle='#7fd8f0';cx.lineWidth=2*devicePixelRatio;cx.strokeRect(a*W,b*H,(c-a)*W,(d-b)*H);
+      const hs=6*devicePixelRatio;cx.fillStyle='#7fd8f0';[[a,b],[c,b],[c,d],[a,d]].forEach(([x,y])=>cx.fillRect(x*W-hs,y*H-hs,hs*2,hs*2));};
+    cv.addEventListener('pointerdown',e=>{const [x,y]=pos(e),r=S[key].slice(),tx=12/cv.clientWidth,ty=12/cv.clientHeight;
+      const near=(px,py)=>Math.abs(px-x)<tx&&Math.abs(py-y)<ty;let m;
+      if(near(r[0],r[1]))m='tl';else if(near(r[2],r[1]))m='tr';else if(near(r[2],r[3]))m='br';else if(near(r[0],r[3]))m='bl';
+      else if(x>r[0]&&x<r[2]&&y>r[1]&&y<r[3]&&(r[2]-r[0]<.98||r[3]-r[1]<.98))m='move';else m='new';
+      drag={m,x0:x,y0:y,r};cv.setPointerCapture(e.pointerId);});
+    cv.addEventListener('pointermove',e=>{if(!drag)return;const [x,y]=pos(e),r=drag.r,n=r.slice(),m=drag.m;
+      if(m==='move'){const dx=Math.min(1-r[2],Math.max(-r[0],x-drag.x0)),dy=Math.min(1-r[3],Math.max(-r[1],y-drag.y0));n[0]+=dx;n[2]+=dx;n[1]+=dy;n[3]+=dy;}
+      else if(m==='new'){n[0]=drag.x0;n[1]=drag.y0;n[2]=x;n[3]=y;}
+      else{if(m[1]==='l')n[0]=x;else n[2]=x;if(m[0]==='t')n[1]=y;else n[3]=y;}
+      const o=[Math.min(n[0],n[2]),Math.min(n[1],n[3]),Math.max(n[0],n[2]),Math.max(n[1],n[3])];
+      if(o[2]-o[0]<.02||o[3]-o[1]<.02)return;S[key]=o;save();paint();});
+    cv.addEventListener('pointerup',()=>drag=null);
+    v.addEventListener('loadedmetadata',()=>{if(v.videoWidth)wrap.style.aspectRatio=v.videoWidth+'/'+v.videoHeight;paint();});
+    v.addEventListener('resize',()=>{if(v.videoWidth)wrap.style.aspectRatio=v.videoWidth+'/'+v.videoHeight;paint();});
+    new ResizeObserver(paint).observe(cv);
+    box.querySelector('[data-rr]').onclick=()=>{S[key]=[0,0,1,1];save();paint();};
+    RG[sl]={paint,show(kind,payload){
+      try{v.pause();}catch(e){}v.srcObject=null;v.removeAttribute('src');v.removeAttribute('poster');
+      if(kind==='none'){box.hidden=true;return;}
+      box.hidden=false;
+      if(kind==='stream')v.srcObject=payload;
+      else if(payload.type.startsWith('image')){const u=URL.createObjectURL(payload),im=new Image();im.onload=()=>{wrap.style.aspectRatio=im.width+'/'+im.height;paint();};im.src=u;v.poster=u;}
+      else v.src=URL.createObjectURL(payload);
+      v.play().catch(()=>{});paint();}};
+  }
+
   // janela de projeção e envio de mídia (mesma origem → objetos passam direto)
   let win=null;
   const outWin=()=>(win&&!win.closed&&win.setSource)?win:null;
@@ -172,15 +211,15 @@ if(!OUT){
     $('st').innerHTML='Arraste a janela nova para a tela do projetor e dê <b>dois cliques</b> nela (ou F) para tela cheia.';};
   const need=()=>{const w=outWin();if(!w)$('st').textContent='Abra primeiro a janela de projeção (botão 1) por esta janela de controle.';return w;};
   document.querySelectorAll('[data-cap]').forEach(b=>b.onclick=async()=>{const sl=b.dataset.cap,w=need();if(!w)return;
-    try{const st=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:60,cursor:'never'},audio:false,preferCurrentTab:false,selfBrowserSurface:'exclude'});
-      w.setSource(sl,'stream',st);$('stt'+sl).textContent='captura: '+(st.getVideoTracks()[0].label||'aba/janela');
+    try{const st=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:60,cursor:'never',displaySurface:'browser'},audio:false,preferCurrentTab:false,selfBrowserSurface:'exclude'});
+      w.setSource(sl,'stream',st);RG[sl].show('stream',st);$('stt'+sl).textContent='captura: '+(st.getVideoTracks()[0].label||'aba/janela');
       st.getVideoTracks()[0].onended=()=>{$('stt'+sl).textContent='captura encerrada';};}catch(e){$('stt'+sl).textContent='captura cancelada';}});
   document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=async()=>{const sl=b.dataset.cam,w=need();if(!w)return;
-    try{const st=await navigator.mediaDevices.getUserMedia({video:{width:1920,height:1080}});w.setSource(sl,'stream',st);$('stt'+sl).textContent='câmera: '+st.getVideoTracks()[0].label;}
+    try{const st=await navigator.mediaDevices.getUserMedia({video:{width:1920,height:1080}});w.setSource(sl,'stream',st);RG[sl].show('stream',st);$('stt'+sl).textContent='câmera: '+st.getVideoTracks()[0].label;}
     catch(e){$('stt'+sl).textContent='câmera bloqueada';}});
   document.querySelectorAll('[data-fl]').forEach(b=>b.onclick=()=>document.querySelector(`[data-fi="${b.dataset.fl}"]`).click());
-  document.querySelectorAll('[data-fi]').forEach(el=>el.onchange=()=>{const sl=el.dataset.fi,f=el.files[0],w=need();if(!f||!w)return;w.setSource(sl,'file',f);$('stt'+sl).textContent='arquivo: '+f.name;});
-  document.querySelectorAll('[data-clr]').forEach(b=>b.onclick=()=>{const w=outWin();w&&w.setSource(b.dataset.clr,'none');$('stt'+b.dataset.clr).textContent='vazia';});
+  document.querySelectorAll('[data-fi]').forEach(el=>el.onchange=()=>{const sl=el.dataset.fi,f=el.files[0],w=need();if(!f||!w)return;w.setSource(sl,'file',f);RG[sl].show('file',f);$('stt'+sl).textContent='arquivo: '+f.name;});
+  document.querySelectorAll('[data-clr]').forEach(b=>b.onclick=()=>{const w=outWin();w&&w.setSource(b.dataset.clr,'none');RG[b.dataset.clr].show('none');$('stt'+b.dataset.clr).textContent='vazia';});
 
   // calibrações salvas
   const presets=()=>{try{return JSON.parse(localStorage.getItem(PKEY)||'{}');}catch(e){return {};}};
@@ -232,6 +271,7 @@ if(!OUT){
     document.querySelectorAll('select[data-s]').forEach(el=>el.value=S[el.dataset.s]);
     document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('on',+b.dataset.p===S.sel));
     $('calib').classList.toggle('on',S.calib);$('calib').textContent=S.calib?'Calibrar (ligado)':'Calibrar';$('black').classList.toggle('on',S.black);
+    RG.A.paint();RG.B.paint();
     draw();
   }
   onState=sync;
@@ -269,7 +309,7 @@ if(OUT){
 #define PI 3.14159265
 uniform mat3 uHinv; uniform vec3 uP0,uP1,uP2,uP3; uniform vec2 uSize; uniform vec3 uDims;
 uniform sampler2D uHist; uniform float uAudMode,uHR,uHN,uCalib,uMode,uMapA,uMapB,uGA,uGB,uCrop,uFaceId,uEdge,uMaster,uT2,uC2,uLam,uRange,uWGain;
-uniform vec3 uFaceCol,uSrc,uC1,uC2c; uniform sampler2D uTexA,uTexB;
+uniform vec3 uFaceCol,uSrc,uC1,uC2c; uniform sampler2D uTexA,uTexB; uniform vec4 uRA,uRB;
 vec2 stripUV(vec2 uv){ // faixa contínua: x = esq(baixo→cima) → teto(esq→dir) → dir(cima→baixo); y = fundo→boca
   float H=uDims.y,W=uDims.x,P=2.*H+W; float s=0.,d=0.;
   if(uFaceId<1.5){ s=0.; d=0.; }
@@ -279,7 +319,7 @@ vec2 stripUV(vec2 uv){ // faixa contínua: x = esq(baixo→cima) → teto(esq→
   else { s=uv.x; d=uv.y; }
   return vec2(s,d);
 }
-vec3 samp(sampler2D t,vec2 uv,float mp){ vec2 q= mp>.5 ? stripUV(uv) : uv; q=mix(vec2(uCrop),vec2(1.-uCrop),q); return texture2D(t,vec2(q.x,1.-q.y)).rgb; }
+vec3 samp(sampler2D t,vec2 uv,float mp,vec4 rg){ vec2 q= mp>.5 ? stripUV(uv) : uv; q=mix(vec2(uCrop),vec2(1.-uCrop),q); q=mix(rg.xy,rg.zw,q); return texture2D(t,vec2(q.x,1.-q.y)).rgb; }
 void main(){
   vec3 q=uHinv*vec3(gl_FragCoord.xy,1.); vec2 uv=q.xy/q.z;
   if(q.z<=0.||uv.x<-.002||uv.y<-.002||uv.x>1.002||uv.y>1.002) discard;
@@ -291,8 +331,8 @@ void main(){
     float c=mod(floor(P.x/.25+50.)+floor(P.y/.25+50.)+floor(P.z/.25+50.),2.);
     col=uFaceCol*(.18+.32*c)+vec3(1.)*smoothstep(.025,.0,de);
   } else {
-    if(uMode>.5&&uMode<1.5) col=samp(uTexA,uv,uMapA)*uGA;
-    else if(uMode>1.5&&uMode<2.5) col=samp(uTexB,uv,uMapB)*uGB;
+    if(uMode>.5&&uMode<1.5) col=samp(uTexA,uv,uMapA,uRA)*uGA;
+    else if(uMode>1.5&&uMode<2.5) col=samp(uTexB,uv,uMapB,uRB)*uGB;
     else if(uMode>2.5){
       float r=length(P-uSrc); float u=(r-uC2*uT2)/uLam; float att=1./(1.+r*r/(uRange*uRange));
       float w1=pow(.5+.5*cos(6.2832*u),6.), w2=pow(.5+.5*cos(6.2832*(u*.62+.3)),8.);
@@ -312,7 +352,7 @@ void main(){
     f.u={...shared,uHinv:{value:new THREE.Matrix3()},uP0:{value:new THREE.Vector3()},uP1:{value:new THREE.Vector3()},uP2:{value:new THREE.Vector3()},uP3:{value:new THREE.Vector3()},
       uSize:{value:new THREE.Vector2()},uCalib:{value:1},uMode:{value:0},uMapA:{value:0},uMapB:{value:0},uGA:{value:1},uGB:{value:1},uCrop:{value:0},uFaceId:{value:f.id},
       uEdge:{value:0},uMaster:{value:1},uC2:{value:.8},uLam:{value:.45},uRange:{value:5},uWGain:{value:1},
-      uFaceCol:{value:new THREE.Vector3(...f.col)},uC1:{value:new THREE.Color()},uC2c:{value:new THREE.Color()},uTexA:{value:blank},uTexB:{value:blank}};
+      uFaceCol:{value:new THREE.Vector3(...f.col)},uC1:{value:new THREE.Color()},uC2c:{value:new THREE.Color()},uTexA:{value:blank},uTexB:{value:blank},uRA:{value:new THREE.Vector4(0,0,1,1)},uRB:{value:new THREE.Vector4(0,0,1,1)}};
     f.mesh=new THREE.Mesh(g,new THREE.ShaderMaterial({uniforms:f.u,vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:FACE_FS,side:THREE.DoubleSide,depthTest:false}));
     f.mesh.frustumCulled=false;fScene.add(f.mesh);
   }
@@ -334,7 +374,7 @@ void main(){
       const Q=f.idx.map(i=>C3[i]);f.u.uP0.value.set(...Q[0]);f.u.uP1.value.set(...Q[1]);f.u.uP2.value.set(...Q[2]);f.u.uP3.value.set(...Q[3]);
       f.u.uSize.value.set(f.u.uP1.value.distanceTo(f.u.uP0.value),f.u.uP3.value.distanceTo(f.u.uP0.value));
       f.u.uCalib.value=S.calib?1:0;f.u.uMode.value=mode;f.u.uMapA.value=S.mapA;f.u.uMapB.value=S.mapB;f.u.uCrop.value=S.crop;
-      f.u.uTexA.value=SRC.A.tex;f.u.uTexB.value=SRC.B.tex;f.u.uLam.value=S.waves.lam;f.u.uRange.value=S.waves.range;
+      f.u.uTexA.value=SRC.A.tex;f.u.uTexB.value=SRC.B.tex;f.u.uRA.value.set(...(S.rA||[0,0,1,1]));f.u.uRB.value.set(...(S.rB||[0,0,1,1]));f.u.uLam.value=S.waves.lam;f.u.uRange.value=S.waves.range;
       f.u.uC1.value.set(S.waves.c1);f.u.uC2c.value.set(S.waves.c2);
     }
     document.body.classList.toggle('show',!S.calib);

@@ -14,7 +14,7 @@
    cada aglomerado de partículas é uma faixa de frequência; as caixas que o seguem mostram a faixa e o nível real dela. */
 const O = ObraBase({
   titulo: 'Trava de Frequência', chave: 'trava-de-frequencia', cena: 'hipnose',
-  texto: 'Seis aglomerados de partículas, cada um preso a uma faixa do espectro. As caixas medem o som de verdade: frequência, nível em dB, nota dominante. Os ataques explodem os aglomerados.',
+  texto: 'Toque e arraste na tela para tocar notas, explodir os aglomerados e provocar glitches. Seis aglomerados de partículas, cada um preso a uma faixa do espectro. As caixas medem o som de verdade: frequência, nível em dB, nota dominante. Os ataques explodem os aglomerados.',
   controles: [
     ['Imagem'],
     ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
@@ -25,6 +25,10 @@ const O = ObraBase({
     ['Brilho', 'Brilho', 0.6, 0.1, 1.5, 0.01],
     ['Camera', 'Câmera', 0.35, 0, 1, 0.01],
     ['Cortes', 'Cortes de câmera', 0.5, 0, 1, 0.01],
+    ['Toque e glitch'],
+    ['Glitch', 'Glitch no toque', 1, 0, 2, 0.01],
+    ['GlitchSom', 'Glitch nos ataques do som', 0.4, 0, 2, 0.01],
+    ['ForcaToque', 'Explosão no toque', 1, 0, 2, 0.01],
     ['Dados'],
     ['Hud', 'Dados na tela', 0.9, 0, 1, 0.01],
     ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
@@ -100,7 +104,16 @@ function explodir(k, f) {
   }
   C[k].lim = 1;
 }
-let notaAcento = 0;
+let notaAcento = 0, projUlt = [];
+const marcas = [];   // anéis onde a tela foi tocada
+O.aoToque = (x, y, forca, inicio) => {
+  let mk = -1, md = 1e9;
+  projUlt.forEach((p, k) => { if (!p) return; const d = Math.hypot(p.x - x, p.y - y); if (d < md) { md = d; mk = k; } });
+  if (mk < 0) mk = Math.floor(Math.random() * K);
+  explodir(mk, forca * O.P.ForcaToque * (inicio ? 1.2 : 0.5));
+  if (inicio) { cam.foco = mk; if (Math.random() < O.P.Cortes * 0.5) corte(); }
+  marcas.push({ x, y, r: 4, a: 1, k: mk });
+};
 O.onNota((n) => { if (n.camada === 'bumbo') explodir(0, 0.6); if (n.camada === 'vidro') { explodir(3 + Math.floor(Math.random() * 3), 0.5 * n.forca); notaAcento = 1; } });
 
 // ---------------- quadro ----------------
@@ -175,10 +188,19 @@ O.quadro((t, dt) => {
 
   // ---------------- camada de dados ----------------
   const hx = O.hx; hx.clearRect(0, 0, W, H);
+  projUlt = C.map((cl) => { const p = ObraBase.projetar(MVP, cl.c, W, H); return p ? { x: p[0], y: p[1] } : null; });
+  for (let i = marcas.length - 1; i >= 0; i--) {
+    const m = marcas[i], p = projUlt[m.k];
+    hx.save(); hx.globalAlpha = m.a; hx.strokeStyle = '#fff'; hx.lineWidth = 1;
+    hx.beginPath(); hx.arc(m.x, m.y, m.r, 0, 6.283); hx.stroke();
+    if (p) { hx.setLineDash([3, 4]); hx.beginPath(); hx.moveTo(m.x, m.y); hx.lineTo(p.x, p.y); hx.stroke(); }
+    hx.font = HUD.MONO; hx.fillStyle = '#fff'; hx.fillText(`F${m.k + 1} ▸ ${HUD.nota(110 * Math.pow(2, (1 - m.y / H) * 3))}`, m.x + 8, m.y - 8);
+    hx.restore(); m.r += dt * 160; m.a *= Math.exp(-dt / 0.35); if (m.a < 0.02) marcas.splice(i, 1);
+  }
   const ha = O.mostrarHud ? P.Hud : 0; if (ha <= 0.01) return;
   notaAcento *= Math.exp(-dt / 0.4);
   const azul = `rgba(60,90,255,${P.Acento})`;
-  const proj = C.map((cl, k) => {
+  const proj = projUlt = C.map((cl, k) => {
     const p = ObraBase.projetar(MVP, cl.c, W, H); if (!p) return null;
     const s = Math.min(260, (cl.esc * 0.55 * Math.min(W, H) * 0.9) / p[2]);
     return { x: p[0], y: p[1], s, k };

@@ -13,10 +13,10 @@
 <script>
 /* Corpo de Partículas — o corpo de quem está diante da câmera vira milhares de partículas (a câmera nunca aparece).
    Mão aberta espalha o corpo, mão fechada junta as partículas em volta do punho; o som faz o corpo respirar
-   e os ataques desprendem pedaços que voam e voltam. Sem câmera, uma figura de partículas fica no lugar. */
+   e os ataques desprendem pedaços que voam e voltam. Sem ninguém na frente, as partículas flutuam soltas pela tela. */
 const O = ObraBase({
-  titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa',
-  texto: 'Fique diante da câmera: seu corpo vira partículas de luz. Abra a mão para espalhar, feche para juntar. O som faz o corpo respirar e se desfazer. A câmera nunca aparece na imagem.',
+  titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa', toque: false,
+  texto: 'Fique diante da câmera: seu corpo vira partículas de luz. Abra a mão para espalhar, feche para juntar. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
   controles: [
     ['Corpo'],
     ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
@@ -51,19 +51,6 @@ for (let i = 0; i < N; i++) { px[i] = tx[i] = Math.random(); py[i] = ty[i] = Mat
 const MW = 160, MH = 160;
 const mascara = new Float32Array(MW * MH);
 let dentro = new Int32Array(0), borda = new Int32Array(0), temPessoa = 0, ultPessoa = -10;
-const figCv = document.createElement('canvas'); figCv.width = MW; figCv.height = MH;
-const figura = (() => {          // figura de reserva: silhueta simples de pé, braços abertos
-  const c = figCv.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, MW, MH);
-  c.strokeStyle = c.fillStyle = '#fff'; c.lineCap = 'round'; c.lineJoin = 'round';
-  c.beginPath(); c.ellipse(80, 30, 11, 13, 0, 0, 6.283); c.fill();
-  c.lineWidth = 9; c.beginPath(); c.moveTo(80, 43); c.lineTo(80, 50); c.stroke();
-  c.beginPath(); c.moveTo(62, 52); c.quadraticCurveTo(80, 46, 98, 52); c.lineTo(94, 98); c.quadraticCurveTo(80, 102, 66, 98); c.closePath(); c.fill();
-  c.lineWidth = 8; c.beginPath(); c.moveTo(64, 55); c.lineTo(44, 78); c.lineTo(30, 66); c.moveTo(96, 55); c.lineTo(116, 78); c.lineTo(130, 66); c.stroke();
-  c.lineWidth = 10; c.beginPath(); c.moveTo(72, 98); c.lineTo(66, 128); c.lineTo(64, 156); c.moveTo(88, 98); c.lineTo(94, 128); c.lineTo(96, 156); c.stroke();
-  const d = c.getImageData(0, 0, MW, MH).data, m = new Float32Array(MW * MH);
-  for (let i = 0; i < MW * MH; i++) m[i] = d[i * 4] / 255;
-  return m;
-})();
 function listas(m) {
   const a = [], b = [];
   for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
@@ -72,24 +59,22 @@ function listas(m) {
   }
   dentro = Int32Array.from(a); borda = Int32Array.from(b);
 }
-listas(figura);
-setTimeout(() => realvo(1, true), 0);
 // mapeia a máscara (coordenadas do vídeo, 0–1) para a tela, cobrindo e espelhando
 const video = document.getElementById('vid');
 let camOn = false;
+const temCorpo = () => camOn && temPessoa > 0.02;
 function vidParaTela(u, v) {
   const vw = video.videoWidth || 4, vh = video.videoHeight || 3, s = Math.max(O.W / vw, O.H / vh);
   const x = (1 - u - 0.5) * vw * s / O.W + 0.5, y = (v - 0.5) * vh * s / O.H + 0.5; return [x, y];
 }
-function figParaTela(u, v) { const s = Math.min(O.W, O.H) * 0.92; return [0.5 + (u - 0.5) * s / O.W, 0.53 + (v - 0.5) * s / O.H]; }
 function realvo(frac, todos) {
-  if (!dentro.length) return;
-  const n = Math.floor(N * frac), usarCam = camOn && temPessoa > 0.02, cont = O.P.Contorno;
+  if (!dentro.length || !temCorpo()) return;
+  const n = Math.floor(N * frac), cont = O.P.Contorno;
   for (let k = 0; k < n; k++) {
     const i = todos ? k : (Math.random() * N) | 0;
     const L = Math.random() < cont && borda.length ? borda : dentro, j = L[(Math.random() * L.length) | 0];
     const u = ((j % MW) + Math.random()) / MW, v = (Math.floor(j / MW) + Math.random()) / MH;
-    const p = usarCam ? vidParaTela(u, v) : figParaTela(u, v); tx[i] = p[0]; ty[i] = p[1];
+    const p = vidParaTela(u, v); tx[i] = p[0]; ty[i] = p[1];
   }
 }
 
@@ -102,7 +87,7 @@ async function iniciarCamera() {
   try {
     const st = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false });
     video.srcObject = st; await video.play(); camOn = true;
-  } catch (e) { O.dica('sem câmera — figura de reserva; o mouse faz a mão', 3500); return; }
+  } catch (e) { O.dica('sem câmera — o mouse faz a mão', 3500); return; }
   O.dica('carregando o rastreamento…', 2500);
   try {
     const mod = await import(MP + '/vision_bundle.mjs');
@@ -196,7 +181,6 @@ O.quadro((t, dt) => {
     let ts = performance.now(); if (ts <= tsAnt) ts = tsAnt + 1; tsAnt = ts;
     try { if ((alterna++ % 2 === 0 && seg) || !det) segmentar(ts); else rastrearMaos(ts); } catch (e) {}
   }
-  if (camOn && t - ultPessoa > 2.5 && temPessoa < 0.02 && dentro.length && tPassado++ % 60 === 0) listas(figura);
   realvo(0.012 + A.ataque * 0.01);
   if (A.ataque > 0.4 && t - ultAt > 0.35) { ultAt = t; desfazer(A.ataque); }
 
@@ -212,13 +196,14 @@ O.quadro((t, dt) => {
   }
 
   const coes = P.Coesao * (2.5 + A.grave * P.Respira * 3), am = Math.exp(-dt * 3), fl = P.Fluxo * 0.06, R2 = P.Raio * P.Raio;
+  const corpo = temCorpo(), flL = corpo ? 1 : 0.5;
   const resp = 1 + Math.sin(t * 2) * 0.004 * P.Respira + A.grave * 0.02 * P.Respira;
   for (let i = 0; i < N; i++) {
     let x = px[i], y = py[i], ax = 0, ay = 0;
     const s = solto[i];
     const kx = 0.5 + (tx[i] - 0.5) * resp, ky = 0.5 + (ty[i] - 0.5) * resp;
-    if (s > 0) { solto[i] = s - dt * 0.55; ay -= 0.04; } else { ax += (kx - x) * coes; ay += (ky - y) * coes; }
-    const f = fluxo(x, y, t); ax += f[0] * fl * (1 + s * 3); ay += f[1] * fl * (1 + s * 3);
+    if (s > 0) { solto[i] = s - dt * 0.55; ay -= 0.04; } else if (corpo) { ax += (kx - x) * coes; ay += (ky - y) * coes; }
+    const f = fluxo(x, y, t); ax += f[0] * fl * (1 + s * 3) * flL; ay += f[1] * fl * (1 + s * 3) * flL;
     let azul = 0;
     for (let k = 0; k < mm.length; k++) {
       const m = mm[k], dx = (x - m.x) * asp, dy = y - m.y, d2 = dx * dx + dy * dy;
@@ -230,6 +215,7 @@ O.quadro((t, dt) => {
     }
     vx[i] = (vx[i] + ax * dt) * am; vy[i] = (vy[i] + ay * dt) * am;
     px[i] = x + vx[i] * dt; py[i] = y + vy[i] * dt;
+    if (!corpo) { if (px[i] < -0.02) px[i] += 1.04; else if (px[i] > 1.02) px[i] -= 1.04; if (py[i] < -0.02) py[i] += 1.04; else if (py[i] > 1.02) py[i] -= 1.04; }
     az[i] += (azul - az[i]) * 0.1;
     const sp = Math.min(1, Math.hypot(vx[i], vy[i]) * 4);
     dados[i * 4] = px[i]; dados[i * 4 + 1] = py[i];
@@ -250,7 +236,7 @@ O.quadro((t, dt) => {
   // caixa do corpo
   let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
   for (let i = 0; i < N; i += 37) { if (solto[i] > 0) continue; x0 = Math.min(x0, tx[i]); x1 = Math.max(x1, tx[i]); y0 = Math.min(y0, ty[i]); y1 = Math.max(y1, ty[i]); }
-  if (x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${camOn && temPessoa > 0.02 ? 'CÂMERA' : 'FIGURA'} · ${N} PTS · ${(temPessoa * 100).toFixed(1)}%`, ha * 0.45);
+  if (corpo && x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${N} PTS · ${(temPessoa * 100).toFixed(1)}%`, ha * 0.45);
   for (const m of mm) {
     const r = m.ref, nome = r === mouse ? 'CURSOR' : 'MÃO';
     HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);

@@ -2,7 +2,7 @@
 
 <painel>
   <h2>Sólido</h2>
-  <div class="row"><label>Sólido</label><select id="solido"><option value="nop" selected>Noperthedron</option><option value="cubo">Cubo (passa)</option><option value="tetra">Tetraedro</option><option value="octa">Octaedro</option><option value="dodeca">Dodecaedro</option></select></div>
+  <div class="row"><label>Sólido</label><select id="solido"><option value="nop" selected>Noperthedron</option><option value="tetra">Tetraedro</option><option value="prisma3">Prisma triangular</option><option value="octa">Octaedro</option><option value="cubo">Cubo (passa)</option><option value="prisma">Prisma pentagonal</option><option value="tetratrunc">Tetraedro truncado</option><option value="cubocta">Cuboctaedro</option><option value="icosa">Icosaedro</option><option value="dodeca">Dodecaedro</option><option value="icosidodeca">Icosidodecaedro</option></select></div>
   <div class="row"><label>Tentativas/s</label><input type="range" id="speed" min="10" max="4000" step="10" value="600"></div>
   <div class="row"><label>Notas/s</label><input type="range" id="notas" min="0.5" max="10" step="0.1" value="3"></div>
   <div class="row"><label>Passo da busca</label><input type="range" id="passo" min="0.002" max="0.4" step="0.001" value="0.08"></div>
@@ -17,7 +17,7 @@
   <div class="row"><label>Tamanho</label><input type="range" id="zoom" min="0.4" max="1.6" step="0.01" value="1"></div>
 </imagem>
 
-<dica>Olhando o sólido de uma direção vemos a sombra dele: é o furo. A cópia, olhada de outra direção, faz outra sombra. Se ela couber inteira, com folga, dentro do furo, a cópia passa. A margem é o quanto a cópia teria de encolher (abaixo de 1) ou poderia crescer (acima de 1) para encostar na borda. No cubo a busca acha margens acima de 1 (o máximo é 1,06). No Noperthedron a margem chega perto de 1 e nunca passa; os pontos vermelhos são os vértices da cópia que ficaram para fora.<br>O som tem duas vozes fixas: a segunda fica a uma quinta justa da primeira quando a margem é 1 e desafina quanto mais longe de 1.</dica>
+<dica>Olhando o sólido de uma direção vemos a sombra dele: é o furo. A cópia, olhada de outra direção, faz outra sombra. Se ela couber inteira, com folga, dentro do furo, a cópia passa. A margem é o quanto a cópia teria de encolher (abaixo de 1) ou poderia crescer (acima de 1) para encostar na borda. No cubo a busca acha margens acima de 1 (o máximo é 1,06). Os outros sólidos são os mesmos poliedros da Dupla Cobertura, e todos eles passam: nos que não têm centro de simetria (tetraedro, prismas, tetraedro truncado) a cópia também se desloca de lado. No Noperthedron a margem chega perto de 1 e nunca passa; os pontos vermelhos são os vértices da cópia que ficaram para fora.<br>O som tem duas vozes fixas: a segunda fica a uma quinta justa da primeira quando a margem é 1 e desafina quanto mais longe de 1.</dica>
 
 <js>
 const O = Nucleo({
@@ -32,7 +32,20 @@ const P = O.P, V = O.V;
 
 // ---------- sólidos ----------
 const PHI = (1 + Math.sqrt(5))/2;
+// os mesmos poliedros da Dupla Cobertura (do mais simples ao mais complexo), mais o Noperthedron
+const SOLIDOS = [['nop', 'Noperthedron'], ['tetra', 'Tetraedro'], ['prisma3', 'Prisma triangular'], ['octa', 'Octaedro'], ['cubo', 'Cubo'],
+  ['prisma', 'Prisma pentagonal'], ['tetratrunc', 'Tetraedro truncado'], ['cubocta', 'Cuboctaedro'], ['icosa', 'Icosaedro'], ['dodeca', 'Dodecaedro'], ['icosidodeca', 'Icosidodecaedro']];
+function perms(v, soPares){ const P3 = [[0,1,2],[1,2,0],[2,0,1]].concat(soPares ? [] : [[0,2,1],[2,1,0],[1,0,2]]), out = [], seen = new Set();
+  for (const p of P3) for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]){
+    const w = [v[p[0]]*sx, v[p[1]]*sy, v[p[2]]*sz], k = w.map(x => x.toFixed(5)).join(); if (!seen.has(k)){ seen.add(k); out.push(w); } }
+  return out; }
 function solid(nome){
+  if (nome === 'prisma3' || nome === 'prisma'){ const m = nome === 'prisma' ? 5 : 3, v = [];
+    for (const z of [-0.6, 0.6]) for (let i = 0; i < m; i++){ const a = i*2*Math.PI/m; v.push([Math.cos(a), Math.sin(a), z]); } return v; }
+  if (nome === 'tetratrunc') return perms([3, 1, 1], false).filter(v => v.filter(x => x < 0).length % 2 === 0);
+  if (nome === 'cubocta') return perms([1, 1, 0], true);
+  if (nome === 'icosidodeca') return perms([0, 0, PHI], true).concat(perms([0.5, PHI/2, PHI*PHI/2], true));
+  if (nome === 'icosa'){ const v = []; for (const a of [-1, 1]) for (const b of [-1, 1]){ v.push([0, a, b*PHI]); v.push([a, b*PHI, 0]); v.push([b*PHI, 0, a]); } return v; }
   if (nome === 'cubo'){ const v = []; for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x, y, z]); return v; }
   if (nome === 'tetra') return [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
   if (nome === 'octa') return [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
@@ -61,7 +74,7 @@ function hullEdges(vs){
     for (let q = 0; q < n; q++){ const d = dot(nn, sub(vs[q], vs[i])); if (d > 1e-7) pos++; else if (d < -1e-7) neg++; if (pos && neg) break; }
     if (pos && neg) continue;
     if (pos) nn = nn.map(x => -x);
-    const key = nn.map(x => x.toFixed(5)).join(',');
+    const key = nn.map(x => (Math.round(x*1e5) + 0).toString()).join(','); // + 0 tira o −0, que separava faces iguais
     for (const [a, b] of [[i, j], [j, k], [i, k]]){ const e = a*1000 + b; if (!norms.has(e)) norms.set(e, new Set()); norms.get(e).add(key); }
     faces.push(key);
   }
@@ -86,30 +99,25 @@ function hull2(pts){
   for (let i = pts.length - 1; i >= 0; i--){ const p = pts[i]; while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], p) <= 1e-12) up.pop(); up.push(p); }
   return lo.slice(0, -1).concat(up.slice(0, -1));
 }
-// margem: o maior fator s tal que s·(sombra da cópia) cabe na sombra do furo (as duas são simétricas, então o centro basta)
-function margem(S1, S2){
+// margem: o maior fator s tal que T + s·(sombra da cópia) cabe na sombra do furo, com a cópia deslocada de T
+// (nos sólidos simétricos o melhor T é o centro; no tetraedro, nos prismas e no tetraedro truncado a cópia precisa se deslocar)
+function margem(S1, S2, T = [0, 0]){
   let s = Infinity;
-  for (const v of S2){
-    const L = Math.hypot(v[0], v[1]); if (L < 1e-12) continue;
-    const u = [v[0]/L, v[1]/L];
-    let r = Infinity;
-    for (let i = 0; i < S1.length; i++){
-      const a = S1[i], b = S1[(i + 1) % S1.length], e = [b[0]-a[0], b[1]-a[1]];
-      const den = u[0]*e[1] - u[1]*e[0]; if (Math.abs(den) < 1e-14) continue;
-      const t = (a[0]*e[1] - a[1]*e[0])/den, w = (a[0]*u[1] - a[1]*u[0])/den;
-      if (t > 0 && w >= -1e-9 && w <= 1 + 1e-9) r = Math.min(r, t);
-    }
-    s = Math.min(s, r/L);
+  for (let i = 0; i < S1.length; i++){
+    const a = S1[i], b = S1[(i + 1) % S1.length], n = [b[1]-a[1], a[0]-b[0]]; // normal para fora (sombra no sentido anti-horário)
+    const h = n[0]*(a[0] - T[0]) + n[1]*(a[1] - T[1]);
+    if (h <= 0) return 0;
+    for (const v of S2){ const d = n[0]*v[0] + n[1]*v[1]; if (d > 1e-14) s = Math.min(s, h/d); }
   }
   return s;
 }
 
 // ---------- busca ----------
-let VS = [], ED = [], nF = 0, cur = null, best = null, sinceBest = 0, tries = 0, passou = false, nextNote = 0, vozA = null, vozB = null, msg = null, rot3 = 0, lastF = 0;
-const rnd = () => [Math.acos(2*Math.random() - 1), Math.random()*2*Math.PI, Math.acos(2*Math.random() - 1), Math.random()*2*Math.PI, Math.random()*2*Math.PI];
-function evalX(x){ const B1 = basis(x[0], x[1], 0), B2 = basis(x[2], x[3], x[4]); const S1 = shadow(VS, B1), S2 = shadow(VS, B2); return { x, s: margem(S1, S2), S1, S2 }; }
+let RMAX = 1, VS = [], ED = [], nF = 0, cur = null, best = null, sinceBest = 0, tries = 0, passou = false, nextNote = 0, vozA = null, vozB = null, msg = null, rot3 = 0, lastF = 0;
+const rnd = () => [Math.acos(2*Math.random() - 1), Math.random()*2*Math.PI, Math.acos(2*Math.random() - 1), Math.random()*2*Math.PI, Math.random()*2*Math.PI, 0, 0];
+function evalX(x){ const B1 = basis(x[0], x[1], 0), B2 = basis(x[2], x[3], x[4]); const S1 = shadow(VS, B1), S2 = shadow(VS, B2), T = [x[5], x[6]]; return { x, s: margem(S1, S2, T), S1, S2, T }; }
 function reset(){
-  VS = solid(P.solido); const h = hullEdges(VS); ED = h.E; nF = h.nFaces;
+  VS = solid(P.solido); RMAX = 0; for (const p of VS) RMAX = Math.max(RMAX, Math.hypot(...p)); const h = hullEdges(VS); ED = h.E; nF = h.nFaces;
   cur = evalX(rnd()); best = cur; sinceBest = 0; tries = 0; passou = false; msg = { shown: false };
 }
 function search(k, t){
@@ -118,7 +126,7 @@ function search(k, t){
     tries++; sinceBest++;
     if (sinceBest > P.paciencia){ cur = evalX(rnd()); sinceBest = 0; }
     const st = P.passo*(0.3 + Math.random());
-    const x = cur.x.map(v => v + (Math.random()*2 - 1)*st*(Math.random() < 0.5 ? 1 : 0.1));
+    const x = cur.x.map((v, j) => v + (Math.random()*2 - 1)*st*(Math.random() < 0.5 ? 1 : 0.1)*(j >= 5 ? 0.3*RMAX : 1));
     const c = evalX(x);
     if (c.s >= cur.s || Math.random() < 0.002){ cur = c; }
     if (c.s > best.s){ best = c; sinceBest = 0; improved = true; }
@@ -139,7 +147,8 @@ function draw3d(C, t){
   // a cópia: as coordenadas dela na base 2 viram coordenadas na base 1 (assim a sombra dela ao longo de d1 é S2)
   const ida = Math.sin(t*0.35), off = ida*1.5;
   const W1 = (u, v, w) => [ (u*B1.e1[0] + v*B1.e2[0] + w*B1.d[0])*k, (u*B1.e1[1] + v*B1.e2[1] + w*B1.d[1])*k, (u*B1.e1[2] + v*B1.e2[2] + w*B1.d[2])*k ];
-  const copia = VS.map(p => W1(dot(p, B2.e1), dot(p, B2.e2), dot(p, B2.d) + off*rmax));
+  const T = best.T;
+  const copia = VS.map(p => W1(dot(p, B2.e1) + T[0], dot(p, B2.e2) + T[1], dot(p, B2.d) + off*rmax));
   const solido = VS.map(p => [p[0]*k, p[1]*k, p[2]*k]);
   C.globalCompositeOperation = 'lighter'; C.lineCap = 'round';
   // o túnel: a sombra do furo (S1) estendida ao longo de d1
@@ -154,11 +163,11 @@ function draw3d(C, t){
   // a cópia que tenta passar; vértices fora da sombra do furo ficam vermelhos
   C.strokeStyle = V.cor(0.65, 1, 72); C.lineWidth = 1.1;
   for (const [a, b] of ED) T3.seg(C, ...copia[a], ...copia[b], 0.75);
-  VS.forEach((p, i) => { const fora = margem(best.S1, [[dot(p, B2.e1), dot(p, B2.e2)]]) < 1;
+  VS.forEach((p, i) => { const fora = margem(best.S1, [[dot(p, B2.e1), dot(p, B2.e2)]], T) < 1;
     T3.ponto(C, ...copia[i], fora ? 3.2 : 1.8, fora ? 'rgb(255,80,70)' : 'rgb(220,240,255)', fora ? 0.95 : 0.7); });
   // a tentativa atual, fraca, como sombra no fundo do túnel
   if (P.trial > 0){ C.strokeStyle = V.cor(0.6, 1, 60); C.lineWidth = 0.8; C.globalAlpha = P.trial*0.5; C.beginPath();
-    cur.S2.forEach(([u, v], i) => (i ? T3.ln : T3.mv)(C, ...W1(u, v, -tl))); T3.ln(C, ...W1(cur.S2[0][0], cur.S2[0][1], -tl)); C.stroke(); C.globalAlpha = 1; }
+    cur.S2.forEach(([u, v], i) => (i ? T3.ln : T3.mv)(C, ...W1(u + cur.T[0], v + cur.T[1], -tl))); T3.ln(C, ...W1(cur.S2[0][0] + cur.T[0], cur.S2[0][1] + cur.T[1], -tl)); C.stroke(); C.globalAlpha = 1; }
 }
 function frame(){
   const t = O.now(), dt = Math.min(0.1, Math.max(0, t - (lastF || t))); lastF = t; rot3 += dt*0.15;
@@ -187,19 +196,19 @@ function frame(){
       for (const [a, b] of ED){ const z = (pp[a][2] + pp[b][2])/(2*rmax); C.strokeStyle = V.cor(0.1, P.wire*(0.18 + 0.32*(z + 1)/2), 70); C.beginPath(); C.moveTo(pp[a][0], pp[a][1]); C.lineTo(pp[b][0], pp[b][1]); C.stroke(); }
     }
     const rotS = rot3;
-    const draw = (S, fill, stroke, lw) => {
+    const draw = (S, fill, stroke, lw, T = [0, 0]) => {
       const c = Math.cos(rotS), s = Math.sin(rotS);
-      C.beginPath(); S.forEach((p, i) => { const x = cx + (c*p[0] - s*p[1])*sc, y = cy - (s*p[0] + c*p[1])*sc; i ? C.lineTo(x, y) : C.moveTo(x, y); }); C.closePath();
+      C.beginPath(); S.forEach((q, i) => { const p = [q[0] + T[0], q[1] + T[1]], x = cx + (c*p[0] - s*p[1])*sc, y = cy - (s*p[0] + c*p[1])*sc; i ? C.lineTo(x, y) : C.moveTo(x, y); }); C.closePath();
       if (fill){ C.fillStyle = fill; C.fill(); } if (stroke){ C.strokeStyle = stroke; C.lineWidth = lw; C.stroke(); }
     };
     // tentativa atual (fraca) e melhor (forte)
-    if (P.trial > 0){ draw(cur.S1, null, V.cor(0.15, P.trial*0.5, 60), 0.8); draw(cur.S2, null, V.cor(0.6, P.trial*0.5, 60), 0.8); }
+    if (P.trial > 0){ draw(cur.S1, null, V.cor(0.15, P.trial*0.5, 60), 0.8); draw(cur.S2, null, V.cor(0.6, P.trial*0.5, 60), 0.8, cur.T); }
     draw(best.S1, V.cor(0.1, 0.07, 55), V.cor(0.1, 0.85, 72), 1.6);
-    draw(best.S2, null, V.cor(0.65, 0.9, 72), 1.3);
+    draw(best.S2, null, V.cor(0.65, 0.9, 72), 1.3, best.T);
     // vértices da cópia fora do furo
     const c = Math.cos(rotS), s = Math.sin(rotS);
-    for (const v of best.S2){
-      const inside = margem(best.S1, [v]) >= 1;
+    for (const q of best.S2){
+      const inside = margem(best.S1, [q], best.T) >= 1, v = [q[0] + best.T[0], q[1] + best.T[1]];
       const x = cx + (c*v[0] - s*v[1])*sc, y = cy - (s*v[0] + c*v[1])*sc;
       C.fillStyle = inside ? 'rgba(220,240,255,0.8)' : 'rgba(255,80,70,0.95)'; C.beginPath(); C.arc(x, y, inside ? 1.8 : 3.4, 0, Math.PI*2); C.fill();
     }
@@ -207,7 +216,7 @@ function frame(){
   V.end();
   if (msg && !msg.shown && best){
     msg.shown = true;
-    const nomes = { nop: 'Noperthedron', cubo: 'Cubo', tetra: 'Tetraedro', octa: 'Octaedro', dodeca: 'Dodecaedro' };
+    const nomes = Object.fromEntries(SOLIDOS);
     const f = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
     $('num').textContent = `${nomes[P.solido]} · ${VS.length} vértices · ${ED.length} arestas`;
     $('op').textContent = `melhor margem ${f(best.s)}` + (best.s > 1 ? ' · a cópia passa!' : ' · ainda não passa') + ` · tentativa atual ${f(cur.s)}`;

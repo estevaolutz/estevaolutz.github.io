@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Motor Knick — audição</title>
+<meta name="theme-color" content="#000">
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#dfe6ee;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;text-align:center;padding:24px}
+#start h1{margin:0;font-weight:300;letter-spacing:.3em;text-transform:uppercase;font-size:22px}
+#start p{margin:0;color:#7f91a3;max-width:420px;line-height:1.5;font-size:14px}
+#start .b{margin-top:8px;border:1px solid #dfe6ee;border-radius:999px;padding:10px 26px;letter-spacing:.2em;font-size:12px;text-transform:uppercase}
+#start.hide{display:none}
+#dot{position:fixed;right:16px;top:16px;width:14px;height:14px;border-radius:50%;background:#dfe6ee;opacity:.35;z-index:4;cursor:pointer}
+#dot:hover{opacity:.8}
+#panel{position:fixed;right:12px;top:40px;width:300px;max-height:calc(100% - 56px);overflow:auto;background:rgba(10,14,19,.92);border:1px solid #222c37;border-radius:14px;padding:14px 16px;z-index:4;display:none;backdrop-filter:blur(8px)}
+#panel.on{display:block}
+#teste{margin-top:12px;border-top:1px solid #222c37;padding-top:10px;font-size:12px;color:#8fa3b8;line-height:1.45}
+#teste label{display:flex;gap:6px;align-items:center;color:#c9d4df;font-size:13px;margin-bottom:6px}
+#hud{position:fixed;left:16px;bottom:14px;font-size:12px;color:#5d6e80;letter-spacing:.08em;z-index:3;pointer-events:none}
+#hud b{color:#9cc8ff;font-weight:500}
+@media (max-width:520px){#panel{left:10px;right:10px;width:auto}}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="start"><h1>Motor Knick</h1>
+<p>O novo motor de som das obras audiovisuais: sintetizadores arpejados em camadas, baixo pulsando, pad, vidro, delay no tempo. Toque na tela para mandar "acontecimentos" de obra: eles viram notas de vidro dentro do pulso.</p>
+<span class="b">Tocar</span></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <div id="som"></div>
+  <div id="teste">
+    <label><input type="checkbox" id="simula" checked> Obra de teste tocando sozinha</label>
+    Simula uma obra mandando acontecimentos em rajadas e pausas, para ouvir a densidade automática. Toque na tela: altura = nota, lado = posição no estéreo.
+  </div>
+</div>
+<div id="hud"></div>
+<script src="../lib/motor-knick.js"></script>
+<script>
+const M = MotorKnick({ painel: '#som' });
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let W, H, DPR;
+function rs(){ DPR = Math.min(devicePixelRatio||1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', rs); rs();
+
+// ---- visual: cada camada num anel; o vidro abre círculos onde a obra tocou ----
+const parts = [], ondas = [];
+let pulso = 0, energia = 0, acorde = '';
+const RAIO = { baixo: 0.08, arpA: 0.22, arpB: 0.34, vidro: 0.46 };
+const COR = { baixo: [255,140,90], arpA: [120,190,255], arpB: [190,225,255], vidro: [235,245,255], bumbo: [255,120,80] };
+M.on('nota', n => {
+  if (n.camada === 'bumbo'){ pulso = 1; return; }
+  if (n.camada === 'vidro'){ ondas.push({ x: W/2 + (n.pan||0)*W*0.32, y: H*0.5 - ((n.grau % 14)/14 - 0.4)*H*0.6, r: 4, a: 0.9*n.forca + 0.1 }); }
+  const ang = ((Math.log2(n.freq) * 7) % 1) * Math.PI*2 - Math.PI/2;
+  parts.push({ c: n.camada, ang, a: 1, f: n.forca });
+  if (n.camada === 'baixo') pulso = Math.max(pulso, 0.6);
+});
+M.on('passo', p => { energia = p.energia; acorde = M.nomeAcorde(); });
+const hud = document.getElementById('hud');
+function frame(){
+  const m = Math.min(W, H);
+  ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fillRect(0,0,W,H);
+  const cx = W/2, cy = H/2;
+  // anéis guia
+  ctx.lineWidth = 1;
+  for (const k of ['arpA','arpB','vidro']){ ctx.strokeStyle = `rgba(120,150,180,${0.05 + energia*0.05})`; ctx.beginPath(); ctx.arc(cx, cy, RAIO[k]*m, 0, Math.PI*2); ctx.stroke(); }
+  // núcleo (baixo e bumbo)
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, m*(0.06 + pulso*0.06));
+  g.addColorStop(0, `rgba(255,150,100,${0.25 + pulso*0.6})`); g.addColorStop(1, 'rgba(255,150,100,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, m*0.14, 0, Math.PI*2); ctx.fill();
+  pulso *= 0.9;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = parts.length-1; i >= 0; i--){
+    const p = parts[i]; const r = (RAIO[p.c] || 0.1)*m, [R,G,B] = COR[p.c] || COR.arpA;
+    const x = cx + Math.cos(p.ang)*r, y = cy + Math.sin(p.ang)*r, s = (p.c === 'arpB' ? 2.2 : 3.2) * (0.6 + p.f*0.6);
+    ctx.fillStyle = `rgba(${R},${G},${B},${p.a})`; ctx.beginPath(); ctx.arc(x, y, s + (1-p.a)*6, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = `rgba(${R},${G},${B},${p.a*0.25})`; ctx.beginPath(); ctx.moveTo(cx + Math.cos(p.ang)*r*0.92, cy + Math.sin(p.ang)*r*0.92); ctx.lineTo(x, y); ctx.stroke();
+    p.a *= p.c === 'baixo' ? 0.9 : 0.94; if (p.a < 0.02) parts.splice(i, 1);
+  }
+  for (let i = ondas.length-1; i >= 0; i--){
+    const o = ondas[i]; ctx.strokeStyle = `rgba(235,245,255,${o.a})`; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI*2); ctx.stroke();
+    o.r += 1.6; o.a *= 0.975; if (o.a < 0.01) ondas.splice(i, 1);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  if (M.rodando) hud.innerHTML = `acorde <b>${acorde}</b> · ${M.S.bpm} bpm · energia ${Math.round(energia*100)}`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---- toque = acontecimento de obra ----
+cv.addEventListener('pointerdown', e => {
+  if (!M.rodando) return;
+  const grau = Math.round((1 - e.clientY/H) * 12) - 2, pan = (e.clientX/W)*2 - 1;
+  M.evento(grau, { forca: 0.9, pan });
+  ondas.push({ x: e.clientX, y: e.clientY, r: 2, a: 0.4 });
+});
+// ---- obra de teste: rajadas e silêncios ----
+let simT = 0, rajada = 0, passeio = 4;
+setInterval(() => {
+  if (!M.rodando || !document.getElementById('simula').checked) return;
+  simT++;
+  if (rajada <= 0 && Math.random() < 0.025) rajada = 8 + Math.random()*30;
+  if (rajada > 0){
+    rajada--;
+    if (Math.random() < 0.45){ passeio += Math.round((Math.random()-0.5)*3); passeio = Math.max(-2, Math.min(11, passeio)); M.evento(passeio, { forca: 0.4 + Math.random()*0.6, pan: (Math.random()-0.5)*1.6 }); }
+  }
+  if (simT % 160 === 0 && Math.random() < 0.3) M.acorde([0,5,3,6,4][Math.floor(Math.random()*5)]);
+}, 120);
+
+// ---- início, painel, teclas ----
+const start = document.getElementById('start');
+start.addEventListener('pointerdown', () => { M.iniciar(); start.classList.add('hide'); });
+document.getElementById('dot').addEventListener('click', () => document.getElementById('panel').classList.toggle('on'));
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'm') document.getElementById('panel').classList.toggle('on');
+  else if (k === ' ' && !M.rodando){ e.preventDefault(); M.iniciar(); start.classList.add('hide'); }
+  else if (/^[1-5]$/.test(k)){ const c = Object.keys(MotorKnick.CENAS)[+k-1]; const s = document.getElementById('mkCena'); s.value = c; s.dispatchEvent(new Event('change')); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Torre de TV — mapping no corredor</title>
+<style>
+:root{--tx:#e6e9ef;--mu:#8a909c;--ac:#7fd8f0}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--tx);font:13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif}
+body.out{overflow:hidden;cursor:crosshair}
+body.out.show{cursor:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ctl{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;padding:14px;min-height:100%;background:#07080d}
+h1{font-size:16px;margin:0 0 4px}
+.sub{color:var(--mu);font-size:12px;margin-bottom:10px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ac);margin:16px 0 6px;font-weight:600}
+.row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.row label{flex:0 0 120px;color:#cdd2da}
+.row input[type=range]{flex:1;accent-color:var(--ac);min-width:0}
+.row .v{flex:0 0 46px;text-align:right;color:var(--mu);font-variant-numeric:tabular-nums}
+button{background:#161a24;color:var(--tx);border:1px solid #2c3242;border-radius:6px;padding:7px 10px;font:inherit;cursor:pointer}
+button.on{background:var(--ac);color:#071018;border-color:var(--ac)}
+button.big{font-size:14px;padding:10px 14px}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+#prev{width:100%;aspect-ratio:16/9;background:#000;border:1px solid #2c3242;border-radius:6px;touch-action:none;cursor:crosshair;display:block}
+.pts{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
+.pts button{padding:6px 4px;font-size:12px}
+.hint{color:#9aa1ad;font-size:12px;margin:8px 0;line-height:1.5}
+.hint b{color:#e6e9ef}
+#side{overflow-y:auto;max-height:calc(100vh - 28px)}
+#st{color:#ffc46b;font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<canvas id="gl" style="display:none"></canvas>
+
+<div id="ctl" style="display:none">
+ <div>
+  <h1>Torre de TV — mapping no corredor</h1>
+  <div class="sub">Controle no Mac · a imagem sai numa segunda janela, na tela do projetor</div>
+  <div class="btns">
+   <button class="big" id="open">1 · Abrir janela de projeção</button>
+   <button class="big on" id="calib">Calibrar</button>
+   <button class="big" id="black">Blackout (B)</button>
+  </div>
+  <div id="st"></div>
+  <canvas id="prev" width="1280" height="720"></canvas>
+  <div class="pts" id="pts"></div>
+  <div class="hint">
+   Arraste os pontos aqui ou direto na projeção (mouse na tela do projetor).<br>
+   <b>Setas</b> movem o ponto selecionado 1 pixel do projetor · <b>Shift + setas</b> 10 pixels · <b>Tab</b> passa para o próximo ponto.<br>
+   <b>Fundo</b> = os 4 cantos da parede da porta · <b>Boca</b> = os 4 cantos da entrada do corredor (onde começa o teto e as paredes laterais).
+  </div>
+ </div>
+ <div id="side">
+  <h2>Superfícies</h2>
+  <div class="btns" id="faces"></div>
+  <h2>Medidas do corredor</h2>
+  <div class="row"><label>Largura</label><input type="range" data-k="dims.W" min="0.8" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Altura</label><input type="range" data-k="dims.H" min="1.8" max="4" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Profundidade</label><input type="range" data-k="dims.D" min="1" max="10" step="0.1"><span class="v"></span></div>
+  <h2>Antena (parede do fundo)</h2>
+  <div class="row"><label>Altura na parede</label><input type="range" data-k="tower.frac" min="0.3" max="1" step="0.01"><span class="v"></span></div>
+  <div class="row"><label>Giro</label><input type="range" data-k="tower.spin" min="-0.6" max="0.6" step="0.01"><span class="v"></span></div>
+  <div class="row"><label>Explosão</label><input type="range" data-k="tower.explode" min="0" max="1" step="0.01"><span class="v"></span></div>
+  <div class="row"><label>Oscilação</label><input type="range" data-k="tower.sway" min="0" max="6" step="0.1"><span class="v"></span></div>
+  <div class="row"><label>Brilho da antena</label><input type="range" data-k="tower.gain" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Tamanho dos pontos</label><input type="range" data-k="tower.size" min="0.3" max="3" step="0.05"><span class="v"></span></div>
+  <h2>Radiação (laterais e teto)</h2>
+  <div class="btns" id="layers"></div>
+  <div class="row"><label>Intensidade</label><input type="range" data-k="waves.gain" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Comprimento de onda</label><input type="range" data-k="waves.lam" min="0.3" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Velocidade</label><input type="range" data-k="waves.spd" min="0" max="3" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Alcance</label><input type="range" data-k="waves.range" min="1" max="10" step="0.1"><span class="v"></span></div>
+  <div class="row"><label>Espaço entre pontos</label><input type="range" data-k="waves.dot" min="1" max="8" step="0.1"><span class="v"></span></div>
+  <div class="row"><label>Tamanho dos pontos</label><input type="range" data-k="waves.dsize" min="0.2" max="1.2" step="0.02"><span class="v"></span></div>
+  <div class="row"><label>Contorno das quinas</label><input type="range" data-k="edge" min="0" max="1.5" step="0.05"><span class="v"></span></div>
+  <div class="row"><label>Brilho geral</label><input type="range" data-k="master" min="0" max="1.5" step="0.01"><span class="v"></span></div>
+  <h2>Calibração</h2>
+  <div class="btns"><button id="reset">Pontos iniciais</button><button id="copy">Copiar calibração</button></div>
+ </div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+const OUT=location.search.includes('saida');
+const KEY='torre-corredor-v1';
+const NAMES=['Fundo ↖','Fundo ↗','Fundo ↘','Fundo ↙','Boca ↖','Boca ↗','Boca ↘','Boca ↙'];
+const DEF_PTS=[[.40,.30],[.60,.30],[.60,.84],[.40,.84],[.24,.03],[.76,.03],[.76,.98],[.24,.98]];
+const DEF={pts:DEF_PTS.map(p=>p.slice()),sel:0,calib:true,black:false,
+  faces:{fundo:true,teto:true,esq:true,dir:true,chao:false},
+  dims:{W:1.5,H:2.6,D:4},
+  tower:{frac:.92,spin:.12,explode:0,sway:.8,gain:1,size:1},
+  layers:{fm:true,tv:true,cel:true,mw:true},
+  waves:{gain:1,lam:1,spd:1,range:4,dot:3,dsize:.8},edge:.3,master:1};
+let S;
+try{S=Object.assign(structuredClone(DEF),JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(e){S=structuredClone(DEF);}
+for(const k of ['faces','dims','tower','layers','waves'])S[k]=Object.assign(structuredClone(DEF[k]),S[k]||{});
+const bc=('BroadcastChannel' in window)?new BroadcastChannel('torre-corredor'):null;
+let onState=()=>{};
+function save(send=true){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(send&&bc)bc.postMessage({t:'state',S});}
+if(bc)bc.onmessage=e=>{const m=e.data;if(m.t==='state'){S=m.S;onState();}else if(m.t==='hello'&&!OUT){bc.postMessage({t:'state',S});}else if(m.t==='hello'&&OUT){}};
+const get=(o,p)=>p.split('.').reduce((a,k)=>a[k],o);
+const set=(o,p,v)=>{const ks=p.split('.');const l=ks.pop();ks.reduce((a,k)=>a[k],o)[l]=v;};
+
+function nudge(dx,dy){const p=S.pts[S.sel];p[0]=Math.min(1.05,Math.max(-.05,p[0]+dx/1920));p[1]=Math.min(1.05,Math.max(-.05,p[1]+dy/1080));save();onState();}
+function keys(e){
+  if(e.target.tagName==='INPUT')return;
+  const k=e.key,st=e.shiftKey?10:1;
+  if(k==='ArrowLeft'){nudge(-st,0);e.preventDefault();}else if(k==='ArrowRight'){nudge(st,0);e.preventDefault();}
+  else if(k==='ArrowUp'){nudge(0,-st);e.preventDefault();}else if(k==='ArrowDown'){nudge(0,st);e.preventDefault();}
+  else if(k==='Tab'){S.sel=(S.sel+(e.shiftKey?7:1))%8;save();onState();e.preventDefault();}
+  else if(k.toLowerCase()==='b'){S.black=!S.black;save();onState();}
+  else if(k.toLowerCase()==='c'){S.calib=!S.calib;save();onState();}
+  else if(k.toLowerCase()==='f'&&OUT){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});}
+}
+addEventListener('keydown',keys);
+
+/* arrastar pontos numa área (prévia ou saída) */
+function dragOn(el,mapEv,enabled){
+  let drag=-1;
+  el.addEventListener('pointerdown',e=>{if(!enabled())return;const [x,y]=mapEv(e);let best=-1,bd=1e9;
+    S.pts.forEach((p,i)=>{const d=Math.hypot((p[0]-x)*16,(p[1]-y)*9);if(d<bd){bd=d;best=i;}});
+    if(bd<1.2){drag=best;S.sel=best;el.setPointerCapture(e.pointerId);save();onState();}});
+  el.addEventListener('pointermove',e=>{if(drag<0)return;const [x,y]=mapEv(e);S.pts[drag]=[x,y];save();onState();});
+  el.addEventListener('pointerup',()=>drag=-1);
+}
+
+/* =================== JANELA DE CONTROLE =================== */
+if(!OUT){
+  document.getElementById('ctl').style.display='grid';
+  const $=id=>document.getElementById(id);
+  const prev=$('prev'),px=prev.getContext('2d');
+  const FC={fundo:'#7fd8f0',teto:'#ffa040',esq:'#50ff80',dir:'#ff50d0',chao:'#a0a0ff'};
+  const FN={fundo:'Fundo',teto:'Teto',esq:'Parede esquerda',dir:'Parede direita',chao:'Chão'};
+  const FI={fundo:[0,1,2,3],teto:[4,5,1,0],esq:[4,0,3,7],dir:[1,5,6,2],chao:[3,2,6,7]};
+  const LN={fm:'Rádio FM',tv:'TV 3.0',cel:'Celular',mw:'Micro-ondas'};
+  $('faces').innerHTML=Object.keys(FN).map(k=>`<button data-f="${k}">${FN[k]}</button>`).join('');
+  $('layers').innerHTML=Object.keys(LN).map(k=>`<button data-l="${k}">${LN[k]}</button>`).join('');
+  $('pts').innerHTML=NAMES.map((n,i)=>`<button data-p="${i}">${i+1} ${n}</button>`).join('');
+  document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{S.faces[b.dataset.f]=!S.faces[b.dataset.f];save();sync();});
+  document.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{S.layers[b.dataset.l]=!S.layers[b.dataset.l];save();sync();});
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.sel=+b.dataset.p;save();sync();});
+  document.querySelectorAll('input[data-k]').forEach(el=>{el.oninput=()=>{set(S,el.dataset.k,+el.value);save();sync();};});
+  $('calib').onclick=()=>{S.calib=!S.calib;save();sync();};
+  $('black').onclick=()=>{S.black=!S.black;save();sync();};
+  $('reset').onclick=()=>{S.pts=DEF_PTS.map(p=>p.slice());save();sync();};
+  $('copy').onclick=()=>{navigator.clipboard.writeText(JSON.stringify(S)).then(()=>$('st').textContent='Calibração copiada.').catch(()=>{});};
+  let win=null;
+  $('open').onclick=()=>{win=window.open(location.pathname+'?saida','torre_saida','popup,width=960,height=540');
+    $('st').innerHTML='Arraste a janela nova para a tela do projetor e dê <b>dois cliques</b> nela (ou tecla F) para ocupar a tela toda.';};
+  function draw(){
+    const W=prev.width,H=prev.height;px.fillStyle='#000';px.fillRect(0,0,W,H);
+    px.strokeStyle='#222';px.strokeRect(0,0,W,H);
+    for(const k of ['chao','teto','esq','dir','fundo']){const idx=FI[k];
+      px.beginPath();idx.forEach((i,j)=>{const p=S.pts[i];j?px.lineTo(p[0]*W,p[1]*H):px.moveTo(p[0]*W,p[1]*H);});px.closePath();
+      px.globalAlpha=S.faces[k]?.18:.04;px.fillStyle=FC[k];px.fill();px.globalAlpha=1;px.strokeStyle=S.faces[k]?FC[k]:'#333';px.lineWidth=2;px.stroke();
+      if(S.faces[k]){const c=idx.reduce((a,i)=>[a[0]+S.pts[i][0]/4,a[1]+S.pts[i][1]/4],[0,0]);px.fillStyle=FC[k];px.font='22px system-ui';px.textAlign='center';px.fillText(FN[k],c[0]*W,c[1]*H);}}
+    S.pts.forEach((p,i)=>{px.beginPath();px.arc(p[0]*W,p[1]*H,i===S.sel?14:10,0,7);px.fillStyle=i===S.sel?'#fff':(i<4?'#7fd8f0':'#ffc46b');px.fill();
+      px.fillStyle='#000';px.font='bold 14px system-ui';px.textAlign='center';px.fillText(i+1,p[0]*W,p[1]*H+5);});
+  }
+  function sync(){
+    document.querySelectorAll('input[data-k]').forEach(el=>{const v=get(S,el.dataset.k);if(document.activeElement!==el)el.value=v;el.nextElementSibling.textContent=(+v).toFixed(2);});
+    document.querySelectorAll('[data-f]').forEach(b=>b.classList.toggle('on',!!S.faces[b.dataset.f]));
+    document.querySelectorAll('[data-l]').forEach(b=>b.classList.toggle('on',!!S.layers[b.dataset.l]));
+    document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('on',+b.dataset.p===S.sel));
+    $('calib').classList.toggle('on',S.calib);$('calib').textContent=S.calib?'Calibrar (ligado)':'Calibrar';
+    $('black').classList.toggle('on',S.black);
+    draw();
+  }
+  onState=sync;
+  dragOn(prev,e=>{const r=prev.getBoundingClientRect();return [(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height];},()=>true);
+  sync();
+}
+
+/* =================== JANELA DE PROJEÇÃO =================== */
+if(OUT){
+  document.body.classList.add('out');
+  const canvas=document.getElementById('gl');canvas.style.display='block';
+  const THREE=await import('three');
+  const G=await import('./torre-geo.js');
+  const {MeshSurfaceSampler}=await import('three/addons/math/MeshSurfaceSampler.js');
+  if(bc)bc.postMessage({t:'hello'});
+  canvas.addEventListener('dblclick',()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});});
+  dragOn(canvas,e=>[e.clientX/innerWidth,e.clientY/innerHeight],()=>S.calib);
+
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:false});
+  renderer.setPixelRatio(1);
+
+  /* ---- torre renderizada numa textura (câmera ortográfica = proporção exata na parede) ---- */
+  const NE=G.NE,E=G.E;
+  const U={uT:{value:0},uC:{value:45},uLam:{value:1},uAudio:{value:0},uRange:{value:150},uFMdev:{value:.35},
+    uEP:{value:E.map(()=>new THREE.Vector3())},uEC:{value:E.map(e=>new THREE.Vector3(...e.col))},
+    uEA:{value:E.map(e=>new THREE.Vector4(e.type,1,e.az,e.el))},uEL:{value:E.map(e=>e.lam)},
+    uExplode:{value:0},uVGap:{value:7},uRGap:{value:9},uSway:{value:.8},uSize:{value:1},uPx:{value:4},
+    uInduced:{value:.5},uFeed:{value:1},uBeacon:{value:1},uBright:{value:1},
+    uCat:{value:['#7d8699','#2f86d8','#9fe7ff','#4fb3d6','#7fd0ea','#3d8fb0','#b8f0ff','#5ea8c8','#ffa040','#ff50d0','#50ff80','#a0e0ff','#ff2010','#8f97a8','#1c2538','#ffffff'].map(h=>{const c=new THREE.Color(h);return new THREE.Vector3(c.r*.55,c.g*.55,c.b*.55);})}};
+  const ptsMat=new THREE.ShaderMaterial({uniforms:U,vertexShader:G.STRUCT_VS,fragmentShader:G.PTS_FS,defines:{PTS:1},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
+  const tScene=new THREE.Scene();
+  {const P=[],R=[],St=[],K=[],SE=[],EM=[],dens=9;
+    const push=(x,y,z,r,s,k,e)=>{P.push(x,y,z);R.push(...r);St.push(s);K.push(k);SE.push(Math.random()*1000);EM.push(e);};
+    for(const b of G.beams){const L=b.a.distanceTo(b.b),n=Math.max(2,Math.ceil(L*dens*(b.cat>=8?2:1)));
+      for(let i=0;i<=n;i++){const t=i/n;push(b.a.x+(b.b.x-b.a.x)*t,b.a.y+(b.b.y-b.a.y)*t,b.a.z+(b.b.z-b.a.z)*t,b.rad,b.stage,b.cat,b.emit);}}
+    const tmp=new THREE.Vector3();
+    for(const m of G.meshes){const g=m.geo.index?m.geo.toNonIndexed():m.geo,pa=g.attributes.position;let area=0;const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3();
+      for(let i=0;i<pa.count;i+=3){a.fromBufferAttribute(pa,i);b.fromBufferAttribute(pa,i+1);c.fromBufferAttribute(pa,i+2);area+=b.sub(a).cross(c.sub(a)).length()/2;}
+      const s=new MeshSurfaceSampler(new THREE.Mesh(g)).build(),n=Math.round(area*dens*(m.cat===G.C.GLASS?.15:.35));
+      for(let i=0;i<n;i++){s.sample(tmp);push(tmp.x,tmp.y,tmp.z,m.rad,m.stage,m.cat,-1);}}
+    for(const e of G.extra)push(e.p.x,e.p.y,e.p.z,[0,0,0],e.stage,e.cat,-1);
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('aRad',new THREE.Float32BufferAttribute(R,3));
+    g.setAttribute('aStage',new THREE.Float32BufferAttribute(St,1));g.setAttribute('aCat',new THREE.Float32BufferAttribute(K,1));
+    g.setAttribute('aSeed',new THREE.Float32BufferAttribute(SE,1));g.setAttribute('aEmit',new THREE.Float32BufferAttribute(EM,1));
+    const o=new THREE.Points(g,ptsMat);o.frustumCulled=false;tScene.add(o);}
+  const tCam=new THREE.OrthographicCamera(-1,1,1,-1,1,2000);
+  let rt=null;
+
+  /* ---- superfícies do corredor (homografia por face) ---- */
+  const NC=6;
+  const CF=`
+#define NC ${NC}
+#define PI 3.14159265
+uniform vec3 cP[NC];uniform vec3 cC[NC];uniform vec4 cA[NC];uniform float cL[NC];
+uniform float uT2,uC2,uR2;
+float h11(float n){return fract(sin(n*127.1+.31)*43758.5453);}
+vec3 cfield(vec3 p,float seed){
+  vec3 acc=vec3(0.);
+  for(int i=0;i<NC;i++){vec4 a=cA[i]; if(a.y<=.001) continue;
+    vec3 d=p-cP[i]; float r=max(length(d),.03); vec3 n=d/r;
+    float el=asin(clamp(n.y,-1.,1.)), az=atan(n.x,n.z);
+    float u=(r-uC2*uT2)/cL[i], tr=uT2-r/uC2; int ty=int(a.x+.5); float pat=1., s=0.;
+    if(ty==0){pat=.35+.65*pow(cos(el),2.); u+=.3*sin(6.2832*.22*tr); s=pow(.5+.5*cos(6.2832*u),6.);}
+    else if(ty==1){pat=.35+.65*pow(cos(el),2.); s=pow(.5+.5*cos(6.2832*u),5.)*step(.25,fract(tr*.8))*(.3+h11(seed+floor(uT2*9.)));}
+    else if(ty==2){float da=mod(az+PI/3.,2.*PI/3.)-PI/3.; pat=exp(-da*da/.15); s=pow(.5+.5*cos(6.2832*u),6.)*step(fract(tr*1.3),.45);}
+    else {vec3 b=vec3(sin(a.z)*cos(a.w),sin(a.w),cos(a.z)*cos(a.w)); float c=dot(n,b); pat=exp(-(1.-c)/.004);
+      s=step(.45,fract(u))*step(.3,h11(floor(u)+float(i)*7.));}
+    float att=ty==3?1./(1.+r/(uR2*2.)):1./(1.+r*r/(uR2*uR2));
+    acc+=cC[i]*a.y*pat*att*s;}
+  return acc;}
+`;
+  const FACE_FS=`
+${CF}
+uniform mat3 uHinv; uniform vec3 uP0,uP1,uP2,uP3; uniform vec2 uSize;
+uniform float uCalib,uIsBack,uDot,uDSize,uWGain,uTGain,uEdge,uMaster,uSel; uniform vec3 uFaceCol;
+uniform sampler2D uTower;
+void main(){
+  vec3 q=uHinv*vec3(gl_FragCoord.xy,1.); vec2 uv=q.xy/q.z;
+  if(q.z<=0.||uv.x<-.002||uv.y<-.002||uv.x>1.002||uv.y>1.002) discard;
+  uv=clamp(uv,0.,1.);
+  vec3 P=mix(mix(uP0,uP1,uv.x),mix(uP3,uP2,uv.x),uv.y);
+  vec2 m=uv*uSize; float de=min(min(m.x,uSize.x-m.x),min(m.y,uSize.y-m.y));
+  vec3 col;
+  if(uCalib>.5){
+    float c=mod(floor(P.x/.25+50.)+floor(P.y/.25+50.)+floor(P.z/.25+50.),2.);
+    col=uFaceCol*(.18+.32*c);
+    col+=vec3(1.)*smoothstep(.025,.0,de);
+    vec2 gc=abs(fract(m/.5+.5)-.5); col+=uFaceCol*.5*smoothstep(.015,.0,min(gc.x,gc.y)*.5);
+  } else {
+    vec2 g=m/(uDot*.01); vec2 cell=fract(g)-.5; float sd=h11(dot(floor(g),vec2(1.,157.)));
+    vec3 f=cfield(P,sd)*uWGain; float l=max(f.r,max(f.g,f.b));
+    float rad=uDSize*.5*clamp(.25+l,0.,1.);
+    float dm=smoothstep(rad,rad*.55,length(cell));
+    col=f*dm*1.5+f*.06;
+    if(uIsBack>.5) col+=texture2D(uTower,vec2(uv.x,1.-uv.y)).rgb*uTGain;
+    col+=vec3(.45,.8,1.)*uEdge*exp(-de*40.)*(.6+.4*sin(uT2*2.+P.z*3.));
+  }
+  gl_FragColor=vec4(col*uMaster,1.);
+}`;
+  const fScene=new THREE.Scene(),fCam=new THREE.OrthographicCamera(-1,1,1,-1,0,2);
+  const CU={uT2:{value:0},uC2:{value:.8},uR2:{value:4},
+    cP:{value:Array.from({length:NC},()=>new THREE.Vector3())},cC:{value:[[1,.6,.2],[1,.25,.85],[.3,1,.5],[.55,.85,1],[.55,.85,1],[.55,.85,1]].map(c=>new THREE.Vector3(...c))},
+    cA:{value:[[0,1,0,0],[1,1,0,0],[2,1,0,0],[3,1,0,.75],[3,1,-.75,.25],[3,1,.8,.4]].map(a=>new THREE.Vector4(...a))},cL:{value:[.45,.3,.2,.12,.12,.12]}};
+  const BASE_L=[.45,.3,.2,.12,.12,.12];
+  const FACES={fundo:{idx:[0,1,2,3],col:[.5,.85,.95]},teto:{idx:[4,5,1,0],col:[1,.63,.25]},esq:{idx:[4,0,3,7],col:[.3,1,.5]},dir:{idx:[1,5,6,2],col:[1,.31,.82]},chao:{idx:[3,2,6,7],col:[.6,.6,1]}};
+  for(const [k,f] of Object.entries(FACES)){
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(12),3));g.setIndex([0,1,2,0,2,3]);
+    f.u={...CU,uHinv:{value:new THREE.Matrix3()},uP0:{value:new THREE.Vector3()},uP1:{value:new THREE.Vector3()},uP2:{value:new THREE.Vector3()},uP3:{value:new THREE.Vector3()},
+      uSize:{value:new THREE.Vector2()},uCalib:{value:1},uIsBack:{value:k==='fundo'?1:0},uDot:{value:3},uDSize:{value:.8},uWGain:{value:1},uTGain:{value:1},uEdge:{value:.3},uMaster:{value:1},
+      uFaceCol:{value:new THREE.Vector3(...f.col)},uSel:{value:0},uTower:{value:null}};
+    f.mesh=new THREE.Mesh(g,new THREE.ShaderMaterial({uniforms:f.u,vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:FACE_FS,side:THREE.DoubleSide,depthTest:false}));
+    f.mesh.frustumCulled=false;fScene.add(f.mesh);
+  }
+  // marcadores dos pontos (calibração)
+  const mk=document.createElement('canvas');mk.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none';document.body.appendChild(mk);const mx=mk.getContext('2d');
+
+  function sq2q(p){const [x0,y0]=p[0],[x1,y1]=p[1],[x2,y2]=p[2],[x3,y3]=p[3];const sx=x0-x1+x2-x3,sy=y0-y1+y2-y3;let a,b,c,d,e,f,g,h;
+    if(Math.abs(sx)<1e-9&&Math.abs(sy)<1e-9){a=x1-x0;b=x3-x0;c=x0;d=y1-y0;e=y3-y0;f=y0;g=0;h=0;}
+    else{const dx1=x1-x2,dx2=x3-x2,dy1=y1-y2,dy2=y3-y2,den=dx1*dy2-dx2*dy1;g=(sx*dy2-dx2*sy)/den;h=(dx1*sy-sx*dy1)/den;
+      a=x1-x0+g*x1;b=x3-x0+h*x3;c=x0;d=y1-y0+g*y1;e=y3-y0+h*y3;f=y0;}
+    return new THREE.Matrix3().set(a,b,c,d,e,f,g,h,1);}
+  function corners3(){const {W,H,D}=S.dims,w=W/2;return [[-w,H,0],[w,H,0],[w,0,0],[-w,0,0],[-w,H,D],[w,H,D],[w,0,D],[-w,0,D]];}
+
+  let BW=1,BH=1;
+  function resize(){renderer.setSize(innerWidth,innerHeight,false);const v=renderer.getDrawingBufferSize(new THREE.Vector2());BW=v.x;BH=v.y;
+    mk.width=innerWidth*devicePixelRatio;mk.height=innerHeight*devicePixelRatio;}
+  addEventListener('resize',resize);resize();
+
+  function applyState(){
+    const C3=corners3();
+    for(const [k,f] of Object.entries(FACES)){
+      f.mesh.visible=!!S.faces[k];
+      const P=f.idx.map(i=>S.pts[i]),pa=f.mesh.geometry.attributes.position;
+      P.forEach((p,j)=>pa.setXYZ(j,p[0]*2-1,1-p[1]*2,0));pa.needsUpdate=true;
+      f.u.uHinv.value.copy(sq2q(P.map(p=>[p[0]*BW,(1-p[1])*BH]))).invert();
+      const Q=f.idx.map(i=>C3[i]);f.u.uP0.value.set(...Q[0]);f.u.uP1.value.set(...Q[1]);f.u.uP2.value.set(...Q[2]);f.u.uP3.value.set(...Q[3]);
+      f.u.uSize.value.set(f.u.uP1.value.distanceTo(f.u.uP0.value),f.u.uP3.value.distanceTo(f.u.uP0.value));
+      f.u.uCalib.value=S.calib?1:0;f.u.uDot.value=S.waves.dot;f.u.uDSize.value=S.waves.dsize;f.u.uWGain.value=S.waves.gain;
+      f.u.uTGain.value=S.tower.gain;f.u.uEdge.value=S.edge;f.u.uMaster.value=S.black?0:S.master;
+    }
+    CU.uR2.value=S.waves.range;
+    U.uSway.value=S.tower.sway;U.uSize.value=S.tower.size;U.uExplode.value=S.tower.explode;
+    const lay=['fm','tv','cel','mw','mw','mw'];lay.forEach((l,i)=>{CU.cA.value[i].y=S.layers[l]?1:0;CU.cL.value[i]=BASE_L[i]*S.waves.lam;});
+    for(const [k,idx] of Object.entries(G.LAYERS))for(const i of idx)U.uEA.value[i].y=S.layers[k]?1:0;
+    document.body.classList.toggle('show',!S.calib);
+    // textura da torre na proporção da parede
+    const asp=S.dims.W/S.dims.H,th=1024,tw=Math.max(64,Math.round(th*asp));
+    if(!rt||rt.width!==tw){rt&&rt.dispose();rt=new THREE.WebGLRenderTarget(tw,th,{type:THREE.HalfFloatType});for(const f of Object.values(FACES))f.u.uTower.value=rt.texture;}
+  }
+  onState=applyState;applyState();addEventListener('resize',applyState);
+
+  const clock=new THREE.Clock();let ang=0;const tmpV=new THREE.Vector3(),right=new THREE.Vector3();
+  function frame(){
+    const dt=Math.min(clock.getDelta(),.05);
+    U.uT.value+=dt;CU.uT2.value+=dt*S.waves.spd;ang+=dt*S.tower.spin;
+    // câmera ortográfica girando em volta da torre
+    const b=4,Hv=(224+b+S.tower.explode*U.uVGap.value*17)/S.tower.frac,asp=S.dims.W/S.dims.H,hw=Hv*asp/2;
+    tCam.left=-hw;tCam.right=hw;tCam.top=Hv-b;tCam.bottom=-b;tCam.position.set(Math.sin(ang)*600,0,Math.cos(ang)*600);tCam.lookAt(0,0,0);tCam.updateProjectionMatrix();
+    right.set(Math.cos(ang),0,-Math.sin(ang));
+    const e=U.uExplode.value;
+    E.forEach((em,i)=>U.uEP.value[i].set(em.base.x+em.rad[0]*U.uRGap.value*e,em.base.y+em.stage*U.uVGap.value*e,em.base.z+em.rad[2]*U.uRGap.value*e));
+    // emissores do corredor = posição das antenas na parede
+    const toWall=v=>[v.dot(right)/hw*S.dims.W/2,(v.y+b)/Hv*S.dims.H,.03];
+    const src=[U.uEP.value[0],U.uEP.value[1],U.uEP.value[2],U.uEP.value[3],U.uEP.value[5],U.uEP.value[6]];
+    src.forEach((v,i)=>CU.cP.value[i].set(...toWall(v)));
+    if(!S.calib&&!S.black){renderer.setRenderTarget(rt);renderer.setClearColor(0x000000,1);renderer.clear();renderer.render(tScene,tCam);}
+    renderer.setRenderTarget(null);renderer.setClearColor(0x000000,1);renderer.clear();renderer.render(fScene,fCam);
+    // marcadores
+    mx.clearRect(0,0,mk.width,mk.height);
+    if(S.calib&&!S.black){const W=mk.width,H=mk.height,r=Math.max(10,H/60);
+      S.pts.forEach((p,i)=>{const x=p[0]*W,y=p[1]*H;mx.strokeStyle=i===S.sel?'#fff':(i<4?'#7fd8f0':'#ffc46b');mx.lineWidth=i===S.sel?3:2;
+        mx.beginPath();mx.arc(x,y,r,0,7);mx.stroke();mx.beginPath();mx.moveTo(x-r*2,y);mx.lineTo(x+r*2,y);mx.moveTo(x,y-r*2);mx.lineTo(x,y+r*2);mx.stroke();
+        mx.fillStyle=mx.strokeStyle;mx.font=`bold ${Math.round(r*1.4)}px system-ui`;mx.fillText(String(i+1),x+r*1.3,y-r*1.3);});}
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+</script>
+</body>
+</html>

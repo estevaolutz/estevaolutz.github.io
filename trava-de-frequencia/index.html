@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><script src="../lib/projecao.js"></script><script src="../lib/audio-arquivo.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000">
+<title>Trava de Frequência</title>
+</head>
+<body>
+<script src="../lib/motor-knick.js"></script>
+<script src="../lib/obra-base.js"></script>
+<script>
+/* Trava de Frequência — um campo de partículas que o som atravessa, e uma camada de dados que mede o próprio som:
+   cada aglomerado de partículas é uma faixa de frequência; as caixas que o seguem mostram a faixa e o nível real dela. */
+const O = ObraBase({
+  titulo: 'Trava de Frequência', chave: 'trava-de-frequencia', cena: 'hipnose',
+  texto: 'Seis aglomerados de partículas, cada um preso a uma faixa do espectro. As caixas medem o som de verdade: frequência, nível em dB, nota dominante. Os ataques explodem os aglomerados.',
+  controles: [
+    ['Imagem'],
+    ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
+    ['Rastro', 'Rastro', 0.55, 0, 1, 0.01],
+    ['Persist', 'Persistência', 0.55, 0, 0.95, 0.01],
+    ['Explosao', 'Explosão', 0.7, 0, 1.5, 0.01],
+    ['Vento', 'Vento radial', 0.35, 0, 1, 0.01],
+    ['Brilho', 'Brilho', 0.6, 0.1, 1.5, 0.01],
+    ['Camera', 'Câmera', 0.35, 0, 1, 0.01],
+    ['Cortes', 'Cortes de câmera', 0.5, 0, 1, 0.01],
+    ['Dados'],
+    ['Hud', 'Dados na tela', 0.9, 0, 1, 0.01],
+    ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
+  ],
+});
+const { gl } = O, HUD = ObraBase.HUD;
+
+// ---------------- partículas ----------------
+const K = 6, N = 36000;
+const BANDAS = [[40, 110], [110, 260], [260, 600], [600, 1400], [1400, 3200], [3200, 9000]];
+const pos = new Float32Array(N * 3), vel = new Float32Array(N * 3), off = new Float32Array(N * 3), grp = new Uint8Array(N), brilhoP = new Float32Array(N);
+const C = [];
+const g = () => { let u = 0, v = 0; while (!u) u = Math.random(); v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2832 * v); };
+for (let k = 0; k < K; k++) C.push({ c: [0, 0, 0], fase: Math.random() * 6.28, r: 1.7 + k * 0.6, inc: (Math.random() - 0.5) * 2.4, vel: 0.05 + Math.random() * 0.06, e: 0, db: -90, esc: 1, lim: 0 });
+for (let i = 0; i < N; i++) {
+  const k = i % K; grp[i] = k;
+  // aglomerados alongados e irregulares
+  const r = Math.pow(Math.random(), 0.6) * 0.55, a = Math.random() * 6.28, b = Math.acos(2 * Math.random() - 1);
+  const fil = Math.random() < 0.35 ? 2.4 : 1;
+  off[i * 3] = r * Math.sin(b) * Math.cos(a) * fil; off[i * 3 + 1] = r * Math.cos(b) * 0.7; off[i * 3 + 2] = r * Math.sin(b) * Math.sin(a);
+  pos[i * 3] = g() * 3; pos[i * 3 + 1] = g() * 3; pos[i * 3 + 2] = g() * 3;
+  brilhoP[i] = 0.25 + Math.random() * 0.75;
+}
+// poeira de fundo (fica parada, dá profundidade)
+const NP = 9000, poeira = new Float32Array(NP * 3);
+for (let i = 0; i < NP; i++) { const r = 4 + Math.random() * 14, a = Math.random() * 6.28, b = Math.acos(2 * Math.random() - 1); poeira[i * 3] = r * Math.sin(b) * Math.cos(a); poeira[i * 3 + 1] = r * Math.cos(b); poeira[i * 3 + 2] = r * Math.sin(b) * Math.sin(a); }
+// anéis orbitais
+const NA = 360, aneis = new Float32Array(2 * NA * 3);
+for (let j = 0; j < 2; j++) for (let i = 0; i < NA; i++) {
+  const a = i / NA * 6.2832, R = j ? 5.2 : 3.4, inc = j ? -0.5 : 0.35;
+  aneis[(j * NA + i) * 3] = Math.cos(a) * R; aneis[(j * NA + i) * 3 + 1] = Math.sin(a) * R * Math.sin(inc); aneis[(j * NA + i) * 3 + 2] = Math.sin(a) * R * Math.cos(inc) * 0.75;
+}
+
+// ---------------- WebGL ----------------
+const prog = ObraBase.programa(gl, `#version 300 es
+in vec4 aP; uniform mat4 uM; uniform float uPt; out float vA;
+void main(){ gl_Position = uM*vec4(aP.xyz,1.); vA = aP.w; gl_PointSize = uPt; }`,
+`#version 300 es
+precision highp float; in float vA; uniform vec3 uC; out vec4 o;
+void main(){ o = vec4(uC*vA, 1.); }`);
+const fade = ObraBase.programa(gl, `#version 300 es
+in vec2 aP; void main(){ gl_Position = vec4(aP,0.,1.); }`, `#version 300 es
+precision highp float; uniform float uA; out vec4 o; void main(){ o = vec4(0.,0.,0.,uA); }`);
+const vaoL = gl.createVertexArray(), bufL = gl.createBuffer();
+const linhas = new Float32Array(N * 2 * 4);
+gl.bindVertexArray(vaoL); gl.bindBuffer(gl.ARRAY_BUFFER, bufL); gl.bufferData(gl.ARRAY_BUFFER, linhas.byteLength, gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+const vaoS = gl.createVertexArray(), bufS = gl.createBuffer();
+const estat = new Float32Array((NP + 2 * NA) * 4);
+for (let i = 0; i < NP; i++) estat.set([poeira[i * 3], poeira[i * 3 + 1], poeira[i * 3 + 2], 0.12 + Math.random() * 0.25], i * 4);
+for (let i = 0; i < 2 * NA; i++) estat.set([aneis[i * 3], aneis[i * 3 + 1], aneis[i * 3 + 2], 0.55], (NP + i) * 4);
+gl.bindVertexArray(vaoS); gl.bindBuffer(gl.ARRAY_BUFFER, bufS); gl.bufferData(gl.ARRAY_BUFFER, estat, gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+const vaoQ = gl.createVertexArray(), bufQ = gl.createBuffer();
+gl.bindVertexArray(vaoQ); gl.bindBuffer(gl.ARRAY_BUFFER, bufQ); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.bindVertexArray(null);
+
+// ---------------- câmera ----------------
+const cam = { az: 0.4, el: 0.25, dist: 7.5, alvoAz: 0.4, alvoEl: 0.25, alvoDist: 7.5, foco: 0, tCorte: 0 };
+function corte() {
+  cam.alvoAz = Math.random() * 6.28; cam.alvoEl = (Math.random() - 0.35) * 1.1; cam.alvoDist = 3 + Math.random() * 6.5;
+  cam.foco = Math.floor(Math.random() * K);
+  cam.az = cam.alvoAz - 0.2; cam.el = cam.alvoEl; cam.dist = cam.alvoDist * 1.15;     // corte seco, como na montagem
+}
+O.aoTecla = (k) => { if (k === 'c') corte(); if (k === ' ') explodir(Math.floor(Math.random() * K), 1); };
+
+function explodir(k, f) {
+  const cc = C[k].c, F = f * O.P.Explosao * 6;
+  for (let i = k; i < N; i += K) {
+    const x = pos[i * 3] - cc[0], y = pos[i * 3 + 1] - cc[1], z = pos[i * 3 + 2] - cc[2], l = Math.hypot(x, y, z) + 0.05, s = F * (0.4 + Math.random()) / l;
+    vel[i * 3] += x * s; vel[i * 3 + 1] += y * s; vel[i * 3 + 2] += z * s;
+  }
+  C[k].lim = 1;
+}
+let notaAcento = 0;
+O.onNota((n) => { if (n.camada === 'bumbo') explodir(0, 0.6); if (n.camada === 'vidro') { explodir(3 + Math.floor(Math.random() * 3), 0.5 * n.forca); notaAcento = 1; } });
+
+// ---------------- quadro ----------------
+let ultAtaque = 0, tc = 0;
+O.quadro((t, dt) => {
+  const P = O.P, A = O.A, W = O.W, H = O.H;
+  tc += dt;
+  // energia por faixa → escala do aglomerado
+  const bin = A.sr / 2048;
+  for (let k = 0; k < K; k++) {
+    const [a, b] = BANDAS[k]; let s = 0, n = 0;
+    for (let i = Math.round(a / bin); i <= Math.round(b / bin); i++) { s += A.freq[i]; n++; }
+    const e = Math.min(1, (s / n / 255) * 1.15 * P.Sensib), cl = C[k];
+    cl.e += (e - cl.e) * (1 - Math.exp(-dt / 0.08));
+    cl.db = e > 0.001 ? -60 + (s / n / 255) * 60 : -90;
+    cl.esc = 0.5 + cl.e * 1.8;
+    cl.fase += dt * cl.vel * (0.6 + A.nivel);
+    cl.c[0] = Math.cos(cl.fase) * cl.r; cl.c[2] = Math.sin(cl.fase) * cl.r; cl.c[1] = Math.sin(cl.fase * 1.3 + k) * cl.inc;
+    cl.lim *= Math.exp(-dt / 0.5);
+  }
+  if (A.ataque > 0.35 && t - ultAtaque > 0.18) {
+    ultAtaque = t;
+    let mk = 0; for (let k = 1; k < K; k++) if (C[k].e > C[mk].e) mk = k;
+    explodir(mk, A.ataque);
+    if (Math.random() < P.Cortes * 0.35 * A.ataque) corte();
+  }
+  // simulação
+  const amort = Math.exp(-dt * 2.2), mola = 3.2, vento = P.Vento * (0.4 + A.grave * 2.5), rastro = 0.02 + P.Rastro * 0.22;
+  for (let i = 0; i < N; i++) {
+    const k = grp[i], cl = C[k], j = i * 3;
+    const tx = cl.c[0] + off[j] * cl.esc, ty = cl.c[1] + off[j + 1] * cl.esc, tz = cl.c[2] + off[j + 2] * cl.esc;
+    let vx = vel[j], vy = vel[j + 1], vz = vel[j + 2];
+    vx += (tx - pos[j]) * mola * dt; vy += (ty - pos[j + 1]) * mola * dt; vz += (tz - pos[j + 2]) * mola * dt;
+    const px = pos[j], py = pos[j + 1], pz = pos[j + 2], l = Math.hypot(px, py, pz) + 0.3;
+    vx += px / l * vento * dt; vy += py / l * vento * dt; vz += pz / l * vento * dt;
+    vx *= amort; vy *= amort; vz *= amort;
+    vel[j] = vx; vel[j + 1] = vy; vel[j + 2] = vz;
+    pos[j] = px + vx * dt; pos[j + 1] = py + vy * dt; pos[j + 2] = pz + vz * dt;
+    const o = i * 8, sp = Math.min(1, Math.hypot(vx, vy, vz) * 0.25);
+    const a = brilhoP[i] * (0.35 + cl.e * 0.9 + cl.lim * 0.8) * (0.5 + sp);
+    linhas[o] = pos[j]; linhas[o + 1] = pos[j + 1]; linhas[o + 2] = pos[j + 2]; linhas[o + 3] = a;
+    linhas[o + 4] = pos[j] - vx * rastro - 0.004; linhas[o + 5] = pos[j + 1] - vy * rastro; linhas[o + 6] = pos[j + 2] - vz * rastro; linhas[o + 7] = a * 0.1;
+  }
+  // câmera
+  const vc = P.Camera;
+  cam.alvoAz += dt * 0.08 * vc; cam.alvoDist += Math.sin(t * 0.13) * dt * 0.4 * vc;
+  cam.alvoDist = Math.max(2.6, Math.min(10, cam.alvoDist));
+  const kk = 1 - Math.exp(-dt / 1.5);
+  cam.az += (cam.alvoAz - cam.az) * kk; cam.el += (cam.alvoEl - cam.el) * kk; cam.dist += (cam.alvoDist - A.grave * 1.2 * vc - cam.dist) * kk;
+  const fc = C[cam.foco].c, alvo = [fc[0] * 0.5, fc[1] * 0.5, fc[2] * 0.5];
+  const olho = [alvo[0] + Math.cos(cam.az) * Math.cos(cam.el) * cam.dist, alvo[1] + Math.sin(cam.el) * cam.dist, alvo[2] + Math.sin(cam.az) * Math.cos(cam.el) * cam.dist];
+  const tremor = A.ataque * 0.04;
+  const V = ObraBase.olhar([olho[0] + (Math.random() - 0.5) * tremor, olho[1] + (Math.random() - 0.5) * tremor, olho[2]], alvo, [0, 1, 0]);
+  const MVP = ObraBase.mul(ObraBase.perspectiva(0.95, W / H, 0.05, 80), V);
+
+  // desenho
+  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+  gl.enable(gl.BLEND);
+  gl.useProgram(fade.p); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.uniform1f(fade.u.uA, 1 - P.Persist); gl.bindVertexArray(vaoQ); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.useProgram(prog.p); gl.uniformMatrix4fv(prog.u.uM, false, MVP); gl.uniform1f(prog.u.uPt, 1.5 * O.DPR);
+  const br = P.Brilho * 0.5;
+  gl.uniform3f(prog.u.uC, br, br, br);
+  gl.bindVertexArray(vaoS); gl.drawArrays(gl.POINTS, 0, NP);
+  gl.uniform3f(prog.u.uC, br * 0.5, br * 0.5, br * 0.5); gl.drawArrays(gl.LINE_LOOP, NP, NA); gl.drawArrays(gl.LINE_LOOP, NP + NA, NA);
+  gl.bindVertexArray(vaoL); gl.bindBuffer(gl.ARRAY_BUFFER, bufL); gl.bufferSubData(gl.ARRAY_BUFFER, 0, linhas);
+  gl.uniform3f(prog.u.uC, br, br, br);
+  gl.drawArrays(gl.LINES, 0, N * 2);
+  gl.uniform1f(prog.u.uPt, 1.2 * O.DPR); gl.drawArrays(gl.POINTS, 0, N * 2);
+  gl.bindVertexArray(null);
+
+  // ---------------- camada de dados ----------------
+  const hx = O.hx; hx.clearRect(0, 0, W, H);
+  const ha = O.mostrarHud ? P.Hud : 0; if (ha <= 0.01) return;
+  notaAcento *= Math.exp(-dt / 0.4);
+  const azul = `rgba(60,90,255,${P.Acento})`;
+  const proj = C.map((cl, k) => {
+    const p = ObraBase.projetar(MVP, cl.c, W, H); if (!p) return null;
+    const s = Math.min(260, (cl.esc * 0.55 * Math.min(W, H) * 0.9) / p[2]);
+    return { x: p[0], y: p[1], s, k };
+  });
+  // linhas finas ligando os aglomerados
+  hx.save(); hx.strokeStyle = `rgba(255,255,255,${0.18 * ha})`; hx.lineWidth = 1; hx.beginPath();
+  proj.forEach((p, i) => { if (p) { i ? hx.lineTo(p.x, p.y) : hx.moveTo(p.x, p.y); } }); hx.stroke(); hx.restore();
+  proj.forEach((p) => {
+    if (!p || p.x < -50 || p.x > W + 50) return;
+    const cl = C[p.k], [a, b] = BANDAS[p.k], al = ha * (0.35 + cl.e * 0.65 + cl.lim * 0.4);
+    const w = p.s * (1.4 + (p.k % 2) * 0.5), h = p.s * (0.9 + ((p.k * 7) % 3) * 0.25);
+    HUD.caixa(O.hx, p.x - w / 2, p.y - h / 2, w, h, `F${p.k + 1} ${a}–${b}Hz  ${cl.db.toFixed(1)}dB`, al);
+    // ponto azul de acento no centro
+    hx.save(); hx.globalAlpha = P.Acento * (0.5 + cl.e * 0.5 + notaAcento * 0.5); hx.fillStyle = azul;
+    hx.beginPath(); hx.arc(p.x + Math.sin(t * 2 + p.k) * w * 0.2, p.y, 3 + cl.lim * 4, 0, 6.283); hx.fill(); hx.restore();
+  });
+  // mira concêntrica no aglomerado em foco
+  const pf = proj[cam.foco];
+  if (pf) {
+    hx.save(); hx.globalAlpha = ha * 0.55; hx.strokeStyle = '#fff'; hx.lineWidth = 1;
+    for (let r = 1; r <= 4; r++) { const R = pf.s * 0.35 * r * (1 + A.grave * 0.3), a0 = t * (r % 2 ? 0.6 : -0.4) + r; hx.beginPath(); hx.arc(pf.x, pf.y, R, a0, a0 + 4.4); hx.stroke(); }
+    hx.beginPath(); hx.moveTo(pf.x - 8, pf.y); hx.lineTo(pf.x + 8, pf.y); hx.moveTo(pf.x, pf.y - 8); hx.lineTo(pf.x, pf.y + 8); hx.stroke();
+    hx.restore();
+  }
+  // faixa de onda/espectro
+  const fw = Math.min(W * 0.5, 360), fx = (W - fw) / 2, fy = H - 92;
+  HUD.faixa(hx, A, fx, fy, fw, 46, ha * 0.9);
+  const mm = String(Math.floor(tc / 60)).padStart(2, '0'), ss = (tc % 60).toFixed(2).padStart(5, '0');
+  HUD.texto(hx, `${mm}:${ss}`, fx, fy + 62, ha * 0.8);
+  HUD.texto(hx, `${A.db.toFixed(1)} dBFS`, fx + fw * 0.33, fy + 62, ha * 0.8);
+  HUD.texto(hx, `${A.hz ? A.hz.toFixed(1) : '—'} Hz  ${HUD.nota(A.hz)}`, fx + fw * 0.66, fy + 62, ha * 0.8);
+  HUD.caixa(hx, fx + fw * 0.33 - 4, fy + 51, 70, 15, '', ha * 0.5);
+  // coluna de dados à esquerda
+  const lx = 18, ly = 30;
+  HUD.texto(hx, 'TRAVA DE FREQUÊNCIA', lx, ly, ha * 0.9);
+  HUD.texto(hx, O.fonte === 'motor' ? `MOTOR KNICK · ${O.M.S.bpm} BPM` : 'ENTRADA EXTERNA', lx, ly + 14, ha * 0.55);
+  for (let k = 0; k < K; k++) {
+    const y = ly + 34 + k * 12; HUD.texto(hx, `F${k + 1}`, lx, y, ha * 0.6);
+    hx.save(); hx.globalAlpha = ha * 0.7; hx.fillStyle = k === cam.foco ? azul : '#fff'; hx.fillRect(lx + 22, y - 6, 2 + C[k].e * 90, 5); hx.restore();
+  }
+});
+</script>
+</body>
+</html>

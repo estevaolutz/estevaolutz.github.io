@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><script src="../lib/projecao.js"></script><script src="../lib/audio-arquivo.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000">
+<title>Fótons</title>
+</head>
+<body>
+<script src="../lib/motor-knick.js"></script>
+<script src="../lib/obra-base.js"></script>
+<script>
+/* Fótons — feixes de luz que se cruzam e, no cruzamento, se abrem nas linhas de emissão reais de um elemento químico.
+   Grave = força dos feixes e do clarão; agudo = dispersão das cores e cintilação; ataques giram os feixes;
+   cada nota de vidro do Motor Knick acende uma linha do espectro. */
+const ELEMENTOS = [
+  { s: 'H', nome: 'Hidrogênio', l: [[656.3, 1], [486.1, 0.6], [434.0, 0.45], [410.2, 0.3]] },
+  { s: 'He', nome: 'Hélio', l: [[706.5, 0.3], [667.8, 0.5], [587.6, 1], [501.6, 0.45], [492.2, 0.25], [471.3, 0.3], [447.1, 0.6]] },
+  { s: 'Ne', nome: 'Neônio', l: [[703.2, 0.5], [692.9, 0.5], [671.7, 0.4], [659.9, 0.6], [650.6, 1], [640.2, 1], [633.4, 0.7], [626.6, 0.6], [614.3, 0.8], [588.2, 0.6], [585.2, 1], [540.1, 0.35]] },
+  { s: 'Na', nome: 'Sódio', l: [[589.0, 1], [589.6, 0.9], [568.8, 0.25], [498.3, 0.12]] },
+  { s: 'Hg', nome: 'Mercúrio', l: [[615.0, 0.2], [579.1, 0.7], [577.0, 0.7], [546.1, 1], [491.6, 0.2], [435.8, 0.9], [404.7, 0.5]] },
+  { s: 'O', nome: 'Oxigênio (nebulosa)', l: [[777.4, 0.4], [630.0, 0.5], [557.7, 0.8], [500.7, 1], [495.9, 0.6], [436.3, 0.2]] },
+];
+const O = ObraBase({
+  titulo: 'Fótons', chave: 'fotons', cena: 'vidro',
+  texto: 'Feixes de luz se cruzam e, no ponto de encontro, a luz se abre nas linhas de emissão verdadeiras de um elemento: hidrogênio, hélio, neônio, sódio, mercúrio, oxigênio. O som acende as linhas.',
+  controles: [
+    ['Luz'],
+    ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
+    ['Feixes', 'Feixes', 3, 1, 4, 1],
+    ['Forca', 'Força dos feixes', 0.8, 0, 2, 0.01],
+    ['Disp', 'Dispersão', 0.6, 0, 2, 0.01],
+    ['Leque', 'Leque espectral', 0.9, 0, 2, 0.01],
+    ['Abertura', 'Abertura do leque', 0.55, 0.1, 1.5, 0.01],
+    ['Clarao', 'Clarão', 0.8, 0, 2, 0.01],
+    ['Nebulosa', 'Nebulosa', 0.45, 0, 1.5, 0.01],
+    ['Brilhos', 'Cintilação', 0.6, 0, 2, 0.01],
+    ['Giro', 'Giro', 0.3, 0, 1, 0.01],
+    ['Exposicao', 'Exposição', 1, 0.3, 2.5, 0.01],
+    ['Elemento'],
+    ['Elem', 'Elemento (0 = troca no acorde)', 0, 0, 6, 1],
+    ['Dados'],
+    ['Hud', 'Dados na tela', 0.8, 0, 1, 0.01],
+  ],
+});
+const { gl } = O, HUD = ObraBase.HUD;
+
+const prog = ObraBase.programa(gl, `#version 300 es
+in vec2 aP; void main(){ gl_Position = vec4(aP,0.,1.); }`,
+`#version 300 es
+precision highp float;
+uniform vec2 uR; uniform float uT;
+uniform vec4 uB[4]; uniform int uNB;
+uniform float uL[16]; uniform float uLI[16]; uniform int uNL;
+uniform vec2 uC;
+uniform float uDisp, uFlare, uNeb, uSpark, uFan, uFanAng, uSpread, uExp, uFlash, uGrave, uAgudo;
+out vec4 o;
+${ObraBase.ruido}
+vec3 onda(float nm){            // comprimento de onda → RGB (aprox. de Bruton)
+  vec3 c;
+  if(nm<440.) c=vec3(-(nm-440.)/60.,0.,1.);
+  else if(nm<490.) c=vec3(0.,(nm-440.)/50.,1.);
+  else if(nm<510.) c=vec3(0.,1.,-(nm-510.)/20.);
+  else if(nm<580.) c=vec3((nm-510.)/70.,1.,0.);
+  else if(nm<645.) c=vec3(1.,-(nm-645.)/65.,0.);
+  else c=vec3(1.,0.,0.);
+  float f = nm<420. ? .3+.7*(nm-380.)/40. : nm>700. ? .3+.7*(780.-nm)/80. : 1.;
+  return clamp(c,0.,1.)*clamp(f,0.,1.);
+}
+float feixe(float d, float w){ return exp(-d*d/(w*w)) + w*.06/(abs(d)+w*.4); }
+void main(){
+  vec2 p = (gl_FragCoord.xy - .5*uR)/uR.y;
+  vec3 col = vec3(0.);
+  // nebulosa
+  vec2 q = p*1.6 + vec2(uT*.015, -uT*.01);
+  float n = fbm(q + fbm(q*1.7 + uT*.03)*1.4);
+  float nb = smoothstep(.45,.95,n) * uNeb;
+  col += mix(vec3(.02,.05,.16), vec3(.1,.45,.7), n) * nb * (.6 + uGrave*.8);
+  col += vec3(.5,.2,.6) * smoothstep(.7,1.,fbm(q*2.3-5.)) * uNeb * .25;
+  // feixes com dispersão cromática
+  for(int i=0;i<4;i++){
+    if(i>=uNB) break;
+    vec4 b = uB[i];
+    vec2 d = vec2(cos(b.x), sin(b.x)), nr = vec2(-d.y, d.x);
+    vec2 r = p - uC;
+    float ao = dot(r, d), di = dot(r, nr) - b.y;
+    float sp = uDisp * .012 * abs(ao);
+    float tremor = .75 + .25*vn(vec2(ao*14. - uT*3.*(float(i)+1.), float(i)*7.));
+    vec3 c = vec3(feixe(di + sp, b.w), feixe(di, b.w), feixe(di - sp, b.w));
+    col += c * b.z * tremor * (1. - smoothstep(.6, 1.6, abs(ao)) * .5);
+  }
+  // leque: a luz se abre nas linhas do elemento a partir do cruzamento
+  vec2 r = p - uC; float rl = length(r);
+  float ang = atan(r.y, r.x);
+  for(int j=0;j<16;j++){
+    if(j>=uNL) break;
+    float nm = uL[j];
+    float a = uFanAng + (nm - 560.)/300. * uSpread;
+    vec2 d = vec2(cos(a), sin(a));
+    float ao = dot(r, d), di = abs(dot(r, vec2(-d.y, d.x)));
+    if(ao > 0.){
+      float w = .0018 + ao*.004;
+      float I = uLI[j] * uFan * (exp(-di*di/(w*w)) + .0025/(di+.004)*.35) * smoothstep(0.,.05,ao) * exp(-ao*.7);
+      col += onda(nm) * I;
+    }
+  }
+  // clarão no cruzamento: núcleo, raios em cruz e anel espectral
+  float fl = uFlare * (1. + uFlash*2.);
+  col += vec3(1.,.97,.92) * fl * .012/(rl+.008);
+  col += vec3(.85,.9,1.) * fl * (exp(-abs(r.y)*160.)*exp(-abs(r.x)*2.5) + exp(-abs(r.x)*220.)*exp(-abs(r.y)*4.)) * .5;
+  float rr = .16 + uGrave*.04, rx = (rl - rr)/.022;
+  float ring = exp(-rx*rx*.5) * smoothstep(-2.,-1.,rx) * (1.-smoothstep(1.,2.,rx));
+  col += onda(400. + clamp(rx*.25+.5,0.,1.)*300.) * ring * fl * .09;
+  // cintilação: poeira estelar
+  vec2 g = floor(p*120.), f = fract(p*120.) - .5;
+  float h = h1(g), st = step(.985, h) * smoothstep(.35, 0., length(f));
+  st *= .5 + .5*sin(uT*(2.+h*8.) + h*40.);
+  col += vec3(.8,.9,1.) * st * uSpark * (.4 + uAgudo*2.);
+  // tonemap, vinheta, grão
+  col *= uExp;
+  col = 1. - exp(-col*1.4);
+  col *= 1. - .45*dot(p*.9, p*.9);
+  col += (h1(gl_FragCoord.xy + fract(uT)*100.) - .5) * .035;
+  o = vec4(max(col, 0.), 1.);
+}`);
+const vao = gl.createVertexArray(), buf = gl.createBuffer();
+gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+// ---------------- estado ----------------
+const FX = [0, 1, 2, 3].map((i) => ({ a: [0.62, -0.58, 1.35, 0.15][i], alvo: [0.62, -0.58, 1.35, 0.15][i], off: 0, w: [0.006, 0.004, 0.003, 0.0025][i] }));
+let el = 0, flash = 0, cx = 0.08, cy = 0.02, fanAng = -0.55, fanAlvo = -0.55;
+const brilhoL = new Float32Array(16);
+function trocarElemento(i) { el = (i + ELEMENTOS.length) % ELEMENTOS.length; brilhoL.fill(0.6); O.dica(ELEMENTOS[el].nome.toUpperCase()); }
+O.aoTecla = (k) => { if (k === 'e') { O.P.Elem = 0; document.getElementById('ob_Elem').value = 0; trocarElemento(el + 1); } if (k === ' ') girar(1); };
+function girar(f) { FX.forEach((b, i) => { b.alvo += (Math.random() - 0.5) * 1.2 * f; }); fanAlvo = -0.55 + (Math.random() - 0.5) * 1.6 * f; flash = 1; }
+O.M.on('acorde', (a) => { if (!O.P.Elem && O.fonte === 'motor') trocarElemento(a.grau % ELEMENTOS.length); });
+O.onNota((n) => {
+  if (n.camada === 'vidro' || n.camada === 'arpB') {
+    const L = ELEMENTOS[el].l, j = Math.abs(Math.round(Math.log2(n.freq / 110) * 7)) % L.length;
+    brilhoL[j] = Math.min(3, brilhoL[j] + 1.5 * n.forca);
+  }
+  if (n.camada === 'bumbo') flash = Math.max(flash, 0.6);
+});
+
+let ultAt = 0;
+O.quadro((t, dt) => {
+  const P = O.P, A = O.A, W = O.W, H = O.H;
+  if (P.Elem > 0 && el !== P.Elem - 1) trocarElemento(P.Elem - 1);
+  if (A.ataque > 0.45 && t - ultAt > 0.3) { ultAt = t; girar(A.ataque * 0.7); }
+  flash *= Math.exp(-dt / 0.25);
+  const L = ELEMENTOS[el].l;
+  for (let j = 0; j < L.length; j++) brilhoL[j] += (0.35 + A.medio * 0.6 - brilhoL[j]) * (1 - Math.exp(-dt / 0.6));
+  const kk = 1 - Math.exp(-dt / 0.9);
+  FX.forEach((b, i) => { b.alvo += dt * P.Giro * 0.06 * (i % 2 ? -1 : 1); b.a += (b.alvo - b.a) * kk; b.off = Math.sin(t * 0.2 + i) * 0.03; });
+  fanAng += (fanAlvo + Math.sin(t * 0.11) * 0.2 * P.Giro - fanAng) * kk;
+  cx = 0.08 + Math.sin(t * 0.07) * 0.12 * P.Giro; cy = 0.02 + Math.cos(t * 0.09) * 0.08 * P.Giro;
+
+  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight); gl.disable(gl.BLEND);
+  gl.useProgram(prog.p); const u = prog.u;
+  gl.uniform2f(u.uR, gl.drawingBufferWidth, gl.drawingBufferHeight); gl.uniform1f(u.uT, t);
+  const B = new Float32Array(16);
+  FX.forEach((b, i) => B.set([b.a, b.off, P.Forca * (0.35 + A.grave * 1.4 + flash * 0.6) * (i ? 0.7 : 1), b.w * (1 + A.grave)], i * 4));
+  gl.uniform4fv(u.uB, B); gl.uniform1i(u.uNB, P.Feixes);
+  const LL = new Float32Array(16), LI = new Float32Array(16);
+  L.forEach(([nm, i], j) => { LL[j] = nm; LI[j] = i * brilhoL[j]; });
+  gl.uniform1fv(u.uL, LL); gl.uniform1fv(u.uLI, LI); gl.uniform1i(u.uNL, L.length);
+  gl.uniform2f(u.uC, cx, cy);
+  gl.uniform1f(u.uDisp, P.Disp * (0.4 + A.agudo * 2)); gl.uniform1f(u.uFlare, P.Clarao * (0.3 + A.grave)); gl.uniform1f(u.uNeb, P.Nebulosa);
+  gl.uniform1f(u.uSpark, P.Brilhos); gl.uniform1f(u.uFan, P.Leque * (0.5 + A.nivel)); gl.uniform1f(u.uFanAng, fanAng); gl.uniform1f(u.uSpread, P.Abertura);
+  gl.uniform1f(u.uExp, P.Exposicao); gl.uniform1f(u.uFlash, flash + A.ataque * 0.5); gl.uniform1f(u.uGrave, A.grave); gl.uniform1f(u.uAgudo, A.agudo);
+  gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // ---------------- dados ----------------
+  const hx = O.hx; hx.clearRect(0, 0, W, H);
+  const ha = O.mostrarHud ? P.Hud : 0; if (ha <= 0.01) return;
+  const E = ELEMENTOS[el], x0 = 24, y0 = 34;
+  HUD.texto(hx, `${E.s} · ${E.nome.toUpperCase()}`, x0, y0, ha);
+  HUD.texto(hx, 'LINHAS DE EMISSÃO (nm)', x0, y0 + 14, ha * 0.5);
+  // espectro do elemento: régua 380–780 nm com as linhas
+  const rw = 180, ry = y0 + 24;
+  const grad = hx.createLinearGradient(x0, 0, x0 + rw, 0);
+  for (let i = 0; i <= 8; i++) { const nm = 380 + i * 50; grad.addColorStop(i / 8, corNm(nm, 0.18)); }
+  hx.save(); hx.globalAlpha = ha; hx.fillStyle = grad; hx.fillRect(x0, ry, rw, 10);
+  E.l.forEach(([nm, i], j) => { const x = x0 + (nm - 380) / 400 * rw; hx.fillStyle = corNm(nm, Math.min(1, 0.3 + brilhoL[j] * i * 0.5)); hx.fillRect(x - 1, ry - 3, 2, 16); });
+  hx.restore();
+  E.l.slice(0, 8).forEach(([nm, i], j) => HUD.texto(hx, `${nm.toFixed(1)}  ${'▮'.repeat(Math.max(1, Math.round(i * brilhoL[j] * 4)))}`, x0, ry + 30 + j * 12, ha * 0.75));
+  // marcação do cruzamento
+  const px = W / 2 + cx * H, py = H / 2 - cy * H;
+  HUD.caixa(hx, px - 26, py - 26, 52, 52, `${(fanAng * 57.3).toFixed(1)}°`, ha * 0.55);
+  // ângulo de cada feixe na borda
+  FX.slice(0, P.Feixes).forEach((b, i) => {
+    const R = Math.min(W, H) * 0.42, ex = px + Math.cos(b.a) * R, ey = py - Math.sin(b.a) * R;
+    HUD.texto(hx, `B${i + 1} ${((b.a * 57.3) % 360).toFixed(1)}°`, ex + 6, ey, ha * 0.5);
+  });
+  const fw = Math.min(W * 0.4, 300);
+  HUD.faixa(hx, A, W - fw - 24, H - 80, fw, 40, ha * 0.8);
+  HUD.texto(hx, `${A.db.toFixed(1)} dBFS   ${A.hz ? A.hz.toFixed(1) : '—'} Hz  ${HUD.nota(A.hz)}`, W - fw - 24, H - 22, ha * 0.7);
+});
+function corNm(nm, a) {
+  let r = 0, g = 0, b = 0;
+  if (nm < 440) { r = -(nm - 440) / 60; b = 1; } else if (nm < 490) { g = (nm - 440) / 50; b = 1; } else if (nm < 510) { g = 1; b = -(nm - 510) / 20; }
+  else if (nm < 580) { r = (nm - 510) / 70; g = 1; } else if (nm < 645) { r = 1; g = -(nm - 645) / 65; } else r = 1;
+  return `rgba(${r * 255 | 0},${g * 255 | 0},${b * 255 | 0},${a})`;
+}
+</script>
+</body>
+</html>

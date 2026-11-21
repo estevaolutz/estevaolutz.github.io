@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><script src="../lib/projecao.js"></script><script src="../lib/camera.js"></script><script src="../lib/audio-arquivo.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000">
+<title>Corpo de Partículas</title>
+</head>
+<body>
+<video id="vid" playsinline muted style="display:none"></video>
+<script src="../lib/motor-knick.js"></script>
+<script src="../lib/obra-base.js"></script>
+<script>
+/* Corpo de Partículas — o corpo de quem está diante da câmera vira milhares de partículas (a câmera nunca aparece).
+   Mão aberta espalha o corpo, mão fechada junta as partículas em volta do punho; o som faz o corpo respirar
+   e os ataques desprendem pedaços que voam e voltam. Sem câmera, uma figura de partículas fica no lugar. */
+const O = ObraBase({
+  titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa',
+  texto: 'Fique diante da câmera: seu corpo vira partículas de luz. Abra a mão para espalhar, feche para juntar. O som faz o corpo respirar e se desfazer. A câmera nunca aparece na imagem.',
+  controles: [
+    ['Corpo'],
+    ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
+    ['Coesao', 'Coesão', 0.6, 0.05, 1.5, 0.01],
+    ['Contorno', 'Contorno', 0.45, 0, 1, 0.01],
+    ['Fluxo', 'Fluxo orgânico', 0.45, 0, 1.5, 0.01],
+    ['Respira', 'Respiração com o som', 0.6, 0, 2, 0.01],
+    ['Desfaz', 'Desfazer nos ataques', 0.7, 0, 2, 0.01],
+    ['Brilho', 'Brilho', 0.7, 0.1, 2, 0.01],
+    ['Tamanho', 'Tamanho do ponto', 1.4, 0.6, 3, 0.1],
+    ['Mãos'],
+    ['Espalha', 'Mão aberta espalha', 1, 0, 2.5, 0.01],
+    ['Junta', 'Mão fechada junta', 1, 0, 2.5, 0.01],
+    ['Raio', 'Alcance da mão', 0.35, 0.1, 0.8, 0.01],
+    ['MaoNota', 'Abrir a mão toca nota', 1, 0, 1, 1],
+    ['Dados'],
+    ['Hud', 'Dados na tela', 0.75, 0, 1, 0.01],
+    ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
+    ['Rastro', 'Rastro', 0.4, 0, 0.95, 0.01],
+  ],
+  aoIniciar: () => iniciarCamera(),
+});
+const { gl } = O, HUD = ObraBase.HUD, clamp = O.clamp;
+
+// ---------------- partículas (coordenadas 0–1 da tela) ----------------
+const N = 26000;
+const px = new Float32Array(N), py = new Float32Array(N), vx = new Float32Array(N), vy = new Float32Array(N);
+const tx = new Float32Array(N), ty = new Float32Array(N), solto = new Float32Array(N), br = new Float32Array(N), az = new Float32Array(N);
+for (let i = 0; i < N; i++) { px[i] = tx[i] = Math.random(); py[i] = ty[i] = Math.random(); br[i] = 0.35 + Math.random() * 0.65; }
+
+// ---------------- máscara do corpo ----------------
+const MW = 160, MH = 160;
+const mascara = new Float32Array(MW * MH);
+let dentro = new Int32Array(0), borda = new Int32Array(0), temPessoa = 0, ultPessoa = -10;
+const figCv = document.createElement('canvas'); figCv.width = MW; figCv.height = MH;
+const figura = (() => {          // figura de reserva: silhueta simples de pé, braços abertos
+  const c = figCv.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, MW, MH);
+  c.strokeStyle = c.fillStyle = '#fff'; c.lineCap = 'round'; c.lineJoin = 'round';
+  c.beginPath(); c.ellipse(80, 30, 11, 13, 0, 0, 6.283); c.fill();
+  c.lineWidth = 9; c.beginPath(); c.moveTo(80, 43); c.lineTo(80, 50); c.stroke();
+  c.beginPath(); c.moveTo(62, 52); c.quadraticCurveTo(80, 46, 98, 52); c.lineTo(94, 98); c.quadraticCurveTo(80, 102, 66, 98); c.closePath(); c.fill();
+  c.lineWidth = 8; c.beginPath(); c.moveTo(64, 55); c.lineTo(44, 78); c.lineTo(30, 66); c.moveTo(96, 55); c.lineTo(116, 78); c.lineTo(130, 66); c.stroke();
+  c.lineWidth = 10; c.beginPath(); c.moveTo(72, 98); c.lineTo(66, 128); c.lineTo(64, 156); c.moveTo(88, 98); c.lineTo(94, 128); c.lineTo(96, 156); c.stroke();
+  const d = c.getImageData(0, 0, MW, MH).data, m = new Float32Array(MW * MH);
+  for (let i = 0; i < MW * MH; i++) m[i] = d[i * 4] / 255;
+  return m;
+})();
+function listas(m) {
+  const a = [], b = [];
+  for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
+    const i = y * MW + x; if (m[i] < 0.5) continue; a.push(i);
+    if (m[i - 1] < 0.5 || m[i + 1] < 0.5 || m[i - MW] < 0.5 || m[i + MW] < 0.5) b.push(i);
+  }
+  dentro = Int32Array.from(a); borda = Int32Array.from(b);
+}
+listas(figura);
+setTimeout(() => realvo(1, true), 0);
+// mapeia a máscara (coordenadas do vídeo, 0–1) para a tela, cobrindo e espelhando
+const video = document.getElementById('vid');
+let camOn = false;
+function vidParaTela(u, v) {
+  const vw = video.videoWidth || 4, vh = video.videoHeight || 3, s = Math.max(O.W / vw, O.H / vh);
+  const x = (1 - u - 0.5) * vw * s / O.W + 0.5, y = (v - 0.5) * vh * s / O.H + 0.5; return [x, y];
+}
+function figParaTela(u, v) { const s = Math.min(O.W, O.H) * 0.92; return [0.5 + (u - 0.5) * s / O.W, 0.53 + (v - 0.5) * s / O.H]; }
+function realvo(frac, todos) {
+  if (!dentro.length) return;
+  const n = Math.floor(N * frac), usarCam = camOn && temPessoa > 0.02, cont = O.P.Contorno;
+  for (let k = 0; k < n; k++) {
+    const i = todos ? k : (Math.random() * N) | 0;
+    const L = Math.random() < cont && borda.length ? borda : dentro, j = L[(Math.random() * L.length) | 0];
+    const u = ((j % MW) + Math.random()) / MW, v = (Math.floor(j / MW) + Math.random()) / MH;
+    const p = usarCam ? vidParaTela(u, v) : figParaTela(u, v); tx[i] = p[0]; ty[i] = p[1];
+  }
+}
+
+// ---------------- câmera + MediaPipe ----------------
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15';
+const SEG = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
+const MAO = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+let seg = null, det = null, tsAnt = -1, alterna = 0, semRastreio = false;
+async function iniciarCamera() {
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false });
+    video.srcObject = st; await video.play(); camOn = true;
+  } catch (e) { O.dica('sem câmera — figura de reserva; o mouse faz a mão', 3500); return; }
+  O.dica('carregando o rastreamento…', 2500);
+  try {
+    const mod = await import(MP + '/vision_bundle.mjs');
+    const vision = await mod.FilesetResolver.forVisionTasks(MP + '/wasm');
+    const op = (m, d, x) => Object.assign({ baseOptions: { modelAssetPath: m, delegate: d }, runningMode: 'VIDEO' }, x);
+    try { seg = await mod.ImageSegmenter.createFromOptions(vision, op(SEG, 'GPU', { outputConfidenceMasks: true, outputCategoryMask: false })); }
+    catch (e) { seg = await mod.ImageSegmenter.createFromOptions(vision, op(SEG, 'CPU', { outputConfidenceMasks: true, outputCategoryMask: false })); }
+    try { det = await mod.HandLandmarker.createFromOptions(vision, op(MAO, 'GPU', { numHands: 2 })); }
+    catch (e) { det = await mod.HandLandmarker.createFromOptions(vision, op(MAO, 'CPU', { numHands: 2 })); }
+    O.dica('pronto: entre na frente da câmera', 2500);
+  } catch (e) { console.warn(e); semRastreio = true; O.dica('rastreamento indisponível — o mouse faz a mão', 3500); }
+}
+addEventListener('camera-trocada', () => { if (video.srcObject) video.play().catch(() => {}); });
+function segmentar(ts) {
+  seg.segmentForVideo(video, ts, (r) => {
+    const cm = r && r.confidenceMasks && r.confidenceMasks[0]; if (!cm) return;
+    const f = cm.getAsFloat32Array(), w = cm.width, h = cm.height; let soma = 0;
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const v = f[Math.floor(y / MH * h) * w + Math.floor(x / MW * w)], i = y * MW + x;
+      mascara[i] += (v - mascara[i]) * 0.6; soma += mascara[i];
+    }
+    temPessoa = soma / (MW * MH);
+    if (temPessoa > 0.02) { ultPessoa = performance.now() / 1000; listas(mascara); }
+  });
+}
+const MAOS = [];   // { pts, cx, cy, ab, vista, perdida, abAnt }
+const PONTAS = [4, 8, 12, 16, 20], LIG = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
+function rastrearMaos(ts) {
+  const r = det.detectForVideo(video, ts), vistas = r.landmarks || [];
+  MAOS.forEach((m) => (m.vista = false));
+  for (const lm of vistas) {
+    const pm = lm.map((p) => vidParaTela(p.x, p.y));
+    let m = MAOS.find((q) => !q.vista && Math.hypot(q.cx - pm[9][0], q.cy - pm[9][1]) < 0.3);
+    if (!m) { m = { pts: pm, cx: pm[9][0], cy: pm[9][1], ab: 0.5, abAnt: 0.5, perdida: 0 }; MAOS.push(m); }
+    m.vista = true; m.perdida = 0;
+    pm.forEach((p, j) => { m.pts[j][0] += (p[0] - m.pts[j][0]) * 0.55; m.pts[j][1] += (p[1] - m.pts[j][1]) * 0.55; });
+    const q = m.pts, asp = O.W / O.H, d = (a, b) => Math.hypot((q[a][0] - q[b][0]) * asp, q[a][1] - q[b][1]);
+    const palma = Math.max(1e-3, d(0, 9)), pontas = PONTAS.slice(1).reduce((s, t) => s + d(t, 0), 0) / 4 / palma;
+    m.ab += (clamp((pontas - 1.05) / 0.85, 0, 1) - m.ab) * 0.4;
+    m.cx = q[9][0]; m.cy = q[9][1];
+  }
+  for (let i = MAOS.length - 1; i >= 0; i--) if (!MAOS[i].vista && ++MAOS[i].perdida > 8) MAOS.splice(i, 1);
+}
+// mouse/dedo como mão quando não há rastreamento: mover = mão aberta, apertar = mão fechada
+const mouse = { x: 0.5, y: 0.5, ab: 0, ativo: 0, abAnt: 0 };
+addEventListener('pointermove', (e) => { mouse.x = e.clientX / O.W; mouse.y = e.clientY / O.H; mouse.ativo = 1.5; if (mouse.ab < 0.5) mouse.ab = 1; });
+addEventListener('pointerdown', (e) => { if (e.target.closest('#ob-panel,#ob-dot,#ob-start')) return; mouse.ab = 0; mouse.ativo = 3; });
+addEventListener('pointerup', () => { mouse.ab = 1; });
+
+// ---------------- WebGL ----------------
+const prog = ObraBase.programa(gl, `#version 300 es
+in vec4 aP; uniform float uPt; out vec2 vC;
+void main(){ gl_Position = vec4(aP.x*2.-1., 1.-aP.y*2., 0., 1.); vC = aP.zw; gl_PointSize = uPt * (.6 + aP.z*.7); }`,
+`#version 300 es
+precision highp float; in vec2 vC; uniform float uB, uAz; out vec4 o;
+void main(){ vec2 c = gl_PointCoord-.5; float m = 1.-smoothstep(.2,.5,length(c));
+  vec3 col = mix(vec3(1.), vec3(.3,.45,1.), clamp(vC.y*uAz,0.,1.)); o = vec4(col*vC.x*uB*m, 1.); }`);
+const fade = ObraBase.programa(gl, `#version 300 es
+in vec4 aP; void main(){ gl_Position = vec4(aP.xy,0.,1.); }`, `#version 300 es
+precision highp float; uniform float uA; out vec4 o; void main(){ o = vec4(0.,0.,0.,uA); }`);
+const dados = new Float32Array(N * 4);
+const vao = gl.createVertexArray(), buf = gl.createBuffer();
+gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, dados.byteLength, gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+const vaoQ = gl.createVertexArray(), bq = gl.createBuffer();
+gl.bindVertexArray(vaoQ); gl.bindBuffer(gl.ARRAY_BUFFER, bq); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 0, 3, -1, 0, 0, -1, 3, 0, 0]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+gl.bindVertexArray(null);
+
+// campo de fluxo suave (sem textura): soma de senos girando
+function fluxo(x, y, t) {
+  const a = Math.sin(x * 7.1 + t * 0.31) + Math.sin(y * 5.3 - t * 0.27) + Math.sin((x + y) * 4.2 + t * 0.19);
+  return [Math.cos(a * 1.7), Math.sin(a * 1.7)];
+}
+function desfazer(f) {
+  const n = Math.floor(N * 0.12 * f * O.P.Desfaz), cx = Math.random(), cy = 0.3 + Math.random() * 0.4;
+  for (let k = 0; k < n; k++) {
+    // desprende uma região do corpo, como sementes ao vento
+    const i = (Math.random() * N) | 0; if (Math.abs(px[i] - cx) > 0.25 + f * 0.2) continue;
+    solto[i] = 1 + Math.random(); vx[i] += (Math.random() - 0.3) * 0.6 * f; vy[i] -= (0.2 + Math.random() * 0.6) * f;
+  }
+}
+O.aoTecla = (k) => { if (k === ' ') desfazer(1); };
+O.onNota((n) => { if (n.camada === 'bumbo') desfazer(0.35); });
+
+let ultAt = 0, tPassado = 0;
+O.quadro((t, dt) => {
+  const P = O.P, A = O.A, W = O.W, H = O.H, asp = W / H;
+  // rastreamento (segmentação e mãos em quadros alternados)
+  if (camOn && video.readyState >= 2 && (seg || det)) {
+    let ts = performance.now(); if (ts <= tsAnt) ts = tsAnt + 1; tsAnt = ts;
+    try { if ((alterna++ % 2 === 0 && seg) || !det) segmentar(ts); else rastrearMaos(ts); } catch (e) {}
+  }
+  if (camOn && t - ultPessoa > 2.5 && temPessoa < 0.02 && dentro.length && tPassado++ % 60 === 0) listas(figura);
+  realvo(0.012 + A.ataque * 0.01);
+  if (A.ataque > 0.4 && t - ultAt > 0.35) { ultAt = t; desfazer(A.ataque); }
+
+  // forças das mãos
+  const mm = MAOS.filter((m) => m.vista).map((m) => ({ x: m.cx, y: m.cy, ab: m.ab, ref: m }));
+  mouse.ativo = Math.max(0, mouse.ativo - dt);
+  if (!mm.length && mouse.ativo > 0) mm.push({ x: mouse.x, y: mouse.y, ab: mouse.ab, ref: mouse });
+  for (const m of mm) {
+    const r = m.ref;
+    if (P.MaoNota && r.abAnt < 0.35 && m.ab > 0.7 && O.fonte === 'motor' && O.M.rodando) O.M.evento(Math.round((1 - m.y) * 10) - 2, { forca: 0.9, pan: m.x * 2 - 1 });
+    if (r.abAnt < 0.35 && m.ab > 0.7) desfazer(0.4);
+    r.abAnt = m.ab;
+  }
+
+  const coes = P.Coesao * (2.5 + A.grave * P.Respira * 3), am = Math.exp(-dt * 3), fl = P.Fluxo * 0.06, R2 = P.Raio * P.Raio;
+  const resp = 1 + Math.sin(t * 2) * 0.004 * P.Respira + A.grave * 0.02 * P.Respira;
+  for (let i = 0; i < N; i++) {
+    let x = px[i], y = py[i], ax = 0, ay = 0;
+    const s = solto[i];
+    const kx = 0.5 + (tx[i] - 0.5) * resp, ky = 0.5 + (ty[i] - 0.5) * resp;
+    if (s > 0) { solto[i] = s - dt * 0.55; ay -= 0.04; } else { ax += (kx - x) * coes; ay += (ky - y) * coes; }
+    const f = fluxo(x, y, t); ax += f[0] * fl * (1 + s * 3); ay += f[1] * fl * (1 + s * 3);
+    let azul = 0;
+    for (let k = 0; k < mm.length; k++) {
+      const m = mm[k], dx = (x - m.x) * asp, dy = y - m.y, d2 = dx * dx + dy * dy;
+      if (d2 > R2 * 2.2) continue;
+      const d = Math.sqrt(d2) + 0.01, w = 1 - Math.min(1, d2 / (R2 * 2.2));
+      if (m.ab > 0.5) { const F = P.Espalha * (m.ab - 0.4) * 2.2 * w / d * 0.12; ax += dx / asp * F; ay += dy * F; }
+      else { const F = P.Junta * (0.5 - m.ab) * 2 * w * 4; ax -= dx / asp * F; ay -= dy * F; ax += -dy / asp * F * 0.6; ay += dx * F * 0.6; }
+      azul = Math.max(azul, w);
+    }
+    vx[i] = (vx[i] + ax * dt) * am; vy[i] = (vy[i] + ay * dt) * am;
+    px[i] = x + vx[i] * dt; py[i] = y + vy[i] * dt;
+    az[i] += (azul - az[i]) * 0.1;
+    const sp = Math.min(1, Math.hypot(vx[i], vy[i]) * 4);
+    dados[i * 4] = px[i]; dados[i * 4 + 1] = py[i];
+    dados[i * 4 + 2] = br[i] * (0.55 + A.agudo * 0.6 + sp * 0.5) * (s > 0 ? 0.8 : 1); dados[i * 4 + 3] = az[i];
+  }
+
+  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight); gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.useProgram(fade.p); gl.uniform1f(fade.u.uA, 1 - P.Rastro);
+  gl.bindVertexArray(vaoQ); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.blendFunc(gl.ONE, gl.ONE); gl.useProgram(prog.p);
+  gl.uniform1f(prog.u.uPt, P.Tamanho * O.DPR); gl.uniform1f(prog.u.uB, P.Brilho * 0.55); gl.uniform1f(prog.u.uAz, P.Acento);
+  gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, dados); gl.drawArrays(gl.POINTS, 0, N);
+  gl.bindVertexArray(null);
+
+  // ---------------- dados ----------------
+  const hx = O.hx; hx.clearRect(0, 0, W, H);
+  const ha = O.mostrarHud ? P.Hud : 0; if (ha <= 0.01) return;
+  // caixa do corpo
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  for (let i = 0; i < N; i += 37) { if (solto[i] > 0) continue; x0 = Math.min(x0, tx[i]); x1 = Math.max(x1, tx[i]); y0 = Math.min(y0, ty[i]); y1 = Math.max(y1, ty[i]); }
+  if (x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${camOn && temPessoa > 0.02 ? 'CÂMERA' : 'FIGURA'} · ${N} PTS · ${(temPessoa * 100).toFixed(1)}%`, ha * 0.45);
+  for (const m of mm) {
+    const r = m.ref, nome = r === mouse ? 'CURSOR' : 'MÃO';
+    HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);
+    if (r.pts) {
+      hx.save(); hx.globalAlpha = ha * 0.5; hx.strokeStyle = '#fff'; hx.lineWidth = 1; hx.beginPath();
+      for (const [a, b] of LIG) { hx.moveTo(r.pts[a][0] * W, r.pts[a][1] * H); hx.lineTo(r.pts[b][0] * W, r.pts[b][1] * H); }
+      hx.stroke(); hx.restore();
+    }
+  }
+  const fw = Math.min(W * 0.4, 300);
+  HUD.faixa(hx, A, 24, H - 80, fw, 40, ha * 0.8);
+  HUD.texto(hx, `${A.db.toFixed(1)} dBFS   ${A.hz ? A.hz.toFixed(1) : '—'} Hz  ${HUD.nota(A.hz)}`, 24, H - 22, ha * 0.7);
+  HUD.texto(hx, 'CORPO DE PARTÍCULAS', 24, 34, ha * 0.9);
+  HUD.texto(hx, camOn ? (seg ? 'RASTREAMENTO ATIVO' : semRastreio ? 'SEM RASTREAMENTO · MOUSE = MÃO' : 'CARREGANDO RASTREAMENTO') : 'SEM CÂMERA · MOUSE = MÃO', 24, 48, ha * 0.5);
+});
+</script>
+</body>
+</html>

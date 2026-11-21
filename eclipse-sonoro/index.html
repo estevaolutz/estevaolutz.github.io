@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><script src="../lib/projecao.js"></script><script src="../lib/audio-arquivo.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000">
+<title>Eclipse Sonoro</title>
+</head>
+<body>
+<script src="../lib/motor-knick.js"></script>
+<script src="../lib/obra-base.js"></script>
+<script>
+/* Eclipse Sonoro — uma esfera escura com a coroa de partículas feita do espectro do som (cada raio é uma faixa de frequência),
+   e as órbitas dos planetas nas proporções reais (Kepler). Cada vez que um planeta cruza a linha do observador,
+   ele toca uma nota no Motor Knick: a harmonia das esferas dentro do eclipse. */
+const PLANETAS = [
+  ['Mercúrio', 0.387, 0.206, 7.0], ['Vênus', 0.723, 0.007, 3.4], ['Terra', 1.0, 0.017, 0], ['Marte', 1.524, 0.093, 1.85],
+  ['Júpiter', 5.203, 0.049, 1.3], ['Saturno', 9.537, 0.054, 2.5], ['Urano', 19.19, 0.047, 0.8], ['Netuno', 30.07, 0.009, 1.8],
+];
+const O = ObraBase({
+  titulo: 'Eclipse Sonoro', chave: 'eclipse-sonoro', cena: 'nevoa',
+  texto: 'Uma esfera escura e a coroa de luz que o som desenha em volta dela: cada raio é uma faixa do espectro. As órbitas seguem as proporções reais dos planetas, e cada passagem de um planeta diante de você vira uma nota.',
+  controles: [
+    ['Coroa'],
+    ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
+    ['Coroa', 'Tamanho da coroa', 1, 0.2, 2.5, 0.01],
+    ['Fluxo', 'Fluxo dos raios', 0.5, 0, 2, 0.01],
+    ['Fios', 'Fios finos', 0.5, 0, 1, 0.01],
+    ['Borda', 'Luz na borda', 0.8, 0, 2, 0.01],
+    ['Estilhacos', 'Estilhaços', 0.7, 0, 2, 0.01],
+    ['Brilho', 'Brilho', 0.7, 0.1, 2, 0.01],
+    ['Órbitas'],
+    ['Orbitas', 'Órbitas', 0.6, 0, 1, 0.01],
+    ['Planetas', 'Planetas visíveis', 6, 1, 8, 1],
+    ['Tempo', 'Velocidade orbital', 0.5, 0, 2, 0.01],
+    ['Tocar', 'Planetas tocam notas', 1, 0, 1, 1],
+    ['Câmera'],
+    ['Camera', 'Giro da câmera', 0.25, 0, 1, 0.01],
+    ['Dist', 'Distância', 5.5, 3, 12, 0.1],
+    ['Dados'],
+    ['Hud', 'Dados na tela', 0.85, 0, 1, 0.01],
+    ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
+  ],
+});
+const { gl } = O, HUD = ObraBase.HUD;
+const R = 1;
+
+// ---------------- geometria ----------------
+const fib = (i, n) => { const y = 1 - (i + 0.5) / n * 2, r = Math.sqrt(1 - y * y), a = i * 2.39996323; return [Math.cos(a) * r, y, Math.sin(a) * r]; };
+const NR = 720, PR = 40, NC = NR * PR;               // raios × partículas por raio
+const dirs = [], banda = new Uint16Array(NR), fase = new Float32Array(NC), jit = new Float32Array(NC * 3);
+for (let i = 0; i < NR; i++) {
+  const d = fib(i, NR); dirs.push(d);
+  // cada raio pega uma faixa do espectro pelo ângulo em volta do eixo (espectro radial, espelhado)
+  const ang = (Math.atan2(d[1], d[0]) / Math.PI + 1) / 2, m = Math.abs(ang * 2 - 1);
+  banda[i] = 2 + Math.floor(Math.pow(1 - m, 1.6) * 300);
+}
+for (let i = 0; i < NC; i++) { fase[i] = Math.random(); jit[i * 3] = (Math.random() - 0.5) * 0.05; jit[i * 3 + 1] = (Math.random() - 0.5) * 0.05; jit[i * 3 + 2] = (Math.random() - 0.5) * 0.05; }
+const comp = new Float32Array(NR).fill(0.3);
+const NS = 9000, sup = new Float32Array(NS * 4);
+for (let i = 0; i < NS; i++) { const d = fib(i, NS), r = R * (1 + (Math.random() - 0.5) * 0.01); sup.set([d[0] * r, d[1] * r, d[2] * r, 0.3 + Math.random() * 0.7], i * 4); }
+const escA = (a) => 1.35 + Math.sqrt(a) * 0.95;   // compressão das órbitas para caber
+const NO = 256, orb = new Float32Array(PLANETAS.length * NO * 4);
+const inclin = PLANETAS.map((p, i) => (p[3] * 0.05 + (i % 3 - 1) * 0.16));
+const nodo = PLANETAS.map((p, i) => i * 0.9);
+function posOrbita(i, M) {
+  const [, a, e] = PLANETAS[i], A = escA(a);
+  let E = M; for (let k = 0; k < 4; k++) E = M + e * Math.sin(E);
+  const x = A * (Math.cos(E) - e), z = A * Math.sqrt(1 - e * e) * Math.sin(E);
+  const ci = Math.cos(inclin[i]), si = Math.sin(inclin[i]), cn = Math.cos(nodo[i]), sn = Math.sin(nodo[i]);
+  const y = z * si, z2 = z * ci;
+  return [x * cn - z2 * sn, y, x * sn + z2 * cn];
+}
+for (let i = 0; i < PLANETAS.length; i++) for (let j = 0; j < NO; j++) orb.set([...posOrbita(i, j / NO * 6.2832), 1], (i * NO + j) * 4);
+// estilhaços
+const ND = 5000, dP = new Float32Array(ND * 3), dV = new Float32Array(ND * 3), dL = new Float32Array(ND);
+let dI = 0;
+
+// ---------------- WebGL ----------------
+const prog = ObraBase.programa(gl, `#version 300 es
+in vec4 aP; uniform mat4 uM; uniform vec3 uEye; uniform float uR, uPt, uSurf, uBorda; out float vA;
+void main(){
+  vec3 d = aP.xyz - uEye; float L = length(d); vec3 dir = d / L;
+  float tc = dot(-uEye, dir), d2 = dot(uEye, uEye) - tc*tc;
+  float tN = tc - sqrt(max(uR*uR - d2, 0.));
+  float oculto = (d2 < uR*uR*.998 && (uSurf < .5 || L > tN + .02)) ? 0. : 1.;
+  float a = aP.w * oculto;
+  if (uSurf > .5) { float rim = 1. - abs(dot(normalize(aP.xyz), dir)); a *= pow(rim, 6.) * uBorda * 2.5; }
+  vA = a;
+  gl_Position = uM * vec4(aP.xyz, 1.);
+  gl_PointSize = uPt;
+}`, `#version 300 es
+precision highp float; in float vA; uniform vec3 uC; uniform float uLin; out vec4 o;
+void main(){ vec2 c = gl_PointCoord - .5; float m = uLin > .5 ? 1. : 1. - smoothstep(.3, .5, length(c)); o = vec4(uC * vA * m, 1.); }`);
+const mk = (dados, dyn) => { const v = gl.createVertexArray(), b = gl.createBuffer(); gl.bindVertexArray(v); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, dados, dyn ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0); gl.bindVertexArray(null); return { v, b, d: dados }; };
+const coroa = mk(new Float32Array(NC * 4), true), fios = mk(new Float32Array(NR * 2 * 4), true), supf = mk(sup), orbs = mk(orb), est = mk(new Float32Array(ND * 4), true), plan = mk(new Float32Array(8 * 4), true);
+
+// ---------------- estado ----------------
+const M0 = PLANETAS.map(() => Math.random() * 6.28), Mp = M0.slice(), lado = PLANETAS.map(() => 0), flashP = new Float32Array(8);
+let ang = 0.3, el = 0.22, explosao = 0;
+function estilhacar(f) {
+  const n = Math.floor(600 * f * O.P.Estilhacos);
+  for (let k = 0; k < n; k++) {
+    const i = dI = (dI + 1) % ND, d = fib(Math.floor(Math.random() * 4000), 4000), s = (0.6 + Math.random() * 2.2) * f;
+    dP.set([d[0] * R * 1.02, d[1] * R * 1.02, d[2] * R * 1.02], i * 3);
+    dV.set([d[0] * s + (Math.random() - 0.5) * 0.4, d[1] * s + (Math.random() - 0.5) * 0.4, d[2] * s + (Math.random() - 0.5) * 0.4], i * 3);
+    dL[i] = 0.6 + Math.random();
+  }
+  explosao = Math.max(explosao, f);
+}
+O.aoTecla = (k) => { if (k === ' ') estilhacar(1); };
+O.onNota((n) => { if (n.camada === 'bumbo') estilhacar(0.5); });
+
+let ultAt = 0;
+O.quadro((t, dt) => {
+  const P = O.P, A = O.A, W = O.W, H = O.H;
+  // coroa: comprimento de cada raio = energia da faixa
+  for (let i = 0; i < NR; i++) {
+    const v = A.freq[banda[i]] / 255 * P.Sensib, alvo = 0.25 + Math.pow(v, 1.3) * 2.6 * P.Coroa;
+    comp[i] += (alvo - comp[i]) * (alvo > comp[i] ? 0.35 : 0.06);
+  }
+  const fl = dt * (0.08 + A.grave * 0.6) * P.Fluxo, cv = coroa.d;
+  for (let r = 0; r < NR; r++) {
+    const d = dirs[r], L = comp[r];
+    for (let k = 0; k < PR; k++) {
+      const i = r * PR + k; let f = fase[i] + fl * (0.6 + (k % 5) * 0.12); if (f > 1) f -= 1; fase[i] = f;
+      const s = R + Math.pow(f, 1.7) * L, w = (1 - f) * (0.35 + L * 0.5);
+      const j = 1 + f * 2;
+      cv[i * 4] = d[0] * s + jit[i * 3] * j * f; cv[i * 4 + 1] = d[1] * s + jit[i * 3 + 1] * j * f; cv[i * 4 + 2] = d[2] * s + jit[i * 3 + 2] * j * f; cv[i * 4 + 3] = w;
+    }
+    const fv = fios.d, o = r * 8, Lf = R + L * 1.35 * P.Fios * 1.8;
+    fv[o] = d[0] * R; fv[o + 1] = d[1] * R; fv[o + 2] = d[2] * R; fv[o + 3] = 0.5;
+    fv[o + 4] = d[0] * Lf; fv[o + 5] = d[1] * Lf; fv[o + 6] = d[2] * Lf; fv[o + 7] = 0;
+  }
+  // estilhaços
+  if (A.ataque > 0.4 && t - ultAt > 0.25) { ultAt = t; estilhacar(A.ataque); }
+  explosao *= Math.exp(-dt / 0.4);
+  const ev = est.d, am = Math.exp(-dt * 0.8);
+  for (let i = 0; i < ND; i++) {
+    if (dL[i] <= 0) { ev[i * 4 + 3] = 0; continue; }
+    dL[i] -= dt * 0.45;
+    dV[i * 3] *= am; dV[i * 3 + 1] *= am; dV[i * 3 + 2] *= am;
+    dP[i * 3] += dV[i * 3] * dt; dP[i * 3 + 1] += dV[i * 3 + 1] * dt; dP[i * 3 + 2] += dV[i * 3 + 2] * dt;
+    ev.set([dP[i * 3], dP[i * 3 + 1], dP[i * 3 + 2], Math.max(0, dL[i]) * 0.9], i * 4);
+  }
+  // câmera
+  ang += dt * 0.05 * P.Camera; el = 0.22 + Math.sin(t * 0.05) * 0.25 * P.Camera;
+  const dist = P.Dist - A.grave * 0.4;
+  const eye = [Math.cos(ang) * Math.cos(el) * dist, Math.sin(el) * dist, Math.sin(ang) * Math.cos(el) * dist];
+  const MVP = ObraBase.mul(ObraBase.perspectiva(0.9, W / H, 0.05, 100), ObraBase.olhar(eye, [0, 0, 0], [0, 1, 0]));
+  // planetas: passagem diante do observador → nota
+  const pv = plan.d, NP = P.Planetas;
+  for (let i = 0; i < 8; i++) {
+    const per = Math.pow(PLANETAS[i][1], 1.5);
+    Mp[i] += dt * P.Tempo * 0.9 / per;
+    const p = posOrbita(i, Mp[i]);
+    pv.set([...p, i < NP ? 1 : 0], i * 4);
+    const s = Math.sign(p[0] * Math.sin(ang) - p[2] * Math.cos(ang));     // lado em relação ao plano que contém o olhar
+    if (lado[i] && s !== lado[i] && (p[0] * eye[0] + p[2] * eye[2]) > 0 && i < NP) {
+      flashP[i] = 1;
+      if (P.Tocar && O.fonte === 'motor' && O.M.rodando) O.M.evento([0, 2, 4, 7, 9, 11, 14, 16][i], { forca: 0.8, pan: Math.max(-1, Math.min(1, p[0] / 4)) });
+    }
+    lado[i] = s; flashP[i] *= Math.exp(-dt / 0.6);
+  }
+
+  // desenho
+  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  gl.useProgram(prog.p); const u = prog.u;
+  gl.uniformMatrix4fv(u.uM, false, MVP); gl.uniform3fv(u.uEye, eye); gl.uniform1f(u.uR, R);
+  const b = P.Brilho, cor = (k) => gl.uniform3f(u.uC, k * b, k * b, k * b);
+  gl.uniform1f(u.uBorda, P.Borda * (0.6 + A.medio + explosao));
+  // coroa
+  gl.uniform1f(u.uSurf, 0); gl.uniform1f(u.uPt, 1.6 * O.DPR); cor(0.55 + explosao * 0.4);
+  gl.bindVertexArray(coroa.v); gl.bindBuffer(gl.ARRAY_BUFFER, coroa.b); gl.bufferSubData(gl.ARRAY_BUFFER, 0, coroa.d); gl.drawArrays(gl.POINTS, 0, NC);
+  gl.uniform1f(u.uLin, 1); cor(0.3 * P.Fios); gl.bindVertexArray(fios.v); gl.bindBuffer(gl.ARRAY_BUFFER, fios.b); gl.bufferSubData(gl.ARRAY_BUFFER, 0, fios.d); gl.drawArrays(gl.LINES, 0, NR * 2);
+  gl.uniform1f(u.uLin, 0);
+  // borda da esfera
+  gl.uniform1f(u.uSurf, 1); gl.uniform1f(u.uPt, 1.8 * O.DPR); cor(0.8); gl.bindVertexArray(supf.v); gl.drawArrays(gl.POINTS, 0, NS);
+  gl.uniform1f(u.uSurf, 0);
+  // órbitas
+  gl.uniform1f(u.uLin, 1); cor(0.35 * P.Orbitas); gl.bindVertexArray(orbs.v); for (let i = 0; i < NP; i++) gl.drawArrays(gl.LINE_LOOP, i * NO, NO); gl.uniform1f(u.uLin, 0);
+  // estilhaços
+  gl.uniform1f(u.uPt, 2 * O.DPR); cor(0.8); gl.bindVertexArray(est.v); gl.bindBuffer(gl.ARRAY_BUFFER, est.b); gl.bufferSubData(gl.ARRAY_BUFFER, 0, est.d); gl.drawArrays(gl.POINTS, 0, ND);
+  // planetas (pontos azuis)
+  gl.uniform1f(u.uPt, 7 * O.DPR); gl.uniform3f(u.uC, 0.25 * P.Acento, 0.38 * P.Acento, 1.0 * P.Acento);
+  gl.bindVertexArray(plan.v); gl.bindBuffer(gl.ARRAY_BUFFER, plan.b); gl.bufferSubData(gl.ARRAY_BUFFER, 0, plan.d); gl.drawArrays(gl.POINTS, 0, 8);
+  gl.bindVertexArray(null);
+
+  // ---------------- dados ----------------
+  const hx = O.hx; hx.clearRect(0, 0, W, H);
+  const ha = O.mostrarHud ? P.Hud : 0; if (ha <= 0.01) return;
+  for (let i = 0; i < NP; i++) {
+    const p = ObraBase.projetar(MVP, [pv[i * 4], pv[i * 4 + 1], pv[i * 4 + 2]], W, H); if (!p) continue;
+    const [nome, a] = PLANETAS[i], s = 12 + flashP[i] * 16;
+    HUD.caixa(hx, p[0] - s, p[1] - s, s * 2, s * 2, `${nome.toUpperCase()} ${a.toFixed(2)} UA · ${Math.pow(a, 1.5).toFixed(2)} a`, ha * (0.35 + flashP[i] * 0.65));
+  }
+  const c = ObraBase.projetar(MVP, [0, 0, 0], W, H);
+  if (c) {
+    const rp = (R * Math.min(W, H) * 0.6) / c[2] * 1.83;
+    hx.save(); hx.globalAlpha = ha * 0.4; hx.strokeStyle = '#fff'; hx.setLineDash([2, 6]);
+    hx.beginPath(); hx.arc(c[0], c[1], rp * 1.15, 0, 6.283); hx.stroke(); hx.setLineDash([]);
+    hx.beginPath(); hx.moveTo(c[0] - rp * 1.3, c[1]); hx.lineTo(c[0] - rp * 1.18, c[1]); hx.moveTo(c[0] + rp * 1.18, c[1]); hx.lineTo(c[0] + rp * 1.3, c[1]); hx.stroke();
+    hx.restore();
+    HUD.texto(hx, `COROA ${(comp.reduce((s, v) => s + v, 0) / NR).toFixed(3)} R`, c[0] + rp * 1.32, c[1] - 4, ha * 0.6);
+    HUD.texto(hx, `GRAVE ${(A.grave * 100).toFixed(0)}  AGUDO ${(A.agudo * 100).toFixed(0)}`, c[0] + rp * 1.32, c[1] + 10, ha * 0.45);
+  }
+  HUD.texto(hx, 'ECLIPSE SONORO', 24, 34, ha * 0.9);
+  HUD.texto(hx, O.fonte === 'motor' ? `MOTOR KNICK · ${O.M.nomeAcorde ? O.M.nomeAcorde() : ''}` : 'ENTRADA EXTERNA', 24, 48, ha * 0.5);
+  const fw = Math.min(W * 0.5, 340);
+  HUD.faixa(hx, A, (W - fw) / 2, H - 84, fw, 42, ha * 0.85);
+  HUD.texto(hx, `${A.db.toFixed(1)} dBFS   ${A.hz ? A.hz.toFixed(1) : '—'} Hz  ${HUD.nota(A.hz)}`, (W - fw) / 2, H - 26, ha * 0.7);
+});
+</script>
+</body>
+</html>

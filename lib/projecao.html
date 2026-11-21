@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projeção</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#e9ecf2;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ov{touch-action:none}
+body.limpo{cursor:none}
+#ajuda{position:fixed;left:14px;top:12px;background:#0b0d12e6;border:1px solid #2a303c;border-radius:10px;padding:10px 14px;font-size:13px;max-width:460px;pointer-events:none}
+#ajuda b{color:#e8b04a}
+body.limpo #ajuda{display:none}
+#msg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);text-align:center;font-size:17px;color:#8b93a3;display:none;max-width:80vw}
+#dicaFS{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;background:#12151cf2;border:2px solid #e8b04a;border-radius:14px;padding:18px 26px;font:500 18px/1.45 system-ui,sans-serif;text-align:center;cursor:pointer;max-width:80vw}
+#dicaFS b{color:#e8b04a}
+body.semfs #dicaFS{display:block}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas><canvas id="ov"></canvas>
+<div id="ajuda"></div>
+<div id="msg"></div>
+<div id="dicaFS"><b>Clique aqui para tela cheia</b><br>Arraste esta janela para a tela do projetor antes.<br>(Atalho: F)</div>
+<script>
+(function(){
+'use strict';
+var $=function(i){return document.getElementById(i)};
+var qs=new URLSearchParams(location.search),OBRA=qs.get('obra')||'',TIT=qs.get('titulo')||'';
+document.title='Projeção — '+(TIT||OBRA);
+var K='projecao-cantos:'+OBRA;
+var cv=$('gl'),ov=$('ov'),cx=ov.getContext('2d');
+var gl=cv.getContext('webgl',{antialias:false,premultipliedAlpha:false});
+var S=null;try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+var temSalvo=!!(S&&S.pts);
+if(!temSalvo)S={pts:[[0,0],[1,0],[1,1],[0,1]],edit:true,grade:false};
+var canto=0,preto=false;
+function salvar(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
+
+/* ---------- vídeo vindo da janela da obra ---------- */
+var video=document.createElement('video');video.muted=true;video.playsInline=true;video.autoplay=true;
+var versao=-1;
+function pegar(){
+  var o=null;try{o=window.opener&&window.opener.Projecao}catch(e){}
+  if(!o){msg('Abra a projeção pelo botão de projetor dentro da obra.<br>(A janela da obra precisa continuar aberta.)');return}
+  var tr=video.srcObject&&video.srcObject.getVideoTracks()[0];
+  if(versao===o.versao&&tr&&tr.readyState==='live')return;
+  try{var st=o.iniciar();video.srcObject=st;versao=o.versao;video.play().catch(function(){});msg('')}catch(e){msg('Não consegui receber a imagem da obra.')}
+}
+function msg(t){$('msg').innerHTML=t;$('msg').style.display=t?'block':'none'}
+var bc=('BroadcastChannel' in window)?new BroadcastChannel('projecao:'+OBRA):null;
+function vivo(){if(bc)bc.postMessage({t:'vivo'});pegar()}
+vivo();setInterval(vivo,1000);
+addEventListener('pagehide',function(){if(bc)bc.postMessage({t:'tchau'})});
+
+/* ---------- desenho com homografia ---------- */
+var VS='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+var FS='precision highp float;uniform mat3 uHi;uniform sampler2D uT;uniform float uGrade,uTem,uPreto;uniform vec2 uRes;'+
+'void main(){vec3 q=uHi*vec3(gl_FragCoord.x,uRes.y-gl_FragCoord.y,1.);vec2 s=q.xy/q.z;'+
+'if(q.z<=0.||s.x<0.||s.y<0.||s.x>1.||s.y>1.){gl_FragColor=vec4(0,0,0,1);return;}'+
+'vec3 c=uTem>.5?texture2D(uT,s).rgb:vec3(.08);'+
+'if(uGrade>.5){vec2 g=abs(fract(s*vec2(16.,9.)+.5)-.5);float l=step(min(g.x,g.y),.04);float b=step(min(min(s.x,1.-s.x),min(s.y,1.-s.y)),.006);'+
+'float ck=mod(floor(s.x*16.)+floor(s.y*9.),2.);c=mix(vec3(.12+.1*ck),vec3(1.),max(l*.7,b));'+
+'float d=length((s-.5)*vec2(16./9.,1.));c=mix(c,vec3(1,.75,.3),step(abs(d-.4),.006));}'+
+'gl_FragColor=vec4(c*(1.-uPreto),1.);}';
+function sh(t,src){var s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);return s}
+var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr);
+var buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+var al=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+var U={};['uHi','uT','uGrade','uTem','uPreto','uRes'].forEach(function(n){U[n]=gl.getUniformLocation(pr,n)});
+var tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+function quadH(p){var x0=p[0][0],y0=p[0][1],x1=p[1][0],y1=p[1][1],x2=p[2][0],y2=p[2][1],x3=p[3][0],y3=p[3][1];
+  var sx=x0-x1+x2-x3,sy=y0-y1+y2-y3,dx1=x1-x2,dx2=x3-x2,dy1=y1-y2,dy2=y3-y2,den=dx1*dy2-dx2*dy1;if(Math.abs(den)<1e-12)den=1e-12;
+  var g=(sx*dy2-dx2*sy)/den,h=(dx1*sy-sx*dy1)/den;return [[x1-x0+g*x1,x3-x0+h*x3,x0],[y1-y0+g*y1,y3-y0+h*y3,y0],[g,h,1]]}
+function inv3(m){var a=m[0][0],b=m[0][1],c=m[0][2],d=m[1][0],e=m[1][1],f=m[1][2],g=m[2][0],h=m[2][1],i=m[2][2];
+  var A=e*i-f*h,B=-(d*i-f*g),C=d*h-e*g,det=a*A+b*B+c*C;if(Math.abs(det)<1e-12)det=1e-12;
+  return [[A/det,-(b*i-c*h)/det,(b*f-c*e)/det],[B/det,(a*i-c*g)/det,-(a*f-c*d)/det],[C/det,-(a*h-b*g)/det,(a*e-b*d)/det]]}
+function colMaj(m){return [m[0][0],m[1][0],m[2][0],m[0][1],m[1][1],m[2][1],m[0][2],m[1][2],m[2][2]]}
+var W=1,H=1,dpr=1;
+function medir(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=ov.width=Math.round(W*dpr);cv.height=ov.height=Math.round(H*dpr)}
+addEventListener('resize',medir);medir();
+// primeira vez nesta obra: encaixa a imagem na tela sem deformar
+function encaixar(){var a=video.videoWidth/video.videoHeight,sa=W/H,w=1,h=1;if(!a)return;if(a>sa)h=sa/a;else w=a/sa;
+  var x=(1-w)/2,y=(1-h)/2;S.pts=[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];salvar()}
+function frame(){
+  requestAnimationFrame(frame);
+  if(!temSalvo&&video.videoWidth){temSalvo=true;encaixar()}
+  var tem=0;
+  if(video.readyState>=2){gl.bindTexture(gl.TEXTURE_2D,tex);try{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,video);tem=1}catch(e){}}
+  gl.viewport(0,0,cv.width,cv.height);
+  var P=S.pts.map(function(p){return[p[0]*cv.width,p[1]*cv.height]});
+  gl.uniformMatrix3fv(U.uHi,false,colMaj(inv3(quadH(P))));
+  gl.uniform2f(U.uRes,cv.width,cv.height);gl.uniform1i(U.uT,0);gl.uniform1f(U.uTem,tem);gl.uniform1f(U.uGrade,S.grade?1:0);gl.uniform1f(U.uPreto,preto?1:0);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  alcas();
+}
+function alcas(){
+  cx.setTransform(1,0,0,1,0,0);cx.clearRect(0,0,ov.width,ov.height);
+  document.body.classList.toggle('limpo',!S.edit);
+  if(!S.edit||preto)return;cx.scale(dpr,dpr);
+  var P=S.pts.map(function(p){return[p[0]*W,p[1]*H]});
+  cx.beginPath();P.forEach(function(p,j){j?cx.lineTo(p[0],p[1]):cx.moveTo(p[0],p[1])});cx.closePath();cx.lineWidth=2;cx.strokeStyle='#e8b04a';cx.stroke();
+  P.forEach(function(p,j){cx.beginPath();cx.arc(p[0],p[1],j===canto?13:10,0,7);cx.fillStyle=j===canto?'#e8b04a':'rgba(0,0,0,.6)';cx.fill();cx.lineWidth=2;cx.strokeStyle='#e8b04a';cx.stroke();
+    cx.beginPath();cx.moveTo(p[0]-24,p[1]);cx.lineTo(p[0]+24,p[1]);cx.moveTo(p[0],p[1]-24);cx.lineTo(p[0],p[1]+24);cx.lineWidth=1;cx.stroke();
+    cx.fillStyle='#e8b04a';cx.font='600 14px system-ui';cx.fillText(String(j+1),p[0]+14,p[1]-14)});
+}
+requestAnimationFrame(frame);
+
+/* ---------- arrastar ---------- */
+var arr=null;
+function pos(e){return [e.clientX/W,e.clientY/H]}
+function dentro(p,Q){var c=false;for(var i=0,j=3;i<4;j=i++){var a=Q[i],b=Q[j];if((a[1]>p[1])!=(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
+ov.addEventListener('pointerdown',function(e){if(!S.edit)return;var p=pos(e),bd=24,best=-1;
+  S.pts.forEach(function(q,j){var d=Math.hypot((q[0]-p[0])*W,(q[1]-p[1])*H);if(d<bd){bd=d;best=j}});
+  if(best>=0){canto=best;arr={t:'c',p:p}}else if(dentro(p,S.pts))arr={t:'m',p:p};
+  if(arr)ov.setPointerCapture(e.pointerId)});
+ov.addEventListener('pointermove',function(e){if(!arr)return;var p=pos(e),dx=p[0]-arr.p[0],dy=p[1]-arr.p[1],f=e.shiftKey?.25:1;
+  if(arr.t==='c'){S.pts[canto][0]+=dx*f;S.pts[canto][1]+=dy*f}else S.pts.forEach(function(q){q[0]+=dx;q[1]+=dy});arr.p=p});
+ov.addEventListener('pointerup',function(){if(arr){arr=null;salvar()}});
+ov.addEventListener('pointercancel',function(){arr=null});
+
+/* ---------- teclado ---------- */
+function entrarFS(){var d=document.documentElement;if(!document.fullscreenElement)(d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)}
+function tela(){if(!document.fullscreenElement)entrarFS();else document.exitFullscreen()}
+ov.addEventListener('dblclick',entrarFS);$('dicaFS').onclick=entrarFS;
+function fsCheck(){document.body.classList.toggle('semfs',!document.fullscreenElement)}
+document.addEventListener('fullscreenchange',fsCheck);fsCheck();
+addEventListener('keydown',function(e){
+  var k=e.key,st=(e.shiftKey?10:1);
+  if(k==='f'||k==='F'){tela();return}
+  if(k==='e'||k==='E'||k==='h'||k==='H'){S.edit=!S.edit;salvar();return}
+  if(k==='g'||k==='G'){S.grade=!S.grade;salvar();return}
+  if(k==='b'||k==='B'){preto=!preto;return}
+  if(k==='r'||k==='R'){if(confirm('Voltar os 4 cantos para o encaixe inicial?'))encaixar();return}
+  if(!S.edit)return;
+  if(k==='Tab'||k==='Enter'||k===' '){canto=(canto+(e.shiftKey?3:1))%4;e.preventDefault();return}
+  if(k>='1'&&k<='4'){canto=+k-1;return}
+  var mv={ArrowLeft:[-st,0],ArrowRight:[st,0],ArrowUp:[0,-st],ArrowDown:[0,st]}[k];
+  if(mv){e.preventDefault();S.pts[canto][0]+=mv[0]/W;S.pts[canto][1]+=mv[1]/H;clearTimeout(alcas.t);alcas.t=setTimeout(salvar,300)}
+});
+$('ajuda').innerHTML='<b>Projeção'+(TIT?' — '+TIT.replace(/</g,'&lt;'):'')+'</b><br>Arraste os 4 cantos até a superfície (arraste o meio para mover; Shift = fino).<br>'+
+  '<b>Tab</b> próximo canto · <b>1–4</b> escolhe o canto · <b>setas</b> 1 px (Shift 10) · <b>G</b> grade · <b>B</b> blackout · <b>R</b> recomeçar<br>'+
+  '<b>E</b> esconde/mostra os cantos e esta ajuda · <b>F</b> tela cheia. A calibração fica salva para esta obra.';
+})();
+</script>
+</body>
+</html>

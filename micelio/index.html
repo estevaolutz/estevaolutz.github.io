@@ -63,6 +63,8 @@
   <div class="row"><label>Ramificação</label><input type="range" id="ramif" min="0.3" max="2.2" step="0.01" value="1"></div>
   <div class="row"><label>Pontas por colônia</label><input type="range" id="maxT" min="80" max="1400" step="10" value="650"></div>
   <div class="row"><label>Resolução</label><select id="res"><option value="192">Grossa</option><option value="256" selected>Média</option><option value="340">Fina</option></select></div>
+  <div class="row"><label>Interações entre colônias</label><input type="checkbox" id="inter" checked></div>
+  <div class="row"><label>Acúmulo na parede da placa</label><input type="checkbox" id="parede" checked></div>
   <div class="row"><label>Toque semeia</label><input type="checkbox" id="toque" checked></div>
   <div class="row"><label>Semear sozinho</label><input type="checkbox" id="semAuto" checked></div>
   <div class="row"><label>Recomeçar sozinho</label><input type="checkbox" id="auto" checked></div>
@@ -81,7 +83,7 @@
   <div class="row"><label>Pontas acesas</label><input type="range" id="pontas" min="0" max="1" step="0.01" value="0.55"></div>
   <div class="row"><label>Vidro da placa</label><input type="checkbox" id="vidro" checked></div>
 <div id="nucleoVideo"></div>
-<div class="hint">Cada colônia é um conjunto de pontas de hifa. A cada passo uma ponta avança um pouco, vira um pouco ao acaso, tende a se afastar do centro e às vezes se ramifica. Uma ponta morre ao bater na borda da placa, no território de outra colônia ou no miolo já velho da sua. Atrás da frente branca a colônia amadurece e esporula: Penicillium em sulcos radiais verde-azulados, Aspergillus em pontos negros, Rhizopus cotonoso com esporângios escuros, Fusarium rosa tingindo o ágar, Trichoderma e Neurospora em anéis, como um relógio de luz e escuro. A velocidade de cada espécie segue a proporção real (a Neurospora é a mais rápida, o Penicillium o mais lento). Pouco nutriente deixa as colônias ralas e ramificadas; muito, densas. Tocar na placa semeia a espécie escolhida.<br>Som: cada espécie é uma voz com o seu timbre e o seu registro (Aspergillus grave, Neurospora aguda); as notas saem das ramificações, no pulso, sempre do acorde da vez, e sobem à medida que a colônia se abre. Esporos = chuva de grãos; encontro de duas colônias = nota grave; cada anel novo de Trichoderma ou Neurospora = arpejo; semear = sino. O drone segue o acorde e se abre com a área coberta.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
+<div class="hint">Cada colônia é um conjunto de pontas de hifa. A cada passo uma ponta avança um pouco, vira um pouco ao acaso, tende a se afastar do centro e às vezes se ramifica. Ao bater na parede da placa, a hifa desvia e corre junto à borda, e ali a colônia se amontoa e esporula mais. Uma ponta morre no território de outra colônia ou no miolo já velho da sua. Atrás da frente branca a colônia amadurece e esporula: Penicillium em sulcos radiais verde-azulados, Aspergillus em pontos negros, Rhizopus cotonoso com esporângios escuros, Fusarium rosa tingindo o ágar, Trichoderma e Neurospora em anéis, como um relógio de luz e escuro. A velocidade de cada espécie segue a proporção real (a Neurospora é a mais rápida, o Penicillium o mais lento). Pouco nutriente deixa as colônias ralas e ramificadas; muito, densas. Tocar na placa semeia a espécie escolhida. Com as interações ligadas, cada espécie tem sua estratégia: Penicillium e Aspergillus soltam antibióticos e deixam um halo vazio em volta (Penicillium mais forte); Trichoderma parasita as outras e cresce por cima delas; Rhizopus corre com estolões retos e cobre as vizinhas com hifas aéreas; Neurospora também passa por cima das mais lentas. Duas colônias da mesma espécie se fundem quando são compatíveis ou formam uma linha de barreira escura quando não são.<br>Som: cada espécie é uma voz com o seu timbre e o seu registro (Aspergillus grave, Neurospora aguda); as notas saem das ramificações, no pulso, sempre do acorde da vez, e sobem à medida que a colônia se abre. Esporos = chuva de grãos; encontro de duas colônias = nota grave; cada anel novo de Trichoderma ou Neurospora = arpejo; semear = sino. O drone segue o acorde e se abre com a área coberta.<br>Teclas: M controles · F tela cheia · T texto · R recomeçar · 1–9 configurações salvas · 0 padrão.</div>
 </div>
 <script>
 // Vista 3D das Conjecturas — câmera em órbita e projeção em perspectiva desenhadas no mesmo canvas 2D da obra,
@@ -694,12 +696,15 @@ function Nucleo(cfg){
 
 // ---------- espécies (velocidade em mm/h, proporcional à real; placa de 90 mm) ----------
 const ESP = {
-  penicillium: { nome: 'Penicillium', k: 'Pen', vel: 0.6, br: 0.09, wig: 0.2, bias: 0.1, cap: 7, mat: 12, hy: [110, 228, 205], sp: [52, 140, 122], spR: 1.1, spA: 0.22, raios: 11, h3: 0.08, reg: 0 },
-  aspergillus: { nome: 'Aspergillus', k: 'Asp', vel: 0.9, br: 0.08, wig: 0.2, bias: 0.1, cap: 10, mat: 9, hy: [240, 200, 80], sp: [24, 21, 16], spR: 1.5, spA: 0.55, h3: 0.1, reg: -7 },
-  rhizopus: { nome: 'Rhizopus', k: 'Rhi', vel: 2.4, br: 0.045, wig: 0.1, bias: 0.06, cap: 2, mat: 5, hy: [120, 165, 255], sp: [30, 30, 32], spR: 1.4, spA: 0.55, esparsa: 0.14, fofo: 1, h3: 0.2, reg: 2 },
-  fusarium: { nome: 'Fusarium', k: 'Fus', vel: 0.85, br: 0.09, wig: 0.28, bias: 0.08, cap: 4, mat: 14, hy: [255, 115, 200], sp: [196, 104, 186], spR: 1.7, spA: 0.13, pig: [150, 30, 110], fofo: 0.6, h3: 0.16, reg: -3 },
-  trichoderma: { nome: 'Trichoderma', k: 'Tri', vel: 1.8, br: 0.07, wig: 0.16, bias: 0.08, cap: 6, mat: 7, hy: [150, 240, 100], sp: [38, 168, 62], spR: 1.3, spA: 0.3, aneis: 6, h3: 0.09, reg: 4 },
-  neurospora: { nome: 'Neurospora', k: 'Neu', vel: 3.0, br: 0.055, wig: 0.12, bias: 0.07, cap: 5, mat: 5, hy: [255, 165, 70], sp: [255, 138, 28], spR: 1.0, spA: 0.2, aneis: 5, fofo: 0.4, h3: 0.13, reg: 7 }
+  // forma: lob = lóbulos da margem (amp = quanto), run = estolões (corredores retos); interação: inib = halo de
+  // antibiótico (células), agr = capacidade de crescer por cima de outra colônia, def = resistência a ser invadida,
+  // res = não sente o antibiótico das outras; par = chance de a hifa desviar e correr pela parede da placa
+  penicillium: { nome: 'Penicillium', k: 'Pen', vel: 0.6, br: 0.13, wig: 0.13, bias: 0.12, cap: 7, mat: 12, inib: 6, agr: 0, def: 0.5, par: 0.5, hy: [110, 228, 205], sp: [52, 140, 122], spR: 1.1, spA: 0.22, raios: 11, h3: 0.08, reg: 0 },
+  aspergillus: { nome: 'Aspergillus', k: 'Asp', vel: 0.9, br: 0.09, wig: 0.22, bias: 0.1, cap: 10, mat: 9, lob: 9, amp: 0.14, inib: 3, agr: 0.05, def: 0.4, par: 0.6, hy: [240, 200, 80], sp: [24, 21, 16], spR: 1.5, spA: 0.55, h3: 0.1, reg: -7 },
+  rhizopus: { nome: 'Rhizopus', k: 'Rhi', vel: 2.4, br: 0.04, wig: 0.08, bias: 0.06, cap: 2, mat: 5, run: 0.3, agr: 0.35, def: 0, par: 0.85, hy: [120, 165, 255], sp: [30, 30, 32], spR: 1.4, spA: 0.55, esparsa: 0.14, fofo: 1, h3: 0.2, reg: 2 },
+  fusarium: { nome: 'Fusarium', k: 'Fus', vel: 0.85, br: 0.08, wig: 0.34, bias: 0.07, cap: 4, mat: 14, lob: 5, amp: 0.3, inib: 2, agr: 0.05, def: 0.2, par: 0.7, hy: [255, 115, 200], sp: [196, 104, 186], spR: 1.7, spA: 0.13, pig: [150, 30, 110], fofo: 0.6, h3: 0.16, reg: -3 },
+  trichoderma: { nome: 'Trichoderma', k: 'Tri', vel: 1.8, br: 0.07, wig: 0.16, bias: 0.08, cap: 6, mat: 7, agr: 0.7, def: 0.85, res: 1, par: 0.6, hy: [150, 240, 100], sp: [38, 168, 62], spR: 1.3, spA: 0.3, aneis: 6, h3: 0.09, reg: 4 },
+  neurospora: { nome: 'Neurospora', k: 'Neu', vel: 3.0, br: 0.045, wig: 0.1, bias: 0.07, cap: 5, mat: 5, lob: 3, amp: 0.12, agr: 0.2, def: 0, par: 0.9, hy: [255, 165, 70], sp: [255, 138, 28], spR: 1.0, spA: 0.2, aneis: 5, fofo: 0.4, h3: 0.13, reg: 7 }
 };
 const KEYS = Object.keys(ESP);
 const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
@@ -727,6 +732,7 @@ const pig = document.createElement('canvas'), pctx = pig.getContext('2d');
 const mini = document.createElement('canvas'), nctx = mini.getContext('2d', { willReadFrequently: true });
 myc.width = myc.height = pig.width = pig.height = RES;
 const MS = 96; let MSX = MS, MSY = MS; mini.width = mini.height = MS;
+let bordaD = null, compat = {}, temInib = false;
 let N = 0, NX = 0, NY = 0, ret = false, aspR = 1, Rg = 0, K = 1, own = null, tcol = null, spd = null, colonias = [], simH = 0, dishCells = 1, cobertos = 0;
 let fase = 'cresce', fadeT = 0, parado = 0, cheio = 0, lastT = 0, info = null, miniData = null, miniF = 0;
 let nextTick = 0, tickN = 0, grau = 0, progI = 0, encQ = [], ringQ = [], lastEnc = {}, proxSem = 0;
@@ -743,11 +749,12 @@ function reset(){
   if (ret){ if (aspR >= 1){ NY = N; NX = Math.round(N*aspR); } else { NX = N; NY = Math.round(N/aspR); } } else { NX = NY = N; }
   myc.width = pig.width = Math.round(NX*K); myc.height = pig.height = Math.round(NY*K);
   MSX = Math.round(MS*NX/Math.max(NX, NY)); MSY = Math.round(MS*NY/Math.max(NX, NY)); mini.width = MSX; mini.height = MSY; miniData = null;
-  own = new Int16Array(NX*NY); tcol = new Float32Array(NX*NY); spd = new Uint8Array(NX*NY); dishCells = 0; cobertos = 0;
+  own = new Int16Array(NX*NY); tcol = new Float32Array(NX*NY); spd = new Uint8Array(NX*NY); bordaD = new Uint8Array(NX*NY); dishCells = 0; cobertos = 0; compat = {}; temInib = false;
   for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++){
     const dx = x + 0.5 - NX/2, dy = y + 0.5 - NY/2, i = y*NX + x;
     const fora = ret ? (x < 1 || y < 1 || x >= NX - 1 || y >= NY - 1) : dx*dx + dy*dy > Rg*Rg;
     if (fora){ own[i] = -2; } else { own[i] = -1; dishCells++; }
+    bordaD[i] = Math.min(255, Math.max(0, ret ? Math.min(x, y, NX - 1 - x, NY - 1 - y) : Rg - Math.hypot(dx, dy)) | 0);
   }
   mctx.clearRect(0, 0, myc.width, myc.height); pctx.clearRect(0, 0, pig.width, pig.height);
   colonias = []; simH = 0; fase = 'cresce'; fadeT = 0; parado = 0; cheio = 0; lastEnc = {}; encQ = []; ringQ = []; proxSem = 18 + Math.random()*20;
@@ -780,7 +787,7 @@ function inocular(){
 function semear(key, gx, gy, silencio){
   if (!livre(gx, gy) || colonias.length > 3000) return null;
   const E = ESP[key], c = { id: colonias.length, key, E, cx: gx, cy: gy, born: simH, tips: [], cells: [], fechada: 0, ev: 0, ex: gx, ey: gy, spN: 0, ring: -1, ph: Math.random()*6.28 };
-  colonias.push(c);
+  colonias.push(c); if (E.inib) temInib = true;
   const n = 14 + (Math.random()*8 | 0);
   for (let k = 0; k < n; k++){ const a = k/n*Math.PI*2 + Math.random()*0.3; c.tips.push({ x: gx + Math.cos(a)*1.2, y: gy + Math.sin(a)*1.2, a, prog: Math.random(), cell: -1 }); }
   for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){
@@ -795,23 +802,43 @@ function semear(key, gx, gy, silencio){
 // ---------- crescimento ----------
 function crescer(dtH){
   simH += dtH;
-  const nutr = P.nutr, maxT = P.maxT | 0, esp = P.espess;
+  const nutr = P.nutr, maxT = P.maxT | 0, esp = P.espess, inter = P.inter !== false, parede = P.parede !== false;
   for (const c of colonias){
     const E = c.E, tips = c.tips; if (!tips.length) continue;
     const cpH = E.vel*N/90*(0.55 + 0.45*Math.min(1.4, nutr)), adv = cpH*dtH;
     const brP = E.br*P.ramif*Math.pow(nutr, 0.8), wig = E.wig*(1 + Math.max(0, 1 - nutr)*0.9);
     mctx.beginPath(); let fofo = null;
     for (let q = tips.length - 1; q >= 0; q--){
-      const t = tips[q]; t.prog += adv; let morta = false;
+      const t = tips[q]; let morta = false;
+      // margem lobada: a velocidade da ponta depende do ângulo em volta da colônia
+      if (E.lob){ const th = Math.atan2(t.y - c.cy, t.x - c.cx); t.prog += adv*(1 + E.amp*Math.sin(E.lob*th + c.ph)); } else t.prog += adv;
       while (t.prog >= 1 && !morta){
         t.prog -= 1;
         const ra = Math.atan2(t.y - c.cy, t.x - c.cx);
-        t.a += (Math.random() - 0.5)*2*wig + Math.sin(ra - t.a)*E.bias;
-        const nx = t.x + Math.cos(t.a), ny = t.y + Math.sin(t.a), ix = nx | 0, iy = ny | 0;
-        if (ix < 1 || iy < 1 || ix >= NX - 1 || iy >= NY - 1){ morta = true; break; }
-        const j = iy*NX + ix, o = own[j];
-        if (o === -2){ morta = true; break; }
-        if (o >= 0 && o !== c.id){ morta = true; encontro(c, o, nx, ny); break; }
+        if (t.run > 0){ t.run--; t.a += (Math.random() - 0.5)*0.06; }
+        else t.a += (Math.random() - 0.5)*2*wig + Math.sin(ra - t.a)*E.bias*(t.par ? 0 : 1);
+        let nx = t.x + Math.cos(t.a), ny = t.y + Math.sin(t.a), ix = nx | 0, iy = ny | 0;
+        let j = (ix < 1 || iy < 1 || ix >= NX - 1 || iy >= NY - 1) ? -1 : iy*NX + ix, o = j < 0 ? -2 : own[j];
+        if (o === -2){
+          // parede da placa: a hifa desvia e corre junto à borda por um tempo, engrossando a margem
+          if (!(parede && (t.par || 0) < 14 && Math.random() < (E.par || 0.5))){ morta = true; break; }
+          let ok = false;
+          for (const da of [0.8, -0.8, 1.5, -1.5]){
+            const a2 = t.a + (t.lado || (t.lado = Math.random() < 0.5 ? 1 : -1))*da, x2 = t.x + Math.cos(a2), y2 = t.y + Math.sin(a2), i2 = (y2 | 0)*NX + (x2 | 0);
+            if (x2 >= 1 && y2 >= 1 && x2 < NX - 1 && y2 < NY - 1 && own[i2] !== -2){ t.a = a2; nx = x2; ny = y2; j = i2; o = own[i2]; ok = true; break; }
+          }
+          if (!ok){ morta = true; break; }
+          t.par = (t.par || 0) + 1;
+        }
+        if (o >= 0 && o !== c.id){
+          const oc = colonias[o];
+          if (inter && oc.key !== c.key && E.agr && Math.random() < E.agr*(1 - (oc.E.def || 0))*0.3 && !(oc.E.inib && !E.res && Math.random() < 0.7)){
+            // cresce por cima da outra colônia (Trichoderma parasita, Rhizopus e Neurospora cobrem com hifas aéreas)
+            invadir(c, oc, j, nx, ny);
+          } else { morta = true; encontro(c, o, nx, ny); break; }
+        }
+        // halo de antibiótico: a ponta para antes de chegar a uma colônia madura que inibe (Penicillium, Aspergillus)
+        if (inter && temInib && !E.res && own[j] === -1 && inibida(c, t.a, nx, ny)){ morta = true; break; }
         if (o === c.id && j !== t.cell){
           const idade = (simH - tcol[j])*cpH;
           if ((idade > 5 && Math.random() < 0.4) || Math.random() < 0.012){ morta = true; break; }
@@ -822,9 +849,9 @@ function crescer(dtH){
           const jj = j + dy*NX + dx; if (own[jj] === -1){ own[jj] = c.id; tcol[jj] = simH; c.cells.push(jj); cobertos++; }
         }
         if (E.fofo && Math.random() < E.fofo*0.22) (fofo || (fofo = [])).push(nx, ny, t.a);
-        if (tips.length < maxT && Math.random() < brP){
+        if (tips.length < maxT && !(t.run > 0) && Math.random() < brP){
           const s = Math.random() < 0.5 ? -1 : 1;
-          tips.push({ x: nx, y: ny, a: t.a + s*(0.35 + Math.random()*0.6), prog: Math.random()*0.5, cell: j });
+          tips.push({ x: nx, y: ny, a: t.a + s*(0.35 + Math.random()*0.6), prog: Math.random()*0.5, cell: j, run: E.run && Math.random() < E.run ? 6 + (Math.random()*10 | 0) : 0 });
           c.ev++; c.ex = nx; c.ey = ny;
         }
       }
@@ -849,6 +876,24 @@ function crescer(dtH){
   }
   esporular(dtH);
 }
+function invadir(c, oc, j, x, y){
+  own[j] = c.id; tcol[j] = simH; spd[j] = 0; c.cells.push(j);
+  // o micélio de baixo some aos poucos sob o novo
+  mctx.globalCompositeOperation = 'destination-out'; mctx.fillStyle = 'rgba(0,0,0,0.22)'; mctx.fillRect((x - 0.9)*K, (y - 0.9)*K, K*1.8, K*1.8); mctx.globalCompositeOperation = 'source-over';
+  const k = Math.min(c.id, oc.id) + '>' + Math.max(c.id, oc.id), t = O.now();
+  if (t - (lastEnc[k] || -9) > 6){ lastEnc[k] = t; if (encQ.length < 4) encQ.push({ x, c, o: oc }); }
+}
+function inibida(c, a, x, y){
+  const ca = Math.cos(a), sa = Math.sin(a);
+  for (let d = 1; d <= 6; d++){
+    const xi = (x + ca*d) | 0, yi = (y + sa*d) | 0; if (xi < 0 || yi < 0 || xi >= NX || yi >= NY) return false;
+    const o = own[yi*NX + xi]; if (o < 0 || o === c.id) continue;
+    const oc = colonias[o], R = oc.E.inib || 0;
+    if (R >= d && oc.key !== c.key && simH - tcol[yi*NX + xi] > oc.E.mat*0.35) return Math.random() < 0.9;
+    return false;
+  }
+  return false;
+}
 // uma colônia cercada de espaço livre não para: pontas novas brotam das hifas recentes que ainda têm vizinho livre
 function regenerar(c, maxT){
   const L = c.cells.length; if (!L || c.tips.length > maxT*0.5 || c.fechada > 400) return;
@@ -856,6 +901,7 @@ function regenerar(c, maxT){
   let achou = 0;
   for (let q = 0; q < 8; q++){
     const j = c.cells[from + (Math.random()*(L - from) | 0)], x = j % NX, y = (j/NX) | 0, a = Math.random()*Math.PI*2;
+    if (own[j] !== c.id) continue;
     const nx = x + 0.5 + Math.cos(a)*1.8, ny = y + 0.5 + Math.sin(a)*1.8, jj = (ny | 0)*NX + (nx | 0);
     if (own[jj] === -1){ c.tips.push({ x: x + 0.5, y: y + 0.5, a, prog: Math.random(), cell: j }); achou++; }
   }
@@ -870,13 +916,16 @@ function esporular(dtH){
     const r0 = E.spR*Math.min(K, 4)*0.32;
     for (let q = 0; q < n; q++){
       const j = c.cells[Math.random()*L | 0], idade = simH - tcol[j];
-      if (idade < E.mat) continue;
+      if (idade < E.mat || own[j] !== c.id) continue;
       let p = Math.min(1, 0.3 + 0.7*(idade - E.mat)/(E.mat*1.5));
       const x = j % NX, y = (j/NX) | 0;
       if (E.raios){ const th = Math.atan2(y - c.cy, x - c.cx), m = 0.55 + 0.45*Math.cos(E.raios*th + c.ph + Math.hypot(x - c.cx, y - c.cy)*0.04); p *= m*m; }
       if (E.aneis){ const f = (((tcol[j] - c.born)/E.aneis) % 1 + 1) % 1; if (f > 0.5) p *= 0.05; }
       if (E.esparsa) p *= E.esparsa;
-      if (spd[j] >= E.cap || Math.random() > p) continue;
+      // junto à parede a colônia se amontoa e esporula mais
+      const nb = bordaD[j] <= 3 && P.parede !== false;
+      if (nb) p = Math.min(1, p*1.9);
+      if (spd[j] >= E.cap + (nb ? 4 : 0) || Math.random() > p) continue;
       spd[j]++;
       const px = (x + Math.random() + (Math.random() - 0.5)*1.4)*K, py = (y + Math.random() + (Math.random() - 0.5)*1.4)*K, r = r0*(0.6 + Math.random()*0.8);
       mctx.moveTo(px + r, py); mctx.arc(px, py, r, 0, Math.PI*2); k++;
@@ -894,6 +943,19 @@ function esporular(dtH){
   }
 }
 function encontro(c, o, x, y){
+  const oc = colonias[o];
+  if (P.inter !== false){
+    if (oc.key === c.key){
+      // mesma espécie: colônias compatíveis se fundem sem marca; incompatíveis formam uma linha de barreira escura
+      const k = Math.min(c.id, o) + '_' + Math.max(c.id, o);
+      if (compat[k] === undefined) compat[k] = Math.random() < 0.5;
+      if (compat[k]) return;
+      pctx.fillStyle = 'rgba(40,22,8,0.35)'; pctx.fillRect((x - 0.8)*K, (y - 0.8)*K, K*1.6, K*1.6);
+    } else {
+      // espécies diferentes que se travam: pigmento de defesa na linha de contato
+      pctx.fillStyle = 'rgba(70,42,14,0.18)'; pctx.fillRect((x - 0.7)*K, (y - 0.7)*K, K*1.4, K*1.4);
+    }
+  }
   // linha de barreira: um traço âmbar escuro onde as colônias se tocam
   mctx.globalCompositeOperation = 'destination-out'; mctx.fillStyle = 'rgba(0,0,0,0.3)'; mctx.fillRect(x*K - K*0.7, y*K - K*0.7, K*1.4, K*1.4); mctx.globalCompositeOperation = 'source-over';
   const a = Math.min(c.id, o), b = Math.max(c.id, o), key = a + '_' + b, t = O.now();

@@ -41,9 +41,12 @@ function salvar(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
 /* ---------- vídeo vindo da janela da obra ---------- */
 var video=document.createElement('video');video.muted=true;video.playsInline=true;video.autoplay=true;
 var versao=-1;
+var direto=true;   // lê os pixels direto do canvas da obra; se não der, cai no vídeo
+function fonte(){var o=null;try{o=window.opener&&window.opener.Projecao}catch(e){}return o}
 function pegar(){
-  var o=null;try{o=window.opener&&window.opener.Projecao}catch(e){}
+  var o=fonte();
   if(!o){msg('Abra a projeção pelo botão de projetor dentro da obra.<br>(A janela da obra precisa continuar aberta.)');return}
+  if(direto){try{o.iniciar(true);msg('');return}catch(e){direto=false}}
   var tr=video.srcObject&&video.srcObject.getVideoTracks()[0];
   if(versao===o.versao&&tr&&tr.readyState==='live')return;
   try{var st=o.iniciar();video.srcObject=st;versao=o.versao;video.play().catch(function(){});msg('')}catch(e){msg('Não consegui receber a imagem da obra.')}
@@ -83,13 +86,16 @@ var W=1,H=1,dpr=1;
 function medir(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=ov.width=Math.round(W*dpr);cv.height=ov.height=Math.round(H*dpr)}
 addEventListener('resize',medir);medir();
 // primeira vez nesta obra: encaixa a imagem na tela sem deformar
-function encaixar(){var a=video.videoWidth/video.videoHeight,sa=W/H,w=1,h=1;if(!a)return;if(a>sa)h=sa/a;else w=a/sa;
+var srcW=0,srcH=0;
+function encaixar(){var a=srcW/srcH,sa=W/H,w=1,h=1;if(!a)return;if(a>sa)h=sa/a;else w=a/sa;
   var x=(1-w)/2,y=(1-h)/2;S.pts=[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];salvar()}
 function frame(){
   requestAnimationFrame(frame);
-  if(!temSalvo&&video.videoWidth){temSalvo=true;encaixar()}
-  var tem=0;
-  if(video.readyState>=2){gl.bindTexture(gl.TEXTURE_2D,tex);try{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,video);tem=1}catch(e){}}
+  var tem=0;gl.bindTexture(gl.TEXTURE_2D,tex);
+  if(direto){var o=fonte(),c=o&&o.canvas;
+    if(c&&c.width>2){try{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,c);tem=1;srcW=c.width;srcH=c.height}catch(e){direto=false;pegar()}}}
+  else if(video.readyState>=2){try{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,video);tem=1;srcW=video.videoWidth;srcH=video.videoHeight}catch(e){}}
+  if(!temSalvo&&srcW){temSalvo=true;encaixar()}
   gl.viewport(0,0,cv.width,cv.height);
   var P=S.pts.map(function(p){return[p[0]*cv.width,p[1]*cv.height]});
   gl.uniformMatrix3fv(U.uHi,false,colMaj(inv3(quadH(P))));

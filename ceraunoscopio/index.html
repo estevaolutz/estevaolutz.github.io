@@ -55,6 +55,7 @@ kbd{border:1px solid #ffffff30;border-radius:3px;padding:0 4px;font-size:11px;co
 </head>
 <body>
 <canvas id="c"></canvas>
+<video id="nuv" src="nuvens.mp4" muted loop playsinline autoplay preload="auto" style="display:none"></video>
 <img id="ref" alt=""><video id="refv" muted loop playsinline style="position:fixed;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;display:none"></video>
 <div id="cortina"></div>
 <canvas id="tl"></canvas>
@@ -68,7 +69,7 @@ kbd{border:1px solid #ffffff30;border-radius:3px;padding:0 4px;font-size:11px;co
   <p>Uma máquina de relâmpagos. Cada raio é simulado pela física da descarga: o líder desce em degraus, a descarga de retorno sobe pelo canal, as descargas seguintes repetem o caminho, a corrente contínua mantém o canal aceso — e o trovão nasce da forma de cada raio.</p>
   <p>Toque ou clique para disparar; arraste para girar o raio em 3D. Controle tudo pelo painel ou pelo MIDI (Korg nanoPAD2 e Moog Sub Phatty já mapeados; qualquer controle pode ser aprendido).</p>
   <button id="go">COMEÇAR</button>
-  <div class="k"><kbd>espaço</kbd> raio que congela no ápice e gira em 3D · <kbd>1</kbd>–<kbd>0</kbd> <kbd>-</kbd> <kbd>=</kbd> tipos · <kbd>S</kbd> câmera lenta · <kbd>O</kbd> obturador · <kbd>T</kbd> tempestade<br><kbd>P</kbd> pausa · <kbd>.</kbd> quadro a quadro · <kbd>L</kbd> linha do tempo · <kbd>M</kbd> painel · <kbd>H</kbd> legenda · <kbd>F</kbd> tela cheia · <kbd>R</kbd> gravar · <kbd>X</kbd> limpar · <kbd>D</kbd> vista 3D</div>
+  <div class="k"><kbd>espaço</kbd> raio que congela no ápice e gira em 3D · <kbd>1</kbd>–<kbd>0</kbd> <kbd>-</kbd> <kbd>=</kbd> tipos · <kbd>S</kbd> câmera lenta · <kbd>O</kbd> obturador · <kbd>T</kbd> tempestade<br><kbd>P</kbd> pausa · <kbd>.</kbd> quadro a quadro · <kbd>L</kbd> linha do tempo · <kbd>M</kbd> painel · <kbd>H</kbd> legenda · <kbd>F</kbd> tela cheia · <kbd>R</kbd> gravar · <kbd>X</kbd> limpar · <kbd>D</kbd> vista 3D · <kbd>N</kbd> nuvens</div>
  </div>
 </div>
 <script>
@@ -143,6 +144,11 @@ const SPEC=[
  ['sat','Saturação',0,2,1,{fmt:v=>v.toFixed(2),sec:'Imagem'}],
  ['matiz','Matiz',-180,180,0,{fmt:v=>v.toFixed(0)+'°',sec:'Imagem'}],
  ['grao','Grão',0,1,.12,{fmt:v=>(v*100|0)+'%',sec:'Imagem'}],
+ ['nuvemBrilho','Brilho das nuvens',0,3,1.2,{fmt:v=>(v*100|0)+'%',sec:'Nuvens'}],
+ ['nuvemAcende','Nuvens acendem com o raio',0,4,1.5,{fmt:v=>(v*100|0)+'%',sec:'Nuvens'}],
+ ['nuvemOcl','Raio escondido dentro da nuvem',0,1,.8,{fmt:v=>(v*100|0)+'%',sec:'Nuvens'}],
+ ['nuvemVel','Velocidade das nuvens',.1,2,.6,{log:1,fmt:v=>v.toFixed(2)+'×',sec:'Nuvens'}],
+ ['nuvemDesloc','Altura da base das nuvens',-.35,.35,0,{fmt:v=>(v>0?'↓':v<0?'↑':'')+Math.abs(v*100|0)+'%',sec:'Nuvens'}],
  ['volTrovao','Volume do trovão',0,1.5,.9,{fmt:v=>(v*100|0)+'%',sec:'Trovão'}],
  ['graves','Graves do trovão',0,1,.55,{fmt:v=>(v*100|0)+'%',sec:'Trovão'}],
  ['ambiente','Eco do ambiente',0,1,.4,{fmt:v=>(v*100|0)+'%',sec:'Trovão'}],
@@ -150,7 +156,7 @@ const SPEC=[
 ];
 function fmtN(n){return n>=1e6?(n/1e6).toFixed(1)+' mi':n>=1e3?Math.round(n/1e3)+' mil':Math.round(n)+'';}
 const PS=Object.fromEntries(SPEC.map(s=>[s[0],{id:s[0],l:s[1],min:s[2],max:s[3],def:s[4],...s[5]}]));
-const P={tipo:'neg',cenario:'mar',verCenario:false,v3:true,lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
+const P={tipo:'neg',nuvens:true,cenario:'mar',verCenario:false,v3:true,lenta:false,obturador:false,atrasoReal:true,midiOut:'',comp:'off',compOp:.5,
  ...Object.fromEntries(SPEC.map(s=>[s[0],s[4]]))};
 P.tempestade=0; // começa desligada; o padrão 12 vale ao ligar
 let stormRate=12;
@@ -510,7 +516,8 @@ const FS_SCENE=`#version 300 es
 precision highp float;in vec2 uv;out vec4 o;
 uniform vec2 res;uniform float HY,FL,camH,Hc,time,rain,fog,cityGlow,flashG,windX,scen,bloomAmt,persAmt,bare;
 uniform vec4 Lp[8];uniform float Lr[8];uniform vec3 lCol,core;
-uniform sampler2D boltT,bloomT,bloomLo,persT,skyT;
+uniform sampler2D boltT,bloomT,bloomLo,persT,skyT,cloudT,bloomW;
+uniform float cloudOn,cloudY,cloudBr,cloudLit,cloudOcc,cloudGain,boltFade,vidAsp;
 float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float a=.5,s=0.;mat2 m=mat2(1.6,1.2,-1.2,1.6);for(int i=0;i<6;i++){s+=a*vn(p);p=m*p+vec2(1.7,9.2);a*=.5;}return s;}
@@ -579,7 +586,28 @@ vec3 sea(float x,float y){
 void main(){
  vec2 fc=gl_FragCoord.xy;float y=res.y-fc.y,x=fc.x;
  vec3 tint=mix(vec3(1),lCol*1.15,.55);
- if(bare>.5){vec3 c=texture(boltT,uv).rgb+texture(bloomT,uv).rgb*bloomAmt*tint+texture(bloomLo,uv).rgb*.12*tint+texture(persT,uv).rgb*persAmt*tint;o=vec4(c,1);return;}
+ if(bare>.5){vec3 bo=texture(boltT,uv).rgb,bl=texture(bloomT,uv).rgb,blo=texture(bloomLo,uv).rgb,pr=texture(persT,uv).rgb;
+  if(cloudOn<.5){o=vec4((bo+bl*bloomAmt*tint+blo*.12*tint+pr*persAmt*tint)*boltFade,1);return;}
+  /* nuvens de vídeo: o vídeo cobre a largura e termina um pouco abaixo da base das nuvens */
+  float bottom=cloudY+res.y*.30,vh=max(res.x/vidAsp,bottom),vw=vh*vidAsp;
+  vec2 vuv=vec2((x-res.x*.5)/vw+.5,1.-(bottom-y)/vh);
+  vec3 v=texture(cloudT,clamp(vuv,vec2(.001),vec2(.999))).rgb;
+  float blue=clamp((v.b-v.r)*2.2+(v.b-v.g)*.8,0.,1.);
+  float dens=1.-smoothstep(.12,.7,blue);                       // 0 = céu azul, 1 = nuvem
+  float l=pow(dot(v,vec3(.299,.587,.114)),2.2);
+  float edge=smoothstep(bottom,bottom-res.y*.36,y)*step(y,bottom);  // a base das nuvens se dissolve no escuro
+  float D=dens*edge;
+  vec3 cc=vec3(.90,.95,1.06)*(pow(l,1.35)*D*cloudBr*.075+.0015)*cloudGain;   // tempestade: tudo cinza-chumbo e preto
+  /* luz do raio espalhada dentro da nuvem: blur largo do canal + clarão geral */
+  vec3 wide=texture(bloomW,uv).rgb;
+  vec3 L=(wide*2.2+blo*.9+bl*.15)*cloudLit+flashG*lCol*.35*cloudLit;
+  vec3 lit=L*tint*D*(.25+.75*sqrt(l))*boltFade;
+  /* acima da base, o canal fica escondido pela nuvem (vira brilho difuso) */
+  float depth=clamp((cloudY+res.y*.02-y)/(res.y*.07),0.,4.);
+  float occ=1.-exp(-cloudOcc*3.5*depth*(.35+.65*dens));
+  lit+=(bl*.9+bo*.08)*occ*tint*cloudLit*(.4+.6*dens)*boltFade;
+  vec3 c=cc+lit+(bo*(1.-occ)+bl*bloomAmt*tint*(1.-.35*occ)+blo*.12*tint+pr*persAmt*tint*(1.-occ))*boltFade;
+  o=vec4(c,1);return;}
  vec3 col=y<HY?sky(x,y):sea(x,y);
  col+=texture(boltT,uv).rgb;
  vec3 bl=texture(bloomT,uv).rgb,blo=texture(bloomLo,uv).rgb;
@@ -630,6 +658,27 @@ function mkTex(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);g
  const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);return{t,f,w,h};}
 let T={},skyTex=null;const NB=7;
+/* vídeo das nuvens */
+const nuv=$('#nuv');let cloudTex=null,cloudReady=false,cloudYs=-1,lastVT=-1;
+cloudTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,cloudTex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+function playClouds(){nuv.playbackRate=P.nuvemVel;if(P.nuvens){const p=nuv.play();if(p&&p.catch)p.catch(()=>{});}else nuv.pause();}
+nuv.addEventListener('loadeddata',()=>{nuv.playbackRate=P.nuvemVel;});
+function updateClouds(dt){
+ if(!P.nuvens||nuv.readyState<2)return;
+ if(nuv.currentTime!==lastVT||!cloudReady){lastVT=nuv.currentTime;gl.bindTexture(gl.TEXTURE_2D,cloudTex);
+  try{gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,nuv);cloudReady=true;}catch(e){}}
+ if(nuv.paused&&P.nuvens)playClouds();
+}
+/* altura na tela da base das nuvens (onde o raio sai da nuvem) */
+function cloudBaseY(dt){
+ let by;
+ if(P.v3){const cP=Math.cos(V3.pitch),sP=Math.sin(V3.pitch),dy=P.base-V3.t[1],z2=Math.max(300,sP*dy+V3.dist);by=ch*.5-FL*.9*cP*dy/z2;}
+ else{const Z=Math.max(300,lastFlash?lastFlash.D:P.dist*1000);by=HY-FL*(P.base-camH)/Z;}
+ by=clamp(by+P.nuvemDesloc*ch,ch*.18,ch*.86);
+ if(cloudYs<0)cloudYs=by;else cloudYs+=(by-cloudYs)*Math.min(1,dt*1.5);
+ return cloudYs;}
 function freeAll(){for(const k in T){const a=Array.isArray(T[k])?T[k]:[T[k]];for(const x of a){gl.deleteTexture(x.t);gl.deleteFramebuffer(x.f);}}T={};}
 function resize(){
  const dpr=Math.min(window.devicePixelRatio||1,1.5);cw=Math.max(2,Math.round(innerWidth*dpr));ch=Math.max(2,Math.round(innerHeight*dpr));
@@ -683,6 +732,7 @@ function buildFrame(ta,tb,win){
 
 /* ============================================================ RENDER */
 function render(dtReal){
+ const fd=seqFade(),cOn=P.nuvens&&cloudReady;updateClouds(dtReal);const cY=cloudBaseY(dtReal||1/60);
  gl.disable(gl.BLEND);
  bindOut(T.bolt);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
  const D=(lastFlash?lastFlash.Z[0]:P.dist*1000),lc=lightColor(Math.min(D,P.dist*1000*3)),core=[lerp(1,lc[0],.18),lerp(1,lc[1],.18),lerp(1,lc[2],.18)];
@@ -705,7 +755,10 @@ function render(dtReal){
  gl.uniform1f(s.bloomAmt,P.halo);gl.uniform1f(s.bare,1);gl.uniform1f(s.persAmt,P.persist>0?.55:0);
  gl.uniform4fv(s.Lp,lights);gl.uniform1fv(s.Lr,lightR);gl.uniform3fv(s.lCol,lc);gl.uniform3fv(s.core,core);
  gl.uniform1i(s.boltT,0);gl.uniform1i(s.bloomT,1);gl.uniform1i(s.bloomLo,2);gl.uniform1i(s.persT,3);gl.uniform1i(s.skyT,4);
- tex(0,T.bolt.t);tex(1,T.up[0].t);tex(2,T.up[4].t);tex(3,T.pers[persIdx].t);tex(4,skyTex);full();
+ gl.uniform1i(s.cloudT,5);gl.uniform1i(s.bloomW,6);gl.uniform1f(s.cloudOn,cOn?1:0);gl.uniform1f(s.cloudY,cY);gl.uniform1f(s.cloudBr,P.nuvemBrilho);
+ gl.uniform1f(s.cloudLit,P.nuvemAcende);gl.uniform1f(s.cloudOcc,P.nuvemOcl);gl.uniform1f(s.cloudGain,P.obturador?1/Math.min(8,P.expObt*2.2):1);
+ gl.uniform1f(s.boltFade,cOn?fd:1);gl.uniform1f(s.vidAsp,nuv.videoWidth?nuv.videoWidth/nuv.videoHeight:16/9);
+ tex(0,T.bolt.t);tex(1,T.up[0].t);tex(2,T.up[4].t);tex(3,T.pers[persIdx].t);tex(4,skyTex);tex(5,cloudTex);tex(6,T.up[5].t);full();
  let outT=T.scene.t;
  if(P.obturador){
   if(accClear){for(const a of T.acc){bindOut(a);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);}accClear=false;}
@@ -713,7 +766,7 @@ function render(dtReal){
   gl.useProgram(pAcc.p);bindOut(T.acc[1-accIdx]);tex(0,T.acc[accIdx].t);tex(1,T.scene.t);gl.uniform1i(pAcc.u.old,0);gl.uniform1i(pAcc.u.cur,1);
   gl.uniform1f(pAcc.u.k,k);gl.uniform1f(pAcc.u.g,g);gl.uniform2f(pAcc.u.sh,paused?0:(P.pan+panBend)*dtReal/innerWidth,0);full();accIdx=1-accIdx;outT=T.acc[accIdx].t;
  }
- gl.useProgram(pFinal.p);bindOut(null);tex(0,outT);gl.uniform1i(pFinal.u.t,0);gl.uniform1f(pFinal.u.expo,seqFade());gl.uniform1f(pFinal.u.sat,P.sat);
+ gl.useProgram(pFinal.p);bindOut(null);tex(0,outT);gl.uniform1i(pFinal.u.t,0);gl.uniform1f(pFinal.u.expo,cOn?1:fd);gl.uniform1f(pFinal.u.sat,P.sat);
  gl.uniform1f(pFinal.u.hue,P.matiz*DEG);gl.uniform1f(pFinal.u.grain,P.grao);gl.uniform1f(pFinal.u.time,performance.now()/1000);gl.uniform2f(pFinal.u.res,cw,ch);full();
 }
 
@@ -901,9 +954,10 @@ function buildPanel(){
  <div class="btns"><button id="bFire">⚡ Raio (espaço)</button><button id="bClear">Limpar (X)</button><button id="bPause">Pausa (P)</button><button id="bStep">Quadro → (.)</button></div>`;
  const extra={Tempo:`<label class="chk"><input type="checkbox" id="chk_lenta"> Câmera lenta (S)</label><label class="chk"><input type="checkbox" id="chk_obturador"> Obturador — longa exposição (O)</label><label class="chk"><input type="checkbox" id="chk_tempestade"> Tempestade automática (T)</label><label class="chk"><input type="checkbox" id="chk_tl"> Linha do tempo do raio (L)</label>`,
   CenaX:`<div class="row"><label>Cenário</label><span></span><span></span><select id="sel_cenario">${Object.entries(SCN).map(([k,v])=>`<option value="${k}">${v.n}</option>`).join('')}</select></div>`,
+  Nuvens:`<label class="chk"><input type="checkbox" id="chk_nuvens"> Céu de tempestade (vídeo de nuvens) (N)</label><p class="note">O céu azul vira preto, as nuvens ficam cinza-chumbo e acendem por dentro quando o raio passa. A base das nuvens acompanha a base do raio.</p>`,
   Vista:`<label class="chk"><input type="checkbox" id="chk_v3"> Vista 3D — arraste para girar, roda/pinça para aproximar (D)</label><div class="btns"><button id="bRec3">Recentrar no último raio</button></div><p class="note">Toque sem arrastar dispara um raio. Duplo clique recentra.</p>`,
   'Trovão':`<p class="note">O trovão chega com o atraso real: ~3 s por km (a 4 km, uns 12 s — a legenda mostra a contagem).</p><div class="btns"><button id="bTestTh">Ouvir um trovão agora (raio a 600 m)</button></div><label class="chk"><input type="checkbox" id="chk_atraso"> Atraso real do som (343 m/s)</label>`};
- for(const sec of['Raio','Vista','Tempo','Imagem','Trovão']){
+ for(const sec of['Raio','Nuvens','Vista','Tempo','Imagem','Trovão']){
   h+=`<details ${sec==='Raio'?'open':''}><summary>${sec}</summary>${extra[sec]||''}`;
   for(const id of secs[sec]){const s=PS[id];h+=`<div class="row" data-id="${id}"><label>${s.l}</label><span class="v" id="v_${id}"></span><button class="lrn" data-l="${id}">MIDI</button><input type="range" min="0" max="1000" id="r_${id}"></div>`;}
   h+='</details>';}
@@ -927,7 +981,7 @@ function buildPanel(){
  $('#r_compOp').oninput=e=>{P.compOp=e.target.value/1000;compUI();};
  $('#chk_lenta').onchange=e=>setP('lenta',e.target.checked);$('#chk_obturador').onchange=e=>setP('obturador',e.target.checked);
  $('#chk_tempestade').onchange=e=>setP('tempestade',e.target.checked?stormRate:0);$('#chk_tl').onchange=e=>{tlOn=e.target.checked;tlc.style.display=tlOn?'block':'none';};
- $('#chk_atraso').onchange=e=>setP('atrasoReal',e.target.checked);$('#chk_v3').onchange=e=>setP('v3',e.target.checked);$('#bRec3').onclick=()=>recenter(true);
+ $('#chk_atraso').onchange=e=>setP('atrasoReal',e.target.checked);$('#chk_v3').onchange=e=>setP('v3',e.target.checked);$('#chk_nuvens').onchange=e=>setP('nuvens',e.target.checked);$('#bRec3').onclick=()=>recenter(true);
  $('#bTestTh').onclick=()=>{if(AC&&AC.state!=='running')AC.resume();fire('neg',{xs:.5,D:.6});};
  $('#pads').onclick=e=>{const b=e.target.closest('button');if(b)padAction(+b.dataset.i,.6);};
  $('#bFire').onclick=()=>startSeq();$('#bClear').onclick=clearAll;$('#bPause').onclick=()=>{paused=!paused;};$('#bStep').onclick=()=>{paused=true;stepOnce=true;};
@@ -940,7 +994,7 @@ function buildPanel(){
 function syncUI(){
  for(const id in PS){const r=$('#r_'+id),v=$('#v_'+id);if(r){r.value=Math.round(toU(PS[id],P[id])*1000);v.textContent=PS[id].fmt(P[id]);}}
  $('#sel_tipo').value=P.tipo;$('#chk_lenta').checked=P.lenta;$('#chk_obturador').checked=P.obturador;
- $('#chk_tempestade').checked=P.tempestade>0;$('#chk_atraso').checked=P.atrasoReal;$('#chk_v3').checked=P.v3;$('#sel_comp').value=P.comp;
+ $('#chk_tempestade').checked=P.tempestade>0;$('#chk_atraso').checked=P.atrasoReal;$('#chk_v3').checked=P.v3;$('#chk_nuvens').checked=P.nuvens;$('#sel_comp').value=P.comp;
  $('#r_compOp').value=P.compOp*1000;$('#v_compOp').textContent=(P.compOp*100|0)+'%';
  panel.querySelectorAll('.pads button').forEach((b,i)=>b.classList.toggle('act',PADS[i]===P.tipo||(PADS[i]==='#tempestade'&&P.tempestade>0)||(PADS[i]==='#obturador'&&P.obturador)||(PADS[i]==='#lenta'&&P.lenta)));
 }
@@ -953,7 +1007,8 @@ function setP(id,v,fromUI){
  if(id==='obturador'&&v)accClear=true;
  if(['volTrovao','graves','ambiente','volChuva','chuva','verCenario'].includes(id))audioParams();
  if(id==='verCenario'||id==='v3')syncUI();if(id==='v3'&&v)recenter(true);
- if(id==='lenta'||id==='obturador'||id==='tempestade')syncUI();
+ if(id==='lenta'||id==='obturador'||id==='tempestade'||id==='nuvens')syncUI();
+ if(id==='nuvens'||id==='nuvemVel')playClouds();
  if(id!=='tempestade')save();
  showToast(id,v);
 }
@@ -968,8 +1023,8 @@ function refreshLearn(){panel.querySelectorAll('.lrn').forEach(b=>{const id=b.da
  const t=$('#mapT');if(t)t.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');}
 function padUI(){const b=$('#bPadLearn');if(b)b.textContent=padLearn>=0?`Toque o pad ${padLearn+1} de 16…`:'Aprender os 16 pads';}
 function flashPad(i){const b=panel.querySelectorAll('.pads button')[i];if(b){b.style.background='#3a2a66';setTimeout(()=>b.style.background='',160);}}
-let toastT=0;function showToast(id,v){if(!PS[id]&&!['tipo','cenario','lenta','obturador','tempestade','verCenario','v3'].includes(id))return;
- const s=PS[id]?PS[id].l+': '+PS[id].fmt(v):id==='tipo'?TNAME[v]:id==='cenario'?'Cenário: '+SCN[v].n:id==='tempestade'?(v?'Tempestade automática: '+v.toFixed(0)+'/min':'Tempestade desligada'):id==='v3'?(v?'Vista 3D':'Vista da câmera fixa'):id==='verCenario'?(v?'Cenário ligado':'Só os relâmpagos'):(id==='lenta'?'Câmera lenta':'Obturador')+(v?' ligado':' desligado');
+let toastT=0;function showToast(id,v){if(!PS[id]&&!['tipo','cenario','lenta','obturador','tempestade','verCenario','v3','nuvens'].includes(id))return;
+ const s=PS[id]?PS[id].l+': '+PS[id].fmt(v):id==='tipo'?TNAME[v]:id==='cenario'?'Cenário: '+SCN[v].n:id==='tempestade'?(v?'Tempestade automática: '+v.toFixed(0)+'/min':'Tempestade desligada'):id==='v3'?(v?'Vista 3D':'Vista da câmera fixa'):id==='nuvens'?(v?'Céu de tempestade':'Sem nuvens'):id==='verCenario'?(v?'Cenário ligado':'Só os relâmpagos'):(id==='lenta'?'Câmera lenta':'Obturador')+(v?' ligado':' desligado');
  hudMsg(s);}
 
 /* ============================================================ HUD, LINHA DO TEMPO, COMPARAÇÃO, GRAVAÇÃO */
@@ -1062,10 +1117,10 @@ addEventListener('keydown',e=>{
  else if(k==='m')panel.classList.toggle('on');else if(k==='h'){hudOn=!hudOn;hudDraw();}
  else if(k==='l'){tlOn=!tlOn;tlc.style.display=tlOn?'block':'none';const c=$('#chk_tl');if(c)c.checked=tlOn;}
  else if(k==='f'){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{});}
- else if(k==='r')toggleRec();else if(k==='d')toggle('v3');else if(k==='x')clearAll();
+ else if(k==='r')toggleRec();else if(k==='d')toggle('v3');else if(k==='n')toggle('nuvens');else if(k==='x')clearAll();
  else if(k==='c'){P.comp=P.comp==='off'?'cortina':P.comp==='cortina'?'sobre':'off';const s=$('#sel_comp');if(s)s.value=P.comp;compUI();}
 });
-$('#go').onclick=()=>{$('#intro').style.display='none';initAudio();initMIDI();if(AC.state!=='running')AC.resume();setTimeout(()=>fire('neg',{xs:.5}),350);};
+$('#go').onclick=()=>{$('#intro').style.display='none';playClouds();initAudio();initMIDI();if(AC.state!=='running')AC.resume();setTimeout(()=>fire('neg',{xs:.5}),350);};
 
 resize();buildPanel();requestAnimationFrame(loop);
 window.__cera={V3,recenter,fire,P,setP,flashes:()=>flashes,get simT(){return simT;},pause:v=>{paused=v;},initAudio,

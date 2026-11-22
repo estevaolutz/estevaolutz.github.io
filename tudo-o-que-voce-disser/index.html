@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="pt-BR"><head><script src="../lib/projecao.js"></script><script src="../lib/camera.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Tudo o que você disser</title>
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tudo o que você disser">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#e6e9ee;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none}
+#gl,#hud{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{pointer-events:none}
+body.idle{cursor:none}
+#inicio{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:20;cursor:pointer;text-align:center;padding:24px}
+#inicio h1{margin:0;font-weight:300;letter-spacing:.3em;text-transform:uppercase;font-size:22px}
+#inicio p{margin:0;color:#7d8794;max-width:460px;line-height:1.55;font-size:14px}
+#inicio .b{margin-top:10px;border:1px solid #e6e9ee;border-radius:999px;padding:10px 26px;letter-spacing:.22em;font-size:12px;text-transform:uppercase}
+#inicio .av{color:#c9a46a;font-size:12.5px}
+#inicio.hide{display:none}
+#dot{position:fixed;right:16px;top:16px;width:14px;height:14px;border-radius:50%;background:#e6e9ee;opacity:.3;z-index:12;cursor:pointer;transition:opacity .4s}
+#dot:hover{opacity:.85}
+body.idle #dot{opacity:0}
+#painel{position:fixed;right:12px;top:40px;width:316px;max-height:calc(100% - 56px);overflow:auto;background:rgba(8,10,13,.94);border:1px solid #222831;border-radius:14px;padding:12px 16px 16px;z-index:12;display:none;backdrop-filter:blur(8px);font-size:13px}
+#painel.on{display:block}
+#painel h3{margin:16px 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8a94a1;font-weight:600}
+#painel h3:first-child{margin-top:4px}
+.ln{display:grid;grid-template-columns:1fr 96px 40px;align-items:center;gap:8px;margin:5px 0}
+.ln label{color:#c4cbd4;font-size:12.5px}
+.ln input[type=range]{width:96px;accent-color:#e6e9ee}
+.ln .v{text-align:right;color:#8a94a1;font-variant-numeric:tabular-nums;font-size:12px}
+.ln select{grid-column:2/4;background:#11151a;color:#e6e9ee;border:1px solid #2a313a;border-radius:7px;padding:4px 6px;font-size:12px}
+.ln input[type=checkbox]{justify-self:start;accent-color:#e6e9ee;width:16px;height:16px}
+.bts{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.bts button{background:#11151a;color:#e6e9ee;border:1px solid #2a313a;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer}
+.bts button:hover{border-color:#8a94a1}
+#escrever{width:100%;box-sizing:border-box;background:#11151a;color:#e6e9ee;border:1px solid #2a313a;border-radius:8px;padding:7px 9px;font-size:13px;margin-top:4px}
+#estado{color:#8a94a1;font-size:12px;line-height:1.5;margin-top:4px}
+#estado b{color:#c4cbd4;font-weight:600}
+#ultimas{color:#6d7783;font-size:12px;line-height:1.45;margin-top:6px;max-height:60px;overflow:hidden}
+.dica{color:#6d7783;font-size:11.5px;line-height:1.45;margin:6px 0 0}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="hud"></canvas>
+<video id="video" playsinline muted style="display:none"></video>
+
+<div id="inicio">
+  <h1>Tudo o que você disser</h1>
+  <p>Fale. Cada palavra dita vira letra, e as letras desenham o seu retrato. No silêncio, tudo volta ao preto. Aponte uma palavra com o dedo indicador para pescá-la.</p>
+  <p class="av" id="aviso" hidden></p>
+  <div class="b">Começar</div>
+</div>
+<div id="dot" title="Controles (M)"></div>
+<div id="painel"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Tudo o que você disser · versão web da obra do TouchDesigner
+   (Obras audiovisuais/Tudo_o_que_voce_disser_TD, tudo_o_que_voce_disser_atual.toe)
+
+   - a fala vira texto pelo reconhecimento de voz do navegador (Web Speech, pt-BR)
+   - cada palavra é escrita numa grade de letras; "Multiplicar" cria pontos de
+     escrita que releem a fala (ecos); as letras nascem, brilham e esmaecem
+   - dentro da silhueta (MediaPipe) a letra leva a luz e a sombra do rosto;
+     fora dela vira uma trama fria e fraca
+   - o dedo indicador (MediaPipe Hands) pesca a palavra para que ela cresça
+   ===================================================================== */
+
+/* ---------------- controles ---------------- */
+const CHAVE = 'tudo-o-que-voce-disser-v1';
+const celular = Math.min(innerWidth, innerHeight) < 600;
+const DEF = [
+  ['TEXTO'],
+  ['Colunas', 'Colunas de letras', celular ? 90 : 200, 40, 320, 1],
+  ['Aspecto', 'Altura da letra (× largura)', 1.47, 1, 2.4, 0.01],
+  ['Multiplicar', 'Multiplicar palavras', 7, 0, 8, 0.1],
+  ['Formar', 'Rapidez para formar', 6, 0, 20, 0.1],
+  ['Vida', 'Vida de cada palavra (s)', 49, 3, 180, 1],
+  ['Velocidade', 'Velocidade de digitação (letras/s)', 45, 4, 120, 1],
+  ['Entrada', 'Entrada do texto', 'palavra', [['palavra', 'Palavra inteira'], ['esqdir', 'Esquerda → direita'], ['diresq', 'Direita → esquerda'], ['baixo', 'De baixo para cima'], ['cima', 'De cima para baixo']]],
+  ['ROSTO'],
+  ['Contraste', 'Contraste do rosto', 4, 0.2, 10, 0.1],
+  ['Detalhe', 'Detalhe do rosto', 4, 0, 10, 0.1],
+  ['Estabilidade', 'Estabilidade (menos pisca)', 0.31, 0, 0.95, 0.01],
+  ['Gama', 'Gama (sombras)', 1.8, 0.3, 4, 0.05],
+  ['Brilho', 'Brilho geral', 2.4, 0.2, 5, 0.05],
+  ['Brilhomin', 'Brilho mínimo da letra', 0.04, 0, 1, 0.01],
+  ['Escalamin', 'Tamanho mínimo da letra', 0.55, 0.05, 1, 0.01],
+  ['Autoexposicao', 'Exposição automática', 1, 0, 1, 0.01],
+  ['Cor', 'Cor do rosto', 0, 0, 1, 0.01],
+  ['Saturacao', 'Saturação', 1.6, 0, 4, 0.05],
+  ['Misturacamera', 'Mistura da câmera (P&B)', 0, 0, 1, 0.01],
+  ['Espelhar', 'Espelhar câmera', true],
+  ['FUNDO'],
+  ['Fundo', 'Fundo (intensidade)', 0.42, 0, 2, 0.01],
+  ['Fundotextura', 'Textura do fundo', 'texto', [['pontos', 'Pontos'], ['texto', 'Texto apagado']]],
+  ['SILHUETA'],
+  ['Mascara', 'Silhueta', 'pessoa', [['pessoa', 'Pessoa (rastreada)'], ['tela', 'Tela inteira']]],
+  ['Borda', 'Suavidade da borda', 1.2, 0, 4, 0.05],
+  ['FALA'],
+  ['Ouvir', 'Ouvir (microfone)', true],
+  ['Esperar', 'Esperar a frase fechar (mais fiel)', true],
+  ['Confianca', 'Confiança mínima da fala', 0.6, 0, 1, 0.01],
+  ['Idioma', 'Idioma da fala', 'pt-BR', [['pt-BR', 'Português (Brasil)'], ['pt-PT', 'Português (Portugal)'], ['es-ES', 'Espanhol'], ['en-US', 'Inglês'], ['fr-FR', 'Francês'], ['it-IT', 'Italiano']]],
+  ['PESCAR PALAVRAS'],
+  ['Pescar', 'Pescar com o dedo', true],
+  ['Tempoescolha', 'Tempo apontando para pescar (s)', 0.24, 0.05, 2, 0.01],
+  ['Tempoampliacao', 'Tempo da ampliação (s)', 2.5, 0.2, 8, 0.1],
+  ['Tamanhomax', 'Tamanho máximo (solta)', 79, 10, 300, 1],
+  ['Duracaopescada', 'Tempo ampliada antes de sumir (s)', 5, 0.5, 20, 0.1],
+  ['Brilhopescada', 'Brilho da palavra pescada', 0.94, 0.1, 1, 0.01],
+  ['Mostrarmao', 'Mostrar o dedo (calibração)', false],
+];
+const P = {};
+const PADRAO = {};
+for (const d of DEF) if (d.length > 1) { P[d[0]] = d[2]; PADRAO[d[0]] = d[2]; }
+try { Object.assign(P, JSON.parse(localStorage.getItem(CHAVE)) || {}); } catch (e) {}
+const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(P)); } catch (e) {} };
+
+/* ---------------- WebGL ---------------- */
+const cv = document.getElementById('gl');
+const gl = cv.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, alpha: false });
+const hud = document.getElementById('hud'), hx = hud.getContext('2d');
+const video = document.getElementById('video');
+let W = 0, H = 0, DPR = 1, CW = 0, CH = 0;   // W,H em pixels do canvas; CW,CH em px CSS
+function redimensionar() {
+  DPR = Math.min(2, devicePixelRatio || 1);
+  CW = innerWidth; CH = innerHeight;
+  const esc = Math.min(DPR, 2560 / CW);
+  W = Math.round(CW * esc); H = Math.round(CH * esc);
+  cv.width = W; cv.height = H;
+  hud.width = Math.round(CW * DPR); hud.height = Math.round(CH * DPR);
+  criarFbos();
+}
+
+function shader(tipo, src) {
+  const s = gl.createShader(tipo); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const VS = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }`;
+function programa(fs) {
+  const pr = gl.createProgram();
+  gl.attachShader(pr, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, shader(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(pr, 0, 'p'); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  const u = {}; const n = gl.getProgramParameter(pr, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(pr, i); u[a.name] = gl.getUniformLocation(pr, a.name); }
+  return { pr, u };
+}
+const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function textura(filtro, wrap) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filtro || gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filtro === gl.NEAREST ? gl.NEAREST : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap || gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap || gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+/* câmera + silhueta → textura pequena alinhada à tela, com média no tempo (rgb = cor, a = silhueta) */
+const FS_CAM = `#version 300 es
+precision highp float;
+uniform sampler2D uVid, uMasc, uAnt;
+uniform vec2 uRes, uEsc;      // tamanho do fbo · escala do "cover"
+uniform float uEsp, uEstab, uTemMasc, uPrimeiro, uTemVid;
+out vec4 o;
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;             // y = 0 no topo (a textura é lida do mesmo jeito)
+  vec2 t = (uv - .5) * uEsc + .5;
+  if (uEsp > .5) t.x = 1. - t.x;
+  vec3 c = uTemVid > .5 ? texture(uVid, t).rgb : vec3(0.);
+  float m = uTemMasc > .5 ? texture(uMasc, t).r : 1.;
+  vec4 cur = vec4(c, m);
+  vec4 ant = texture(uAnt, uv);
+  o = uPrimeiro > .5 ? cur : mix(cur, ant, uEstab);
+}`;
+
+/* retrato tipográfico (porte do GLSL "retrato" + "pescadas" do TD) */
+const FS_RET = `#version 300 es
+precision highp float;
+uniform sampler2D uCam, uLetras, uAtlas;
+uniform vec2 uRes, uCel;         // resolução · (largura, altura) da célula em px
+uniform float uRows, uAtlasCel;  // linhas da grade · largura da célula do atlas
+uniform vec4 uB;  // limiar da silhueta, contraste, gama, escala mínima
+uniform vec4 uC;  // brilho, borda (lod), -, brilho mínimo
+uniform vec4 uD;  // centro do tom, ganho automático, -, -
+uniform vec4 uE;  // fundo: intensidade, textura, tempo, -
+uniform vec4 uF;  // detalhe, mistura da câmera, -, -
+uniform vec4 uG;  // cor, saturação, -, -
+uniform float uLodBlur;
+out vec4 o;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float glifo(float g, vec2 loc, float s){
+  vec2 q = (loc - .5) / max(s, .05) + .5;
+  if (q.x < 0. || q.x > 1. || q.y < 0. || q.y > 1.) return 0.;
+  float gx = mod(g, 16.), gy = floor(g / 16.);
+  float lod = max(0., log2(uAtlasCel / max(1., uCel.x * s)));
+  return textureLod(uAtlas, vec2((gx + q.x) / 16., (gy + q.y) / 16.), lod).r;
+}
+void main(){
+  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);   // y para baixo
+  float cx = floor(px.x / uCel.x), cy = floor(px.y / uCel.y);
+  vec2 loc = vec2(fract(px.x / uCel.x), fract(px.y / uCel.y));
+  vec2 cUV = vec2((cx + .5) * uCel.x, (cy + .5) * uCel.y) / uRes;
+  vec4 letra = texelFetch(uLetras, ivec2(int(cx), int(cy)), 0);
+  float cod = floor(letra.r * 255. + .5), alfa = letra.g, dir = floor(letra.b * 255. + .5), prog = letra.a;
+  vec3 cor = vec3(0.);
+  float m = textureLod(uCam, cUV, uC.y).a;
+  if (m > uB.x) {
+    vec3 cc = textureLod(uCam, cUV, .6).rgb;
+    float lum = dot(cc, vec3(.299, .587, .114));
+    float lumB = dot(textureLod(uCam, cUV, uLodBlur).rgb, vec3(.299, .587, .114));
+    lum = lum + uF.x * (lum - lumB);                              // realce local (olhos, nariz, boca)
+    float t = clamp((lum - uD.x) * uB.y * uD.y + .5, 0., 1.);
+    t = pow(t, uB.z);
+    if (alfa > .001 && cod > 0.) {
+      float s = mix(uB.w, 1., t);
+      float g = glifo(cod, loc, s);
+      if (dir > .5 && dir < 1.5) g *= step(1. - prog, loc.y);     // de baixo para cima
+      else if (dir > 1.5) g *= step(loc.y, prog);                 // de cima para baixo
+      float lc = max(lum, .04);
+      vec3 croma = clamp(mix(vec3(1.), cc / lc, uG.y), 0., 2.5);
+      vec3 tinta = mix(vec3(1.), croma, uG.x);
+      cor = tinta * (g * alfa * mix(uC.w, 1., t) * uC.x);
+    }
+    if (uF.y > 0.) {
+      float cam = dot(textureLod(uCam, gl_FragCoord.xy * vec2(1., -1.) / uRes + vec2(0., 1.), 0.).rgb, vec3(.299, .587, .114));
+      cor += vec3(cam * uF.y * .6);
+    }
+  } else if (uE.x > 0.) {
+    float n = .7 + .3 * sin(uE.z * .5 + hash(vec2(cx, cy)) * 6.2832);
+    float v = 0.;
+    if (uE.y > .5) {
+      if (alfa > .001 && cod > 0.) v = glifo(cod, loc, .8) * alfa;
+    } else {
+      float d = length((loc - .5) * vec2(1., uCel.y / uCel.x));
+      v = smoothstep(.13, .06, d);
+    }
+    cor = vec3(.72, .82, 1.) * v * uE.x * n;
+  }
+  o = vec4(cor, 1.);
+}`;
+
+let progCam, progRet;
+try { progCam = programa(FS_CAM); progRet = programa(FS_RET); } catch (e) { console.error(e); }
+
+/* atlas de letras: 16 × 16 células */
+const CHARSET = ' ' + Array.from({ length: 94 }, (_, i) => String.fromCharCode(33 + i)).join('') +
+  'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ';
+const IDX = {}; for (let i = 0; i < CHARSET.length; i++) IDX[CHARSET[i]] = i;
+const DESCONHECIDA = IDX['?'];
+const FONTE = '"SF Mono", Menlo, Monaco, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace';
+const ATL_W = 64, ATL_H = 96;
+const atlasT = textura(gl.LINEAR_MIPMAP_LINEAR);
+function desenharAtlas() {
+  const c = document.createElement('canvas'); c.width = ATL_W * 16; c.height = ATL_H * 16;
+  const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `500 ${Math.round(ATL_H * 0.78)}px ${FONTE}`;
+  for (let i = 1; i < CHARSET.length; i++) {
+    const gx = i % 16, gy = Math.floor(i / 16);
+    x.save(); x.translate((gx + 0.5) * ATL_W, (gy + 0.5) * ATL_H);
+    const m = x.measureText(CHARSET[i]).width;
+    const k = m > ATL_W * 0.92 ? (ATL_W * 0.92) / m : 1;       // não deixa a letra sair da célula
+    x.scale(k, 1); x.fillText(CHARSET[i], 0, ATL_H * 0.04); x.restore();
+  }
+  gl.bindTexture(gl.TEXTURE_2D, atlasT);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.generateMipmap(gl.TEXTURE_2D);
+}
+
+const vidT = textura(gl.LINEAR);
+const mascT = textura(gl.LINEAR);
+gl.bindTexture(gl.TEXTURE_2D, mascT);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([0]));
+const letrasT = textura(gl.NEAREST);
+
+let fbos = [], fboI = 0, FW = 0, FH = 0, primeiro = true;
+function criarFbos() {
+  fbos.forEach((f) => { gl.deleteTexture(f.t); gl.deleteFramebuffer(f.f); });
+  FW = 320; FH = Math.max(16, Math.round(FW * H / W));
+  fbos = [0, 1].map(() => {
+    const t = textura(gl.LINEAR_MIPMAP_LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, FW, FH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    return { t, f };
+  });
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  primeiro = true;
+}
+
+/* ---------------- câmera ---------------- */
+const CAM = { on: false, stream: null, novo: false, ultT: -1 };
+async function ligarCamera() {
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
+    video.srcObject = CAM.stream; await video.play(); CAM.on = true;
+  } catch (e) { console.warn(e); CAM.on = false; estado.camera = 'sem câmera (' + (e.name || e) + ')'; }
+}
+addEventListener('camera-trocada', () => { if (video.srcObject) video.play().catch(() => {}); });
+function camEscala() {          // quanto do vídeo aparece na tela (cobre a tela inteira, sem faixas)
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9, va = vw / vh, a = W / H;
+  return va > a ? [a / va, 1] : [1, va / a];
+}
+// ponto do vídeo (0–1, y para baixo) → ponto da tela (0–1, y para baixo)
+function vidParaTela(x, y) { const e = camEscala(); if (P.Espelhar) x = 1 - x; return [(x - 0.5) / e[0] + 0.5, (y - 0.5) / e[1] + 0.5]; }
+
+/* ---------------- MediaPipe: silhueta e mão ---------------- */
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15';
+const SEG_MODEL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
+const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const IA = { seg: null, mao: null, ts: -1, n: 0, temMasc: false, mascF: null, mascW: 0, mascH: 0, dedo: null, dedoT: 0 };
+async function carregarIA() {
+  try {
+    const mod = await import(MP + '/vision_bundle.mjs');
+    const vision = await mod.FilesetResolver.forVisionTasks(MP + '/wasm');
+    const os = (d) => ({ baseOptions: { modelAssetPath: SEG_MODEL, delegate: d }, runningMode: 'VIDEO', outputConfidenceMasks: true, outputCategoryMask: false });
+    try { IA.seg = await mod.ImageSegmenter.createFromOptions(vision, os('GPU')); } catch (e) { IA.seg = await mod.ImageSegmenter.createFromOptions(vision, os('CPU')); }
+    estado.silhueta = 'pronta';
+    const om = (d) => ({ baseOptions: { modelAssetPath: HAND_MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 1,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
+    try { IA.mao = await mod.HandLandmarker.createFromOptions(vision, om('GPU')); } catch (e) { IA.mao = await mod.HandLandmarker.createFromOptions(vision, om('CPU')); }
+    estado.mao = 'pronta';
+  } catch (e) { console.warn(e); estado.silhueta = 'não carregou (sem internet?)'; }
+}
+let mascU8 = null;
+function rastrear() {
+  if (!CAM.on || !CAM.novo || video.readyState < 2) return;
+  let ts = performance.now(); if (ts <= IA.ts) ts = IA.ts + 1; IA.ts = ts;
+  IA.n++;
+  if (IA.seg && P.Mascara === 'pessoa') {
+    try {
+      IA.seg.segmentForVideo(video, ts, (r) => {
+        const cm = r && r.confidenceMasks && r.confidenceMasks[0]; if (!cm) return;
+        const f = cm.getAsFloat32Array(), w = cm.width, h = cm.height, n = w * h;
+        if (!mascU8 || mascU8.length !== n) { mascU8 = new Uint8Array(n); IA.mascF = new Float32Array(n); }
+        for (let i = 0; i < n; i++) { mascU8[i] = f[i] * 255; IA.mascF[i] = f[i]; }
+        IA.mascW = w; IA.mascH = h;
+        gl.bindTexture(gl.TEXTURE_2D, mascT);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, mascU8);
+        IA.temMasc = true;
+      });
+    } catch (e) { console.warn(e); }
+  }
+  if (IA.mao && P.Pescar && IA.n % 2 === 0) {
+    try {
+      const r = IA.mao.detectForVideo(video, ts + 0.5);
+      const lm = r && r.landmarks && r.landmarks[0];
+      if (lm) { IA.dedo = vidParaTela(lm[8].x, lm[8].y); IA.dedoT = agoraS(); }
+    } catch (e) { console.warn(e); }
+  }
+}
+
+/* exposição automática: brilho mediano e espalhamento dentro da silhueta */
+const expo = { c: 0.5, e: 0.45, cv: null, cx: null, n: 0 };
+function medirRosto() {
+  if (!CAM.on || video.readyState < 2) return;
+  if (++expo.n % 6) return;
+  if (!expo.cv) { expo.cv = document.createElement('canvas'); expo.cv.width = 64; expo.cv.height = 36; expo.cx = expo.cv.getContext('2d', { willReadFrequently: true }); }
+  expo.cx.drawImage(video, 0, 0, 64, 36);
+  const d = expo.cx.getImageData(0, 0, 64, 36).data;
+  const v = [];
+  const mf = IA.mascF, mw = IA.mascW, mh = IA.mascH, usaM = P.Mascara === 'pessoa' && mf;
+  for (let y = 0; y < 36; y++) for (let x = 0; x < 64; x++) {
+    if (usaM && mf[Math.floor(y / 36 * mh) * mw + Math.floor(x / 64 * mw)] < 0.5) continue;
+    const i = (y * 64 + x) * 4; v.push((d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255);
+  }
+  if (v.length < 60) return;
+  v.sort((a, b) => a - b);
+  const q = (p) => v[Math.min(v.length - 1, Math.floor(p * v.length))];
+  expo.c = expo.c * 0.9 + q(0.5) * 0.1;
+  expo.e = expo.e * 0.9 + (q(0.9) - q(0.1)) * 0.1;
+}
+
+/* ---------------- motor das palavras (porte do DAT "motor") ---------------- */
+const agoraS = () => performance.now() / 1000;
+const SAIDA = 0.4;
+let DIGITACAO = 0.045;
+const PASSO = 7;
+let G = null;            // grade
+let hist = [];           // fala recente (só desta sessão)
+const registro = [];     // últimas palavras ouvidas (painel)
+function grade() {
+  const cols = Math.max(16, Math.round(P.Colunas));
+  const cw = W / cols, chh = cw * P.Aspecto;
+  const rows = Math.ceil(H / chh);
+  const m = Math.min(8, Math.max(0, +P.Multiplicar));
+  const n = Math.max(1, Math.min(256, Math.round(2 ** m)));
+  if (!G || G.cols !== cols || G.rows !== rows) {
+    const N = rows * cols;
+    G = { cols, rows, cw, chh, cod: new Uint8Array(N), nasc: new Float64Array(N).fill(-1e9),
+      ent: new Float32Array(N).fill(0.03), dir: new Uint8Array(N), dur: new Float32Array(N).fill(1),
+      n: null, pos: [], ptr: [], livre: 0, cheio: 0, tex: new Uint8Array(N * 4) };
+    gl.bindTexture(gl.TEXTURE_2D, letrasT);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, cols, rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, G.tex);
+  }
+  G.cw = W / cols; G.chh = G.cw * P.Aspecto;
+  if (G.n !== n) {
+    const N = G.rows * G.cols;
+    let s = 11;                                   // espalha os pontos de escrita sempre do mesmo jeito
+    const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+    G.pos = Array.from({ length: n }, (_, i) => (Math.round(i * N / n) + (i === 0 ? 0 : Math.floor(rnd() * G.cols))) % N);
+    G.ptr = []; G.n = n;
+  }
+  return G;
+}
+const rint = (a) => Math.floor(Math.random() * a);
+function atraso(i, n) {
+  if (P.Entrada === 'esqdir') return i * DIGITACAO;
+  if (P.Entrada === 'diresq') return (n - 1 - i) * DIGITACAO;
+  return 0;
+}
+function marca(g, k, n) {
+  const m = P.Entrada;
+  if (m === 'palavra') { g.ent[k] = 0.6; g.dir[k] = 0; g.dur[k] = 1; }
+  else if (m === 'baixo' || m === 'cima') { g.ent[k] = 0.03; g.dir[k] = m === 'baixo' ? 1 : 2; g.dur[k] = Math.max(0.5, n * DIGITACAO * 1.5); }
+  else { g.ent[k] = 0.03; g.dir[k] = 0; g.dur[k] = 1; }
+}
+function escrever(g, i, palavra, t0) {
+  const cols = g.cols, rows = g.rows, N = cols * rows;
+  palavra = Array.from(palavra).slice(0, cols).join('');
+  const letras = Array.from(palavra), n = letras.length;
+  let p = g.pos[i] % N;
+  if (p % cols + n > cols) p = ((Math.floor(p / cols) + 1) % rows) * cols;   // não cabe: começa na linha seguinte
+  for (let j = 0; j < n; j++) {
+    const k = p + j;
+    g.cod[k] = IDX[letras[j]] ?? DESCONHECIDA;
+    g.nasc[k] = t0 + atraso(j, n);
+    marca(g, k, n);
+  }
+  const fim = (Math.floor(p / cols) + 1) * cols;   // apaga o resto da palavra antiga colada logo depois
+  let k = p + n;
+  if (k < fim) {
+    g.cod[k] = 0; g.nasc[k] = -1e9; k++;
+    const lim = Math.min(fim, k + 24);
+    while (k < lim && g.cod[k] !== 0) { g.cod[k] = 0; g.nasc[k] = -1e9; k++; }
+  }
+  let q = p + n + 1;
+  if (q % cols === 0 || Math.floor(q / cols) !== Math.floor(p / cols)) q = ((Math.floor(p / cols) + 1) % rows) * cols;
+  g.pos[i] = q % N;
+}
+function rajada(g) {
+  const vazio = Math.max(0, 1 - g.cheio / 0.85);
+  return 1 + Math.round(Math.max(0, +P.Formar) * vazio);
+}
+let ultimaPal = { t: '', em: -10 };
+function novaPalavra(texto) {
+  texto = String(texto).trim().replace(/^[.,;:!?¿¡"“”«»()]+|[.,;:!?"“”«»()]+$/g, '');
+  if (!texto) return;
+  const agora = agoraS();
+  if (texto === ultimaPal.t && agora - ultimaPal.em < 3) return;   // a mesma palavra repetida em seguida
+  ultimaPal = { t: texto, em: agora };
+  const g = grade();
+  DIGITACAO = 1 / Math.max(1, +P.Velocidade);
+  let t0 = Math.max(agora, g.livre);
+  if (t0 - agora > 1.5) t0 = agora + 1.5;          // não deixa a fila atrasar demais
+  hist.push(texto);
+  const corte = Math.max(0, hist.length - 400);
+  if (corte) hist.splice(0, corte);
+  const Hn = hist.length;
+  while (g.ptr.length < g.n) g.ptr.push(rint(Math.max(1, Hn - 1)));
+  const raj = rajada(g);
+  for (let i = 0; i < g.n; i++) {
+    let w;
+    if (i === 0) w = texto;                         // ponto 0: a fala ao vivo
+    else {
+      // ecos: cada ponto relê a fala em ordem, a partir de um trecho anterior
+      g.ptr[i] = Math.max(0, g.ptr[i] - corte);
+      if (g.ptr[i] >= Hn - 1 || (Hn > 6 && Math.random() < 0.09)) g.ptr[i] = rint(Math.max(1, Hn - 1));
+      w = Hn > 1 ? hist[g.ptr[i]] : texto;
+      g.ptr[i]++;
+    }
+    escrever(g, i, w, t0);
+    if (i > 0 && Hn > 1) {                           // rajada: com o rosto vazio cada eco escreve várias
+      for (let r = 0; r < raj - 1; r++) {
+        if (g.ptr[i] >= Hn - 1) g.ptr[i] = rint(Math.max(1, Hn - 1));
+        escrever(g, i, hist[g.ptr[i]], t0);
+        g.ptr[i]++;
+      }
+    }
+  }
+  const n = Array.from(texto).length, m = P.Entrada;
+  const dur = m === 'palavra' ? 0.35 : (m === 'baixo' || m === 'cima') ? Math.max(0.5, n * DIGITACAO * 1.5) : n * DIGITACAO;
+  g.livre = t0 + dur + DIGITACAO;
+  registro.push(texto); if (registro.length > 40) registro.shift();
+  painelUltimas();
+}
+function atualizarLetras() {
+  const g = grade(), agora = agoraS(), N = g.cod.length;
+  const vida = Math.max(2, +P.Vida), ini = vida * (1 - SAIDA);
+  let vivas = 0;
+  const tx = g.tex;
+  for (let k = 0; k < N; k++) {
+    const idade = agora - g.nasc[k], c = g.cod[k];
+    let a = 0;
+    if (c !== 0 && idade >= 0) {
+      const e = g.ent[k];
+      a = idade < e ? idade / e : idade < ini ? 1 : Math.max(0, 1 - (idade - ini) / (vida - ini));
+      if (idade < vida) vivas++;
+    }
+    const pr = Math.min(1, Math.max(0, idade / Math.max(g.dur[k], 0.01)));
+    const j = k * 4;
+    tx[j] = c; tx[j + 1] = a * 255; tx[j + 2] = g.dir[k]; tx[j + 3] = pr * 255;
+  }
+  g.cheio = vivas / N;
+  gl.bindTexture(gl.TEXTURE_2D, letrasT);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, g.cols, g.rows, gl.RGBA, gl.UNSIGNED_BYTE, tx);
+}
+function limpar() {
+  G = null; hist = []; registro.length = 0; pescadas.length = 0; painelUltimas();
+}
+function teste(frase) {
+  frase = frase || 'tudo o que você disser vai virar o desenho do seu rosto cada palavra acende brilha e depois se apaga devagar';
+  frase.split(/\s+/).filter(Boolean).forEach((p, i) => setTimeout(() => novaPalavra(p), i * 320));
+}
+
+/* ---------------- pescar palavras com o dedo (porte do DAT "pesca") ---------------- */
+const MAXP = 8;
+const pescadas = [];
+const PS = { mira: null, miraDesde: 0, ultima: -10, ponto: null };
+function vivo(g, k, agora) { return g.cod[k] !== 0 && g.nasc[k] <= agora && agora - g.nasc[k] < +P.Vida; }
+function textoEm(g, y, a, b) { let s = ''; for (let x = a; x <= b; x++) s += CHARSET[g.cod[y * g.cols + x]]; return s; }
+function alvo(u, v, evitar) {
+  const g = G; if (!g) return null;
+  const cx = Math.floor(u * g.cols), cy = Math.floor(v * H / g.chh);
+  const agora = agoraS(), vistos = new Set();
+  for (const d of [0, -1, 1, -2, 2]) for (const dy of [0, -1, 1]) {
+    const x = cx + d, y = cy + dy;
+    if (x < 0 || x >= g.cols || y < 0 || y >= g.rows || !vivo(g, y * g.cols + x, agora)) continue;
+    const base = y * g.cols;
+    let a = x; while (a - 1 >= 0 && vivo(g, base + a - 1, agora)) a--;
+    let b = x; while (b + 1 < g.cols && vivo(g, base + b + 1, agora)) b++;
+    if (vistos.has(y + ':' + a)) continue;
+    vistos.add(y + ':' + a);
+    if (evitar.has(textoEm(g, y, a, b).toLowerCase())) continue;
+    return [y, a, b];
+  }
+  return null;
+}
+function pegar(y, a, b) {
+  const g = G;
+  const txt = textoEm(g, y, a, b).slice(0, 38);
+  for (let x = a; x <= b; x++) g.nasc[y * g.cols + x] = -1e9;
+  const hpx = g.chh / H;                         // altura da letra em fração da tela
+  return { txt, u: ((a + b + 1) / 2) / g.cols, v: (y + 0.5) * g.chh / H, h0: hpx, h: hpx, t0: agoraS(), a: 1 };
+}
+function pescar() {
+  const agora = agoraS();
+  const d = P.Pescar && IA.dedo && agora - IA.dedoT < 0.6 ? IA.dedo : null;
+  PS.dedo = d;
+  if (d) {
+    const evitar = new Set(pescadas.map((q) => q.txt.toLowerCase()));
+    const ult = PS.ponto;
+    const parado = ult && Math.hypot(d[0] - ult[0], (d[1] - ult[1]) * H / W) < 0.035 && agora - PS.ultima < 2;
+    const al = parado ? null : alvo(d[0], d[1], evitar);
+    const igual = (a, b) => (a === b) || (a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);
+    if (!igual(al, PS.mira)) { PS.mira = al; PS.miraDesde = agora; }
+    else if (al && agora - PS.miraDesde >= +P.Tempoescolha && agora - PS.ultima > 0.4) {
+      pescadas.push(pegar(...al)); PS.ultima = agora; PS.ponto = d; PS.mira = null;
+    }
+  } else PS.mira = null;
+  const cresce = Math.max(0.2, +P.Tempoampliacao), hmax = (+P.Tamanhomax) / 720, fica = +P.Duracaopescada;
+  for (const p of pescadas) {
+    const t = agora - p.t0;
+    let k = Math.min(1, t / cresce); k = 1 - (1 - k) ** 3;
+    p.h = p.h0 + (Math.max(hmax, p.h0) - p.h0) * k;
+    p.a = t < cresce + fica ? 1 : Math.max(0, 1 - (t - cresce - fica) / 1.5);
+  }
+  for (let i = pescadas.length - 1; i >= 0; i--) if (pescadas[i].a <= 0) pescadas.splice(i, 1);
+  while (pescadas.length > MAXP) pescadas.shift();
+}
+function desenharHud() {
+  const w = hud.width, h = hud.height;
+  hx.clearRect(0, 0, w, h);
+  for (const p of pescadas) {
+    const A = p.h * h;
+    hx.font = `500 ${A * 0.92}px ${FONTE}`;
+    hx.textAlign = 'center'; hx.textBaseline = 'middle';
+    hx.shadowColor = 'rgba(0,0,0,.85)'; hx.shadowBlur = A * 0.35;
+    hx.fillStyle = `rgba(255,247,230,${p.a * P.Brilhopescada})`;
+    hx.fillText(p.txt, p.u * w, p.v * h);
+  }
+  hx.shadowBlur = 0;
+  if (P.Mostrarmao && PS.dedo) {
+    hx.fillStyle = 'rgba(77,255,153,.9)';
+    hx.beginPath(); hx.arc(PS.dedo[0] * w, PS.dedo[1] * h, 8 * DPR, 0, 6.2832); hx.fill();
+  }
+}
+
+/* ---------------- fala (reconhecimento de voz do navegador) ---------------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const FALA = { rec: null, ligada: false, emit: {}, timers: {}, erro: '' };
+function ligarFala() {
+  if (!SR) { estado.fala = 'este navegador não reconhece a fala (use o Chrome, o Edge ou o Safari)'; return; }
+  if (FALA.ligada) return;
+  const rec = new SR();
+  rec.lang = P.Idioma; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+  FALA.emit = {};
+  rec.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i], alt = r[0];
+      const pal = alt.transcript.trim().split(/\s+/).filter(Boolean);
+      const ja = FALA.emit[i] || 0;
+      if (r.isFinal) {
+        clearTimeout(FALA.timers[i]);
+        const conf = alt.confidence;
+        // confiança 0 = o navegador não informou (Safari): aceita
+        if (!(conf > 0 && conf < +P.Confianca)) pal.slice(ja).forEach(novaPalavra);
+        else estado.descartadas++;
+        FALA.emit[i] = pal.length;
+      } else if (!P.Esperar) {
+        // parcial: solta as palavras que já não mudam (todas menos a última, ou todas após 0,4 s paradas)
+        const firmes = Math.max(0, pal.length - 1);
+        if (firmes > ja) { pal.slice(ja, firmes).forEach(novaPalavra); FALA.emit[i] = firmes; }
+        clearTimeout(FALA.timers[i]);
+        FALA.timers[i] = setTimeout(() => {
+          const j = FALA.emit[i] || 0;
+          if (pal.length > j) { pal.slice(j).forEach(novaPalavra); FALA.emit[i] = pal.length; }
+        }, 400);
+      }
+      estado.ouvindo = alt.transcript;
+    }
+  };
+  rec.onerror = (e) => {
+    FALA.erro = e.error;
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { estado.fala = 'microfone bloqueado — libere o microfone para este site'; P.Ouvir = false; }
+  };
+  rec.onend = () => {
+    FALA.ligada = false; FALA.rec = null;
+    if (P.Ouvir) setTimeout(ligarFala, 250);          // o navegador encerra sozinho de tempos em tempos
+    else estado.fala = 'desligada';
+  };
+  try { rec.start(); FALA.rec = rec; FALA.ligada = true; estado.fala = 'ouvindo'; } catch (e) { console.warn(e); }
+}
+function desligarFala() { if (FALA.rec) try { FALA.rec.stop(); } catch (e) {} }
+function reiniciarFala() { if (FALA.rec) try { FALA.rec.abort(); } catch (e) {} else if (P.Ouvir) ligarFala(); }
+
+/* ---------------- quadro ---------------- */
+const estado = { camera: 'desligada', silhueta: 'carregando…', mao: 'carregando…', fala: 'desligada', ouvindo: '', descartadas: 0 };
+let comecou = false;
+function quadro() {
+  requestAnimationFrame(quadro);
+  if (!comecou || !progRet) return;
+  const t = agoraS();
+  // vídeo novo?
+  CAM.novo = false;
+  if (CAM.on && video.readyState >= 2 && video.currentTime !== CAM.ultT) {
+    CAM.ultT = video.currentTime; CAM.novo = true;
+    gl.bindTexture(gl.TEXTURE_2D, vidT);
+    try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, video); } catch (e) {}
+  }
+  rastrear();
+  medirRosto();
+  pescar();
+  atualizarLetras();
+
+  // 1) câmera + silhueta, com média no tempo
+  const a = fbos[fboI], b = fbos[1 - fboI];
+  gl.bindFramebuffer(gl.FRAMEBUFFER, b.f); gl.viewport(0, 0, FW, FH);
+  gl.useProgram(progCam.pr);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, vidT); gl.uniform1i(progCam.u.uVid, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, mascT); gl.uniform1i(progCam.u.uMasc, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, a.t); gl.uniform1i(progCam.u.uAnt, 2);
+  gl.uniform2f(progCam.u.uRes, FW, FH);
+  const e = camEscala(); gl.uniform2f(progCam.u.uEsc, e[0], e[1]);
+  gl.uniform1f(progCam.u.uEsp, P.Espelhar ? 1 : 0);
+  gl.uniform1f(progCam.u.uEstab, Math.min(0.95, +P.Estabilidade));
+  gl.uniform1f(progCam.u.uTemMasc, P.Mascara === 'pessoa' && IA.temMasc ? 1 : 0);
+  gl.uniform1f(progCam.u.uTemVid, CAM.on ? 1 : 0);
+  gl.uniform1f(progCam.u.uPrimeiro, primeiro ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindTexture(gl.TEXTURE_2D, b.t); gl.generateMipmap(gl.TEXTURE_2D);
+  fboI = 1 - fboI; primeiro = false;
+
+  // 2) retrato tipográfico
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+  const u = progRet.u; gl.useProgram(progRet.pr);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, b.t); gl.uniform1i(u.uCam, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, letrasT); gl.uniform1i(u.uLetras, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, atlasT); gl.uniform1i(u.uAtlas, 2);
+  gl.uniform2f(u.uRes, W, H);
+  gl.uniform2f(u.uCel, G.cw, G.chh);
+  gl.uniform1f(u.uRows, G.rows);
+  gl.uniform1f(u.uAtlasCel, ATL_W);
+  gl.uniform4f(u.uB, 0.5, +P.Contraste, +P.Gama, +P.Escalamin);
+  gl.uniform4f(u.uC, +P.Brilho, +P.Borda, 0, +P.Brilhomin);
+  const ae = +P.Autoexposicao;
+  gl.uniform4f(u.uD, 0.5 + (expo.c - 0.5) * ae, 1 + (Math.min(3, 0.45 / Math.max(0.05, expo.e)) - 1) * ae, 0, 0);
+  gl.uniform4f(u.uE, P.Fundo * 0.3, P.Fundotextura === 'texto' ? 1 : 0, t, 0);
+  gl.uniform4f(u.uF, +P.Detalhe, +P.Misturacamera, 0, 0);
+  gl.uniform4f(u.uG, +P.Cor, +P.Saturacao, 0, 0);
+  gl.uniform1f(u.uLodBlur, Math.log2(Math.max(1, 28 * FW / 1280)) + 0.8);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  desenharHud();
+  if (painel.classList.contains('on') && ++nEstado % 15 === 0) painelEstado();
+}
+let nEstado = 0;
+
+/* ---------------- painel ---------------- */
+const painel = document.getElementById('painel');
+function montarPainel() {
+  let h = '';
+  for (const d of DEF) {
+    if (d.length === 1) { h += `<h3>${d[0]}</h3>`; continue; }
+    const [id, rot, v, a, b, passo] = d;
+    if (typeof v === 'boolean') h += `<div class="ln"><label for="c_${id}">${rot}</label><input type="checkbox" id="c_${id}"></div>`;
+    else if (Array.isArray(a)) h += `<div class="ln"><label for="c_${id}">${rot}</label><select id="c_${id}">${a.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></div>`;
+    else h += `<div class="ln"><label for="c_${id}">${rot}</label><input type="range" id="c_${id}" min="${a}" max="${b}" step="${passo}"><span class="v" id="v_${id}"></span></div>`;
+    if (id === 'Idioma') h += `<div id="estado"></div><div id="ultimas"></div>`;
+  }
+  h += `<h3>Testes</h3>
+  <input id="escrever" placeholder="Escreva e aperte Enter para testar" autocomplete="off">
+  <div class="bts"><button id="b_testar">Testar com frase</button><button id="b_limpar">Limpar palavras</button><button id="b_tela">Tela cheia</button><button id="b_padrao">Ajustes padrão</button></div>
+  <p class="dica">Teclas: M controles · F tela cheia · T testar · L limpar. Botões no canto inferior esquerdo (aparecem ao mexer o mouse): câmera e janela de projeção (Shift+P).</p>`;
+  painel.innerHTML = h;
+  for (const d of DEF) {
+    if (d.length === 1) continue;
+    const id = d[0], el = document.getElementById('c_' + id);
+    const ev = el.type === 'range' ? 'input' : 'change';
+    el.addEventListener(ev, () => {
+      P[id] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value;
+      mostrarValor(id); salvar(); mudou(id);
+    });
+  }
+  document.getElementById('b_testar').onclick = () => teste();
+  document.getElementById('b_limpar').onclick = limpar;
+  document.getElementById('b_tela').onclick = telaCheia;
+  document.getElementById('b_padrao').onclick = () => { Object.assign(P, PADRAO); salvar(); lerPainel(); reiniciarFala(); };
+  const esc = document.getElementById('escrever');
+  esc.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { teste(esc.value); esc.value = ''; }
+  });
+  lerPainel();
+}
+function mostrarValor(id) {
+  const v = document.getElementById('v_' + id); if (!v) return;
+  const x = +P[id]; v.textContent = Math.abs(x) >= 10 ? x.toFixed(0) : x.toFixed(2);
+}
+function lerPainel() {
+  for (const d of DEF) {
+    if (d.length === 1) continue;
+    const el = document.getElementById('c_' + d[0]);
+    if (el.type === 'checkbox') el.checked = !!P[d[0]]; else el.value = P[d[0]];
+    mostrarValor(d[0]);
+  }
+}
+function mudou(id) {
+  if (id === 'Ouvir') { if (P.Ouvir) ligarFala(); else desligarFala(); }
+  if (id === 'Idioma' || id === 'Esperar') reiniciarFala();
+  if (id === 'Mascara' && P.Mascara !== 'pessoa') IA.temMasc = false;
+  if (id === 'Pescar' && !P.Pescar) { IA.dedo = null; }
+}
+function painelEstado() {
+  const el = document.getElementById('estado'); if (!el) return;
+  el.innerHTML = `Fala: <b>${estado.fala}</b>${estado.descartadas ? ` · ${estado.descartadas} frase(s) descartadas por pouca confiança` : ''}<br>Câmera: <b>${CAM.on ? 'ligada' : estado.camera}</b> · silhueta: <b>${estado.silhueta}</b> · dedo: <b>${estado.mao}</b>`;
+}
+function painelUltimas() {
+  const el = document.getElementById('ultimas'); if (!el) return;
+  el.textContent = registro.length ? 'Ouvidas: ' + registro.slice(-18).join(' ') : '';
+}
+function alternarPainel() { painel.classList.toggle('on'); painelEstado(); painelUltimas(); }
+document.getElementById('dot').onclick = alternarPainel;
+function telaCheia() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen().catch(() => {});
+}
+addEventListener('keydown', (e) => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'm') alternarPainel();
+  else if (k === 'escape') painel.classList.remove('on');
+  else if (k === 'f') telaCheia();
+  else if (k === 't') teste();
+  else if (k === 'l') limpar();
+});
+let idleT = 0;
+function acordar() { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add('idle'), 3000); }
+addEventListener('pointermove', acordar); addEventListener('pointerdown', acordar);
+
+/* ---------------- início ---------------- */
+const inicio = document.getElementById('inicio');
+if (!SR) { const av = document.getElementById('aviso'); av.hidden = false; av.textContent = 'Este navegador não reconhece a fala. Use o Chrome, o Edge ou o Safari. Dá para testar escrevendo no painel.'; }
+async function comecar() {
+  if (comecou) return;
+  comecou = true; inicio.classList.add('hide');
+  acordar();
+  if (P.Ouvir) ligarFala();
+  await ligarCamera();
+  carregarIA();
+}
+inicio.addEventListener('click', comecar);
+addEventListener('resize', () => { redimensionar(); G = null; });
+redimensionar();
+desenharAtlas();
+grade();
+montarPainel();
+requestAnimationFrame(quadro);
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+window.__obra = { P, novaPalavra, teste, limpar, estado, get G() { return G; }, IA, pescadas };
+</script>
+</body>
+</html>

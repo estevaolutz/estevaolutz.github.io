@@ -8,8 +8,8 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 REPO = sys.argv[1] if len(sys.argv) > 1 else os.path.join(AQUI, '..', '..')
 DESTINO = os.path.join(REPO, 'conjecturas')  # cada obra fica em conjecturas/<obra>/
 CSS = open(os.path.join(AQUI, 'core.css')).read()
-JS = open(os.path.join(AQUI, 'core.js')).read()
-SOM = open(os.path.join(AQUI, 'som.html')).read()
+JS = open(os.path.join(AQUI, 'core-knick.js')).read()  # som pelo Motor Knick (o core.js antigo fica só como referência)
+SOM = '<div id="nucleo"></div>'  # painel do Motor Knick (o som.html antigo fica só como referência)
 BANCO = open(os.path.join(AQUI, 'banco.js')).read()  # banco de configurações, entra em todas as obras
 VISTA3D = '<script>\n' + open(os.path.join(AQUI, 'vista3d.js')).read() + '</script>'  # câmera 3D comum a todas as obras
 VISTA3D += '\n<script>\n' + open(os.path.join(AQUI, 'matiz.js')).read() + '</script>'  # saturação e matiz (as obras v2 já têm na seção Vídeo)
@@ -98,6 +98,7 @@ def main():
         if not os.path.exists(os.path.join(AQUI, slug + '.html')): continue
         src = open(os.path.join(AQUI, slug + '.html')).read()
         html = src.replace('/*CORE_CSS*/', CSS).replace('<!--SOM-->', SOM).replace('//CORE_JS', JS).replace('//BANCO_JS', BANCO).replace('<!--VISTA3D-->', VISTA3D)
+        if 'src="../../lib/motor-knick.js"' not in html: html = html.replace('<head>', '<head><script src="../../lib/projecao.js"></script><script src="../../lib/motor-knick.js"></script>', 1)
         pasta = os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
         open(os.path.join(pasta, 'index.html'), 'w').write(html)
         man = {"name": nome, "short_name": nome, "description": desc, "lang": "pt-BR", "start_url": "./", "scope": "./",

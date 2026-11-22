@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><script src="../../lib/projecao.js"></script>
+<head><script src="../../lib/projecao.js"></script><script src="../../lib/motor-knick.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -74,7 +74,8 @@
   <div class="row"><label>Tocar número</label><input type="number" id="seedIn" min="2" placeholder="ex.: 27"></div>
   <div class="row"><label>Velocidade</label><input type="range" id="speed" min="0.6" max="14" step="0.1" value="3"></div>
   <div class="row"><label>Pausa no 1</label><input type="range" id="gap" min="0.5" max="10" step="0.1" value="3.5"></div>
-  <h2>Som</h2>
+  <div id="nucleo"></div>
+  <div class="som-antigo" hidden><h2>Som</h2>
   <div class="row"><label>Modo</label>
     <select id="scale">
       <option value="jonico">Jônico (maior)</option>
@@ -149,6 +150,7 @@
   <div class="row"><label>Delay</label><input type="range" id="sChoD" min="0" max="1" step="0.01" value="0.12"></div>
   <div class="row"><label>Pitch delay</label><input type="range" id="sChoP" min="0" max="1" step="0.01" value="0.35"></div>
   <div class="row"><label>Bit crusher</label><input type="range" id="sChoB" min="0" max="1" step="0.01" value="0.25"></div>
+  </div>
   <h2>Imagem</h2>
   <div class="row"><label>Curva par</label><input type="range" id="aEven" min="0" max="0.5" step="0.005" value="0.135"></div>
   <div class="row"><label>Curva ímpar</label><input type="range" id="aOdd" min="0" max="0.8" step="0.005" value="0.27"></div>
@@ -880,6 +882,26 @@ function loopPulse(i, x, t){       // laço 4 → 2 → 1
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22 - i*0.05, t+0.02); g.gain.exponentialRampToValueAtTime(0.0001, t+2.2);
   o.connect(g); out(g, x, 0, 0, 'Cho'); o.start(t); o.stop(t+2.3);
 }
+
+// ---------- som: Motor Knick (lib/motor-knick.js) ----------
+// O som antigo do Granizo fica no código como referência, mas não toca mais: as funções abaixo o substituem.
+// Subidas (×3+1) e descidas (÷2) viram notas de vidro no pulso dos arpejos; a chegada ao 1 e o laço 4→2→1
+// animam o arranjo; a harmonia de cada número vira o acorde do motor. O espectro das ondas lê a saída do motor.
+const MK = MotorKnick({});
+if ($('nucleo')) MK.painel($('nucleo'));
+const quandoMK = (t, fn) => { const dt = AC ? t - AC.currentTime : 0; if (dt > 0.03) setTimeout(fn, dt*1000); else fn(); };
+const panMK = x => Math.max(-1, Math.min(1, (x / (W || 1)) * 2 - 1));
+initAudio = function(){
+  MK.iniciar(); AC = MK.AC;
+  analyser = MK.analisador; specData = new Uint8Array(analyser.frequencyBinCount);
+  droneG = AC.createGain(); droneF = AC.createBiquadFilter();   // só para o código antigo que ainda mexe neles
+};
+applyMix = function(){};
+bell = function(f, x, vel, t){ if (AC) quandoMK(t, () => MK.nota(f, { forca: Math.min(1, vel), pan: panMK(x) })); };
+soft = function(f, x, vel, t){ if (AC) quandoMK(t, () => MK.nota(f, { forca: Math.min(1, vel*0.85), pan: panMK(x) })); };
+resolveChord = function(x, t){ if (AC) quandoMK(t, () => MK.pulso(1)); };
+loopPulse = function(i, x, t){ if (AC) quandoMK(t, () => MK.pulso(0.5)); };
+setHarmony = function(m, t){ harm = harmonyFor(m); if (AC) quandoMK(t, () => MK.acorde(harm.deg)); };
 
 // ---------- estado da obra ----------
 let cur = null;   // {seq, pos, t0, next, done}

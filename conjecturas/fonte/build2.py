@@ -38,7 +38,7 @@ OBRAS2 = {
 
 MOLDE = """<!DOCTYPE html>
 <html lang="pt-BR">
-<head>
+<head><script src="{lib}projecao.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -92,7 +92,7 @@ def main():
         arq = os.path.join(AQUI, 'obras2', slug + '.html')
         if not os.path.exists(arq): continue
         src = open(arq).read()
-        html = MOLDE.format(titulo=nome, titulo_maiusc=nome.upper(), intro=parte(src, 'intro'), css=CSS, css_obra=parte(src, 'css'),
+        html = MOLDE.format(lib='../lib/' if fora else '../../lib/', titulo=nome, titulo_maiusc=nome.upper(), intro=parte(src, 'intro'), css=CSS, css_obra=parte(src, 'css'),
                             painel=parte(src, 'painel'), imagem=parte(src, 'imagem'), dica=parte(src, 'dica'),
                             nucleo=NUCLEO, js=parte(src, 'js'), banco=BANCO, vista3d=VISTA3D if 'Vista3D(' in src else '')
         pasta = os.path.join(REPO, fora[0]) if fora else os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)

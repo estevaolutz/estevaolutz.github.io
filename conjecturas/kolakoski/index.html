@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><script src="../../lib/projecao.js"></script>
+<head><script src="../../lib/projecao.js"></script><script src="../../lib/motor-knick.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -76,7 +76,8 @@
   <div class="row"><label>Vozes</label><input type="range" id="layers" min="1" max="7" step="1" value="6"></div>
   <div class="row"><label>Alfabeto</label>
     <select id="alpha"><option value="12" selected>1 e 2 (clássica)</option><option value="13">1 e 3</option><option value="23">2 e 3</option></select></div>
-  <h2>Som</h2>
+  <div id="nucleo"></div>
+  <div class="som-antigo" hidden><h2>Som</h2>
   <div class="row"><label>Modo</label>
     <select id="scale">
       <option value="jonico">Jônico (maior)</option>
@@ -270,6 +271,7 @@
   <div class="row"><label>Ressonância</label><input type="range" id="oRes" min="0" max="15" step="0.1" value="0.7"></div>
   <div class="row"><label>Saturação</label><input type="range" id="oDrive" min="0" max="1" step="0.01" value="0"></div>
   <div class="row"><label>Largura estéreo</label><input type="range" id="oWidth" min="0" max="1.5" step="0.01" value="1"></div>
+  </div>
   <h2>Imagem</h2>
   <div class="row"><label>Zoom</label><input type="range" id="zoom" min="0.3" max="4" step="0.01" value="1"></div>
   <div class="row"><label>Ligações</label><input type="checkbox" id="links" checked></div>
@@ -475,6 +477,10 @@ window.Vista3D = function(opt = {}){
 'use strict';
 // ---------- núcleo comum das obras de conjecturas (som, painel, tela inicial) ----------
 const $ = id => document.getElementById(id);
+// ---------- núcleo das conjecturas da primeira leva, com o som do Motor Knick (lib/motor-knick.js) ----------
+// Mesmo jeito de usar do núcleo antigo (O.bell, O.soft, O.pluck, O.pad, O.sine, O.tone, O.kick, O.tick, O.setDrone, O.fx…),
+// mas as notas viram acontecimentos do motor: notas de vidro dentro do pulso dos arpejos, energia do arranjo e troca de acorde.
+// O painel de som antigo fica escondido (os valores continuam valendo para a obra) e o painel do motor entra em #nucleo.
 const O = (() => {
   const P = {};
   let ids = [];
@@ -486,65 +492,13 @@ const O = (() => {
     ids = list.concat(['scale','vol','drone','verb']);
     readP();
     for (const k of ids){ const el = $(k); if (!el) continue;
-      el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => { const old = Object.assign({}, P); readP(); applyMix(); onChange && onChange(k, old); }); }
+      el.addEventListener(el.type === 'text' || el.type === 'number' ? 'change' : 'input', () => { const old = Object.assign({}, P); readP(); onChange && onChange(k, old); }); }
   }
 
-  // ---------- áudio ----------
-  const WORKLET_SRC = `
-  class Crusher extends AudioWorkletProcessor {
-    static get parameterDescriptors(){ return [{name:'bits',defaultValue:8},{name:'down',defaultValue:4},{name:'mix',defaultValue:0}]; }
-    constructor(){ super(); this.ph = [0,0]; this.hold = [0,0]; }
-    process(ins, outs, p){
-      const i = ins[0], o = outs[0]; if (!i || !i.length) return true;
-      const mix = p.mix[0], bits = p.bits[0], down = Math.max(1, p.down[0]), step = Math.pow(0.5, bits - 1);
-      for (let c = 0; c < o.length; c++){
-        const x = i[c] || i[0], y = o[c];
-        if (mix <= 0.0001){ y.set(x); continue; }
-        for (let n = 0; n < y.length; n++){
-          if (++this.ph[c] >= down){ this.ph[c] -= down; this.hold[c] = step * Math.round(x[n] / step); }
-          y[n] = x[n] * (1 - mix) + this.hold[c] * mix;
-        }
-      }
-      return true;
-    }
-  }
-  class PitchDelay extends AudioWorkletProcessor {
-    static get parameterDescriptors(){ return [{name:'time',defaultValue:0.5},{name:'fb',defaultValue:0.45},{name:'semi',defaultValue:12}]; }
-    constructor(){ super(); this.N = Math.ceil(sampleRate*2.2); this.buf = new Float32Array(this.N); this.w = 0; this.ph = 0; this.W = Math.round(sampleRate*0.07); }
-    read(pos){ const N = this.N; pos = ((pos % N) + N) % N; const i0 = Math.floor(pos), fr = pos - i0; return this.buf[i0]*(1-fr) + this.buf[(i0+1)%N]*fr; }
-    process(ins, outs, p){
-      const i = ins[0], o = outs[0], L = o[0].length;
-      const D = Math.min(this.N - this.W - 4, p.time[0]*sampleRate), fb = p.fb[0], ratio = Math.pow(2, p.semi[0]/12), W = this.W;
-      const inc = (1 - ratio) / W;
-      for (let n = 0; n < L; n++){
-        const x = i && i.length ? (i[0][n] + (i[1] ? i[1][n] : i[0][n]))*0.5 : 0;
-        this.ph += inc; this.ph -= Math.floor(this.ph);
-        let y = 0;
-        for (let k = 0; k < 2; k++){
-          const ph = (this.ph + k*0.5) % 1;
-          y += this.read(this.w - D - W - ph*W) * Math.sin(Math.PI*ph);
-        }
-        y *= 0.75;
-        this.buf[this.w] = x + Math.tanh(y*fb);
-        this.w = (this.w + 1) % this.N;
-        for (let c = 0; c < o.length; c++) o[c][n] = y;
-      }
-      return true;
-    }
-  }
-  registerProcessor('granizo-crusher', Crusher);
-  registerProcessor('granizo-pitchdelay', PitchDelay);
-  `;
-  const ELEMS = ["Perc", "V1", "V2", "V3", "Vg", "Acor", "Baixo", "Dro"];
-  let curSrc = 'V1';
-  let preDelay = null, combs = [], srcBus = {}, pdIn = null, pdOut = null, crIn = null, crOut = null, pdNode = null, crusher = null, dLpF = null, lastDrive = -1;
-  function allpass(input, dt, g){
-    const sum = AC.createGain(), d = AC.createDelay(0.2), fbg = AC.createGain(), ff = AC.createGain(), o = AC.createGain();
-    d.delayTime.value = dt; fbg.gain.value = g; ff.gain.value = -g;
-    input.connect(sum); sum.connect(d); d.connect(fbg); fbg.connect(sum); sum.connect(ff); ff.connect(o); d.connect(o);
-    return o;
-  }
-  let AC = null, master, comp, fxF, fxDrive, fxCrush, dFb, dRet, width = 1, verbIn, verbOut, dryBus, delay, droneG, droneF, droneOscs = [];
+  // ---------- som: Motor Knick ----------
+  const MK = MotorKnick({});
+  if ($('nucleo')) MK.painel($('nucleo'));
+  let AC = null;
   const SCALES = {
     jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
     mixolidio:[0,2,4,5,7,9,10], eolio:[0,2,3,5,7,8,10], locrio:[0,1,3,5,6,8,10],
@@ -554,271 +508,48 @@ const O = (() => {
   const NOTAS = ['Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si','Dó','Dó♯'];
   const ROOT = 73.416; // Ré2
   const now = () => AC ? AC.currentTime : performance.now()/1000;
-  let voices = 0;
-  const MAXV = 56;
-
-  function initAudio(){
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    try { AC = new Ctx({ latencyHint: 'playback' }); } catch (e) { AC = new Ctx(); }
-    master = AC.createGain();
-    comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
-    // efeitos de saída (neutros por padrão): filtro → saturação → redução de bits → compressor
-    fxF = AC.createBiquadFilter(); fxF.type = 'lowpass'; fxF.frequency.value = 20000; fxF.Q.value = 0.7;
-    fxDrive = AC.createWaveShaper(); fxCrush = AC.createWaveShaper(); fxDrive.oversample = '2x';
-    master.connect(fxF); fxF.connect(fxDrive); fxDrive.connect(fxCrush); fxCrush.connect(comp); comp.connect(AC.destination);
-    dryBus = AC.createGain(); dryBus.connect(master);
-    verbIn = AC.createGain(); verbOut = AC.createGain(); verbOut.connect(master);
-    // reverb "Valhalla": pré-delay, difusão em allpass e pentes modulados
-    const merger = AC.createChannelMerger(2); merger.connect(verbOut);
-    preDelay = AC.createDelay(0.5); preDelay.delayTime.value = 0.03;
-    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200; hp.Q.value = -12;
-    const pre = AC.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 5000; pre.Q.value = -12;
-    verbIn.connect(preDelay); preDelay.connect(hp); hp.connect(pre);
-    let diff = pre;
-    for (const [dt, gg] of [[0.0047,0.62],[0.0113,0.6],[0.0171,0.58],[0.0231,0.55]]) diff = allpass(diff, dt, gg);
-    [0.0797,0.0911,0.1013,0.1129,0.1237,0.1373,0.1489,0.1601].forEach((dt, i) => {
-      const d = AC.createDelay(0.6); d.delayTime.value = dt;
-      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = -12;
-      const fb = AC.createGain(); fb.gain.value = 0.78;
-      const o = AC.createGain(); o.gain.value = 0.15;
-      const lfo = AC.createOscillator(); lfo.frequency.value = 0.13 + i*0.071;
-      const lg = AC.createGain(); lg.gain.value = 0.0012; lfo.connect(lg); lg.connect(d.delayTime); lfo.start();
-      diff.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(o); o.connect(merger, 0, i % 2);
-      combs.push({ d, lp, fb, lg, base: dt });
-    });
-    delay = AC.createDelay(2); delay.delayTime.value = 0.42;
-    const fb = AC.createGain(); fb.gain.value = 0.3; dFb = fb; dRet = AC.createGain(); dRet.gain.value = 1;
-    dLpF = AC.createBiquadFilter(); dLpF.type = 'lowpass'; dLpF.frequency.value = 2200; dLpF.Q.value = -12;
-    delay.connect(dLpF); dLpF.connect(fb); fb.connect(delay); dLpF.connect(dRet); dRet.connect(verbIn); dRet.connect(dryBus);
-    // pitch delay e bit crusher como envios
-    pdIn = AC.createGain(); pdOut = AC.createGain(); pdOut.gain.value = 0; pdOut.connect(dryBus); pdOut.connect(verbIn);
-    crIn = AC.createGain(); crOut = AC.createGain(); crOut.gain.value = 0; crOut.connect(master);
-    // cada elemento tem seu canal: volume → brilho (filtro) → panorama → saída e envios
-    for (const k of ELEMS){
-      const bus = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 20000; lp.Q.value = 0.5;
-      const pn = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
-      bus.connect(lp); lp.connect(pn); pn.connect(dryBus); const snd = {};
-      for (const [suf, dest] of [['V', verbIn], ['D', delay], ['P', pdIn], ['B', crIn]]){ const gg = AC.createGain(); gg.gain.value = 0; pn.connect(gg); gg.connect(dest); snd[suf] = gg; }
-      srcBus[k] = { bus, lp, pn, snd };
-    }
-    if (AC.audioWorklet){
-      const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
-      AC.audioWorklet.addModule(url).then(() => {
-        pdNode = new AudioWorkletNode(AC, 'granizo-pitchdelay', { outputChannelCount: [2] }); pdIn.connect(pdNode); pdNode.connect(pdOut);
-        crusher = new AudioWorkletNode(AC, 'granizo-crusher', { outputChannelCount: [2] }); crusher.parameters.get('mix').value = 1; crIn.connect(crusher); crusher.connect(crOut);
-        applyMix();
-      }).catch(() => {});
-    }
-    droneG = AC.createGain(); droneG.gain.value = 0;
-    droneF = AC.createBiquadFilter(); droneF.type = 'lowpass'; droneF.frequency.value = 260; droneF.Q.value = 0.7;
-    droneF.connect(droneG); droneG.connect(srcBus.Dro.bus);
-    [[ROOT/2,'sine',0.55],[ROOT,'sawtooth',0.10],[ROOT*1.004,'sawtooth',0.10],[ROOT*1.4983,'sawtooth',0.06]].forEach(([f,type,g]) => {
-      const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
-      const gg = AC.createGain(); gg.gain.value = g; o.connect(gg); gg.connect(droneF); o.start(); droneOscs.push(o);
-    });
-    applyMix();
-  }
-  function applyMix(){
-    if (!AC) return;
-    const t = AC.currentTime;
-    master.gain.setTargetAtTime(P.vol, t, 0.1);
-    verbOut.gain.setTargetAtTime(P.verb*1.4, t, 0.1);
-    dryBus.gain.setTargetAtTime(1 - P.verb*0.45, t, 0.1);
-    droneG.gain.setTargetAtTime(P.drone*0.3, t, 1.5);
-    delay.delayTime.setTargetAtTime(P.dTime, t, 0.15); dFb.gain.setTargetAtTime(P.dFbk, t, 0.05);
-    dLpF.frequency.setTargetAtTime(P.dTone, t, 0.05); dRet.gain.setTargetAtTime(P.dMix*2.2, t, 0.05);
-    preDelay.delayTime.setTargetAtTime(P.vPre, t, 0.1);
-    for (const c of combs){
-      c.d.delayTime.setTargetAtTime(c.base*P.vSize, t, 0.2); c.fb.gain.setTargetAtTime(P.vDecay, t, 0.1);
-      c.lp.frequency.setTargetAtTime(P.vDamp, t, 0.1); c.lg.gain.setTargetAtTime(0.0035*P.vMod*P.vSize, t, 0.1);
-    }
-    pdOut.gain.setTargetAtTime(P.pMix*1.4, t, 0.05); crOut.gain.setTargetAtTime(P.bMix*1.2, t, 0.05);
-    for (const k in srcBus){
-      const b = srcBus[k], on = !P['mute'+k];
-      for (const suf in b.snd) b.snd[suf].gain.setTargetAtTime((P['s'+k+suf] || 0) * (suf === 'D' ? 1.2 : suf === 'P' ? 1.3 : 1), t, 0.05);
-      b.bus.gain.setTargetAtTime(on ? (P['vol'+k] ?? 1) : 0, t, 0.05);
-      b.lp.frequency.setTargetAtTime(150 * Math.pow(2, (P['bri'+k] ?? 1) * 7.05), t, 0.08);
-      if (b.pn.pan) b.pn.pan.setTargetAtTime(P['pan'+k] || 0, t, 0.08);
-    }
-    if (pdNode){ const pp = pdNode.parameters; pp.get('time').setTargetAtTime(P.pTime, t, 0.1); pp.get('fb').setTargetAtTime(P.pFbk, t, 0.05); pp.get('semi').setValueAtTime(P.pSemi, t); }
-    if (crusher){ const cp = crusher.parameters; cp.get('bits').setValueAtTime(P.bBits, t); cp.get('down').setValueAtTime(P.bDown, t); }
-    fxF.frequency.setTargetAtTime(P.oCut, t, 0.08); fxF.Q.setTargetAtTime(P.oRes, t, 0.08);
-    if (P.oDrive !== lastDrive){ lastDrive = P.oDrive; fx.drive(P.oDrive); }
-    width = P.oWidth;
-  }
-  // drone: fundamental e quinta em semitons acima do Ré
-  function droneTimbre(name){
-    if (!AC) return;
-    const types = { original: ['sine','sawtooth','sawtooth','sawtooth'], seno: ['sine','sine','sine','sine'], orgao: ['sine','sine','triangle','sine'],
-                    cordas: ['sine','sawtooth','sawtooth','sawtooth'], vidro: ['sine','triangle','sine','triangle'], quadrada: ['sine','square','square','square'] };
-    const tt = types[name] || types.original;
-    droneOscs.forEach((o, i) => { o.type = tt[i]; });
-    if (droneOscs[2]) droneOscs[2].detune.value = name === 'cordas' ? 14 : 0;
-  }
-  function setDrone(rootSemi, fifthSemi = 7, glide = 1.2, bright){
-    if (!AC) return;
-    const t = AC.currentTime, r = ROOT*Math.pow(2, rootSemi/12), f5 = r*Math.pow(2, fifthSemi/12);
-    [r/2, r, r*1.004, f5].forEach((f, i) => droneOscs[i].frequency.setTargetAtTime(f, t, glide));
-    if (bright != null) droneF.frequency.setTargetAtTime(bright, t, 0.8);
-  }
-  function scale(){ return SCALES[P.scale] || SCALES.dorico; }
-  function semi(d){ const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
+  function initAudio(){ MK.iniciar(); AC = MK.AC; }
+  function applyMix(){}
+  function scale(){ return SCALES[MK.S.modo] || SCALES.eolio; }
+  function semi(d){ d = Math.round(d); const sc = scale(), k = sc.length; return sc[((d % k)+k)%k] + 12*Math.floor(d/k); }
   function freq(d, base = ROOT*2){ return base*Math.pow(2, semi(d)/12); }
-  // acorde de cinco vozes (terças empilhadas) a partir do grau d
-  function chord(d){ const k = scale().length, rel = k === 7 ? [0,2,4,6,8] : k === 5 ? [0,1,2,3,5] : [0,1,2,3,4]; return rel.map(r => semi(d + r)); }
+  function chord(d){ return [0,2,4,6,8].map(r => semi(d + r)); }
   function chordName(d){
-    const sc = scale(), k = sc.length, r0 = semi(d), root = ((r0 % 12)+12)%12;
-    let name = NOTAS[root];
-    if (k === 7){ const third = semi(d+2) - r0, fifth = semi(d+4) - r0;
-      const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
-      if (q) name += ' ' + q; }
-    return name;
+    const r0 = semi(d), root = ((r0 % 12)+12)%12, third = semi(d+2) - r0, fifth = semi(d+4) - r0;
+    const q = third === 4 && fifth === 7 ? 'maior' : third === 3 && fifth === 7 ? 'menor' : third === 3 && fifth === 6 ? 'diminuto' : third === 4 && fifth === 8 ? 'aumentado' : '';
+    return NOTAS[root] + (q ? ' ' + q : '');
   }
-
-  function out(node, pan, send, dly, t, end, src){
-    let last = node;
-    if (AC.createStereoPanner && pan){ const p = AC.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan*width)); node.connect(p); last = p; }
-    last.connect(srcBus[src || curSrc].bus);
-    voices++; setTimeout(() => voices--, Math.max(50, (end - AC.currentTime)*1000 + 100));
+  // entrega no tempo certo (as obras agendam as notas um pouco à frente)
+  const quando = (t, fn) => { const dt = AC ? t - AC.currentTime : 0; if (dt > 0.03) setTimeout(fn, dt*1000); else fn(); };
+  // vozes que só dobram a harmonia (baixo, acorde, pulso grave, pad) não viram nota: o motor já tem baixo e pad próprios
+  const HARMONIA = /^(baixo|acor|acorde|pad|pulso|dro|drone|bass)/i;
+  let src = '';
+  function nota(f, t, vel, pan, s){
+    if (!AC || !(f > 15 && f < 20000)) return;
+    s = s || src;
+    if (HARMONIA.test(s)){ quando(t, () => MK.pulso(Math.min(1, vel)*0.3)); return; }
+    quando(t, () => MK.nota(f, { forca: Math.min(1, vel == null ? 0.8 : vel), pan: Math.max(-1, Math.min(1, pan || 0)) }));
   }
-  const ok = () => AC && voices < MAXV;
-  function bell(f, t, vel = 0.8, pan = 0, dur = 3){
-    if (!ok()) return;
-    const c = AC.createOscillator(), m = AC.createOscillator(), mg = AC.createGain(), g = AC.createGain();
-    c.frequency.value = f; m.frequency.value = f*2.76;
-    mg.gain.setValueAtTime(f*0.5, t); mg.gain.exponentialRampToValueAtTime(0.01, t+Math.min(0.9, dur));
-    m.connect(mg); mg.connect(c.frequency);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15*vel, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-    c.connect(g); out(g, pan, 0.6, 0.3, t, t+dur);
-    c.start(t); m.start(t); c.stop(t+dur+0.05); m.stop(t+dur+0.05);
+  // assinatura de cada timbre antigo: o último argumento de texto (se houver) é o nome do elemento
+  const nomeDe = a => { for (let i = a.length - 1; i >= 0; i--) if (typeof a[i] === 'string') return a[i]; return ''; };
+  const bell  = (f, t, vel = 0.8, pan = 0, ...r) => nota(f, t, vel, pan, nomeDe(r));
+  const soft  = (f, t, vel = 0.8, pan = 0, ...r) => nota(f, t, vel*0.85, pan, nomeDe(r));
+  const pluck = (f, t, vel = 0.8, pan = 0, ...r) => nota(f, t, vel, pan, nomeDe(r));
+  const sine  = (f, t, vel = 0.6, pan = 0, ...r) => nota(f, t, vel, pan, nomeDe(r));
+  const tone  = (f, t, vel = 0.8, pan = 0, s = '') => nota(f, t, vel, pan, s);
+  const pad   = (f, t, vel = 0.6) => { if (AC) quando(t, () => MK.pulso(vel*0.2)); };
+  const kick  = (t, vel = 0.8) => { if (AC) quando(t, () => MK.pulso(vel)); };
+  const tick  = (t, vel = 0.5) => { if (AC) quando(t, () => MK.pulso(vel*0.4)); };
+  // drone da obra → acorde do motor (o grau da escala mais próximo da nota pedida)
+  let ultimoDrone = null;
+  function setDrone(rootSemi){
+    if (!AC) return;
+    const alvo = ((Math.round(rootSemi) % 12) + 12) % 12; let g = 0, bd = 99;
+    for (let d = 0; d < 7; d++){ const dd = Math.abs(((semi(d) % 12) + 12) % 12 - alvo); if (dd < bd){ bd = dd; g = d; } }
+    if (g !== ultimoDrone){ ultimoDrone = g; MK.acorde(g); }
   }
-  function soft(f, t, vel = 0.8, pan = 0, dur = 1.6){
-    if (!ok()) return;
-    const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
-    o.type = 'triangle'; o.frequency.value = f;
-    lp.type = 'lowpass'; lp.frequency.setValueAtTime(Math.min(16000, f*6), t); lp.frequency.exponentialRampToValueAtTime(f*1.2, t+Math.min(0.9, dur));
-    o.connect(lp); lp.connect(g);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+0.025); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-    out(g, pan, 0.45, 0.15, t, t+dur);
-    o.start(t); o.stop(t+dur+0.05);
-  }
-  function pluck(f, t, vel = 0.8, pan = 0, dur = 0.9){
-    if (!ok()) return;
-    const o = AC.createOscillator(), o2 = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
-    o.type = 'sawtooth'; o.frequency.value = f; o2.type = 'square'; o2.frequency.value = f*1.003;
-    lp.type = 'lowpass'; lp.Q.value = 2; lp.frequency.setValueAtTime(Math.min(14000, f*10), t); lp.frequency.exponentialRampToValueAtTime(f*1.1, t+dur*0.6);
-    const g2 = AC.createGain(); g2.gain.value = 0.4; o2.connect(g2); g2.connect(lp);
-    o.connect(lp); lp.connect(g);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-    out(g, pan, 0.35, 0.2, t, t+dur);
-    o.start(t); o2.start(t); o.stop(t+dur+0.05); o2.stop(t+dur+0.05);
-  }
-  function pad(f, t, vel = 0.6, pan = 0, dur = 6, att = 1.2){
-    if (!ok()) return;
-    const g = AC.createGain(), lp = AC.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = Math.min(9000, f*4);
-    [-7, 7].forEach(dt => { const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = dt; o.connect(lp); o.start(t); o.stop(t+dur+0.1); });
-    lp.connect(g);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.035*vel, t+att); g.gain.setTargetAtTime(0.0001, t+Math.max(att, dur-att*1.5), att*0.5);
-    out(g, pan, 0.9, 0, t, t+dur);
-  }
-  function sine(f, t, vel = 0.6, pan = 0, dur = 4, att = 0.02){
-    if (!ok()) return;
-    const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14*vel, t+att); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-    o.connect(g); out(g, pan, 0.7, 0.1, t, t+dur); o.start(t); o.stop(t+dur+0.05);
-  }
-  function kick(t, vel = 0.8, f0 = 120){
-    if (!ok()) return;
-    const o = AC.createOscillator(), g = AC.createGain();
-    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(42, t+0.18);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5*vel, t+0.004); g.gain.exponentialRampToValueAtTime(0.0001, t+0.45);
-    o.connect(g); out(g, 0, 0.1, 0, t, t+0.5); o.start(t); o.stop(t+0.5);
-  }
-  let noiseBuf = null;
-  function tick(t, vel = 0.5, pan = 0, fc = 6000, dur = 0.05){
-    if (!ok()) return;
-    if (!noiseBuf){ noiseBuf = AC.createBuffer(1, AC.sampleRate*0.5|0, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1; }
-    const s = AC.createBufferSource(); s.buffer = noiseBuf;
-    const pc = (k, v) => (P[k] === undefined || isNaN(P[k]) ? v : P[k]);
-    dur *= pc('percLen', 1);
-    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = Math.min(18000, fc*pc('percTone', 1)); bp.Q.value = pc('percQ', 1.4);
-    const g = AC.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25*vel, t+0.002); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-    s.connect(bp); bp.connect(g); out(g, pan, 0.25, 0.1, t, t+dur); s.start(t, Math.random()*0.4); s.stop(t+dur+0.02);
-  }
-
-
-  // ---------- timbres: cada um vira espectro + parcial + filtro + envelope ----------
-  const SPECTRA = (() => {
-    const H = 32, mk = fn => { const im = new Float32Array(H+1); for (let n = 1; n <= H; n++) im[n] = fn(n); return im; };
-    return { sine: mk(n => n === 1 ? 1 : 0), triangle: mk(n => n % 2 ? 8/(Math.PI*Math.PI*n*n) * (((n-1)/2) % 2 ? -1 : 1) : 0),
-             sawtooth: mk(n => 2/(Math.PI*n) * (n % 2 ? 1 : -1)), square: mk(n => n % 2 ? 4/(Math.PI*n) : 0) };
-  })();
-  const TIMBRES = {
-    sino:      { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:2.6 },
-    corda:     { w:'sawtooth', r:1.003,pg:0.4,  cut:10, q:2,   a:0.004, d:1.1 },
-    macio:     { w:'triangle', r:0,    pg:0,    cut:6,  q:0.5, a:0.025, d:2.0 },
-    vidro:     { w:'sine',     r:2.76, pg:0.5,  cut:0,  q:0.5, a:0.006, d:3.2 },
-    marimba:   { w:'sine',     r:4.0,  pg:0.45, cut:0,  q:0.5, a:0.003, d:1.3 },
-    celesta:   { w:'sine',     r:3.0,  pg:0.4,  cut:0,  q:0.5, a:0.004, d:2.4 },
-    kalimba:   { w:'sine',     r:5.4,  pg:0.35, cut:0,  q:0.5, a:0.002, d:1.7 },
-    sopro:     { w:'triangle', r:2.0,  pg:0.22, cut:5,  q:0.5, a:0.09,  d:2.0 },
-    sinoGrave: { w:'sine',     r:1.48, pg:0.55, cut:0,  q:0.5, a:0.005, d:3.6 },
-    harpa:     { w:'square',   r:0,    pg:0,    cut:4,  q:0.5, a:0.003, d:2.0 },
-    pad:       { w:'sawtooth', r:1.006,pg:0.6,  cut:4,  q:0.5, a:0.6,   d:4.5 },
-    seno:      { w:'sine',     r:0,    pg:0,    cut:0,  q:0.5, a:0.02,  d:3.0 },
-    orgao:     { w:'sine',     r:2.0,  pg:0.5,  cut:0,  q:0.5, a:0.05,  d:3.0 },
-    coro:      { w:'triangle', r:1.004,pg:0.7,  cut:6,  q:0.5, a:0.8,   d:4.0 }
-  };
-  const waves = {};
-  function waveOf(w){ if (!waves[w]) waves[w] = AC.createPeriodicWave(new Float32Array(33), SPECTRA[w]); return waves[w]; }
-  const dflt = (k, v) => (P[k] === undefined || isNaN(P[k]) ? v : P[k]);
-  function tone(f, t, vel = 0.8, pan = 0, src = 'V1', durS){
-    if (!ok()) return;
-    const T = TIMBRES[P['tim'+src]] || TIMBRES.sino, manual = P.envMode === 'manual';
-    // ajustes do elemento multiplicam os gerais
-    const em = (k, v) => dflt(k + src, v);
-    const tBright = dflt('tBright', 1), tPart = dflt('tPart', 1)*em('tp', 1), tRatio = dflt('tRatio', 1)*em('tr', 1),
-          tDet = dflt('tDet', 0) + em('td', 0), tLen = dflt('tLen', 1)*em('tl', 1), aMul = em('ta', 1);
-    f *= Math.pow(2, em('oc', 0));
-    const g = AC.createGain(), lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.connect(g);
-    const o = AC.createOscillator(); o.setPeriodicWave(waveOf(T.w)); o.frequency.value = f; o.connect(lp);
-    let o2 = null;
-    if (tDet > 0){ o2 = AC.createOscillator(); o2.setPeriodicWave(waveOf(T.w)); o2.frequency.value = f; o2.detune.value = tDet; o.detune.value = -tDet*0.5; o2.connect(lp); }
-    const lvl = 0.14 * vel * (T.w === 'sawtooth' || T.w === 'square' ? 0.5 : 1) * (o2 ? 0.75 : 1);
-    let end;
-    if (!manual){
-      const dur = (durS || T.d) * tLen;
-      lp.Q.value = T.q;
-      const c0 = Math.min(18000, f*(T.cut || 30)*tBright);
-      lp.frequency.setValueAtTime(c0, t);
-      if (T.cut) lp.frequency.exponentialRampToValueAtTime(Math.max(80, f*1.1*tBright), t + Math.min(0.9, dur*0.6));
-      const at = Math.min(dur*0.8, (src === 'Acor' && durS ? Math.min(1.2, durS*0.3) : T.a) * aMul);
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lvl, t + Math.max(0.001, at));
-      if (src === 'Acor'){ const rel = Math.max(0.15, at*0.5); g.gain.setTargetAtTime(0.0001, t + Math.max(at, dur - rel*3), rel); }   // acordes sustentam
-      else g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      end = t + dur;
-    } else {
-      const tr = t + Math.max(P.aA, 0.12*tLen);
-      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(lvl, t + P.aA);
-      g.gain.setTargetAtTime(lvl*P.aS, t + P.aA, P.aD/4); g.gain.setTargetAtTime(0, tr, P.aR/4);
-      const base = Math.min(18000, f*P.fCut*tBright), peak = Math.min(18000, base*Math.pow(2, P.fAmt));
-      lp.Q.value = P.fRes;
-      lp.frequency.setValueAtTime(base, t); lp.frequency.exponentialRampToValueAtTime(peak, t + P.fA);
-      lp.frequency.setTargetAtTime(Math.min(18000, base*Math.pow(2, P.fAmt*P.fS)), t + P.fA, P.fD/4);
-      lp.frequency.setTargetAtTime(base, tr, P.fR/4);
-      end = tr + P.aR*1.6;
-    }
-    let p = null;
-    if (T.r && T.pg*tPart > 0.005){
-      p = AC.createOscillator(); p.frequency.value = f*T.r*tRatio;
-      const pg = AC.createGain(); pg.gain.setValueAtTime(T.pg*tPart, t); pg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.9, end - t));
-      p.connect(pg); pg.connect(lp);
-    }
-    out(g, pan, 0, 0, t, end, src);
-    o.start(t); o.stop(end + 0.05); if (o2){ o2.start(t); o2.stop(end + 0.05); } if (p){ p.start(t); p.stop(end + 0.05); }
-  }
+  // efeitos antigos: agora são o Brilho e o Espaço do motor (estas chamadas não fazem nada)
+  const fx = { delay(){}, filter(){}, drive(){}, crush(){}, width(){} };
 
   // ---------- tela, painel, teclas ----------
   function toggleFull(){
@@ -848,23 +579,9 @@ const O = (() => {
     if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   }
   const fmt = v => v.toLocaleString('pt-BR');
-  // ---------- controles de efeitos ----------
-  const fx = {
-    delay(time, feedback, mix){ if (!AC) return; const t = AC.currentTime;
-      if (time > 0) delay.delayTime.setTargetAtTime(Math.min(1.95, time), t, 0.05);
-      dFb.gain.setTargetAtTime(Math.min(0.92, feedback), t, 0.05); dRet.gain.setTargetAtTime(time > 0 ? mix : 0, t, 0.05); },
-    filter(freq, q){ if (!AC) return; const t = AC.currentTime; fxF.frequency.setTargetAtTime(freq, t, 0.08); fxF.Q.setTargetAtTime(q, t, 0.08); },
-    drive(a){ if (!AC) return; if (a <= 0.001){ fxDrive.curve = null; return; }
-      const n = 2048, c = new Float32Array(n), k = 1 + a*30;
-      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.tanh(k*x)/Math.tanh(k); } fxDrive.curve = c; },
-    crush(a){ if (!AC) return; if (a <= 0.001){ fxCrush.curve = null; return; }
-      const bits = 16 - a*14, steps = Math.pow(2, bits)/2, n = 8192, c = new Float32Array(n);
-      for (let i = 0; i < n; i++){ const x = i/(n-1)*2 - 1; c[i] = Math.round(x*steps)/steps; } fxCrush.curve = c; },
-    width(w){ width = w; }
-  };
   return { fx, P, bind, readP, now, initAudio, applyMix, setDrone, freq, semi, chord, chordName, scale, SCALES, NOTAS, ROOT,
-    bell, soft, pluck, pad, sine, kick, tick, tone, droneTimbre, setSrc: k => { curSrc = k; }, setup, toggleFull, fmt,
-    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return droneF; } };
+    bell, soft, pluck, pad, sine, kick, tick, tone, droneTimbre(){}, setSrc: k => { src = k; }, setup, toggleFull, fmt, som: MK,
+    get AC(){ return AC; }, get running(){ return running; }, get droneF(){ return null; } };
 })();
 
 const cv = $('cv'), ctx = cv.getContext('2d');

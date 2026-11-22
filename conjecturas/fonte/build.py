@@ -98,7 +98,7 @@ def main():
         if not os.path.exists(os.path.join(AQUI, slug + '.html')): continue
         src = open(os.path.join(AQUI, slug + '.html')).read()
         html = src.replace('/*CORE_CSS*/', CSS).replace('<!--SOM-->', SOM).replace('//CORE_JS', JS).replace('//BANCO_JS', BANCO).replace('<!--VISTA3D-->', VISTA3D)
-        if 'src="../../lib/motor-knick.js"' not in html: html = html.replace('<head>', '<head><script src="../../lib/projecao.js"></script><script src="../../lib/motor-knick.js"></script>', 1)
+        if 'src="../../lib/motor-knick.js"' not in html: html = html.replace('<head>', '<head><script src="../../lib/projecao.js"></script><script src="../../lib/motor-knick.js"></script><script src="../../lib/explica.js"></script>', 1)
         pasta = os.path.join(DESTINO, slug); os.makedirs(pasta, exist_ok=True)
         open(os.path.join(pasta, 'index.html'), 'w').write(html)
         man = {"name": nome, "short_name": nome, "description": desc, "lang": "pt-BR", "start_url": "./", "scope": "./",

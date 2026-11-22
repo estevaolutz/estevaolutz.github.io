@@ -11,22 +11,36 @@
 <script src="../lib/motor-knick.js"></script>
 <script src="../lib/obra-base.js"></script>
 <script>
-/* Corpo de Partículas — o corpo de quem está diante da câmera vira milhares de partículas (a câmera nunca aparece).
+/* Corpo de Partículas v2 — o corpo de quem está diante da câmera vira dezenas de milhares de partículas (a câmera nunca aparece).
+   v2: profundidade 3D (o corpo ganha volume a partir da silhueta e relevo a partir da luz do rosto e da roupa),
+   luz e sombra esculpindo o volume, mais partículas nos detalhes (olhos, boca, dobras), foco e desfoque (bokeh),
+   névoa de profundidade, brilho difuso (bloom) e grão.
    Mão aberta espalha o corpo, mão fechada junta as partículas em volta do punho; o som faz o corpo respirar
-   e os ataques desprendem pedaços que voam e voltam. Sem ninguém na frente, as partículas flutuam soltas pela tela. */
+   e os ataques desprendem pedaços que voam em direção a quem olha. Sem ninguém na frente, as partículas flutuam soltas em 3D. */
 const O = ObraBase({
   titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa', toque: false,
-  texto: 'Fique diante da câmera: seu corpo vira partículas de luz. Abra a mão para espalhar, feche para juntar. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
+  texto: 'Fique diante da câmera: seu corpo vira partículas de luz, com volume, relevo e sombra. Abra a mão para espalhar, feche para juntar. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
   controles: [
     ['Corpo'],
     ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
     ['Coesao', 'Coesão', 0.6, 0.05, 1.5, 0.01],
     ['Contorno', 'Contorno', 0.45, 0, 1, 0.01],
-    ['Fluxo', 'Fluxo orgânico', 0.45, 0, 1.5, 0.01],
+    ['Fluxo', 'Fluxo orgânico', 0.35, 0, 1.5, 0.01],
     ['Respira', 'Respiração com o som', 0.6, 0, 2, 0.01],
     ['Desfaz', 'Desfazer nos ataques', 0.7, 0, 2, 0.01],
-    ['Brilho', 'Brilho', 0.7, 0.1, 2, 0.01],
-    ['Tamanho', 'Tamanho do ponto', 1.4, 0.6, 3, 0.1],
+    ['Brilho', 'Brilho', 0.75, 0.1, 2, 0.01],
+    ['Tamanho', 'Tamanho do ponto', 1.2, 0.5, 3, 0.1],
+    ['Profundidade e textura'],
+    ['Profund', 'Profundidade 3D', 0.8, 0, 1.5, 0.01],
+    ['Giro', 'Oscilação 3D', 0.35, 0, 1, 0.01],
+    ['Volume', 'Volume do corpo', 0.8, 0, 1.5, 0.01],
+    ['Relevo', 'Relevo (rosto, roupa)', 0.7, 0, 1.5, 0.01],
+    ['Detalhe', 'Detalhe (olhos, boca, dobras)', 0.7, 0, 1.5, 0.01],
+    ['Luz', 'Luz e sombra', 0.75, 0, 1, 0.01],
+    ['Foco', 'Plano de foco', 0.15, -1, 1, 0.01],
+    ['Desfoque', 'Desfoque (bokeh)', 0.5, 0, 1.5, 0.01],
+    ['Glow', 'Brilho difuso', 0.45, 0, 1.5, 0.01],
+    ['Grao', 'Grão', 0.3, 0, 1, 0.01],
     ['Mãos'],
     ['Espalha', 'Mão aberta espalha', 1, 0, 2.5, 0.01],
     ['Junta', 'Mão fechada junta', 1, 0, 2.5, 0.01],
@@ -41,41 +55,120 @@ const O = ObraBase({
 });
 const { gl } = O, HUD = ObraBase.HUD, clamp = O.clamp;
 
-// ---------------- partículas (coordenadas 0–1 da tela) ----------------
-const N = 26000;
-const px = new Float32Array(N), py = new Float32Array(N), vx = new Float32Array(N), vy = new Float32Array(N);
-const tx = new Float32Array(N), ty = new Float32Array(N), solto = new Float32Array(N), br = new Float32Array(N), az = new Float32Array(N);
-for (let i = 0; i < N; i++) { px[i] = tx[i] = Math.random(); py[i] = ty[i] = Math.random(); br[i] = 0.35 + Math.random() * 0.65; }
-
-// ---------------- máscara do corpo ----------------
-const MW = 160, MH = 160;
-const mascara = new Float32Array(MW * MH);
-let dentro = new Int32Array(0), borda = new Int32Array(0), temPessoa = 0, ultPessoa = -10;
-function listas(m) {
-  const a = [], b = [];
-  for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
-    const i = y * MW + x; if (m[i] < 0.5) continue; a.push(i);
-    if (m[i - 1] < 0.5 || m[i + 1] < 0.5 || m[i - MW] < 0.5 || m[i + MW] < 0.5) b.push(i);
-  }
-  dentro = Int32Array.from(a); borda = Int32Array.from(b);
+// ---------------- partículas (x, y em 0–1 da tela; z = profundidade, + perto de quem olha) ----------------
+const N = matchMedia('(pointer:coarse)').matches ? 24000 : 42000;
+const px = new Float32Array(N), py = new Float32Array(N), pz = new Float32Array(N);
+const vx = new Float32Array(N), vy = new Float32Array(N), vz = new Float32Array(N);
+const tx = new Float32Array(N), ty = new Float32Array(N), tu = new Float32Array(N), tv = new Float32Array(N), tj = new Int32Array(N).fill(-1), fz = new Float32Array(N);
+const solto = new Float32Array(N), br = new Float32Array(N), az = new Float32Array(N), sem = new Float32Array(N), luzP = new Float32Array(N).fill(1);
+for (let i = 0; i < N; i++) {
+  px[i] = tx[i] = Math.random(); py[i] = ty[i] = Math.random();
+  fz[i] = pz[i] = (Math.random() * 2 - 1) * 1.4;
+  br[i] = 0.3 + Math.pow(Math.random(), 0.7) * 0.7; sem[i] = Math.random();
 }
-// mapeia a máscara (coordenadas do vídeo, 0–1) para a tela, cobrindo e espelhando
+
+// ---------------- grades do corpo (coordenadas do vídeo) ----------------
+const MW = 200, MH = 150, NG = MW * MH;
+const mascara = new Float32Array(NG), lumRaw = new Float32Array(NG).fill(0.5), lumN = new Float32Array(NG);
+const dist = new Float32Array(NG), Z = new Float32Array(NG), SH = new Float32Array(NG).fill(1), ED = new Float32Array(NG);
+const cdf = new Float32Array(NG); let cdfTot = 0, dentroN = 0, temPessoa = 0, ultPessoa = -10;
+const lumCv = document.createElement('canvas'); lumCv.width = MW; lumCv.height = MH;
+const lumCtx = lumCv.getContext('2d', { willReadFrequently: true });
+
 const video = document.getElementById('vid');
 let camOn = false;
 const temCorpo = () => camOn && temPessoa > 0.02;
+// mapeia (u, v) do vídeo para a tela, cobrindo e espelhando
 function vidParaTela(u, v) {
   const vw = video.videoWidth || 4, vh = video.videoHeight || 3, s = Math.max(O.W / vw, O.H / vh);
   const x = (1 - u - 0.5) * vw * s / O.W + 0.5, y = (v - 0.5) * vh * s / O.H + 0.5; return [x, y];
 }
-function realvo(frac, todos) {
-  if (!dentro.length || !temCorpo()) return;
-  const n = Math.floor(N * frac), cont = O.P.Contorno;
-  for (let k = 0; k < n; k++) {
-    const i = todos ? k : (Math.random() * N) | 0;
-    const L = Math.random() < cont && borda.length ? borda : dentro, j = L[(Math.random() * L.length) | 0];
-    const u = ((j % MW) + Math.random()) / MW, v = (Math.floor(j / MW) + Math.random()) / MH;
-    const p = vidParaTela(u, v); tx[i] = p[0]; ty[i] = p[1];
+
+// lê a luz da câmera (sem mostrá-la) e transforma silhueta + luz em volume, relevo, sombra e mapa de detalhes
+function analisarGrades(t) {
+  const P = O.P;
+  if (video.readyState >= 2) {
+    try {
+      lumCtx.drawImage(video, 0, 0, MW, MH);
+      const d = lumCtx.getImageData(0, 0, MW, MH).data;
+      for (let i = 0, k = 0; i < NG; i++, k += 4) lumRaw[i] += ((0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2]) / 255 - lumRaw[i]) * 0.6;
+    } catch (e) {}
   }
+  // contraste local: normaliza a luz só dentro do corpo (funciona com pouca ou muita luz no ambiente)
+  let n = 0, s = 0, s2 = 0;
+  for (let i = 0; i < NG; i++) if (mascara[i] > 0.5) { const l = lumRaw[i]; s += l; s2 += l * l; n++; }
+  dentroN = n; if (!n) { cdfTot = 0; return; }
+  const med = s / n, dp = Math.sqrt(Math.max(1e-4, s2 / n - med * med));
+  for (let i = 0; i < NG; i++) lumN[i] = clamp((lumRaw[i] - med) / (dp * 3) + 0.5, 0, 1);
+  // distância até a borda (chamfer 3-4) → volume arredondado do corpo
+  const G = 1e6;
+  for (let i = 0; i < NG; i++) { const x = i % MW, y = (i / MW) | 0; dist[i] = mascara[i] > 0.5 && x > 0 && y > 0 && x < MW - 1 && y < MH - 1 ? G : 0; }
+  for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
+    const i = y * MW + x; if (!dist[i]) continue;
+    dist[i] = Math.min(dist[i], dist[i - 1] + 3, dist[i - MW] + 3, dist[i - MW - 1] + 4, dist[i - MW + 1] + 4);
+  }
+  let dmax = 1;
+  for (let y = MH - 2; y > 0; y--) for (let x = MW - 2; x > 0; x--) {
+    const i = y * MW + x; if (!dist[i]) continue;
+    const v = Math.min(dist[i], dist[i + 1] + 3, dist[i + MW] + 3, dist[i + MW + 1] + 4, dist[i + MW - 1] + 4);
+    dist[i] = v; if (v > dmax) dmax = v;
+  }
+  // profundidade: bojo da silhueta + relevo da luz (como uma litofania)
+  const vol = P.Volume, rel = P.Relevo;
+  for (let i = 0; i < NG; i++) {
+    const dn = dist[i] / dmax, bojo = Math.sqrt(dn);
+    Z[i] = dist[i] ? vol * (1.7 * bojo - 0.6) + rel * (lumN[i] - 0.5) * 1.5 * Math.min(1, dn * 5) : -0.6 * vol;
+  }
+  // normais → luz principal (gira devagar), luz de recorte nas bordas e "pele" a partir da luz da câmera
+  const la = t * 0.21, Lx = Math.cos(la) * 0.5, Ly = -0.55, Lz = 0.68, ll = Math.hypot(Lx, Ly, Lz);
+  const kz = 7 * (0.4 + P.Profund * 0.6), luz = P.Luz;
+  let emed = 0;
+  for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
+    const i = y * MW + x; if (!dist[i]) { SH[i] = 1; ED[i] = 0; continue; }
+    // x da grade é espelhado na tela
+    const nx = (Z[i + 1] - Z[i - 1]) * kz, ny = -(Z[i + MW] - Z[i - MW]) * kz, nl = Math.hypot(nx, ny, 1);
+    const difusa = Math.max(0, (nx * Lx + ny * Ly + Lz) / (nl * ll)), recorte = Math.pow(1 - 1 / nl, 1.5);
+    const pele = 0.12 + 1.35 * Math.pow(lumN[i], 1.2);
+    SH[i] = 1 + luz * ((0.22 + 1.05 * difusa + 0.9 * recorte) * pele - 1);
+    // detalhe: Sobel da luz normalizada (olhos, boca, sobrancelhas, dobras da roupa)
+    const a = lumN[i - MW - 1], b = lumN[i - MW], c = lumN[i - MW + 1], d = lumN[i - 1], f = lumN[i + 1], g = lumN[i + MW - 1], h = lumN[i + MW], k = lumN[i + MW + 1];
+    const gx = (c + 2 * f + k) - (a + 2 * d + g), gy = (g + 2 * h + k) - (a + 2 * b + c);
+    ED[i] = Math.hypot(gx, gy); emed += ED[i];
+  }
+  emed = emed / n * 2.5 + 1e-3;
+  // densidade: mais partículas nas bordas, nos detalhes e nas áreas iluminadas
+  const wc = P.Contorno * 3, wd = P.Detalhe * 2.6, wl = luz * 0.8;
+  let acc = 0;
+  for (let i = 0; i < NG; i++) {
+    if (dist[i]) {
+      const e = Math.min(1, ED[i] / emed); ED[i] = e;
+      const borda = dist[i] <= 4 ? 1 : 0;
+      acc += 0.55 + wc * borda + wd * e * e + wl * 1.6 * Math.pow(lumN[i], 1.5);
+    }
+    cdf[i] = acc;
+  }
+  cdfTot = acc;
+}
+function amostra() {
+  const r = Math.random() * cdfTot; let lo = 0, hi = NG - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (cdf[m] < r) lo = m + 1; else hi = m; }
+  return lo;
+}
+// cada partícula guarda um ponto fixo do corpo (coordenadas do vídeo): o desenho fica nítido e estável.
+// Uma pequena parte é redistribuída a cada quadro, e quem ficou fora do corpo (a pessoa se mexeu) ganha lugar novo.
+function alvoNovo(i) {
+  if (sem[i] < 0.07) return;   // ~7% ficam como poeira solta no ar, dando profundidade ao espaço
+  const j = amostra(); tj[i] = j;
+  tu[i] = ((j % MW) + Math.random()) / MW; tv[i] = (Math.floor(j / MW) + Math.random()) / MH;
+}
+let varre = 0;
+function realvo(frac) {
+  if (!cdfTot || !temCorpo()) return;
+  const n = Math.floor(N * frac);
+  for (let k = 0; k < n; k++) alvoNovo((Math.random() * N) | 0);
+  const lote = N >> 4;
+  for (let k = 0; k < lote; k++) { const i = (varre + k) % N; if ((tj[i] < 0 && sem[i] >= 0.07) || (tj[i] >= 0 && mascara[tj[i]] < 0.4)) alvoNovo(i); }
+  varre = (varre + lote) % N;
 }
 
 // ---------------- câmera + MediaPipe ----------------
@@ -109,8 +202,8 @@ function segmentar(ts) {
       const v = f[Math.floor(y / MH * h) * w + Math.floor(x / MW * w)], i = y * MW + x;
       mascara[i] += (v - mascara[i]) * 0.6; soma += mascara[i];
     }
-    temPessoa = soma / (MW * MH);
-    if (temPessoa > 0.02) { ultPessoa = performance.now() / 1000; listas(mascara); }
+    temPessoa = soma / NG;
+    if (temPessoa > 0.02) { ultPessoa = performance.now() / 1000; analisarGrades(ultPessoa); }
   });
 }
 const MAOS = [];   // { pts, cx, cy, ab, vista, perdida, abAnt }
@@ -138,24 +231,99 @@ addEventListener('pointerdown', (e) => { if (e.target.closest('#ob-panel,#ob-dot
 addEventListener('pointerup', () => { mouse.ab = 1; });
 
 // ---------------- WebGL ----------------
+// partículas: projeção em perspectiva, tamanho por distância, desfoque fora do plano de foco, névoa ao fundo
 const prog = ObraBase.programa(gl, `#version 300 es
-in vec4 aP; uniform float uPt; out vec2 vC;
-void main(){ gl_Position = vec4(aP.x*2.-1., 1.-aP.y*2., 0., 1.); vC = aP.zw; gl_PointSize = uPt * (.6 + aP.z*.7); }`,
-`#version 300 es
-precision highp float; in vec2 vC; uniform float uB, uAz; out vec4 o;
-void main(){ vec2 c = gl_PointCoord-.5; float m = 1.-smoothstep(.2,.5,length(c));
-  vec3 col = mix(vec3(1.), vec3(.3,.45,1.), clamp(vC.y*uAz,0.,1.)); o = vec4(col*vC.x*uB*m, 1.); }`);
-const fade = ObraBase.programa(gl, `#version 300 es
-in vec4 aP; void main(){ gl_Position = vec4(aP.xy,0.,1.); }`, `#version 300 es
+layout(location=0) in vec4 aP; layout(location=1) in vec2 aQ;
+uniform float uPt, uAsp, uYaw, uPitch, uDep, uFoco, uDesf, uT, uAz, uMax;
+out vec3 vC; out float vBlur;
+void main(){
+  vec3 p = vec3((aP.x-.5)*uAsp, .5-aP.y, aP.z*uDep*.3);
+  float cy = cos(uYaw), sy = sin(uYaw); p = vec3(cy*p.x + sy*p.z, p.y, -sy*p.x + cy*p.z);
+  float cp = cos(uPitch), sp = sin(uPitch); p = vec3(p.x, cp*p.y - sp*p.z, sp*p.y + cp*p.z);
+  float s = 2.4 / max(.4, 2.4 - p.z);
+  gl_Position = vec4(p.x*s/uAsp*2., p.y*s*2., 0., 1.);
+  float sd = aQ.y, tam = mix(.5, 1.25, fract(sd*7.13));
+  if (fract(sd*3.7) > .96) tam *= 2.;                      // grãos maiores espalhados
+  float blur = min(9., abs(p.z - uFoco*uDep*.3) * uDesf * 9.);
+  gl_PointSize = min(uMax, uPt * tam * s * (1. + blur));
+  vBlur = blur;
+  float tw = fract(sd*11.3) > .8 ? .55 + .45*sin(uT*(1.5 + sd*6.) + sd*80.) : 1.;   // cintilação
+  float nev = mix(1., .28, clamp(-p.z*1.8, 0., 1.) * min(1., uDep));               // névoa ao fundo
+  vec3 cor = mix(vec3(.72,.82,1.), vec3(1.,.97,.92), clamp(.5 + p.z*1.6, 0., 1.));  // perto quente, longe frio
+  cor = mix(cor, vec3(.3,.45,1.), clamp(aQ.x*uAz, 0., 1.));
+  vC = cor * aP.w * tw * nev * s * s / pow(1. + blur, 1.35);
+}`, `#version 300 es
+precision highp float; in vec3 vC; in float vBlur; uniform float uB; out vec4 o;
+void main(){
+  vec2 c = gl_PointCoord - .5; float r = length(c) * 2.;
+  float nucleo = exp(-r*r*7.) + .18*exp(-r*r*2.);
+  float disco = smoothstep(1., .82, r) * (.55 + .45*smoothstep(.45, .92, r));      // bokeh com anel
+  float m = mix(nucleo, disco * .6, clamp(vBlur * .5, 0., 1.));
+  if (m < .004) discard;
+  o = vec4(vC * m * uB, 1.);
+}`);
+const QV = `#version 300 es
+in vec4 aP; out vec2 vU; void main(){ vU = aP.xy*.5 + .5; gl_Position = vec4(aP.xy, 0., 1.); }`;
+const fade = ObraBase.programa(gl, QV, `#version 300 es
 precision highp float; uniform float uA; out vec4 o; void main(){ o = vec4(0.,0.,0.,uA); }`);
-const dados = new Float32Array(N * 4);
+const blur = ObraBase.programa(gl, QV, `#version 300 es
+precision highp float; in vec2 vU; uniform sampler2D uTx; uniform vec2 uD; out vec4 o;
+void main(){
+  vec3 s = texture(uTx, vU).rgb * .227;
+  s += (texture(uTx, vU + uD*1.385).rgb + texture(uTx, vU - uD*1.385).rgb) * .316;
+  s += (texture(uTx, vU + uD*3.231).rgb + texture(uTx, vU - uD*3.231).rgb) * .07;
+  o = vec4(s, 1.);
+}`);
+const final = ObraBase.programa(gl, QV, `#version 300 es
+precision highp float; in vec2 vU; uniform sampler2D uA, uBl; uniform float uGlow, uGrao, uT, uHdr; uniform vec2 uRes; out vec4 o;
+float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main(){
+  vec3 c = texture(uA, vU).rgb, b = texture(uBl, vU).rgb;
+  c += b * uGlow * 1.6;
+  if (uHdr > .5) c = 1. - exp(-c * 1.6);
+  float g = h(floor(vU*uRes) + fract(uT*7.31)*91.7) - .5;
+  c *= 1. + g * uGrao * .9;                       // grão nas partículas
+  c += g * uGrao * .018 + uGrao * .006;           // grão fino no escuro
+  c *= mix(1., smoothstep(1.3, .3, length((vU - .5) * vec2(1.25, 1.))), .45);   // vinheta
+  o = vec4(max(c, 0.), 1.);
+}`);
+
+const ST = 6, dados = new Float32Array(N * ST);
 const vao = gl.createVertexArray(), buf = gl.createBuffer();
 gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, dados.byteLength, gl.DYNAMIC_DRAW);
-gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, ST * 4, 0);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, ST * 4, 16);
 const vaoQ = gl.createVertexArray(), bq = gl.createBuffer();
 gl.bindVertexArray(vaoQ); gl.bindBuffer(gl.ARRAY_BUFFER, bq); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 0, 3, -1, 0, 0, -1, 3, 0, 0]), gl.STATIC_DRAW);
 gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
 gl.bindVertexArray(null);
+const MAXPT = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 64;
+
+// alvos de renderização: acúmulo (com rastro) em ponto flutuante quando o aparelho permite + bloom em 1/4
+const HDR = !!gl.getExtension('EXT_color_buffer_float');
+function alvo(w, h) {
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  if (HDR) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fb, w, h };
+}
+let RT = null;
+function criarAlvos() {
+  if (RT) for (const r of [RT.ac, RT.b1, RT.b2]) { gl.deleteTexture(r.tex); gl.deleteFramebuffer(r.fb); }
+  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, qw = Math.max(1, w >> 2), qh = Math.max(1, h >> 2);
+  RT = { ac: alvo(w, h), b1: alvo(qw, qh), b2: alvo(qw, qh) };
+}
+criarAlvos(); O.aoRedimensionar = criarAlvos;
+function passo(p, alvoRT, tex, dx, dy) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, alvoRT.fb); gl.viewport(0, 0, alvoRT.w, alvoRT.h);
+  gl.useProgram(p.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(p.u.uTx, 0);
+  gl.uniform2f(p.u.uD, dx, dy); gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
 
 // campo de fluxo suave (sem textura): soma de senos girando
 function fluxo(x, y, t) {
@@ -163,17 +331,18 @@ function fluxo(x, y, t) {
   return [Math.cos(a * 1.7), Math.sin(a * 1.7)];
 }
 function desfazer(f) {
-  const n = Math.floor(N * 0.12 * f * O.P.Desfaz), cx = Math.random(), cy = 0.3 + Math.random() * 0.4;
+  const n = Math.floor(N * 0.12 * f * O.P.Desfaz), cx = Math.random();
   for (let k = 0; k < n; k++) {
-    // desprende uma região do corpo, como sementes ao vento
+    // desprende uma região do corpo, como sementes ao vento, que voa em direção a quem olha
     const i = (Math.random() * N) | 0; if (Math.abs(px[i] - cx) > 0.25 + f * 0.2) continue;
     solto[i] = 1 + Math.random(); vx[i] += (Math.random() - 0.3) * 0.6 * f; vy[i] -= (0.2 + Math.random() * 0.6) * f;
+    vz[i] += (0.4 + Math.random() * 1.8) * f;
   }
 }
 O.aoTecla = (k) => { if (k === ' ') desfazer(1); };
 O.onNota((n) => { if (n.camada === 'bumbo') desfazer(0.35); });
 
-let ultAt = 0, tPassado = 0;
+let ultAt = 0, tEntrada = 0, corpoAnt = false;
 O.quadro((t, dt) => {
   const P = O.P, A = O.A, W = O.W, H = O.H, asp = W / H;
   // rastreamento (segmentação e mãos em quadros alternados)
@@ -181,7 +350,8 @@ O.quadro((t, dt) => {
     let ts = performance.now(); if (ts <= tsAnt) ts = tsAnt + 1; tsAnt = ts;
     try { if ((alterna++ % 2 === 0 && seg) || !det) segmentar(ts); else rastrearMaos(ts); } catch (e) {}
   }
-  realvo(0.012 + A.ataque * 0.01);
+  const entrou = temCorpo() && performance.now() / 1000 - tEntrada < 1.5;
+  realvo((entrou ? 0.04 : 0.003) + A.ataque * 0.008);
   if (A.ataque > 0.4 && t - ultAt > 0.35) { ultAt = t; desfazer(A.ataque); }
 
   // forças das mãos
@@ -197,38 +367,70 @@ O.quadro((t, dt) => {
 
   const coes = P.Coesao * (2.5 + A.grave * P.Respira * 3), am = Math.exp(-dt * 3), fl = P.Fluxo * 0.06, R2 = P.Raio * P.Raio;
   const corpo = temCorpo(), flL = corpo ? 1 : 0.5;
+  if (corpo && !corpoAnt) tEntrada = performance.now() / 1000; corpoAnt = corpo;
+  const vw = video.videoWidth || 4, vh = video.videoHeight || 3, esc = Math.max(W / vw, H / vh), ex = vw * esc / W, ey = vh * esc / H;
   const resp = 1 + Math.sin(t * 2) * 0.004 * P.Respira + A.grave * 0.02 * P.Respira;
+  const inflar = 1 + A.grave * P.Respira * 0.35, luz = P.Luz;
   for (let i = 0; i < N; i++) {
-    let x = px[i], y = py[i], ax = 0, ay = 0;
-    const s = solto[i];
+    let x = px[i], y = py[i], z = pz[i], ax = 0, ay = 0, azz = 0;
+    const s = solto[i], j = tj[i];
+    if (j >= 0) { tx[i] = (0.5 - tu[i]) * ex + 0.5; ty[i] = (tv[i] - 0.5) * ey + 0.5; }
     const kx = 0.5 + (tx[i] - 0.5) * resp, ky = 0.5 + (ty[i] - 0.5) * resp;
-    if (s > 0) { solto[i] = s - dt * 0.55; ay -= 0.04; } else if (corpo) { ax += (kx - x) * coes; ay += (ky - y) * coes; }
-    const f = fluxo(x, y, t); ax += f[0] * fl * (1 + s * 3) * flL; ay += f[1] * fl * (1 + s * 3) * flL;
+    let sh = 1;
+    if (s > 0) { solto[i] = s - dt * 0.55; ay -= 0.04; azz += (fz[i] - z) * 0.15; }
+    else if (corpo && j >= 0) { ax += (kx - x) * coes * 1.6; ay += (ky - y) * coes * 1.6; azz += (Z[j] * inflar - z) * coes * 1.4; sh = SH[j]; }
+    else azz += (fz[i] - z) * 0.5;
+    const f = fluxo(x, y, t), ff = fl * (1 + s * 3) * flL * (s <= 0 && corpo && j >= 0 ? 0.3 : 1);
+    ax += f[0] * ff; ay += f[1] * ff; azz += (f[0] - f[1]) * ff * 3;
     let azul = 0;
     for (let k = 0; k < mm.length; k++) {
       const m = mm[k], dx = (x - m.x) * asp, dy = y - m.y, d2 = dx * dx + dy * dy;
       if (d2 > R2 * 2.2) continue;
       const d = Math.sqrt(d2) + 0.01, w = 1 - Math.min(1, d2 / (R2 * 2.2));
-      if (m.ab > 0.5) { const F = P.Espalha * (m.ab - 0.4) * 2.2 * w / d * 0.12; ax += dx / asp * F; ay += dy * F; }
-      else { const F = P.Junta * (0.5 - m.ab) * 2 * w * 4; ax -= dx / asp * F; ay -= dy * F; ax += -dy / asp * F * 0.6; ay += dx * F * 0.6; }
+      if (m.ab > 0.5) { const F = P.Espalha * (m.ab - 0.4) * 2.2 * w / d * 0.12; ax += dx / asp * F; ay += dy * F; azz += F * 6 * (sem[i] - 0.5); }
+      else { const F = P.Junta * (0.5 - m.ab) * 2 * w * 4; ax -= dx / asp * F; ay -= dy * F; ax += -dy / asp * F * 0.6; ay += dx * F * 0.6; azz -= z * F; }
       azul = Math.max(azul, w);
     }
-    vx[i] = (vx[i] + ax * dt) * am; vy[i] = (vy[i] + ay * dt) * am;
-    px[i] = x + vx[i] * dt; py[i] = y + vy[i] * dt;
-    if (!corpo) { if (px[i] < -0.02) px[i] += 1.04; else if (px[i] > 1.02) px[i] -= 1.04; if (py[i] < -0.02) py[i] += 1.04; else if (py[i] > 1.02) py[i] -= 1.04; }
+    vx[i] = (vx[i] + ax * dt) * am; vy[i] = (vy[i] + ay * dt) * am; vz[i] = (vz[i] + azz * dt) * am;
+    px[i] = x + vx[i] * dt; py[i] = y + vy[i] * dt; pz[i] = clamp(z + vz[i] * dt * 3, -3, 3);
+    if (!corpo || j < 0) { if (px[i] < -0.02) px[i] += 1.04; else if (px[i] > 1.02) px[i] -= 1.04; if (py[i] < -0.02) py[i] += 1.04; else if (py[i] > 1.02) py[i] -= 1.04; }
     az[i] += (azul - az[i]) * 0.1;
-    const sp = Math.min(1, Math.hypot(vx[i], vy[i]) * 4);
-    dados[i * 4] = px[i]; dados[i * 4 + 1] = py[i];
-    dados[i * 4 + 2] = br[i] * (0.55 + A.agudo * 0.6 + sp * 0.5) * (s > 0 ? 0.8 : 1); dados[i * 4 + 3] = az[i];
+    luzP[i] += (sh - luzP[i]) * 0.2;
+    const sp = Math.min(1, Math.hypot(vx[i], vy[i]) * 4), o = i * ST;
+    dados[o] = px[i]; dados[o + 1] = py[i]; dados[o + 2] = pz[i];
+    dados[o + 3] = br[i] * (0.55 + A.agudo * 0.6 + sp * 0.5) * (s > 0 ? 0.85 : 1) * (s > 0 ? 1 : luzP[i]);
+    dados[o + 4] = az[i]; dados[o + 5] = sem[i];
   }
 
-  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight); gl.enable(gl.BLEND);
+  // 1) acúmulo com rastro
+  gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ac.fb); gl.viewport(0, 0, RT.ac.w, RT.ac.h);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.useProgram(fade.p); gl.uniform1f(fade.u.uA, 1 - P.Rastro);
   gl.bindVertexArray(vaoQ); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // 2) partículas em 3D
   gl.blendFunc(gl.ONE, gl.ONE); gl.useProgram(prog.p);
-  gl.uniform1f(prog.u.uPt, P.Tamanho * O.DPR); gl.uniform1f(prog.u.uB, P.Brilho * 0.55); gl.uniform1f(prog.u.uAz, P.Acento);
+  const dep = P.Profund, giro = P.Giro;
+  const yaw = giro * (0.42 * Math.sin(t * 0.23) + 0.12 * Math.sin(t * 0.61)), pitch = giro * 0.14 * Math.sin(t * 0.17 + 1);
+  gl.uniform1f(prog.u.uPt, P.Tamanho * O.DPR * Math.sqrt(Math.min(W, H) / 700) * 1.8);
+  gl.uniform1f(prog.u.uB, P.Brilho * (HDR ? 1.6 : 0.9) * Math.sqrt(26000 / N));
+  gl.uniform1f(prog.u.uAz, P.Acento); gl.uniform1f(prog.u.uAsp, asp);
+  gl.uniform1f(prog.u.uYaw, yaw); gl.uniform1f(prog.u.uPitch, pitch); gl.uniform1f(prog.u.uDep, dep);
+  gl.uniform1f(prog.u.uFoco, P.Foco * 2); gl.uniform1f(prog.u.uDesf, P.Desfoque); gl.uniform1f(prog.u.uT, t); gl.uniform1f(prog.u.uMax, MAXPT);
   gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, dados); gl.drawArrays(gl.POINTS, 0, N);
-  gl.bindVertexArray(null);
+  // 3) brilho difuso (bloom) em 1/4 da resolução
+  gl.disable(gl.BLEND); gl.bindVertexArray(vaoQ);
+  const qx = 1 / RT.b1.w, qy = 1 / RT.b1.h;
+  passo(blur, RT.b1, RT.ac.tex, qx, 0); passo(blur, RT.b2, RT.b1.tex, 0, qy);
+  passo(blur, RT.b1, RT.b2.tex, qx * 2.5, 0); passo(blur, RT.b2, RT.b1.tex, 0, qy * 2.5);
+  // 4) composição final na tela
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+  gl.useProgram(final.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, RT.ac.tex); gl.uniform1i(final.u.uA, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, RT.b2.tex); gl.uniform1i(final.u.uBl, 1);
+  gl.uniform1f(final.u.uGlow, P.Glow); gl.uniform1f(final.u.uGrao, P.Grao); gl.uniform1f(final.u.uT, t); gl.uniform1f(final.u.uHdr, HDR ? 1 : 0);
+  gl.uniform2f(final.u.uRes, gl.drawingBufferWidth, gl.drawingBufferHeight);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(null);
 
   // ---------------- dados ----------------
   const hx = O.hx; hx.clearRect(0, 0, W, H);
@@ -236,7 +438,7 @@ O.quadro((t, dt) => {
   // caixa do corpo
   let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
   for (let i = 0; i < N; i += 37) { if (solto[i] > 0) continue; x0 = Math.min(x0, tx[i]); x1 = Math.max(x1, tx[i]); y0 = Math.min(y0, ty[i]); y1 = Math.max(y1, ty[i]); }
-  if (corpo && x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${N} PTS · ${(temPessoa * 100).toFixed(1)}%`, ha * 0.45);
+  if (corpo && x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${N} PTS · ${(temPessoa * 100).toFixed(1)}% · Z ${dep.toFixed(2)}`, ha * 0.45);
   for (const m of mm) {
     const r = m.ref, nome = r === mouse ? 'CURSOR' : 'MÃO';
     HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);

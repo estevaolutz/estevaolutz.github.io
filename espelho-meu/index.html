@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><script src="../lib/projecao.js"></script><script src="../lib/gravacao.js"></script>
+<script src="../lib/camera.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Espelho Meu</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#e6e6e6;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+body.idle{cursor:none}
+#inicio{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#000;z-index:20;cursor:pointer;text-align:center;padding:24px;transition:opacity 1.6s}
+#inicio h1{margin:0;font-weight:200;letter-spacing:.42em;text-transform:uppercase;font-size:24px;padding-left:.42em}
+#inicio p{margin:0;color:#7b7b7b;max-width:420px;line-height:1.6;font-size:14px}
+#inicio .b{margin-top:12px;border:1px solid #ddd;border-radius:999px;padding:10px 28px;letter-spacing:.24em;font-size:12px;text-transform:uppercase}
+#inicio.fora{opacity:0;pointer-events:none}
+#msg{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#888;transition:opacity 1.5s;pointer-events:none;z-index:3}
+#ponto{position:fixed;right:14px;top:12px;width:30px;height:30px;border-radius:50%;border:1px solid #fff3;background:#0008;color:#ccc;font-size:15px;cursor:pointer;z-index:6;transition:opacity .4s}
+body.idle #ponto{opacity:0;pointer-events:none}
+#painel{position:fixed;right:0;top:0;bottom:0;width:330px;max-width:92vw;background:#0a0a0cf0;border-left:1px solid #ffffff14;overflow:auto;padding:52px 14px 30px;transform:translateX(102%);transition:transform .25s;z-index:5;font-size:12.5px}
+#painel.on{transform:none}
+#painel h2{font-size:14px;margin:0 0 2px;letter-spacing:.2em;font-weight:500;text-transform:uppercase}
+#painel .sub{color:#888;margin:0 0 12px;font-size:11.5px;line-height:1.5}
+#painel h3{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#9a9a9a;margin:16px 0 6px;font-weight:500;border-top:1px solid #ffffff12;padding-top:12px}
+.row{display:grid;grid-template-columns:1fr 110px 46px;gap:6px;align-items:center;margin:6px 0}
+.row label{color:#bbb}
+.row .v{text-align:right;font-variant-numeric:tabular-nums;color:#eee;font-size:11.5px}
+.row input[type=range]{width:100%;accent-color:#ddd}
+.chk{display:flex;gap:8px;align-items:center;margin:7px 0;color:#bbb;cursor:pointer}
+.chk input{accent-color:#ddd}
+select{background:#16161a;color:#eee;border:1px solid #333;border-radius:6px;padding:4px}
+.bts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.bts button,.b2{background:#16161a;color:#ddd;border:1px solid #2c2c32;border-radius:8px;padding:7px 6px;font-size:12px;cursor:pointer}
+.bts button:hover,.b2:hover{border-color:#777}
+.bts button kbd{color:#777;font-size:10px;margin-left:4px}
+#estado{font-variant-numeric:tabular-nums;color:#ddd;background:#111;border:1px solid #222;border-radius:8px;padding:8px;line-height:1.6;font-size:12px}
+#barra{height:4px;background:#222;border-radius:2px;margin-top:6px;overflow:hidden}
+#barra i{display:block;height:100%;width:0;background:#ddd}
+#nivel{position:fixed;left:12px;top:10px;font-size:11px;color:#bbb;text-shadow:0 1px 2px #000;font-variant-numeric:tabular-nums;z-index:4;pointer-events:none;display:none;white-space:pre}
+.dica{color:#777;font-size:11px;line-height:1.55;margin-top:14px}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<video id="video" playsinline muted style="display:none"></video>
+
+<div id="inicio">
+  <h1>Espelho Meu</h1>
+  <p>Fique de frente para a câmera, como diante de um espelho.<br>Olhe com atenção.</p>
+  <div class="b">Começar</div>
+</div>
+<div id="msg"></div>
+<div id="nivel"></div>
+
+<button id="ponto" title="Controles (H)">⋯</button>
+<aside id="painel">
+  <h2>Espelho Meu</h2>
+  <p class="sub">O reflexo começa fiel e, aos poucos, passa a ter vida própria. Quando a pessoa sai da frente da câmera, o espelho volta a dormir para o próximo visitante.</p>
+
+  <div id="estado">—<div id="barra"><i></i></div></div>
+
+  <h3>Tempo</h3>
+  <div class="row"><label>Espera inicial</label><input type="range" id="espera" min="0" max="120" step="1"><span class="v" id="espera-v"></span></div>
+  <div class="row"><label>Até ganhar vida</label><input type="range" id="duracao" min="0.5" max="15" step="0.5"><span class="v" id="duracao-v"></span></div>
+  <div class="row"><label>Dorme após ausência</label><input type="range" id="ausencia" min="2" max="30" step="1"><span class="v" id="ausencia-v"></span></div>
+  <label class="chk"><input type="checkbox" id="ciclo"> Depois de 1 min desperto, voltar a dormir e recomeçar</label>
+
+  <h3>Comportamento</h3>
+  <div class="row"><label>Intensidade</label><input type="range" id="intensidade" min="0.3" max="1.6" step="0.05"><span class="v" id="intensidade-v"></span></div>
+  <div class="row"><label>Frequência</label><input type="range" id="frequencia" min="0.3" max="2.5" step="0.05"><span class="v" id="frequencia-v"></span></div>
+  <div class="row"><label>Vida própria contínua</label><input type="range" id="vida" min="0" max="1.5" step="0.05"><span class="v" id="vida-v"></span></div>
+
+  <h3>Imagem</h3>
+  <div class="row"><label>Zoom</label><input type="range" id="zoom" min="1" max="2.5" step="0.05"><span class="v" id="zoom-v"></span></div>
+  <label class="chk"><input type="checkbox" id="espelhar"> Espelhar (como um espelho)</label>
+  <label class="chk"><input type="checkbox" id="malha"> Mostrar a malha do rosto</label>
+  <label class="chk"><input type="checkbox" id="mostranivel"> Mostrar o nível no canto da tela</label>
+
+  <h3>Testar gestos</h3>
+  <div class="bts" id="gestos"></div>
+  <div class="bts" style="margin-top:6px">
+    <button id="b-recomecar">Recomeçar <kbd>0</kbd></button>
+    <button id="b-pular">Pular para 100%</button>
+  </div>
+  <p class="dica">Teclas: H controles · F tela cheia · 1–9 gestos · 0 recomeçar · M malha.<br>Shift+C câmera · Shift+P projeção · Shift+R gravar.</p>
+</aside>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs';
+import Delaunator from 'https://cdn.jsdelivr.net/npm/delaunator@5.0.1/+esm';
+
+/* ===================== ajustes ===================== */
+const PADRAO = { espera: 20, duracao: 3, ausencia: 5, ciclo: false, intensidade: 1, frequencia: 1, vida: 1, zoom: 1, espelhar: true, malha: false, mostranivel: false };
+let A = Object.assign({}, PADRAO);
+try { Object.assign(A, JSON.parse(localStorage.getItem('espelho-meu') || '{}')); } catch (e) {}
+const salvar = () => { try { localStorage.setItem('espelho-meu', JSON.stringify(A)); } catch (e) {} };
+const FMT = { espera: (v) => v + ' s', duracao: (v) => v + ' min', ausencia: (v) => v + ' s', intensidade: (v) => Math.round(v * 100) + '%', frequencia: (v) => v.toFixed(2) + '×', vida: (v) => Math.round(v * 100) + '%', zoom: (v) => v.toFixed(2) + '×' };
+for (const k of Object.keys(FMT)) {
+  const el = document.getElementById(k), out = document.getElementById(k + '-v');
+  el.value = A[k]; out.textContent = FMT[k](+A[k]);
+  el.oninput = () => { A[k] = +el.value; out.textContent = FMT[k](A[k]); salvar(); };
+}
+for (const k of ['ciclo', 'espelhar', 'malha', 'mostranivel']) {
+  const el = document.getElementById(k); el.checked = !!A[k];
+  el.onchange = () => { A[k] = el.checked; salvar(); };
+}
+
+/* ===================== índices da malha (MediaPipe Face Mesh) ===================== */
+const OLHO = {
+  D: { sup: [246, 161, 160, 159, 158, 157, 173], inf: [33, 7, 163, 144, 145, 153, 154, 155, 133], dobra: [247, 30, 29, 27, 28, 56, 190], c1: 33, c2: 133, meioSup: 159, meioInf: 145, sobr: 105 },
+  E: { sup: [466, 388, 387, 386, 385, 384, 398], inf: [263, 249, 390, 373, 374, 380, 381, 382, 362], dobra: [467, 260, 259, 257, 258, 286, 414], c1: 263, c2: 362, meioSup: 386, meioInf: 374, sobr: 334 }
+};
+const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+const LABIO_SUP = new Set([61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 76, 62, 184, 74, 73, 72, 11, 302, 303, 304, 408, 306, 292, 42, 41, 38, 12, 268, 271, 272, 407, 183, 77]);
+LABIO_SUP.delete(77);
+const LABIO_INF = new Set([95, 88, 178, 87, 14, 317, 402, 318, 324, 146, 91, 181, 84, 17, 314, 405, 321, 375, 77, 90, 180, 85, 16, 315, 404, 320, 307, 96, 89, 179, 86, 15, 316, 403, 319, 325]);
+const BOCA_INT = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+
+/* ===================== WebGL ===================== */
+const cv = document.getElementById('gl');
+const gl = cv.getContext('webgl', { preserveDrawingBuffer: true, alpha: false, antialias: true });
+function sh(tipo, src) { const s = gl.createShader(tipo); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function prog(vs, fs) { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; }
+const POS = `uniform vec2 uVid; uniform vec2 uS;
+vec4 pos(vec2 d){ vec2 n = d / uVid * 2.0 - 1.0; return vec4(n.x * uS.x, -n.y * uS.y, 0.0, 1.0); }`;
+const pWarp = prog(`attribute vec2 aDst; attribute vec2 aSrc; varying vec2 vUv; ${POS}
+void main(){ gl_Position = pos(aDst); vUv = aSrc / uVid; }`,
+`precision mediump float; uniform sampler2D uTex; varying vec2 vUv;
+void main(){ gl_FragColor = vec4(texture2D(uTex, vUv).rgb, 1.0); }`);
+const pCor = prog(`attribute vec2 aDst; attribute float aVal; varying float vVal; ${POS}
+void main(){ gl_Position = pos(aDst); vVal = aVal; }`,
+`precision mediump float; uniform vec4 uC; uniform float uSuave; varying float vVal;
+void main(){ gl_FragColor = vec4(uC.rgb, uC.a * (1.0 - uSuave * smoothstep(0.35, 1.0, vVal))); }`);
+const bDst = gl.createBuffer(), bSrc = gl.createBuffer(), bIdx = gl.createBuffer(), bVal = gl.createBuffer();
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+
+let W = 0, H = 0;
+function tamanho() {
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  W = Math.round(innerWidth * dpr); H = Math.round(innerHeight * dpr);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+}
+addEventListener('resize', tamanho); tamanho();
+
+/* ===================== utilidades ===================== */
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const rnd = (a, b) => a + Math.random() * (b - a);
+const env = (p, at, rel) => sstep(0, at, p) * (1 - sstep(1 - rel, 1, p));
+const ruido = (t, s) => (Math.sin(t * 1.0 + s) * 0.5 + Math.sin(t * 2.31 + s * 1.7) * 0.3 + Math.sin(t * 4.13 + s * 2.9) * 0.2);
+const silabas = (t, s) => { const m = 0.5 + 0.5 * Math.sin(t * 17 + Math.sin(t * 5.3 + s) * 2.2); return Math.pow(m, 1.4) * (0.6 + 0.4 * Math.sin(t * 2.1 + s)); };
+
+/* ===================== coreografia ===================== */
+// Canais que deformam o reflexo. "D" e "E" são os lados do próprio rosto da pessoa.
+const ZERO = () => ({ piscaD: 0, piscaE: 0, olharX: 0, olharY: 0, encarar: 0, sobrD: 0, sobrE: 0, sorrD: 0, sorrE: 0, boca: 0, incl: 0, aceno: 0 });
+const lado = () => (Math.random() < 0.5 ? 'D' : 'E');
+const GESTOS = {
+  piscar:      { nome: 'Piscar um olho', grupo: 'olhos', min: 0.15, peso: 3, dur: [0.18, 0.3], ini: () => ({ l: lado() }), f: (p, a, s) => ({ ['pisca' + s.l]: env(p, 0.4, 0.5) * Math.min(1, 0.55 + 0.5 * a) }) },
+  piscarDois:  { nome: 'Piscar sozinho', grupo: 'olhos', min: 0.08, peso: 3, dur: [0.2, 0.3], ini: () => ({}), f: (p, a) => { const v = env(p, 0.4, 0.5) * Math.min(1, 0.6 + 0.5 * a); return { piscaD: v, piscaE: v }; } },
+  olhar:       { nome: 'Olhar para o lado', grupo: 'olhar', min: 0.2, peso: 3, dur: [1.2, 3.6], ini: () => ({ x: (Math.random() < 0.5 ? -1 : 1) * rnd(0.5, 1), y: rnd(-0.5, 0.5) }), f: (p, a, s) => { const e = env(p, 0.13, 0.2); return { olharX: s.x * e * a, olharY: s.y * e * a }; } },
+  canto:       { nome: 'Canto da boca', grupo: 'boca', min: 0.25, peso: 2, dur: [0.25, 0.55], ini: () => ({ l: lado() }), f: (p, a, s) => ({ ['sorr' + s.l]: env(p, 0.35, 0.5) * 0.4 * a }) },
+  sobrancelha: { nome: 'Erguer sobrancelha', grupo: 'sobr', min: 0.3, peso: 2, dur: [0.9, 2.2], ini: () => ({ l: lado(), v: rnd(0.5, 1) }), f: (p, a, s) => ({ ['sobr' + s.l]: env(p, 0.25, 0.35) * s.v * a }) },
+  meioSorriso: { nome: 'Meio sorriso', grupo: 'boca', min: 0.45, peso: 2, dur: [2, 4.5], ini: () => ({ l: lado(), v: rnd(0.5, 0.9) }), f: (p, a, s) => ({ ['sorr' + s.l]: env(p, 0.3, 0.3) * s.v * a }) },
+  encarar:     { nome: 'Encarar', grupo: 'olhar', min: 0.5, peso: 2, dur: [4, 9], ini: () => ({}), f: (p, a) => ({ encarar: env(p, 0.15, 0.15) * Math.min(1, a * 1.2) }) },
+  fechar:      { nome: 'Fechar os olhos', grupo: 'olhos', min: 0.6, peso: 1.2, dur: [2.5, 4.5], ini: () => ({}), f: (p) => { const v = env(p, 0.35, 0.3); return { piscaD: v, piscaE: v }; } },
+  murmurar:    { nome: 'Murmurar', grupo: 'boca', min: 0.6, peso: 1.5, dur: [2, 4.5], ini: () => ({ s: rnd(0, 9) }), f: (p, a, s, t) => ({ boca: env(p, 0.1, 0.15) * a * 0.35 * silabas(t, s.s) }) },
+  inclinar:    { nome: 'Inclinar a cabeça', grupo: 'cabeca', min: 0.65, peso: 1.5, dur: [3, 6], ini: () => ({ d: (Math.random() < 0.5 ? -1 : 1) * rnd(1.5, 3) }), f: (p, a, s) => ({ incl: env(p, 0.3, 0.3) * s.d * a }) },
+  acenar:      { nome: 'Acenar com a cabeça', grupo: 'cabeca', min: 0.7, peso: 1, dur: [1.3, 2.2], ini: () => ({}), f: (p, a) => ({ aceno: Math.sin(p * Math.PI * 4) * env(p, 0.15, 0.25) * a }) },
+  sorriso:     { nome: 'Sorrir', grupo: 'boca', min: 0.8, peso: 1.5, dur: [3, 5], ini: () => ({ v: rnd(0.6, 1) }), f: (p, a, s) => { const v = env(p, 0.3, 0.3) * s.v * a; return { sorrD: v, sorrE: v, sobrD: v * 0.2, sobrE: v * 0.2 }; } },
+  falar:       { nome: 'Falar', grupo: 'boca', min: 0.85, peso: 1.5, dur: [3, 6], ini: () => ({ s: rnd(0, 9) }), f: (p, a, s, t) => ({ boca: env(p, 0.05, 0.1) * a * 0.65 * silabas(t * 1.1, s.s), sorrD: 0.08 * a, sorrE: 0.08 * a }) }
+};
+const ORDEM = Object.keys(GESTOS);
+
+let ativos = [];          // { k, t0, dur, s }
+let proximo = 0;          // tempo (s) do próximo gesto
+let presente = 0;         // segundos diante do espelho
+let ausente = 0;          // segundos sem rosto
+let nivel = 0;
+let relogio = 0;
+
+function iniciarGesto(k, forcar) {
+  const g = GESTOS[k];
+  ativos = ativos.filter((x) => GESTOS[x.k].grupo !== g.grupo || !forcar);
+  if (!forcar && ativos.some((x) => GESTOS[x.k].grupo === g.grupo)) return false;
+  ativos.push({ k, t0: relogio, dur: rnd(g.dur[0], g.dur[1]), s: g.ini(), forcado: !!forcar });
+  return true;
+}
+function sortear() {
+  const ok = ORDEM.filter((k) => GESTOS[k].min <= nivel && !ativos.some((x) => GESTOS[x.k].grupo === GESTOS[k].grupo));
+  if (!ok.length) return;
+  // gestos novos (mais "vivos") ganham peso conforme o nível sobe
+  const pesos = ok.map((k) => GESTOS[k].peso * (1 + 2 * clamp((nivel - GESTOS[k].min) * 3, 0, 1) * (GESTOS[k].min > 0.4 ? 1 : 0.3)));
+  let r = Math.random() * pesos.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < ok.length; i++) { r -= pesos[i]; if (r <= 0) return iniciarGesto(ok[i]); }
+}
+function recomecar() { presente = 0; ausente = 0; nivel = 0; ativos = []; proximo = 0; }
+
+function calcNivel() {
+  const t = presente - A.espera, d = A.duracao * 60;
+  if (t <= 0) return 0;
+  if (t < d) return sstep(0, 1, t / d);
+  if (!A.ciclo) return 1;
+  const tt = t - d;
+  if (tt < 60) return 1;
+  if (tt < 80) return 1 - (tt - 60) / 20;
+  recomecar(); return 0;
+}
+
+function canais(dt, temRosto) {
+  relogio += dt;
+  if (temRosto) { presente += dt; ausente = 0; }
+  else { ausente += dt; if (ausente > A.ausencia && presente > 0) recomecar(); }
+  nivel = calcNivel();
+  const ch = ZERO();
+  if (!temRosto) { ativos = ativos.filter((x) => x.forcado && relogio - x.t0 < x.dur); return ch; }
+
+  // agenda o próximo gesto
+  if (nivel > 0.05) {
+    if (!proximo) proximo = relogio + rnd(2, 5);
+    const max = 1 + Math.floor(nivel * 2.2);
+    if (relogio >= proximo) {
+      if (ativos.filter((x) => !x.forcado).length < max) sortear();
+      proximo = relogio + lerp(13, 2.2, Math.pow(nivel, 0.8)) * rnd(0.6, 1.4) / A.frequencia;
+    }
+  }
+  const amp = A.intensidade * lerp(0.35, 1, nivel);
+  ativos = ativos.filter((x) => relogio - x.t0 < x.dur);
+  for (const x of ativos) {
+    const p = (relogio - x.t0) / x.dur;
+    const a = x.forcado ? A.intensidade * Math.max(0.8, lerp(0.35, 1, nivel)) : amp;
+    const r = GESTOS[x.k].f(p, a, x.s, relogio - x.t0);
+    for (const c in r) ch[c] += r[c];
+  }
+  // vida própria contínua: depois da metade, o reflexo nunca fica totalmente parado
+  const k = sstep(0.5, 1, nivel) * A.vida * A.intensidade;
+  if (k > 0) {
+    ch.olharX += ruido(relogio * 0.21, 1) * 0.22 * k;
+    ch.olharY += ruido(relogio * 0.17, 4) * 0.12 * k;
+    ch.incl += ruido(relogio * 0.09, 7) * 1.1 * k;
+    const s = Math.max(0, ruido(relogio * 0.06, 2)) * 0.18 * k;
+    ch.sorrD += s; ch.sorrE += s * 0.7;
+  }
+  ch.piscaD = clamp(ch.piscaD, 0, 1); ch.piscaE = clamp(ch.piscaE, 0, 1);
+  ch.encarar = clamp(ch.encarar, 0, 1); ch.boca = clamp(ch.boca, 0, 1);
+  return ch;
+}
+
+/* ===================== deformação ===================== */
+// P: pontos do rosto em pixels do vídeo (478 × [x,y]). Devolve os destinos deformados.
+function deformar(P, ch) {
+  const n = P.length;
+  const D = new Float32Array(n * 2);
+  const px = (i) => P[i][0], py = (i) => P[i][1];
+  let ux = px(263) - px(33), uy = py(263) - py(33);
+  const larg = Math.hypot(ux, uy) || 1; ux /= larg; uy /= larg;
+  const vx = -uy, vy = ux;                       // "para baixo" no rosto
+  const add = (i, x, y) => { D[i * 2] += x; D[i * 2 + 1] += y; };
+  const gauss = (cx, cy, raio, dx, dy, filtro) => {
+    const r2 = raio * raio;
+    for (let i = 0; i < n; i++) {
+      if (filtro && !filtro(i)) continue;
+      const ex = px(i) - cx, ey = py(i) - cy, w = Math.exp(-(ex * ex + ey * ey) / r2);
+      if (w > 0.003) add(i, dx * w, dy * w);
+    }
+  };
+
+  // íris: cada grupo vai para o olho mais próximo
+  const iris = {};
+  if (n >= 478) {
+    for (const base of [468, 473]) {
+      const cx = px(base), cy = py(base);
+      const dD = Math.hypot(cx - (px(33) + px(133)) / 2, cy - (py(33) + py(133)) / 2);
+      const dE = Math.hypot(cx - (px(263) + px(362)) / 2, cy - (py(263) + py(362)) / 2);
+      iris[dD < dE ? 'D' : 'E'] = [base, base + 1, base + 2, base + 3, base + 4];
+    }
+  }
+
+  for (const L of ['D', 'E']) {
+    const o = OLHO[L];
+    const lw = Math.hypot(px(o.c2) - px(o.c1), py(o.c2) - py(o.c1));
+
+    // sobrancelha (antes de piscar, para não arrastar a pálpebra fechada)
+    const sb = ch['sobr' + L];
+    if (sb) gauss(px(o.sobr), py(o.sobr), lw * 0.7, -vx * 0.22 * lw * sb, -vy * 0.22 * lw * sb, (i) => !o.inf.includes(i) && !(iris[L] || []).includes(i));
+
+    // piscar: pálpebra de cima desce até a de baixo; a dobra acompanha
+    const b = ch['pisca' + L];
+    if (b > 0.001) {
+      for (let j = 0; j < o.sup.length; j++) {
+        const u = o.sup[j], l = o.inf[j + 1];
+        const dx = (px(l) - px(u)) * 0.96 * b, dy = (py(l) - py(u)) * 0.96 * b;
+        add(u, dx, dy); add(o.dobra[j], dx * 0.42, dy * 0.42);
+      }
+      if (iris[L]) {
+        const mx = px(o.meioInf), my = py(o.meioInf);
+        for (const i of iris[L]) { const d = ((mx - px(i)) * vx + (my - py(i)) * vy) * 0.96 * b; add(i, vx * d, vy * d); }
+      }
+    }
+
+    // olhar: a íris anda dentro do olho
+    if (iris[L] && (ch.olharX || ch.olharY || ch.encarar)) {
+      const ic = iris[L][0];
+      let sx = ch.olharX * 0.18 * lw, sy = ch.olharY * 0.07 * lw;
+      if (ch.encarar) {
+        const mx = (px(o.c1) + px(o.c2)) / 2, my = (py(o.meioSup) + py(o.meioInf)) / 2;
+        const ex = mx - px(ic), ey = my - py(ic);
+        sx += ch.encarar * (ex * ux + ey * uy);
+        sy += ch.encarar * 0.5 * (ex * vx + ey * vy);
+      }
+      sx = clamp(sx, -0.22 * lw, 0.22 * lw); sy = clamp(sy, -0.08 * lw, 0.08 * lw) * (1 - b);
+      for (const i of iris[L]) add(i, ux * sx + vx * sy, uy * sx + vy * sy);
+    }
+  }
+
+  // boca
+  const mcx = (px(61) + px(291)) / 2, mcy = (py(61) + py(291)) / 2;
+  const hw = Math.hypot(px(291) - px(61), py(291) - py(61)) / 2;
+  for (const [L, c] of [['D', 61], ['E', 291]]) {
+    const s = ch['sorr' + L];
+    if (!s) continue;
+    let ox = px(c) - mcx, oy = py(c) - mcy; const ol = Math.hypot(ox, oy) || 1; ox /= ol; oy /= ol;
+    gauss(px(c), py(c), hw * 0.55, (ox * 0.16 - vx * 0.13) * hw * s, (oy * 0.16 - vy * 0.13) * hw * s);
+    const bx = px(c) - vx * 0.6 * hw + ox * 0.2 * hw, by = py(c) - vy * 0.6 * hw + oy * 0.2 * hw;
+    gauss(bx, by, hw * 0.7, -vx * 0.06 * hw * s, -vy * 0.06 * hw * s);
+  }
+  if (ch.boca > 0.001) {
+    const j = ch.boca * 0.45 * hw;
+    for (let i = 0; i < Math.min(n, 468); i++) {
+      if (LABIO_SUP.has(i)) continue;
+      const ex = px(i) - mcx, ey = py(i) - mcy;
+      const lx = ex * ux + ey * uy, ly = ex * vx + ey * vy;
+      const wl = Math.exp(-Math.pow(lx / (hw * 0.95), 2) * 1.6);
+      const wy = LABIO_INF.has(i) ? 1 : sstep(0, 0.25 * hw, ly);
+      if (wl * wy > 0.003) add(i, vx * j * wl * wy, vy * j * wl * wy);
+    }
+  }
+
+  // cabeça: inclinação em torno da ponta do nariz e pequeno aceno
+  const ang = ch.incl * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+  const nod = ch.aceno * 0.03 * larg;
+  const cx = px(1), cy = py(1);
+  const out = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const x = px(i) + D[i * 2] - cx, y = py(i) + D[i * 2 + 1] - cy;
+    out[i * 2] = cx + x * ca - y * sa + vx * nod;
+    out[i * 2 + 1] = cy + x * sa + y * ca + vy * nod;
+  }
+  return { out, hw };
+}
+
+/* ===================== montagem da malha ===================== */
+let ultimaMalha = null;
+function malha(P, ch, vw, vh) {
+  const pts = [], src = [], dst = [];
+  const push = (sx, sy, dx, dy) => { src.push(sx, sy); dst.push(dx, dy); };
+  let def = null, bocaPts = null;
+  if (P) {
+    def = deformar(P, ch);
+    // íris: entram só o centro e os dois pontos laterais (os de cima/baixo ficam escondidos pela pálpebra)
+    const fora = new Set();
+    if (P.length >= 478) {
+      let ux = P[263][0] - P[33][0], uy = P[263][1] - P[33][1]; const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
+      for (const b of [468, 473]) {
+        const r = [1, 2, 3, 4].map((k) => b + k).sort((a, c) => Math.abs((P[a][0] - P[b][0]) * ux + (P[a][1] - P[b][1]) * uy) - Math.abs((P[c][0] - P[b][0]) * ux + (P[c][1] - P[b][1]) * uy));
+        fora.add(r[0]); fora.add(r[1]);
+      }
+    }
+    for (let i = 0; i < P.length; i++) if (!fora.has(i)) push(P[i][0], P[i][1], def.out[i * 2], def.out[i * 2 + 1]);
+    // anel fixo em volta do rosto: a deformação se dissolve até ele
+    let cx = 0, cy = 0; for (const i of OVAL) { cx += P[i][0]; cy += P[i][1]; } cx /= OVAL.length; cy /= OVAL.length;
+    for (const i of OVAL) { const x = cx + (P[i][0] - cx) * 1.45, y = cy + (P[i][1] - cy) * 1.45; push(x, y, x, y); }
+    if (ch.boca > 0.02) bocaPts = BOCA_INT.map((i) => [def.out[i * 2], def.out[i * 2 + 1]]);
+  }
+  for (const [fx, fy] of [[-0.3, -0.3], [0.5, -0.3], [1.3, -0.3], [-0.3, 0.5], [1.3, 0.5], [-0.3, 1.3], [0.5, 1.3], [1.3, 1.3]]) push(fx * vw, fy * vh, fx * vw, fy * vh);
+  const del = new Delaunator(Float64Array.from(src));
+  return { src: new Float32Array(src), dst: new Float32Array(dst), tri: new Uint16Array(del.triangles), boca: bocaPts, hw: def ? def.hw : 0 };
+}
+
+/* ===================== desenho ===================== */
+function attr(p, nome, buf, dados, tam) {
+  const loc = gl.getAttribLocation(p, nome);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, dados, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, tam, gl.FLOAT, false, 0, 0);
+  return loc;
+}
+function unifs(p, vw, vh) {
+  const sa = W / H, va = vw / vh;
+  let sx = 1, sy = 1;
+  if (va > sa) sx = va / sa; else sy = sa / va;
+  sx *= A.zoom; sy *= A.zoom;
+  gl.uniform2f(gl.getUniformLocation(p, 'uVid'), vw, vh);
+  gl.uniform2f(gl.getUniformLocation(p, 'uS'), A.espelhar ? -sx : sx, sy);
+}
+function desenhar(M, vw, vh, boca) {
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(pWarp); unifs(pWarp, vw, vh);
+  const l1 = attr(pWarp, 'aDst', bDst, M.dst, 2), l2 = attr(pWarp, 'aSrc', bSrc, M.src, 2);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.uniform1i(gl.getUniformLocation(pWarp, 'uTex'), 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, M.tri, gl.DYNAMIC_DRAW);
+  gl.drawElements(gl.TRIANGLES, M.tri.length, gl.UNSIGNED_SHORT, 0);
+  gl.disableVertexAttribArray(l1); gl.disableVertexAttribArray(l2);
+
+  const cor = (dst, val, modo, c, suave, n) => {
+    gl.useProgram(pCor); unifs(pCor, vw, vh);
+    const a1 = attr(pCor, 'aDst', bDst, dst, 2), a2 = attr(pCor, 'aVal', bVal, val, 1);
+    gl.uniform4f(gl.getUniformLocation(pCor, 'uC'), c[0], c[1], c[2], c[3]);
+    gl.uniform1f(gl.getUniformLocation(pCor, 'uSuave'), suave);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(modo, 0, n);
+    gl.disable(gl.BLEND); gl.disableVertexAttribArray(a1); gl.disableVertexAttribArray(a2);
+  };
+  // interior da boca quando o reflexo abre a boca sozinho
+  if (M.boca && boca > 0.02) {
+    const B = M.boca; let cx = 0, cy = 0; for (const p of B) { cx += p[0]; cy += p[1]; } cx /= B.length; cy /= B.length;
+    const d = [], v = [];
+    for (let i = 0; i < B.length; i++) { const a = B[i], b = B[(i + 1) % B.length]; d.push(cx, cy, a[0], a[1], b[0], b[1]); v.push(0, 1, 1); }
+    cor(new Float32Array(d), new Float32Array(v), gl.TRIANGLES, [0.1, 0.035, 0.035, sstep(0.02, 0.3, boca) * 0.92], 1, d.length / 2);
+  }
+  if (A.malha) {
+    const d = [], t = M.tri;
+    for (let i = 0; i < t.length; i += 3) for (const [a, b] of [[t[i], t[i + 1]], [t[i + 1], t[i + 2]], [t[i + 2], t[i]]]) d.push(M.dst[a * 2], M.dst[a * 2 + 1], M.dst[b * 2], M.dst[b * 2 + 1]);
+    cor(new Float32Array(d), new Float32Array(d.length / 2), gl.LINES, [0.6, 1, 0.8, 0.35], 0, d.length / 2);
+  }
+}
+
+/* ===================== câmera + detecção ===================== */
+const video = document.getElementById('video');
+const msg = document.getElementById('msg');
+let detector = null, ultimoT = -1, rosto = null, ultimoQuadro = performance.now();
+let teste = null;   // { P, img, w, h } — usado só para testes sem câmera
+const dizer = (t, seg) => { msg.textContent = t; msg.style.opacity = 1; clearTimeout(dizer.t); if (seg) dizer.t = setTimeout(() => (msg.style.opacity = 0), seg * 1000); };
+
+async function carregarDetector() {
+  const fs = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm');
+  const op = (delegate) => ({ baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate }, runningMode: 'VIDEO', numFaces: 1, minFaceDetectionConfidence: 0.5, minFacePresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
+  try { detector = await FaceLandmarker.createFromOptions(fs, op('GPU')); }
+  catch (e) { detector = await FaceLandmarker.createFromOptions(fs, op('CPU')); }
+}
+
+async function comecar() {
+  document.getElementById('inicio').classList.add('fora');
+  dizer('abrindo a câmera…');
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
+    video.srcObject = s; await video.play().catch(() => {});
+  } catch (e) { dizer('não foi possível abrir a câmera'); return; }
+  dizer('o espelho está acordando…');
+  try { await carregarDetector(); dizer('', 0); msg.style.opacity = 0; }
+  catch (e) { console.error(e); dizer('não foi possível carregar o rastreamento do rosto'); }
+}
+addEventListener('camera-trocada', (e) => { if (e.detail && e.detail.stream) { video.srcObject = e.detail.stream; video.play().catch(() => {}); } });
+document.getElementById('inicio').onclick = comecar;
+
+/* ===================== laço ===================== */
+const elNivel = document.getElementById('nivel'), elEstado = document.getElementById('estado'), elBarra = document.querySelector('#barra i');
+const mmss = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+let ultimoUI = 0;
+function quadro(agora) {
+  requestAnimationFrame(quadro);
+  tamanho();
+  const dt = Math.min(0.1, (agora - ultimoQuadro) / 1000); ultimoQuadro = agora;
+  let vw, vh, P = null;
+  if (teste) {
+    vw = teste.w; vh = teste.h; P = teste.P;
+    if (!teste.subiu) { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, teste.img); teste.subiu = true; }
+  } else {
+    if (video.readyState < 2 || !video.videoWidth) return;
+    vw = video.videoWidth; vh = video.videoHeight;
+    if (video.currentTime !== ultimoT) {
+      ultimoT = video.currentTime;
+      if (detector) {
+        try {
+          const r = detector.detectForVideo(video, agora);
+          rosto = r.faceLandmarks && r.faceLandmarks[0] ? r.faceLandmarks[0].map((p) => [p.x * vw, p.y * vh]) : null;
+        } catch (e) { rosto = null; }
+      }
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+    }
+    P = rosto;
+  }
+  const ch = teste && teste.ch ? teste.ch : canais(dt, !!P);
+  const M = malha(P, ch, vw, vh);
+  ultimaMalha = M;
+  desenhar(M, vw, vh, ch.boca);
+
+  if (agora - ultimoUI > 250) {
+    ultimoUI = agora;
+    const nomes = ativos.map((x) => GESTOS[x.k].nome.toLowerCase()).join(', ');
+    const txt = (P ? 'diante do espelho há ' + mmss(presente) : (detector ? 'ninguém diante do espelho' : 'carregando…')) + '\nnível ' + Math.round(nivel * 100) + '%' + (nomes ? ' · ' + nomes : '');
+    elEstado.childNodes[0].nodeValue = txt;
+    elEstado.style.whiteSpace = 'pre-line';
+    elBarra.style.width = (nivel * 100) + '%';
+    elNivel.style.display = A.mostranivel ? 'block' : 'none';
+    if (A.mostranivel) elNivel.textContent = txt;
+  }
+}
+requestAnimationFrame(quadro);
+
+/* ===================== interface ===================== */
+const painel = document.getElementById('painel');
+document.getElementById('ponto').onclick = () => painel.classList.toggle('on');
+const gb = document.getElementById('gestos');
+ORDEM.forEach((k, i) => {
+  const b = document.createElement('button');
+  b.innerHTML = GESTOS[k].nome + (i < 9 ? '<kbd>' + (i + 1) + '</kbd>' : '');
+  b.onclick = () => iniciarGesto(k, true);
+  gb.appendChild(b);
+});
+document.getElementById('b-recomecar').onclick = recomecar;
+document.getElementById('b-pular').onclick = () => { presente = A.espera + A.duracao * 60; };
+addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'h') painel.classList.toggle('on');
+  else if (k === 'f') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
+  else if (k === 'm') { A.malha = !A.malha; document.getElementById('malha').checked = A.malha; salvar(); }
+  else if (k === '0') recomecar();
+  else if (/^[1-9]$/.test(k)) iniciarGesto(ORDEM[+k - 1], true);
+});
+let idle = 0;
+const acordar = () => { document.body.classList.remove('idle'); clearTimeout(idle); idle = setTimeout(() => document.body.classList.add('idle'), 2500); };
+addEventListener('pointermove', acordar); addEventListener('pointerdown', acordar); acordar();
+
+// gancho de teste (sem câmera): EspelhoTeste.rosto(pontos, imagem, canais)
+window.EspelhoTeste = { rosto: (P, img, ch) => { teste = { P, img, w: img.width, h: img.height, ch }; document.getElementById('inicio').classList.add('fora'); }, malha: () => ultimaMalha, GESTOS, deformar };
+</script>
+</body>
+</html>

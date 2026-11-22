@@ -9,7 +9,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 REPO = next((a[7:] for a in sys.argv[1:] if a.startswith('--repo=')), os.path.join(AQUI, '..', '..'))
 DESTINO = os.path.join(REPO, 'conjecturas')
 CSS = open(os.path.join(AQUI, 'core.css')).read()
-NUCLEO = open(os.path.join(AQUI, '..', '..', 'lib', 'motor-knick.js')).read() + '\n' + open(os.path.join(AQUI, 'nucleo2.js')).read()  # som = Motor Knick
+NUCLEO = open(os.path.join(AQUI, 'nucleo2.js')).read()  # som = Motor Knick, carregado de lib/motor-knick.js no <head>
 BANCO = open(os.path.join(AQUI, 'banco.js')).read()
 VISTA3D = '<script>\n' + open(os.path.join(AQUI, 'vista3d.js')).read() + '</script>\n'  # câmera 3D comum (só nas obras que chamam Vista3D)
 
@@ -38,7 +38,7 @@ OBRAS2 = {
 
 MOLDE = """<!DOCTYPE html>
 <html lang="pt-BR">
-<head><script src="{lib}projecao.js"></script>
+<head><script src="{lib}projecao.js"></script><script src="{lib}motor-knick.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">

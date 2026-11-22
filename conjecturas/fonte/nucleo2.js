@@ -95,9 +95,10 @@ function Nucleo(cfg){
     let pn = null; o.connect(lp); lp.connect(g);
     const dest = MK.barramento('vid');
     if (AC.createStereoPanner){ pn = AC.createStereoPanner(); g.connect(pn); pn.connect(dest); } else g.connect(dest);
-    o.start();
+    o.start(); let ultF = 0;
     return {
       set(f, gain, pan = 0, tc = 0.05, cut){ const t = AC.currentTime; if (f > 0) o.frequency.setTargetAtTime(f, t, tc); g.gain.setTargetAtTime(gain*0.35, t, tc);
+        if (f > 0 && gain > 0.01 && (!ultF || Math.abs(12*Math.log2(f/ultF)) >= 1)){ ultF = f; MK.memorizar(f, Math.min(1, gain*6)); }   // a altura da voz alimenta os arpejos
         if (pn) pn.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, tc); if (cut) lp.frequency.setTargetAtTime(Math.min(cut, 3000), t, tc); },
       stop(){ const t = AC.currentTime; g.gain.setTargetAtTime(0, t, 0.1); o.stop(t + 1); }
     };

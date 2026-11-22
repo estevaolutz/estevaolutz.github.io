@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><script src="../lib/projecao.js"></script>
+<head><script src="../lib/projecao.js"></script><script src="../lib/motor-knick.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Go Sonoro</title>
@@ -165,17 +165,20 @@ body.inst.mexeu #instSair{opacity:1}
     </section>
     <section class="box">
       <h3>Som</h3>
+      <div id="mkSom"></div>
+      <div class="som-antigo" hidden>
       <div class="row"><label>Escala</label><select id="scale">
         <option value="pentatonica">Pentatônica</option><option value="in">In (miyako-bushi)</option><option value="hirajoshi">Hirajōshi</option>
         <option value="maior">Maior</option><option value="menor">Menor natural</option><option value="dorico">Dórico</option>
         <option value="lidio">Lídio</option><option value="tons">Tons inteiros</option><option value="cromatica">Cromática</option></select></div>
       <div class="row"><label>Tônica</label><select id="tonic"></select></div>
-      <div class="row"><label>Andamento</label><input type="range" id="bpm" min="30" max="240" value="96"><span class="val" id="bpmV">96</span></div>
       <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="100" value="80"><span class="val" id="volV">80</span></div>
       <div class="row"><label>Reverberação</label><input type="range" id="rev" min="0" max="100" value="40"><span class="val" id="revV">40</span></div>
       <div class="row"><label>Eco</label><input type="range" id="dly" min="0" max="100" value="16"><span class="val" id="dlyV">16</span></div>
-      <label class="check"><input type="checkbox" id="harm" checked> Harmonia das pedras vizinhas</label>
       <label class="check"><input type="checkbox" id="drone" checked> Drone do território (segue a vantagem)</label>
+      </div>
+      <div class="row"><label>Lances (bpm)</label><input type="range" id="bpm" min="30" max="240" value="96"><span class="val" id="bpmV">96</span></div>
+      <label class="check"><input type="checkbox" id="harm" checked> Harmonia das pedras vizinhas</label>
       <label class="check"><input type="checkbox" id="vars" checked> Tocar as ramificações</label>
       <label class="check"><input type="checkbox" id="loop"> Repetir</label>
       <label class="check"><input type="checkbox" id="all"> Tocar todas as partidas do arquivo em sequência</label>
@@ -431,80 +434,34 @@ function droneChord(nd){
   return {notes:[t-12,t+7,t+(lead>=0?3:4)],gains:[.55,clamp(.25+inf.bl/tot,0,1),clamp(Math.abs(lead)*5,.05,1)],cut:220+inf.stones/tot*2600,lead};
 }
 
-/* ================= Áudio ================= */
-let AC=null,master,comp,revSend,dlySend,dly,recDest,drone=null,noiseBuf;
+/* ================= Áudio: Motor Knick (lib/motor-knick.js) ================= */
+// Cada lance vira acontecimento do motor: as notas da partida entram como notas de vidro no pulso dos arpejos,
+// capturas e choques animam o arranjo, e a vantagem na partida escolhe o acorde e a energia.
+const MK=MotorKnick({});
+MK.painel(document.getElementById('mkSom'),{titulo:false});
+let AC=null,master=null,dly=null,recDest=null,drone=null;
 const mtof=m=>440*Math.pow(2,(m-69)/12);
-function impulse(sec,decay){ const len=AC.sampleRate*sec,b=AC.createBuffer(2,len,AC.sampleRate);for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);}return b; }
+const SO_PULSO=new Set(['hit','clack','ko','whoosh','breath','trem']),HARMONIA=new Set(['bass','pad']);
 function ensureAudio(){
-  if(!AC){
-    AC=new (window.AudioContext||window.webkitAudioContext)();
-    comp=AC.createDynamicsCompressor();comp.threshold.value=-14;comp.ratio.value=4;
-    master=AC.createGain();master.gain.value=S.vol;master.connect(comp);comp.connect(AC.destination);
-    const rev=AC.createConvolver();rev.buffer=impulse(3.8,2.4);revSend=AC.createGain();revSend.connect(rev);rev.connect(master);
-    dly=AC.createDelay(3);dly.delayTime.value=60/S.bpm*.75;const fb=AC.createGain();fb.gain.value=.36;const lp=AC.createBiquadFilter();lp.frequency.value=2600;
-    dlySend=AC.createGain();dlySend.connect(dly);dly.connect(lp);lp.connect(fb);fb.connect(dly);lp.connect(master);
-    try{recDest=AC.createMediaStreamDestination();comp.connect(recDest);}catch(e){}
-    noiseBuf=AC.createBuffer(1,AC.sampleRate,AC.sampleRate);const nd=noiseBuf.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
-    buildDrone();if(cur)updateDrone(cur);
-  }
+  if(!AC){ MK.iniciar();AC=MK.AC;try{recDest=AC.createMediaStreamDestination();MK.saida.connect(recDest);}catch(e){}
+    try{if(cur)updateDrone(cur);}catch(e){} }
   if(AC.state==='suspended')AC.resume();
 }
-function bus(pan,rv,dl){
-  const g=AC.createGain(),p=AC.createStereoPanner();p.pan.value=clamp(pan,-1,1);g.connect(p);p.connect(master);
-  const r=AC.createGain();r.gain.value=rv;p.connect(r);r.connect(revSend);
-  const d=AC.createGain();d.gain.value=dl;p.connect(d);d.connect(dlySend);return g;
-}
-function env(param,t,a,peak,dur){ param.setValueAtTime(.0001,t);param.exponentialRampToValueAtTime(Math.max(peak,.0002),t+a);param.exponentialRampToValueAtTime(.0001,t+a+dur); }
-function osc(type,f,t,stop,dest,det){ const o=AC.createOscillator();o.type=type;o.frequency.value=f;if(det)o.detune.value=det;o.connect(dest);o.start(t);o.stop(stop);return o; }
-function noise(t,dur,dest){ const n=AC.createBufferSource();n.buffer=noiseBuf;n.connect(dest);n.start(t);n.stop(t+dur);return n; }
 function playEvent(e,t0){
-  const t=t0+e.t,f=mtof(e.midi),v=e.vel*.32,out=bus(e.pan,S.rev*e.wet,S.dly*(e.wet>1?1.3:1)),det=e.detune||0,D=e.dur,end=t+D*3+.3;
-  const amp=AC.createGain();amp.connect(out);
-  switch(e.voice){
-    case 'stone':{ // marimba de pedra: fundamental + parcial 4x + clique
-      osc('sine',f,t,end,amp,det);const g4=AC.createGain();g4.connect(amp);osc('sine',f*3.93,t,end,g4,det);env(g4.gain,t,.001,.45,D*.18);
-      const g10=AC.createGain();g10.connect(amp);osc('sine',f*9.8,t,t+.1,g10,det);env(g10.gain,t,.001,.18,.03);
-      const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=2400;bp.Q.value=1.5;const cg=AC.createGain();bp.connect(cg);cg.connect(out);noise(t,.04,bp);env(cg.gain,t,.001,v*1.4,.025);
-      env(amp.gain,t,.003,v,D*1.2);break;}
-    case 'shell':{ // sino de concha: FM brilhante
-      const car=osc('sine',f,t,end,amp,det);const mg=AC.createGain();mg.gain.setValueAtTime(f*1.6,t);mg.gain.exponentialRampToValueAtTime(1,t+D*1.4);
-      const mod=AC.createOscillator();mod.frequency.value=f*2.01;mod.connect(mg);mg.connect(car.frequency);mod.start(t);mod.stop(end);
-      const g2=AC.createGain();g2.connect(amp);osc('sine',f*2.756,t,end,g2,det);env(g2.gain,t,.002,.25,D*.6);
-      env(amp.gain,t,.002,v*.85,D*1.9);break;}
-    case 'glass':{ osc('sine',f,t,end,amp,det);const g2=AC.createGain();g2.gain.value=.3;g2.connect(amp);osc('sine',f*2.003,t,end,g2,det);
-      const g3=AC.createGain();g3.gain.value=.1;g3.connect(amp);osc('sine',f*3.01,t,end,g3,det);env(amp.gain,t,.04,v*.9,D*2);break;}
-    case 'bass':{ const lp=AC.createBiquadFilter();lp.Q.value=4;lp.frequency.setValueAtTime(900,t);lp.frequency.exponentialRampToValueAtTime(140,t+D);lp.connect(amp);
-      osc('triangle',f,t,end,lp,det);osc('sine',f/2,t,end,lp);env(amp.gain,t,.012,v*1.1,D*1.4);break;}
-    case 'clack':{ const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=f*2.2;bp.Q.value=6;bp.connect(amp);noise(t,.08,bp);
-      const g=AC.createGain();g.connect(amp);osc('sine',f*1.5,t,t+.12,g);env(g.gain,t,.001,.6,.05);env(amp.gain,t,.001,v*2.2,.06);break;}
-    case 'drip':{ const o=osc('sine',f,t,end,amp);o.frequency.setValueAtTime(f*1.5,t);o.frequency.exponentialRampToValueAtTime(f,t+.06);env(amp.gain,t,.003,v,D);break;}
-    case 'gong':{ [[1,1,3],[1.48,.35,2],[2.76,.4,1.6],[4.07,.2,1],[5.4,.12,.8]].forEach(([r,a,d])=>{const g=AC.createGain();g.connect(amp);osc('sine',f*r,t,t+D*d*1.4+.5,g,det);env(g.gain,t,.006,a,D*d*1.2);});
-      amp.gain.value=v*1.1;break;}
-    case 'trem':{ const lp=AC.createBiquadFilter();lp.frequency.value=1800;lp.connect(amp);osc('sawtooth',f,t,end,lp,det);osc('sawtooth',f,t,end,lp,det+7);
-      const lfo=AC.createOscillator(),lg=AC.createGain();lfo.frequency.value=11;lg.gain.value=v*.5;lfo.connect(lg);lg.connect(amp.gain);lfo.start(t);lfo.stop(end);
-      amp.gain.setValueAtTime(.0001,t);amp.gain.linearRampToValueAtTime(v*.6,t+.08);amp.gain.linearRampToValueAtTime(0,t+D);break;}
-    case 'ko':{ const g=AC.createGain();g.connect(amp);osc('square',f,t,t+.1,g);env(g.gain,t,.001,.4,.05);const bp=AC.createBiquadFilter();bp.type='highpass';bp.frequency.value=3000;bp.connect(amp);noise(t,.03,bp);
-      amp.gain.value=v*1.2;break;}
-    case 'breath':{ const bp=AC.createBiquadFilter();bp.type='bandpass';bp.Q.value=2;bp.frequency.setValueAtTime(500,t);bp.frequency.linearRampToValueAtTime(1400,t+D*.5);bp.frequency.linearRampToValueAtTime(400,t+D);
-      bp.connect(amp);noise(t,D+.1,bp);amp.gain.setValueAtTime(.0001,t);amp.gain.linearRampToValueAtTime(v*.8,t+D*.45);amp.gain.linearRampToValueAtTime(.0001,t+D);break;}
-    case 'pad':{ const lp=AC.createBiquadFilter();lp.frequency.value=1500;lp.connect(amp);[-7,0,7].forEach(d=>osc('sawtooth',f,t,t+D+.6,lp,d));
-      amp.gain.setValueAtTime(.0001,t);amp.gain.exponentialRampToValueAtTime(v*.35,t+.5);amp.gain.exponentialRampToValueAtTime(.0001,t+D);break;}
-    case 'whoosh':{ const bp=AC.createBiquadFilter();bp.type='bandpass';bp.Q.value=4;bp.frequency.setValueAtTime(3200,t);bp.frequency.exponentialRampToValueAtTime(260,t+.35);bp.connect(amp);noise(t,.5,bp);env(amp.gain,t,.05,v*.6,.3);break;}
-  }
+  if(!AC)return;
+  const t=t0+(e.t||0),v=clamp(e.vel==null?.7:e.vel,0,1),go=()=>{
+    if(SO_PULSO.has(e.voice)) MK.pulso(e.big?1:v*.7);
+    else if(HARMONIA.has(e.voice)) MK.pulso(v*.25);
+    else { if(e.voice==='gong')MK.pulso(1); MK.nota(mtof(e.midi),{forca:v,pan:clamp(e.pan||0,-1,1)}); }
+  };
+  const dt=t-AC.currentTime; if(dt>.03)setTimeout(go,dt*1000); else go();
 }
-function buildDrone(){
-  const g=AC.createGain();g.gain.value=0;const lp=AC.createBiquadFilter();lp.frequency.value=300;lp.Q.value=2.2;lp.connect(g);g.connect(bus(0,.9,.15));
-  const vs=[];for(let i=0;i<3;i++){ const vg=AC.createGain();vg.gain.value=.3;vg.connect(lp);const a=AC.createOscillator();a.type='sawtooth';a.detune.value=(i-1)*6;a.connect(vg);a.start();
-    const sg=AC.createGain();sg.gain.value=.6;sg.connect(vg);const b=AC.createOscillator();b.type='sine';b.connect(sg);b.start();vs.push({a,b,vg}); }
-  drone={g,lp,vs};
+function updateDrone(node){
+  if(!AC||!S.drone)return; const ch=droneChord(node);
+  if(!game)return; MK.acorde(ch.lead>.04?2:ch.lead<-.04?0:5);
+  MK.energia(clamp((ch.cut-220)/2600,0,1));
 }
-function updateDrone(nd){
-  if(!drone||!game)return;const now=AC.currentTime,ch=droneChord(nd);
-  drone.vs.forEach((o,i)=>{o.a.frequency.setTargetAtTime(mtof(ch.notes[i]),now,.3);o.b.frequency.setTargetAtTime(mtof(ch.notes[i]-12),now,.3);o.vg.gain.setTargetAtTime(ch.gains[i]*.6,now,.6);});
-  drone.lp.frequency.setTargetAtTime(clamp(ch.cut,150,3800),now,.5);
-  drone.g.gain.setTargetAtTime(S.drone?.06:0,now,.6);
-}
-function soundMove(nd){ if(!AC)return [];const ev=composeMove(nd),t0=AC.currentTime+.03;ev.forEach(e=>playEvent(e,t0));return ev; }
+function soundMove(node){ if(!AC)return [];const ev=composeMove(node),t0=AC.currentTime+.03;ev.forEach(e=>playEvent(e,t0));return ev; }
 
 /* ================= 3D ================= */
 const canvas=$('#c'),stage=$('#stage');

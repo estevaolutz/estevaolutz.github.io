@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><script src="../lib/projecao.js"></script>
+<head><script src="../lib/projecao.js"></script><script src="../lib/motor-knick.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Harmonia das Esferas</title>
@@ -400,61 +400,34 @@ function chordName(ms){
   return `${NOTE_PT[r]}${q} <span class="k">(${ms.map(m=>NOTE_PT[((m%12)+12)%12]).join(' · ')})</span>`;
 }
 
-/* ===================== ÁUDIO ===================== */
+/* ===================== ÁUDIO: Motor Knick (lib/motor-knick.js) ===================== */
+// Os planetas, luas, conjunções, cinturão e cometa não têm mais som próprio: viram acontecimentos do motor
+// (notas de vidro no pulso dos arpejos, troca de acorde, energia). A escuta espacial continua valendo.
+const MK=MotorKnick({});
 let AC=null;const AU={};
 const LAYERS={planetas:'vPlanetas',orbitas:'vOrbitas',luas:'vLuas',conj:'vConj',cint:'vCint',sol:'vSol',cometa:'vCometa'};
-function makeIR(sec){const len=AC.sampleRate*sec,buf=AC.createBuffer(2,len,AC.sampleRate);
-  for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);let lp=0;for(let i=0;i<len;i++){const t=i/len;lp=lp*.6+(Math.random()*2-1)*.4;d[i]=lp*Math.pow(1-t,2.6)*(i<AC.sampleRate*.01?i/(AC.sampleRate*.01):1);}}return buf;}
 function initAudio(){
-  AC=new (window.AudioContext||window.webkitAudioContext)();
-  AU.master=AC.createGain();AU.comp=AC.createDynamicsCompressor();AU.comp.threshold.value=-16;AU.comp.ratio.value=3;AU.comp.knee.value=12;AU.comp.attack.value=.01;AU.comp.release.value=.3;
-  AU.an=AC.createAnalyser();AU.an.fftSize=512;AU.buf=new Float32Array(512);
-  AU.master.connect(AU.comp);AU.comp.connect(AU.an);AU.an.connect(AC.destination);
-  AU.mix=AC.createGain();AU.mix.connect(AU.master);
-  AU.revSend=AC.createGain();AU.rev=AC.createConvolver();AU.rev.buffer=makeIR(5.5);AU.mix.connect(AU.revSend);AU.revSend.connect(AU.rev);AU.rev.connect(AU.master);
-  AU.delSend=AC.createGain();AU.del=AC.createDelay(2);AU.del.delayTime.value=.48;AU.fb=AC.createGain();AU.fb.gain.value=.45;AU.dlp=AC.createBiquadFilter();AU.dlp.type='lowpass';AU.dlp.frequency.value=2600;
-  AU.mix.connect(AU.delSend);AU.delSend.connect(AU.del);AU.del.connect(AU.dlp);AU.dlp.connect(AU.fb);AU.fb.connect(AU.del);AU.dlp.connect(AU.master);AU.dlp.connect(AU.revSend);
-  AU.layers={};for(const L in LAYERS){AU.layers[L]=AC.createGain();AU.layers[L].connect(AU.mix);}
-  // pads de órbita
-  for(const b of bodies){
-    const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=520;f.Q.value=.6;
-    const env=AC.createGain();env.gain.value=.0001;const sp=AC.createGain();sp.gain.value=0;const pan=AC.createStereoPanner();
-    f.connect(env);env.connect(sp);sp.connect(pan);pan.connect(AU.layers.orbitas);
-    const tones=[];for(let k=0;k<5;k++){const tg=AC.createGain();tg.gain.value=0;const o1=AC.createOscillator();o1.type='triangle';const o2=AC.createOscillator();o2.type='sawtooth';o2.detune.value=6+k*1.5;
-      const o2g=AC.createGain();o2g.gain.value=.32;o1.connect(tg);o2.connect(o2g);o2g.connect(tg);tg.connect(f);o1.frequency.value=o2.frequency.value=110;o1.start();o2.start();tones.push({tg,o1,o2});}
-    const lfo=AC.createOscillator();lfo.frequency.value=.05+b.idx*.013;const lg=AC.createGain();lg.gain.value=90;lfo.connect(lg);lg.connect(f.frequency);lfo.start();
-    b.pad={f,env,sp,pan,tones};
-  }
-  // bordão do Sol
-  const dg=AC.createGain();dg.gain.value=.5;const dl=AC.createBiquadFilter();dl.type='lowpass';dl.frequency.value=700;dg.connect(dl);dl.connect(AU.layers.sol);
-  const lfo=AC.createOscillator();lfo.frequency.value=.06;const lg=AC.createGain();lg.gain.value=.25;lfo.connect(lg);lg.connect(dg.gain);lfo.start();
-  AU.drone=[[0,'sine',.5],[7,'triangle',.16],[12,'sine',.22],[19,'sine',.06]].map(([iv,ty,g])=>{const o=AC.createOscillator();o.type=ty;const og=AC.createGain();og.gain.value=g;o.connect(og);og.connect(dg);o.start();return{o,iv};});
-  AU.droneLP=dl;
-  applyAudioParams();applyPadFreqs();
+  MK.iniciar();AC=MK.AC;
+  AU.an=MK.analisador;AU.buf=new Float32Array(AU.an.fftSize);
+  AU.layers={};for(const L in LAYERS)AU.layers[L]=L;   // só o nome da camada: as funções abaixo usam para decidir o que fazer
+  applyAudioParams();
 }
-function applyAudioParams(){if(!AC)return;const t=AC.currentTime;
-  AU.master.gain.setTargetAtTime(S.muted?0:S.master,t,.1);AU.revSend.gain.setTargetAtTime(S.reverb*.9,t,.1);AU.delSend.gain.setTargetAtTime(S.delay*.55,t,.1);
-  for(const L in LAYERS)AU.layers[L].gain.setTargetAtTime(S[LAYERS[L]],t,.1);
-  for(const b of bodies)if(b.pad)b.pad.env.gain.setTargetAtTime(padBase(),t,.4);}
-const padBase=()=>Math.max(.0001,S.padSustain*.6);
-function applyPadFreqs(){const t=AC.currentTime;
-  for(const b of bodies){b.pad.tones.forEach((tn,k)=>{const f=b.padF[k];if(f){tn.o1.frequency.setTargetAtTime(f,t,.08);tn.o2.frequency.setTargetAtTime(f,t,.08);tn.tg.gain.setTargetAtTime(.05,t,.2);}else tn.tg.gain.setTargetAtTime(0,t,.2);});}
-  const r=mtof(H.root-12);AU.drone.forEach(d=>d.o.frequency.setTargetAtTime(r*Math.pow(2,d.iv/12),t,.3));}
-function padTrigger(b){if(!AC)return;const t=AC.currentTime,p=b.pad,base=padBase();
-  p.env.gain.cancelScheduledValues(t);p.env.gain.setValueAtTime(Math.max(p.env.gain.value,.0001),t);p.env.gain.setTargetAtTime(1,t,.45);p.env.gain.setTargetAtTime(base,t+2.4,2.6);
-  p.f.frequency.cancelScheduledValues(t);p.f.frequency.setValueAtTime(p.f.frequency.value,t);p.f.frequency.setTargetAtTime(2400,t,.5);p.f.frequency.setTargetAtTime(520,t+2.4,2.8);}
-const TIMBRE={rocha:{r:3.5,i:2.4,md:.5,a:.004,d:3.6},gas:{r:1,i:1.3,md:2.6,a:.06,d:7.5,ch:1},gelo:{r:2,i:1.6,md:1.6,a:.02,d:6.5,ch:1},luas:{r:2,i:1.1,md:.18,a:.003,d:1.8},cometa:{r:3.01,i:1.4,md:.3,a:.003,d:2.2}};
+function applyAudioParams(){if(!AC)return;if(S.muted)AC.suspend();else AC.resume();}
+const padBase=()=>0;
+function applyPadFreqs(){}
+// cada planeta (de Marte para fora) traz o acorde do seu grau quando passa pela agulha
+function padTrigger(b){if(!AC)return;if(b.idx>=3&&b.deg!=null)MK.acorde(b.deg);}
+const emMK=(when,fn)=>{if(when>0.02)setTimeout(fn,when*1000);else fn();};
 function fm(f,vel,pan,tb,dest,when=0){
-  const T=TIMBRE[tb],t=AC.currentTime+.01+when;
-  const out=AC.createGain();out.gain.setValueAtTime(.0001,t);out.gain.exponentialRampToValueAtTime(Math.max(vel,.0002),t+T.a);out.gain.exponentialRampToValueAtTime(.0001,t+T.d);
-  const p=AC.createStereoPanner();p.pan.value=clamp(pan,-1,1);out.connect(p);p.connect(dest);
-  const mk=(det)=>{const c=AC.createOscillator();c.frequency.value=f*det;const m=AC.createOscillator();m.frequency.value=f*det*T.r;const mg=AC.createGain();
-    mg.gain.setValueAtTime(f*T.i,t);mg.gain.exponentialRampToValueAtTime(f*T.i*.04+.01,t+T.md);m.connect(mg);mg.connect(c.frequency);c.connect(out);c.start(t);m.start(t);c.stop(t+T.d+.1);m.stop(t+T.d+.1);};
-  mk(1);if(T.ch)mk(1.0035);
+  if(!AC||!(vel>0.004))return;
+  const forca=clamp(dest==='luas'?vel*2.5:dest==='cometa'?vel*4:vel*2.6,0,1);
+  emMK(when,()=>MK.nota(f,{forca,pan:clamp(pan,-1,1)}));
 }
-function sine(f,vel,pan,dest,att,dur,when=0){const t=AC.currentTime+.01+when;const o=AC.createOscillator();o.frequency.value=f;const v=AC.createOscillator();v.frequency.value=4.5;const vg=AC.createGain();vg.gain.value=f*.004;v.connect(vg);vg.connect(o.frequency);
-  const g=AC.createGain();g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vel,t+att);g.gain.exponentialRampToValueAtTime(.0001,t+dur);const p=AC.createStereoPanner();p.pan.value=clamp(pan,-1,1);
-  o.connect(g);g.connect(p);p.connect(dest);o.start(t);v.start(t);o.stop(t+dur+.1);v.stop(t+dur+.1);}
+function sine(f,vel,pan,dest,att,dur,when=0){
+  if(!AC||!(vel>0.003))return;
+  if(dest==='cint'){emMK(when,()=>MK.pulso(clamp(vel*6,0,.5)));return;}
+  emMK(when,()=>MK.nota(f,{forca:clamp(vel*7,0,1),pan:clamp(pan,-1,1)}));
+}
 const projV=new THREE.Vector3();
 function spatial(pos,kind){
   projV.copy(pos).project(camera);let pan=clamp(projV.x,-1,1)*.85;if(projV.z>1)pan=-pan*.4;
@@ -511,12 +484,10 @@ function updateInfo(){
 /* ===================== PAINEL ===================== */
 const UI=[
  ['Som',[
-  ['range','master','Volume geral',0,1,.01],['range','vPlanetas','Planetas (notas)',0,1,.01],['range','vOrbitas','Órbitas (acordes)',0,1,.01],['range','vLuas','Luas (notas do acorde)',0,1,.01],
-  ['range','vConj','Conjunções',0,1,.01],['range','vCint','Cinturão de asteroides',0,1,.01],['range','vSol','Sol (bordão)',0,1,.01],['range','vCometa','Cometa Halley',0,1,.01],
-  ['range','padSustain','Sustentação dos acordes',0,1,.01],['range','reverb','Reverb',0,1,.01],['range','delay','Delay',0,1,.01],
+  ['knick'],
   ['chk','spatial','Escuta espacial — perto soa mais; aproxime-se de um planeta para ouvir suas luas']]],
  ['Harmonia',[
-  ['sel','scale','Escala',Object.keys(SCALES)],['sel','root','Tônica',NOTE_PT.map((n,i)=>[i,n])],['sel','chord','Acorde de cada órbita',Object.keys(CHORDS)],
+  ['sel','chord','Acorde de cada órbita',Object.keys(CHORDS)],
   ['sel','tuning','Afinação',[['Escala','Escala musical'],['Kepler','Kepler — períodos reais']]]]],
  ['Tempo',[
   ['sel','timeMode','Tempo',[['Musical','Musical (comprimido)'],['Real','Real (proporções físicas)']]],['range','tempo','Andamento (musical)',.1,4,.01],
@@ -539,6 +510,7 @@ function buildPanel(){
       else if(type==='sel'){row.innerHTML=`<label>${label}</label><select>${it[3].map(o=>Array.isArray(o)?`<option value="${o[0]}">${o[1]}</option>`:`<option>${o}</option>`).join('')}</select>`;const sel=row.querySelector('select');sel.value=S[key];sel.onchange=()=>{S[key]=isNaN(+sel.value)?sel.value:+sel.value;onChange(key);};}
       else if(type==='btns'){row.className='btns';row.innerHTML=`<button id="bPause">${S.paused?'▶ continuar':'❚❚ pausar'}</button><button id="bReset">restaurar padrões</button>`;
         row.querySelector('#bPause').onclick=togglePause;row.querySelector('#bReset').onclick=()=>{const keep={paused:S.paused};S={...DEF,...keep};save();buildPanel();['bloom','hue','scale','needles','trails','frame','master','timeMode'].forEach(onChange);};}
+      else if(type==='knick'){row.className='';MK.painel(row,{titulo:false});}
       else if(type==='cam'){row.className='btns';row.id='camBtns';const list=[['Sol',()=>focusOn(sunTarget)],...bodies.map(b=>[b.d.name,()=>focusOn(planetTarget(b))]),['Halley',()=>focusOn(cometTarget)]];
         list.forEach(([n,f])=>{const bt=document.createElement('button');bt.textContent=n;bt.dataset.n=n==='Halley'?'Halley':n;bt.onclick=f;row.appendChild(bt);});}
       det.appendChild(row);}
@@ -636,7 +608,7 @@ function frame(){
   // câmera
   tourStep(dt);updateCamera(dt);controls.update();
   // áudio espacial dos acordes
-  if(AC&&frameN%4===0){const t=AC.currentTime;for(const b of bodies){const s=spatial(b.world,'planet');b.pad.sp.gain.setTargetAtTime(s.g,t,.25);b.pad.pan.pan.setTargetAtTime(s.pan,t,.25);}}
+  // (os pads de órbita com volume espacial saíram com o Motor Knick)
   // rótulos
   labelsEl.classList.toggle('hidden',!S.labels||uiHidden);
   if(S.labels&&!uiHidden){for(const b of bodies){placeLabel(b.label,b.world,true);for(const m of b.moons)placeLabel(m.label,m.world,S.moonLabels&&camera.position.distanceTo(m.world)<b.ext*12);}placeLabel(sunLabel,system.position,true);}

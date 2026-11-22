@@ -11,10 +11,12 @@
 <script src="../lib/motor-knick.js"></script>
 <script src="../lib/obra-base.js"></script>
 <script>
-/* Corpo de Partículas v2 — o corpo de quem está diante da câmera vira dezenas de milhares de partículas (a câmera nunca aparece).
+/* Corpo de Partículas v3 — o corpo de quem está diante da câmera vira dezenas de milhares de partículas (a câmera nunca aparece).
    v2: profundidade 3D (o corpo ganha volume a partir da silhueta e relevo a partir da luz do rosto e da roupa),
    luz e sombra esculpindo o volume, mais partículas nos detalhes (olhos, boca, dobras), foco e desfoque (bokeh),
    névoa de profundidade, brilho difuso (bloom) e grão.
+   v3: camada fina de centenas de milhares de partículas calculada na placa de vídeo, com a luz lida da câmera em
+   resolução cheia (olhos, boca, cabelo, barba), e detector de rosto que concentra partículas e nitidez no rosto.
    Mão aberta espalha o corpo, mão fechada junta as partículas em volta do punho; o som faz o corpo respirar
    e os ataques desprendem pedaços que voam em direção a quem olha. Sem ninguém na frente, as partículas flutuam soltas em 3D. */
 const O = ObraBase({
@@ -36,6 +38,9 @@ const O = ObraBase({
     ['Volume', 'Volume do corpo', 0.8, 0, 1.5, 0.01],
     ['Relevo', 'Relevo (rosto, roupa)', 0.7, 0, 1.5, 0.01],
     ['Detalhe', 'Detalhe (olhos, boca, dobras)', 0.7, 0, 1.5, 0.01],
+    ['Rosto', 'Detalhe do rosto', 0.8, 0, 1.5, 0.01],
+    ['Fina', 'Partículas finas', 1, 0, 1, 0.01],
+    ['FinaBrilho', 'Brilho das finas', 0.65, 0, 2, 0.01],
     ['Luz', 'Luz e sombra', 0.75, 0, 1, 0.01],
     ['Foco', 'Plano de foco', 0.15, -1, 1, 0.01],
     ['Desfoque', 'Desfoque (bokeh)', 0.5, 0, 1.5, 0.01],
@@ -68,9 +73,13 @@ for (let i = 0; i < N; i++) {
 }
 
 // ---------------- grades do corpo (coordenadas do vídeo) ----------------
-const MW = 200, MH = 150, NG = MW * MH;
+const MW = 256, MH = 192, NG = MW * MH;
 const mascara = new Float32Array(NG), lumRaw = new Float32Array(NG).fill(0.5), lumN = new Float32Array(NG);
-const dist = new Float32Array(NG), Z = new Float32Array(NG), SH = new Float32Array(NG).fill(1), ED = new Float32Array(NG);
+const dist = new Float32Array(NG), Z = new Float32Array(NG), SH = new Float32Array(NG).fill(1), LG = new Float32Array(NG).fill(1), ED = new Float32Array(NG);
+const gradeDados = new Float32Array(NG * 4);   // textura para a camada fina: máscara, profundidade, luz, pele
+let gradeNova = false, lumMed = 0.5, lumDp = 0.2;
+// rosto (coordenadas do vídeo, suavizado)
+const rosto = { u0: 0, v0: 0, u1: 0, v1: 0, c: 0 };
 const cdf = new Float32Array(NG); let cdfTot = 0, dentroN = 0, temPessoa = 0, ultPessoa = -10;
 const lumCv = document.createElement('canvas'); lumCv.width = MW; lumCv.height = MH;
 const lumCtx = lumCv.getContext('2d', { willReadFrequently: true });
@@ -98,7 +107,7 @@ function analisarGrades(t) {
   let n = 0, s = 0, s2 = 0;
   for (let i = 0; i < NG; i++) if (mascara[i] > 0.5) { const l = lumRaw[i]; s += l; s2 += l * l; n++; }
   dentroN = n; if (!n) { cdfTot = 0; return; }
-  const med = s / n, dp = Math.sqrt(Math.max(1e-4, s2 / n - med * med));
+  const med = s / n, dp = Math.sqrt(Math.max(1e-4, s2 / n - med * med)); lumMed = med; lumDp = dp;
   for (let i = 0; i < NG; i++) lumN[i] = clamp((lumRaw[i] - med) / (dp * 3) + 0.5, 0, 1);
   // distância até a borda (chamfer 3-4) → volume arredondado do corpo
   const G = 1e6;
@@ -124,12 +133,13 @@ function analisarGrades(t) {
   const kz = 7 * (0.4 + P.Profund * 0.6), luz = P.Luz;
   let emed = 0;
   for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
-    const i = y * MW + x; if (!dist[i]) { SH[i] = 1; ED[i] = 0; continue; }
+    const i = y * MW + x; if (!dist[i]) { SH[i] = 1; LG[i] = 1; ED[i] = 0; continue; }
     // x da grade é espelhado na tela
     const nx = (Z[i + 1] - Z[i - 1]) * kz, ny = -(Z[i + MW] - Z[i - MW]) * kz, nl = Math.hypot(nx, ny, 1);
     const difusa = Math.max(0, (nx * Lx + ny * Ly + Lz) / (nl * ll)), recorte = Math.pow(1 - 1 / nl, 1.5);
     const pele = 0.12 + 1.35 * Math.pow(lumN[i], 1.2);
-    SH[i] = 1 + luz * ((0.22 + 1.05 * difusa + 0.9 * recorte) * pele - 1);
+    LG[i] = 0.22 + 1.05 * difusa + 0.9 * recorte;
+    SH[i] = 1 + luz * (LG[i] * pele - 1);
     // detalhe: Sobel da luz normalizada (olhos, boca, sobrancelhas, dobras da roupa)
     const a = lumN[i - MW - 1], b = lumN[i - MW], c = lumN[i - MW + 1], d = lumN[i - 1], f = lumN[i + 1], g = lumN[i + MW - 1], h = lumN[i + MW], k = lumN[i + MW + 1];
     const gx = (c + 2 * f + k) - (a + 2 * d + g), gy = (g + 2 * h + k) - (a + 2 * b + c);
@@ -138,16 +148,22 @@ function analisarGrades(t) {
   emed = emed / n * 2.5 + 1e-3;
   // densidade: mais partículas nas bordas, nos detalhes e nas áreas iluminadas
   const wc = P.Contorno * 3, wd = P.Detalhe * 2.6, wl = luz * 0.8;
+  // rosto: concentra partículas (e mais peso nos detalhes) dentro da caixa do rosto, um pouco ampliada
+  const rc = rosto.c > 0.3 ? P.Rosto : 0, rw = rosto.u1 - rosto.u0, rh = rosto.v1 - rosto.v0;
+  const fx0 = (rosto.u0 - rw * 0.2) * MW, fx1 = (rosto.u1 + rw * 0.2) * MW, fy0 = (rosto.v0 - rh * 0.35) * MH, fy1 = (rosto.v1 + rh * 0.15) * MH;
   let acc = 0;
   for (let i = 0; i < NG; i++) {
     if (dist[i]) {
       const e = Math.min(1, ED[i] / emed); ED[i] = e;
-      const borda = dist[i] <= 4 ? 1 : 0;
-      acc += 0.55 + wc * borda + wd * e * e + wl * 1.6 * Math.pow(lumN[i], 1.5);
+      const borda = dist[i] <= 4 ? 1 : 0, x = i % MW, y = (i / MW) | 0;
+      const nr = rc > 0 && x >= fx0 && x <= fx1 && y >= fy0 && y <= fy1 ? rc : 0;
+      acc += (0.55 + wc * borda + wd * (1 + nr * 1.5) * e * e + wl * 1.6 * Math.pow(lumN[i], 1.5)) * (1 + nr * 4);
     }
     cdf[i] = acc;
   }
   cdfTot = acc;
+  for (let i = 0, k = 0; i < NG; i++, k += 4) { gradeDados[k] = dist[i] ? mascara[i] : 0; gradeDados[k + 1] = Z[i]; gradeDados[k + 2] = LG[i]; gradeDados[k + 3] = lumN[i]; }
+  gradeNova = true;
 }
 function amostra() {
   const r = Math.random() * cdfTot; let lo = 0, hi = NG - 1;
@@ -175,7 +191,8 @@ function realvo(frac) {
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15';
 const SEG = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
 const MAO = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-let seg = null, det = null, tsAnt = -1, alterna = 0, semRastreio = false;
+const ROSTO = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+let seg = null, det = null, face = null, tsAnt = -1, alterna = 0, semRastreio = false;
 async function iniciarCamera() {
   try {
     const st = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false });
@@ -190,6 +207,8 @@ async function iniciarCamera() {
     catch (e) { seg = await mod.ImageSegmenter.createFromOptions(vision, op(SEG, 'CPU', { outputConfidenceMasks: true, outputCategoryMask: false })); }
     try { det = await mod.HandLandmarker.createFromOptions(vision, op(MAO, 'GPU', { numHands: 2 })); }
     catch (e) { det = await mod.HandLandmarker.createFromOptions(vision, op(MAO, 'CPU', { numHands: 2 })); }
+    try { face = await mod.FaceDetector.createFromOptions(vision, op(ROSTO, 'GPU', { minDetectionConfidence: 0.5 })); }
+    catch (e) { try { face = await mod.FaceDetector.createFromOptions(vision, op(ROSTO, 'CPU', { minDetectionConfidence: 0.5 })); } catch (e2) { face = null; } }
     O.dica('pronto: entre na frente da câmera', 2500);
   } catch (e) { console.warn(e); semRastreio = true; O.dica('rastreamento indisponível — o mouse faz a mão', 3500); }
 }
@@ -205,6 +224,16 @@ function segmentar(ts) {
     temPessoa = soma / NG;
     if (temPessoa > 0.02) { ultPessoa = performance.now() / 1000; analisarGrades(ultPessoa); }
   });
+}
+function rastrearRosto(ts) {
+  const r = face.detectForVideo(video, ts), d = r && r.detections && r.detections[0];
+  const vw = video.videoWidth || 1, vh = video.videoHeight || 1;
+  if (d && d.boundingBox) {
+    const b = d.boundingBox, k = rosto.c > 0.3 ? 0.4 : 1;
+    rosto.u0 += (b.originX / vw - rosto.u0) * k; rosto.v0 += (b.originY / vh - rosto.v0) * k;
+    rosto.u1 += ((b.originX + b.width) / vw - rosto.u1) * k; rosto.v1 += ((b.originY + b.height) / vh - rosto.v1) * k;
+    rosto.c = Math.min(1, rosto.c + 0.25);
+  } else rosto.c = Math.max(0, rosto.c - 0.1);
 }
 const MAOS = [];   // { pts, cx, cy, ab, vista, perdida, abAnt }
 const PONTAS = [4, 8, 12, 16, 20], LIG = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
@@ -299,6 +328,96 @@ gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 
 gl.bindVertexArray(null);
 const MAXPT = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 64;
 
+// ---------------- camada fina (placa de vídeo) ----------------
+// centenas de milhares de pontos fixos no corpo; posição, profundidade, luz e "pele" calculadas no shader.
+// A pele vem da câmera em resolução cheia, então olhos, boca, sobrancelhas e cabelo aparecem nítidos.
+const NF = matchMedia('(pointer:coarse)').matches ? 90000 : 240000;
+const fina = new Float32Array(NF * 4);
+const progF = ObraBase.programa(gl, `#version 300 es
+layout(location=0) in vec4 aF;
+uniform sampler2D uG, uV;
+uniform float uPt, uAsp, uYaw, uPitch, uDep, uFoco, uDesf, uT, uMax, uEx, uEy, uResp, uInfla, uPres, uScat, uScatX, uLuz, uMed, uDp, uVid, uR, uEsp, uJun, uFlu, uBF, uAz;
+uniform vec2 uTx;
+uniform vec4 uMao[2];
+out vec3 vC; out float vBlur;
+float hs(float n){ return fract(sin(n) * 43758.5453); }
+void main(){
+  vec2 uv = aF.xy; float sd = aF.z;
+  vec4 g = texture(uG, uv);
+  float vis = smoothstep(.3, .6, g.r) * uPres;
+  if (vis < .01) { gl_Position = vec4(2., 2., 2., 1.); gl_PointSize = 0.; vC = vec3(0.); vBlur = 0.; return; }
+  float l = g.a, ar = 0.;
+  if (uVid > .5) {
+    float lc = dot(texture(uV, uv).rgb, vec3(.299, .587, .114));
+    float lx = dot(texture(uV, uv + vec2(uTx.x, 0.)).rgb - texture(uV, uv - vec2(uTx.x, 0.)).rgb, vec3(.333));
+    float ly = dot(texture(uV, uv + vec2(0., uTx.y)).rgb - texture(uV, uv - vec2(0., uTx.y)).rgb, vec3(.333));
+    l = clamp((lc - uMed) / (uDp * 3.) + .5, 0., 1.);
+    ar = clamp(length(vec2(lx, ly)) / (uDp * 2.), 0., 1.);       // aresta fina (cílios, contorno dos lábios)
+  }
+  vec2 s0 = vec2((.5 - uv.x) * uEx + .5, (uv.y - .5) * uEy + .5);
+  s0 = .5 + (s0 - .5) * uResp;
+  float a1 = sd * 91.7, ph = uT * (.5 + hs(a1) * 1.1);
+  s0 += vec2(sin(ph + a1), cos(ph * 1.3 + a1 * 1.7)) * .0009 * (1. + uFlu * 2.);
+  float z = g.g * uInfla + (l - .5) * .08;
+  // ataques do som: parte dos pontos voa para a frente
+  float vo = step(hs(sd * 17.3), uScat * .55) * smoothstep(.5, .1, abs(s0.x - uScatX));
+  vec2 dir = normalize(vec2(hs(sd * 3.1) - .35, -.3 - hs(sd * 5.9)));
+  s0 += dir * vo * uScat * (.06 + hs(sd * 7.7) * .25); z += vo * uScat * (1. + hs(sd * 2.3) * 3.);
+  // mãos: aberta espalha, fechada junta girando
+  for (int k = 0; k < 2; k++) { vec4 m = uMao[k]; if (m.w < .5) continue;
+    vec2 d = (s0 - m.xy) * vec2(uAsp, 1.); float r = length(d), w = smoothstep(uR * 1.4, 0., r);
+    if (m.z > .5) { s0 += d / max(r, 1e-3) / vec2(uAsp, 1.) * w * uR * .9 * (m.z - .4) * uEsp; z += w * (hs(sd * 9.1) - .5) * 2. * uEsp; }
+    else { float q = w * (.5 - m.z) * 2. * min(1., uJun); vec2 rr = vec2(-d.y, d.x) * .5 + d * .2; s0 = mix(s0, m.xy + rr / vec2(uAsp, 1.), q); }
+  }
+  vec3 p = vec3((s0.x - .5) * uAsp, .5 - s0.y, z * uDep * .3);
+  float cy = cos(uYaw), sy = sin(uYaw); p = vec3(cy*p.x + sy*p.z, p.y, -sy*p.x + cy*p.z);
+  float cp = cos(uPitch), sp = sin(uPitch); p = vec3(p.x, cp*p.y - sp*p.z, sp*p.y + cp*p.z);
+  float s = 2.4 / max(.4, 2.4 - p.z);
+  gl_Position = vec4(p.x * s / uAsp * 2., p.y * s * 2., 0., 1.);
+  float blur = min(9., abs(p.z - uFoco * uDep * .3) * uDesf * 9.);
+  gl_PointSize = min(uMax, uPt * mix(.5, .95, hs(sd * 5.1)) * s * (1. + blur));
+  vBlur = blur;
+  float pele = .1 + 1.4 * pow(l, 1.25);
+  float luz = 1. + uLuz * (g.b * pele - 1.);
+  luz *= 1. + ar * .6;
+  float nev = mix(1., .28, clamp(-p.z * 1.8, 0., 1.) * min(1., uDep));
+  vec3 cor = mix(vec3(.72, .82, 1.), vec3(1., .97, .92), clamp(.5 + p.z * 1.6, 0., 1.));
+  for (int k = 0; k < 2; k++) { vec4 m = uMao[k]; if (m.w < .5) continue;
+    float w = smoothstep(uR * 1.4, 0., length((s0 - m.xy) * vec2(uAsp, 1.))); cor = mix(cor, vec3(.3, .45, 1.), w * uAz); }
+  vC = cor * (.35 + .65 * hs(sd * 13.7)) * luz * vis * uBF * nev * s * s / pow(1. + blur, 1.35);
+}`, `#version 300 es
+precision highp float; in vec3 vC; in float vBlur; uniform float uB; out vec4 o;
+void main(){
+  vec2 c = gl_PointCoord - .5; float r = length(c) * 2.;
+  float nucleo = exp(-r*r*6.);
+  float disco = smoothstep(1., .82, r) * (.55 + .45*smoothstep(.45, .92, r));
+  float m = mix(nucleo, disco * .6, clamp(vBlur * .5, 0., 1.));
+  if (m < .004) discard;
+  o = vec4(vC * m * uB, 1.);
+}`);
+const vaoF = gl.createVertexArray(), bufF = gl.createBuffer();
+gl.bindVertexArray(vaoF); gl.bindBuffer(gl.ARRAY_BUFFER, bufF); gl.bufferData(gl.ARRAY_BUFFER, fina.byteLength, gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+gl.bindVertexArray(null);
+function texDados(filtro) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filtro); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filtro);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+const texG = texDados(gl.LINEAR), texV = texDados(gl.LINEAR);
+gl.bindTexture(gl.TEXTURE_2D, texG); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, MW, MH, 0, gl.RGBA, gl.FLOAT, gradeDados);
+gl.bindTexture(gl.TEXTURE_2D, texV); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+let finaPronta = false, finaCursor = 0, vidOk = false, presenca = 0, scat = 0, scatX = 0.5;
+function sortearFina(a, b) {
+  for (let i = a; i < b; i++) {
+    const j = amostra(), k = i * 4;
+    fina[k] = ((j % MW) + Math.random()) / MW; fina[k + 1] = (Math.floor(j / MW) + Math.random()) / MH; fina[k + 2] = Math.random(); fina[k + 3] = 0;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufF); gl.bufferSubData(gl.ARRAY_BUFFER, a * 16, fina, a * 4, (b - a) * 4);
+}
+const maoU = new Float32Array(8);
+
 // alvos de renderização: acúmulo (com rastro) em ponto flutuante quando o aparelho permite + bloom em 1/4
 const HDR = !!gl.getExtension('EXT_color_buffer_float');
 function alvo(w, h) {
@@ -338,6 +457,7 @@ function desfazer(f) {
     solto[i] = 1 + Math.random(); vx[i] += (Math.random() - 0.3) * 0.6 * f; vy[i] -= (0.2 + Math.random() * 0.6) * f;
     vz[i] += (0.4 + Math.random() * 1.8) * f;
   }
+  if (f * O.P.Desfaz > scat) { scat = Math.min(1.2, f * O.P.Desfaz); scatX = cx; }
 }
 O.aoTecla = (k) => { if (k === ' ') desfazer(1); };
 O.onNota((n) => { if (n.camada === 'bumbo') desfazer(0.35); });
@@ -348,7 +468,8 @@ O.quadro((t, dt) => {
   // rastreamento (segmentação e mãos em quadros alternados)
   if (camOn && video.readyState >= 2 && (seg || det)) {
     let ts = performance.now(); if (ts <= tsAnt) ts = tsAnt + 1; tsAnt = ts;
-    try { if ((alterna++ % 2 === 0 && seg) || !det) segmentar(ts); else rastrearMaos(ts); } catch (e) {}
+    // segmentação a cada 2 quadros; mãos e rosto se revezam nos outros
+    try { const a = alterna++; if ((a % 2 === 0 && seg) || !det) segmentar(ts); else if (face && a % 6 === 3) rastrearRosto(ts); else rastrearMaos(ts); } catch (e) {}
   }
   const entrou = temCorpo() && performance.now() / 1000 - tEntrada < 1.5;
   realvo((entrou ? 0.04 : 0.003) + A.ataque * 0.008);
@@ -417,6 +538,37 @@ O.quadro((t, dt) => {
   gl.uniform1f(prog.u.uYaw, yaw); gl.uniform1f(prog.u.uPitch, pitch); gl.uniform1f(prog.u.uDep, dep);
   gl.uniform1f(prog.u.uFoco, P.Foco * 2); gl.uniform1f(prog.u.uDesf, P.Desfoque); gl.uniform1f(prog.u.uT, t); gl.uniform1f(prog.u.uMax, MAXPT);
   gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, dados); gl.drawArrays(gl.POINTS, 0, N);
+  // 2b) camada fina
+  presenca += ((temCorpo() && cdfTot ? 1 : 0) - presenca) * Math.min(1, dt * 2.5);
+  scat *= Math.exp(-dt * 1.6);
+  if (cdfTot && temCorpo()) {
+    if (!finaPronta) { sortearFina(0, NF); finaPronta = true; finaCursor = 0; }
+    else { const lote = Math.floor(NF / 45), a = finaCursor, b = Math.min(NF, a + lote); sortearFina(a, b); finaCursor = b >= NF ? 0 : b; }
+  }
+  if (gradeNova) { gl.bindTexture(gl.TEXTURE_2D, texG); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MW, MH, gl.RGBA, gl.FLOAT, gradeDados); gradeNova = false; }
+  if (camOn && video.readyState >= 2 && presenca > 0.01) {
+    gl.bindTexture(gl.TEXTURE_2D, texV); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video); vidOk = true;
+  }
+  const nDesenha = Math.floor(NF * P.Fina);
+  if (finaPronta && presenca > 0.01 && nDesenha > 0) {
+    gl.useProgram(progF.p); const u = progF.u;
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texG); gl.uniform1i(u.uG, 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texV); gl.uniform1i(u.uV, 1);
+    const vw = video.videoWidth || 4, vh = video.videoHeight || 3, esc = Math.max(W / vw, H / vh);
+    gl.uniform1f(u.uEx, vw * esc / W); gl.uniform1f(u.uEy, vh * esc / H); gl.uniform2f(u.uTx, 1.5 / vw, 1.5 / vh);
+    gl.uniform1f(u.uPt, P.Tamanho * O.DPR * Math.sqrt(Math.min(W, H) / 700) * 1.5);
+    gl.uniform1f(u.uB, 1); gl.uniform1f(u.uBF, P.Brilho * P.FinaBrilho * (HDR ? 1.1 : 0.7) * Math.sqrt(60000 / NF));
+    gl.uniform1f(u.uAsp, asp); gl.uniform1f(u.uYaw, yaw); gl.uniform1f(u.uPitch, pitch); gl.uniform1f(u.uDep, dep);
+    gl.uniform1f(u.uFoco, P.Foco * 2); gl.uniform1f(u.uDesf, P.Desfoque); gl.uniform1f(u.uT, t); gl.uniform1f(u.uMax, MAXPT);
+    gl.uniform1f(u.uResp, resp); gl.uniform1f(u.uInfla, inflar); gl.uniform1f(u.uPres, presenca);
+    gl.uniform1f(u.uScat, scat); gl.uniform1f(u.uScatX, scatX); gl.uniform1f(u.uLuz, P.Luz);
+    gl.uniform1f(u.uMed, lumMed); gl.uniform1f(u.uDp, lumDp); gl.uniform1f(u.uVid, vidOk ? 1 : 0);
+    gl.uniform1f(u.uR, P.Raio); gl.uniform1f(u.uEsp, P.Espalha); gl.uniform1f(u.uJun, P.Junta); gl.uniform1f(u.uFlu, P.Fluxo); gl.uniform1f(u.uAz, P.Acento);
+    maoU.fill(0); mm.slice(0, 2).forEach((m, k) => { maoU[k * 4] = m.x; maoU[k * 4 + 1] = m.y; maoU[k * 4 + 2] = m.ab; maoU[k * 4 + 3] = 1; });
+    gl.uniform4fv(u.uMao, maoU);
+    gl.bindVertexArray(vaoF); gl.drawArrays(gl.POINTS, 0, nDesenha);
+    gl.activeTexture(gl.TEXTURE0);
+  }
   // 3) brilho difuso (bloom) em 1/4 da resolução
   gl.disable(gl.BLEND); gl.bindVertexArray(vaoQ);
   const qx = 1 / RT.b1.w, qy = 1 / RT.b1.h;
@@ -438,7 +590,8 @@ O.quadro((t, dt) => {
   // caixa do corpo
   let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
   for (let i = 0; i < N; i += 37) { if (solto[i] > 0) continue; x0 = Math.min(x0, tx[i]); x1 = Math.max(x1, tx[i]); y0 = Math.min(y0, ty[i]); y1 = Math.max(y1, ty[i]); }
-  if (corpo && x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${N} PTS · ${(temPessoa * 100).toFixed(1)}% · Z ${dep.toFixed(2)}`, ha * 0.45);
+  if (corpo && x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${N + Math.floor(NF * P.Fina)} PTS · ${(temPessoa * 100).toFixed(1)}% · Z ${dep.toFixed(2)}`, ha * 0.45);
+  if (corpo && rosto.c > 0.3) { const p0 = vidParaTela(rosto.u1, rosto.v0), p1 = vidParaTela(rosto.u0, rosto.v1); HUD.caixa(hx, p0[0] * W, p0[1] * H, (p1[0] - p0[0]) * W, (p1[1] - p0[1]) * H, `ROSTO ${(rosto.c * 100) | 0}%`, ha * 0.6); }
   for (const m of mm) {
     const r = m.ref, nome = r === mouse ? 'CURSOR' : 'MÃO';
     HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);

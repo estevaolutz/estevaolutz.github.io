@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<head><script src="../lib/projecao.js"></script><script src="../lib/camera.js"></script>
+<head><script src="../lib/projecao.js"></script><script src="../lib/motor-knick.js"></script><script src="../lib/camera.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Gotas</title>
@@ -295,13 +295,13 @@ const IPAD = (() => {
     <div class="section">
       <div class="section-head"><h2>Escala, timbre, cor e chuva</h2></div>
       <div class="row">
-        <select id="scaleSelect" aria-label="Escala">
+        <select id="scaleSelect" hidden aria-label="Escala">
           <option value="major">Pentatônica maior (Dó)</option>
           <option value="minor" selected>Pentatônica menor (Si♭)</option>
           <option value="dorian">Dórico (Ré)</option>
           <option value="lydian">Lídio (Fá)</option>
         </select>
-        <select id="timbreSelect" aria-label="Timbre das gotas">
+        <select id="timbreSelect" hidden aria-label="Timbre das gotas">
           <option value="agua" selected>Timbre: água</option>
           <option value="vidro">Timbre: vidro</option>
           <option value="kalimba">Timbre: kalimba</option>
@@ -324,7 +324,7 @@ const IPAD = (() => {
     <div class="section">
       <div class="section-head"><h2><span class="dot" style="--c:#f59e0b"></span>Harmonia e clima</h2></div>
       <div class="row">
-        <select id="harmonySelect" aria-label="Harmonia">
+        <select id="harmonySelect" hidden aria-label="Harmonia">
           <option value="12">Acordes lentos (12 s)</option>
           <option value="24" selected>Acordes lentos (24 s)</option>
           <option value="48">Acordes lentos (48 s)</option>
@@ -332,7 +332,7 @@ const IPAD = (() => {
         </select>
       </div>
       <div class="knob-row">
-        <div class="knob-wrap"><span class="knob-title">Drone</span><div class="knob" data-param="droneLvl" data-value="0.35" data-color="#f59e0b" aria-label="Volume do drone harmônico"></div><span class="knob-val" id="droneLvlVal"></span></div>
+        <div class="knob-wrap" hidden><span class="knob-title">Drone</span><div class="knob" data-param="droneLvl" data-value="0.35" data-color="#f59e0b" aria-label="Volume do drone harmônico"></div><span class="knob-val" id="droneLvlVal"></span></div>
         <div class="knob-wrap"><span class="knob-title">Clima</span><div class="knob" data-param="weather" data-value="0.5" data-color="#f59e0b" aria-label="Quanto a chuva engrossa e afina ao longo dos minutos"></div><span class="knob-val" id="weatherVal"></span></div>
       </div>
     </div>
@@ -460,7 +460,10 @@ const IPAD = (() => {
     </div>
   </div>
 
-  <section class="card" aria-label="Efeitos">
+  <section class="card" aria-label="Som">
+    <div class="section"><div class="section-head"><h2><span class="dot" style="--c:#9cc8ff"></span>Som</h2></div><div id="mkSom"></div></div>
+  </section>
+  <div class="som-antigo" hidden><section class="card" aria-label="Efeitos">
     <div class="section">
       <div class="section-head">
         <h2><span class="dot" style="--c:var(--fx-delay)"></span>Delay</h2>
@@ -532,7 +535,7 @@ const IPAD = (() => {
       Cada efeito também muda a imagem: o delay gera ecos visuais no mesmo tempo do som, o reverb alonga o rastro,
       o drive treme as ondas e o crush as quebra em polígonos. Arraste os knobs na vertical, use as setas do teclado ou dê duplo clique para voltar ao valor inicial.
     </p>
-  </section>
+  </section></div>
 </div>
 
 <script>
@@ -575,6 +578,15 @@ const IPAD = (() => {
   let autoRain = true;
   let audioOn = false;
   let audioCtx = null;
+  addEventListener('DOMContentLoaded', () => { const el = document.getElementById('mkSom'); if (el) MK.painel(el, { titulo: false }); });
+  // som: Motor Knick (lib/motor-knick.js) — as gotas viram notas de vidro no pulso dos arpejos, o acorde da chuva vira o acorde
+  // do motor. O som antigo (timbres, drone, delay, reverb, drive, crush) continua montado mas fica desligado da saída.
+  const MK = MotorKnick({});
+  function grauKnick(midiRoot) {   // grau da escala do motor mais próximo da tônica pedida
+    const alvo = (((midiRoot - 2 - MK.S.tom) % 12) + 12) % 12; let g = 0, bd = 99;
+    for (let d = 0; d < 7; d++) { const x = ((MK.semi(d) % 12) + 12) % 12, dd = Math.min(Math.abs(x - alvo), 12 - Math.abs(x - alvo)); if (dd < bd) { bd = dd; g = d; } }
+    return g;
+  }
   let fx = {};
   let voices = 0;
 
@@ -659,8 +671,8 @@ const IPAD = (() => {
   const ramp = (p, v) => { if (audioCtx) p.setTargetAtTime(v, audioCtx.currentTime, 0.03); };
 
   function initAudio() {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    audioCtx = new AC();
+    MK.iniciar();
+    audioCtx = MK.AC;
     const ctx = audioCtx;
 
     const bus = ctx.createGain();
@@ -752,11 +764,14 @@ const IPAD = (() => {
     applyInsert('drive'); applyInsert('bitcrush');
     padSetChord(true);
     applyDelay();
+    try { master.disconnect(); } catch (e) {}   // o som antigo não sai mais: quem toca é o Motor Knick
+    MK.mudo(true);   // começa calado: o botão Ligar som liga
   }
 
   // Troca o acorde do drone sem deslizar por notas fora do acorde: o som some, as afinações mudam em silêncio e ele volta.
   function padSetChord(now) {
     if (!audioCtx || !fx.pad) return;
+    { const chK = curChord(); if (chK && chK.r != null) MK.acorde(grauKnick(chK.r)); }
     // voz 0: raiz grave · vozes 1-5: as cinco notas do acorde (com 7ª e 9ª uma oitava acima), em registro médio
     const c = audioCtx.currentTime, ch = curChord(), D = fx.pad.duck.gain;
     const notes = [36 + (ch.r % 12), ...ch.iv.map((iv, k) => 50 + ((((ch.r + iv) % 12) - 50) % 12 + 12) % 12 + (k >= 3 ? 12 : 0))];
@@ -842,6 +857,8 @@ const IPAD = (() => {
     const big = size > 10;
     const yn = y / H;
     const vel = clamp((big ? 1 : 0.45 + size * 0.04) * v.strength, 0.2, 1);   // força do toque
+    MK.nota(f, { forca: vel, pan: clamp((x / W) * 2 - 1, -1, 1) });
+    return null;
     // gotas maiores soam por mais tempo
     const len = (big ? 2.2 : 0.9 + size * 0.06) * T.len * (0.6 + 0.4 * map.radiusMul(params.dropRadius) * v.rad);
     const amp = 0.3 * vel;
@@ -1411,6 +1428,7 @@ const IPAD = (() => {
     }
     audioOn = !audioOn;
     fx.master.gain.setTargetAtTime(audioOn ? 0.85 : 0, audioCtx.currentTime, audioOn ? 0.05 : 0.15);
+    MK.mudo(!audioOn);
     audioBtn.textContent = audioOn ? 'Som ligado' : 'Ligar som';
     audioBtn.classList.toggle('active', audioOn);
   });

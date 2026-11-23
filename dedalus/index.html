@@ -789,7 +789,7 @@ function initAudio() {
   bassIn = ac.createGain(); bassDry = ac.createGain(); bassWet = ac.createGain(); const shp = ac.createWaveShaper(), bcomp = ac.createDynamicsCompressor();
   { const N = 2048, cur = new Float32Array(N); for (let i = 0; i < N; i++) { const x = i / (N - 1) * 2 - 1; cur[i] = Math.tanh(x * 4) / Math.tanh(4); } shp.curve = cur; shp.oversample = '2x'; }
   bcomp.threshold.value = -20; bcomp.knee.value = 8; bcomp.ratio.value = 4; bcomp.attack.value = .004; bcomp.release.value = .14;
-  bassIn.connect(bassDry); bassIn.connect(shp); shp.connect(bassWet); bassDry.connect(bcomp); bassWet.connect(bcomp); bcomp.connect(bodyBus);
+  bassIn.connect(bassDry); bassIn.connect(shp); shp.connect(bassWet); bassDry.connect(bcomp); bassWet.connect(bcomp); window.__maoFiltro = ac.createBiquadFilter(); __maoFiltro.type = 'lowpass'; __maoFiltro.frequency.value = 20000; __maoFiltro.Q.value = 1.4; bcomp.connect(__maoFiltro); __maoFiltro.connect(bodyBus);   // filtro da mão direita (fechada = fechado · aberta = aberto)
   // WAH do lead: passa-faixa ressonante cuja frequência segue a abertura da boca (boca fechada = "uu" escuro · aberta = "aa" brilhante)
   leadIn = ac.createGain(); wahBP = ac.createBiquadFilter(); wahWet = ac.createGain(); const wahDry = wahDryG = ac.createGain();
   wahBP.type = 'bandpass'; wahBP.Q.value = 5; wahBP.frequency.value = 900; wahWet.gain.value = 2.4; wahDry.gain.value = .4;
@@ -2352,8 +2352,10 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
   const GES = {
     on: true, abMin: .35, abMax: .6,
     // mão: 1 = direita (baixo) · 2 = esquerda (theremin)
-    1: { ab: ['valh', 'bass', .8], fe: ['drive', 'bass', .7] },
-    2: { ab: ['dlyL', 'th', .8], fe: ['crush', 'th', .7] },
+    // direita: abrir/fechar a mão abre/fecha o filtro passa-baixa do baixo (filtroMin → filtroMax Hz)
+    1: { filtro: true, filtroMin: 180, filtroMax: 16000 },
+    // esquerda: aberta = delay longo · fechada = delay curto com feedback subindo (fbMax)
+    2: { ab: ['dlyL', 'th', .8], fe: ['dlyS', 'th', .85], fbMax: .82 },
     fundoEspera: 1.0, fundoSome: 1.5,
   };
   window.GESTOS = GES;   // dá para mudar pelo console do navegador
@@ -2378,8 +2380,17 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
       const v = GES.on && ab[i] !== null ? ab[i] : null;
       const aberta = v === null ? 0 : clamp((v - GES.abMax) / Math.max(.05, 1 - GES.abMax), 0, 1);
       const fechada = v === null ? 0 : clamp((GES.abMin - v) / Math.max(.05, GES.abMin), 0, 1);
+      if (GES[i].filtro) {   // mão direita: filtro do baixo segue a abertura (sem mão = filtro todo aberto)
+        const F = window.__maoFiltro;
+        if (F) { const hz = v === null ? 20000 : GES[i].filtroMin * (GES[i].filtroMax / GES[i].filtroMin) ** v; F.frequency.setTargetAtTime(hz, ac.currentTime, .06); }
+        return;
+      }
       enviar((i === 1 ? 'd' : 'e') + 'Ab', GES[i].ab, aberta);
       enviar((i === 1 ? 'd' : 'e') + 'Fe', GES[i].fe, fechada);
+      if (GES[i].fbMax && FX && FX[GES[i].fe[0]]) {   // mão esquerda fechada: o feedback do delay sobe junto com o send
+        const id = GES[i].fe[0], base = fxS.p[id].fb, fb = base + (GES[i].fbMax - base) * fechada, o = FX[id], c = ac.currentTime;
+        o.gL.gain.setTargetAtTime(fb, c, .08); o.gR.gain.setTargetAtTime(fb, c, .08);
+      }
     });
     // fundo: com a câmera ligada, só toca enquanto há mão captada
     const temMao = !cam.on || (cam.handPts && (cam.handPts[1] || cam.handPts[2]));

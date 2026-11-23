@@ -80,7 +80,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
 <body>
 <div id="entrada" role="dialog" aria-labelledby="entT"><div class="c">
 <h1 id="entT">Dedalus</h1>
-<p>Uma obra audiovisual tocada pelas mãos. A câmera acompanha o seu corpo: a mão direita escolhe os acordes, a esquerda toca o theremin, e a distância controla o volume. Abrir e fechar cada mão muda os efeitos do som e da imagem; o arpejador só toca com as duas mãos na tela e abertas. Sem mãos na tela, a música de fundo se apaga.</p>
+<p>Uma obra audiovisual tocada pelas mãos. A câmera acompanha o seu corpo: a mão direita toca o arpejo do baixo e a esquerda o synth lead. Nas duas: esquerda↔direita muda a nota, cima↔baixo a forma da onda, e a distância controla o volume. Fechar a mão direita fecha o filtro do baixo; abrir a esquerda aumenta o drive do lead. Cada mão toca sozinha. Sem mãos na tela, a música de fundo se apaga.</p>
 <p class="k">Fique a 1,5–2 m da câmera, com os ombros visíveis · use fones ou caixas de som · <span class="kTecla">H abre o painel</span></p>
 <label><input type="checkbox" id="entCam" checked> Usar a câmera (sem ela, o mouse faz o papel das mãos)</label>
 <div class="b"><button class="p" id="entOrg">Começar</button><button id="entSalvo" hidden>Começar · som original</button></div>
@@ -92,12 +92,14 @@ input[type=range]{accent-color:var(--ac);width:110px}
   <button id="bAudio">Ligar áudio</button>
   <button id="bCam">Ligar câmera</button>
   <button id="bWiz" disabled title="Assistente em 3 etapas: distância · mão esquerda · mão direita (tecla G)">Assistente de calibração</button>
+  <label title="Para conferir uma mão de cada vez: a outra mão e o fundo ficam mudos e aparecem as leituras ao vivo">Teste de mão <select id="handTest"><option value="0">As duas mãos</option><option value="1">Só mão direita · arp bass</option><option value="2">Só mão esquerda · lead</option></select></label>
+  <label><input type="checkbox" id="cHud"> Leituras das mãos</label>
   <label>Alcance Z <input id="rZ" type="range" min="1" max="5" step=".25" value="2.5" title="Só vale sem calibração longe/perto"></label>
   <label>Curva vol. <input id="rC" type="range" min="1" max="3" step=".25" value="1.5" title="1 = linear · 3 = só os últimos centímetros ficam altos"></label>
   <label><input id="cMirror" type="checkbox" checked> Espelhar</label>
   <label>Tema visual <select id="visTheme" title="T alterna"><option value="cyber" selected>Cyberpunk</option><option value="classic">Clássico</option></select></label>
   <span class="som-antigo" hidden><label>Tônica <select id="sRoot"></select></label></span>
-  <label>Notas do theremin <select id="thMode" title="Livre: toda a escala · Escala do acorde: notas do acorde e tensões, sem as notas que chocam · Só acorde: fundamental, 3ª, 5ª, 7ª"><option value="0">Escala toda</option><option value="1" selected>Escala do acorde</option><option value="2">Só notas do acorde</option></select></label>
+  <label>Notas do lead <select id="thMode" title="Livre: toda a escala · Escala do acorde: notas do acorde e tensões, sem as notas que chocam · Só acorde: fundamental, 3ª, 5ª, 7ª"><option value="0">Escala toda</option><option value="1" selected>Escala do acorde</option><option value="2">Só notas do acorde</option></select></label>
   <span class="som-antigo" hidden><label>Escala <select id="sScale">
     <optgroup label="Menores">
       <option value="aeolian">Menor natural (eólio)</option><option value="harmonicMinor">Menor harmônica</option><option value="melodicMinor">Menor melódica</option>
@@ -108,7 +110,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
     </optgroup>
     <optgroup label="Outras"><option value="phrygianDom">Frígio dominante</option></optgroup>
   </select></label></span>
-  <label>Volume theremin <input id="rVB" type="range" min="0" max="1" step=".01" value=".8"></label>
+  <label>Volume lead <input id="rVB" type="range" min="0" max="1" step=".01" value=".8"></label>
   <span class="som-antigo" hidden><label>Fundo · Wurlitzer <input id="rVG" type="range" min="0" max="1" step=".01" value="0"></label></span>
   <span class="som-antigo" hidden><label>Tremolo <input id="rTrem" type="range" min="0" max="1" step=".01" value=".35"></label></span>
   <label><input type="checkbox" id="cNorm"> Mãos pelo corpo</label>
@@ -268,13 +270,26 @@ PRESETS.forEach(p => { p.human = p.human || { ms: 0, cents: 0, vel: 0 }; p.bars 
 // formas de onda "acústicas" (harmônicos 1..n): cordas, violoncelo, voz (ah), flauta
 const WAVE_AMPS = { cordas: [1, .5, .33, .25, .2, .12, .1, .07, .05, .03], violoncelo: [1, .7, .55, .4, .3, .2, .12, .08, .05, .03], voz: [1, .6, .5, .15, .3, .1, .08, .04, .02], flauta: [1, .12, .05, .02] };
 const waveCache = {};
+// FORMA DE ONDA contínua (eixo Y das duas mãos): seno → triângulo → dente de serra → quadrada, interpolando os harmônicos
+const MORPH_N = 32, morphCache = {}, WAVE_NOMES = ['seno', 'triângulo', 'serra', 'quadrada'];
+const morphKey = y => Math.round(clamp(y, 0, 1) * 30);
+const waveNome = y => { const u = clamp(y, 0, 1) * 3, i = Math.round(u); return Math.abs(u - i) < .2 ? WAVE_NOMES[i] : WAVE_NOMES[Math.floor(u)] + '→' + WAVE_NOMES[Math.ceil(u)]; };
+function morphWave(y) {
+  const k = morphKey(y); if (morphCache[k]) return morphCache[k];
+  const u = k / 30 * 3, seg = Math.min(2, Math.floor(u)), f = u - seg;
+  const forma = (s, h) => s === 0 ? (h === 1 ? 1 : 0) : s === 1 ? (h % 2 ? 1 / (h * h) : 0) : s === 2 ? 1 / h : (h % 2 ? 1 / h : 0);
+  const re = new Float32Array(MORPH_N + 1), im = new Float32Array(MORPH_N + 1);
+  for (let h = 1; h <= MORPH_N; h++) im[h] = forma(seg, h) * (1 - f) + forma(seg + 1, h) * f;
+  return morphCache[k] = ac.createPeriodicWave(re, im);
+}
 function setWave(o, name) { if (!WAVE_AMPS[name]) { o.type = name; return; } if (!waveCache[name]) { const a = WAVE_AMPS[name], re = new Float32Array(a.length + 1), im = new Float32Array(a.length + 1); a.forEach((v, i) => { im[i + 1] = v; }); waveCache[name] = ac.createPeriodicWave(re, im); } o.setPeriodicWave(waveCache[name]); }
 // afinação justa a partir da fundamental do acorde (razões puras: 3ª 5/4, 5ª 3/2, 7ª 9/5 ou 15/8 …)
 const JI = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 5, 5 / 3, 9 / 5, 15 / 8];
 const jiHz = (m, rootM) => TIM.ji ? mtof(rootM) * 2 ** Math.floor((m - rootM) / 12) * JI[(((m - rootM) % 12) + 12) % 12] : mtof(m);
 let nbuf = null;
 function getNoise() { if (!nbuf) { nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } return nbuf; }
-const S = { root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
+const HUD = { ab: { 1: null, 2: null }, filtro: 20000 };
+const S = { handTest: 0, root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
 const vGain = v => v * v * 1.56;   // curva perceptual: .8 ≈ ganho unitário
 const sc = () => SCALES[S.scale];
 const chordOffs = () => (sc().length === 7 ? [0,2,4,6] : [0,1,2,3]);
@@ -289,7 +304,8 @@ let curDeg = 0;
    do arranjo (arpejos, baixo, pad, vidro). O theremin da mão D segue com o som próprio, tocando por cima.
    A tonalidade do painel do motor e a Tônica/Escala do Dedalus andam juntas (o theremin fica sempre no tom). */
 const MK = MotorKnick({});
-let mkDeg = -1, mkSinc = false, mkGate = null;
+MK.arpejos = false; MK.set('bai', 0);   // o Motor Knick fica só como fundo (pad/vidro): o arpejo e o baixo são da mão direita
+let mkDeg = -1, mkSinc = false, mkGate = null, mkSolo = -1;
 const MK_MODO = { aeolian: 'eolio', dorian: 'dorico', phrygian: 'frigio', harmonicMinor: 'menorHarm', ionian: 'jonico', lydian: 'lidio', mixolydian: 'mixolidio' };
 const MK_ESCALA = { eolio: 'aeolian', dorico: 'dorian', frigio: 'phrygian', menorHarm: 'harmonicMinor', jonico: 'ionian', lidio: 'lydian', mixolidio: 'mixolydian' };
 function mkDoDedalus() {   // Tônica/Escala do Dedalus → painel do motor
@@ -949,9 +965,24 @@ function initTheremin() {
   thLP.connect(thGain); thGain.connect(pan); pan.connect(thBus);
   { const bs = ac.createBufferSource(), bf = ac.createBiquadFilter(); bs.buffer = getNoise(); bs.loop = true; bf.type = 'bandpass'; bf.frequency.value = 2600; bf.Q.value = .7; thBreath = ac.createGain(); thBreath.gain.value = 0; bs.connect(bf); bf.connect(thBreath); thBreath.connect(thGain); bs.start(); }   // sopro
   thOsc.start(); thOsc2.start(); lfo.start();
+  initLeadDrive();
   applyPreset(S.preset | 0);
 }
 let thAllowed = [], thAKey = '';
+/* DRIVE do lead (mão esquerda): fechada = sem drive · abrindo = mais saturação. Seco/saturado com volume compensado. */
+let leadDrvIn, leadDry, leadPre, leadWet, leadDrv = 0; const leadVozes = []; let leadWaveK = -1;
+function initLeadDrive() {
+  leadDrvIn = ac.createGain(); leadDry = ac.createGain(); leadPre = ac.createGain(); leadWet = ac.createGain();
+  const sh = ac.createWaveShaper(), N = 2048, cur = new Float32Array(N); for (let i = 0; i < N; i++) { const x = i / (N - 1) * 2 - 1; cur[i] = Math.tanh(x * 3) / Math.tanh(3); } sh.curve = cur; sh.oversample = '4x';
+  const tone = ac.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 6500; tone.Q.value = .5;
+  leadDry.gain.value = 1; leadPre.gain.value = 1; leadWet.gain.value = 0;
+  leadDrvIn.connect(leadDry); leadDry.connect(thBus); leadDrvIn.connect(leadPre); leadPre.connect(sh); sh.connect(tone); tone.connect(leadWet); leadWet.connect(thBus);
+}
+function setLeadDrive(a) {
+  if (!leadPre) return; a = clamp(a, 0, 1); leadDrv = a;
+  const P = 1 + 16 * a * a, a0 = .15, comp = a0 / (Math.tanh(3 * a0 * P) / Math.tanh(3)), c = ac.currentTime;
+  leadPre.gain.setTargetAtTime(P, c, .05); leadWet.gain.setTargetAtTime(a * comp, c, .05); leadDry.gain.setTargetAtTime(1 - a, c, .05);
+}
 /* Notas permitidas do theremin sobre o acorde do momento. modo 1 = "escala do acorde": notas do acorde (fundamental, 3ª, 5ª, 7ª) + tensões da escala,
    exceto as "notas a evitar" (a meio-tom acima de uma nota do acorde, que chocam com ela) · modo 2 = só as notas do acorde. */
 function thComputeAllowed(top, n) {
@@ -966,29 +997,31 @@ const thIsTone = d => { const n = sc().length; return chordOffs().map(o => o % n
 let thDeg = null, thChord = -1, thEnv = 0, thLastT = -9, thLastDeg = null, thNotes = 0;
 /* NOTA do theremin: o mesmo timbre de antes (seno + serra filtrada, vibrato), mas cada nota é uma voz própria:
    o som sobe devagar (ataque), o filtro abre junto, e depois de um curto sustain a nota se apaga num release longo, sobrepondo-se à próxima. */
-function thereminNote(t, f, { peak = .15, xn = .5, vib = 1 }) {
+function thereminNote(t, f, { peak = .15, xn = .5, vib = 1, wy = null }) {
   const H = TIM.th, T = ADSR.th, o1 = ac.createOscillator(), o2 = ac.createOscillator(), mx = ac.createGain(), lp = ac.createBiquadFilter(), g = ac.createGain(), p = ac.createStereoPanner();
-  setWave(o1, H.t1); setWave(o2, H.t2); o1.frequency.value = o2.frequency.value = f; o2.detune.value = 4; mx.gain.value = H.mix;
-  const fc = clamp(f * 2 ** (H.lo + xn * H.span + T.cut), 120, 14000), off = t + T.a + T.d + T.hold;   // off = fim do sustain (a nota "solta" sozinha)
+  if (wy === null) { setWave(o1, H.t1); setWave(o2, H.t2); mx.gain.value = H.mix; } else { const w = morphWave(wy); o1.setPeriodicWave(w); o2.setPeriodicWave(w); mx.gain.value = .5; }   // Y = forma de onda (as duas cópias, levemente desafinadas)
+  o1.frequency.value = o2.frequency.value = f; o2.detune.value = 4;
+  const fc = clamp(Math.max(wy === null ? 0 : f * 10, f * 2 ** (H.lo + xn * H.span + T.cut)), 120, 14000), off = t + T.a + T.d + T.hold;   // off = fim do sustain (a nota "solta" sozinha)
   lp.type = 'lowpass'; lp.Q.value = clamp(H.q * T.q, .1, 22); lp.frequency.setValueAtTime(Math.max(120, fc * Math.pow(.35, T.env)), t); lp.frequency.exponentialRampToValueAtTime(fc, t + Math.max(.02, T.a * 1.3));
   lp.frequency.setValueAtTime(fc, off); lp.frequency.setTargetAtTime(Math.max(120, fc * .45), off, Math.max(.05, T.r * .45 * T.frel));   // release do filtro
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + Math.max(.005, T.a)); g.gain.linearRampToValueAtTime(peak * T.s, t + T.a + Math.max(.01, T.d)); g.gain.setValueAtTime(peak * T.s, off); g.gain.setTargetAtTime(0, off, Math.max(.03, T.r / 4));
   const end = off + Math.max(T.r * 1.6, T.r * T.frel * 1.2) + .1;
   const vd = ac.createGain(); vd.gain.setValueAtTime(0, t); vd.gain.linearRampToValueAtTime((8 + 8) * H.vib * vib, t + T.a + T.d); thLfo.connect(vd); vd.connect(o1.detune); vd.connect(o2.detune);   // vibrato nasce depois do ataque
   p.pan.value = clamp(.4 + (Math.random() - .5) * .25, -1, 1);
-  o1.connect(lp); o2.connect(mx); mx.connect(lp); lp.connect(g); g.connect(p); p.connect(thBus);
+  o1.connect(lp); o2.connect(mx); mx.connect(lp); lp.connect(g); g.connect(p); p.connect(leadDrvIn || thBus);
+  if (wy !== null) { leadVozes.push({ o1, o2, end }); while (leadVozes.length > 8) leadVozes.shift(); }
   o1.start(t); o2.start(t); o1.stop(end); o2.stop(end); o1.onended = () => { try { thLfo.disconnect(vd); } catch (e) {} };
 }
 function updateTheremin() {
   if (!ac || !thOsc) return;
   const ok = handsTracked();
   trackGate.gain.setTargetAtTime(ok ? 1 : 0, ac.currentTime, .05);   // silencia tudo (inclusive eco e reverb) sem as mãos
-  if (mkGate !== ok) { mkGate = ok; MK.mudo(!ok || !S.audio); }   // o Motor Knick também cala sem as mãos
+  if (mkGate !== ok || mkSolo !== S.handTest) { mkGate = ok; mkSolo = S.handTest; MK.mudo(!ok || !S.audio || S.handTest > 0); }   // teste de uma mão: o fundo cala   // o Motor Knick também cala sem as mãos
   const l = LIMBS[2], c = ac.currentTime, n = sc().length, top = 2 * n + 3;   // ~2,5 oitavas
   const on = S.audio && body.present && l.on && isTracked(2), zv = zVol(l.z);
   // PITCH (Y): só graus da escala escolhida, com histerese (não treme na fronteira) e portamento curto entre as notas
   // Ímã: tons do acorde (fundamental, 3ª, 5ª) têm bacia de captura larga; as notas de passagem, estreita
-  const pos = ((l.y + 1) / 2) * top;
+  const pos = ((l.x + 1) / 2) * top;   // eixo X = altura da nota (grave à esquerda)
   const tones = chordOffs().slice(0, 3), isTone = d => tones.includes((((d - curDeg) % n) + n) % n);
   const pick = () => {
     let best = null, bd = 9;
@@ -1005,12 +1038,13 @@ function updateTheremin() {
   } else if (thDeg === null || thChord !== curDeg || Math.abs(pos - thDeg) > (isTone(thDeg) ? .85 : .6)) { thDeg = Math.min(pick(), top); thChord = curDeg; }   // modo livre: re-encaixa quando o acorde muda
   const f = jiHz(degMidi(thDeg, 60), degMidi(curDeg, 60));   // registro: mais uma oitava abaixo (antes a base era 72)
   // o theremin ataca NOTAS: cada mudança de grau (ou de acorde) inicia uma nota nova; mão parada reinicia a nota a cada 4 tempos
-  const xn = (l.x + 1) / 2;
+  const xn = .6, wy = clamp((l.y + 1) / 2, 0, 1);   // eixo Y = forma de onda
+  if (on && morphKey(wy) !== leadWaveK) { leadWaveK = morphKey(wy); const w = morphWave(wy); leadVozes.forEach(v => { if (v.end > c) { try { v.o1.setPeriodicWave(w); v.o2.setPeriodicWave(w); } catch (e) {} } }); }   // a nota que está soando também muda de onda
   thGain.gain.setTargetAtTime(0, c, .05);   // oscilador contínuo (drone) fica mudo
   if (on) {
     const changed = thLastDeg !== thDeg, hold = 240 / Math.max(40, S.bpm);
     if ((changed && c - thLastT > .22) || (!changed && c - thLastT > hold)) {
-      thereminNote(c + .01, f, { peak: zv * .2 * TIM.th.gain * vGain(l.vol), xn, vib: 1 - clamp(l.speed * 2, 0, 1) * .6 });
+      thereminNote(c + .01, f, { peak: zv * .2 * TIM.th.gain * vGain(l.vol), xn, wy, vib: 1 - clamp(l.speed * 2, 0, 1) * .6 });
       events.push({ t: c + .01 + ADSR.th.a * .6, kind: 'note', i: 2 }); thEnv = 1; thLastT = c; thLastDeg = thDeg; thNotes++;
     }
   } else thLastDeg = null;
@@ -1026,7 +1060,7 @@ function chordFromBody() {
 // Mão E: a altura divide o modo em n faixas (um grau/acorde por faixa), com histerese para não vibrar na fronteira
 let chordSel = 0;
 function chordFromHand() {
-  const n = sc().length, yp = clamp((LIMBS[1].y + 1) / 2, 0, .999) * n;
+  const n = sc().length, yp = clamp((LIMBS[1].x + 1) / 2, 0, .999) * n;   // eixo X: grave à esquerda, agudo à direita
   if (chordSel >= n || Math.abs(yp - (chordSel + .5)) > .65) chordSel = Math.min(n - 1, Math.floor(yp));
   return chordSel;
 }
@@ -1055,6 +1089,22 @@ function arpNext() {
   }
   return seq[bassArpIdx++ % seq.length];
 }
+/* ---------- ARP BASS (mão direita): X = nota (acorde da escala) · Y = forma de onda · Z = volume · mão fechada = filtro fechado ----------
+   Toca sozinho: basta a mão direita estar na tela (não depende da outra mão). */
+function arpBassStep(pos, t, s16) {
+  const l = LIMBS[1];
+  if (!S.audio || !l.on || !isTracked(1) || !body.present) return;
+  if (pos === 0) bassArpIdx = 0;
+  if (pos % S.arpRate) return;
+  const k = arpNext(), vel = zVol(l.z) * (pos % 4 === 0 ? 1 : .82);
+  if (vel < .03) return;
+  const m = degMidi(ladderDeg(curDeg, k), 36), yn = clamp((l.y + 1) / 2, 0, 1), len = s16 * S.arpRate * 1.5;
+  const o = ac.createOscillator(), g = ac.createGain(), pk = .34 * vel * vGain(l.vol);
+  o.setPeriodicWave(morphWave(yn)); o.frequency.value = mtof(m); o.detune.value = (Math.random() - .5) * 6;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(pk, t + .006); g.gain.setTargetAtTime(pk * .6, t + .02, len * .4); g.gain.setTargetAtTime(0, t + len, .07);
+  o.connect(g); g.connect(bassIn); o.start(t); o.stop(t + len + .6);
+  events.push({ t, kind: 'note', i: 1 });
+}
 const BASS_FILL = [0, 2, 3, 4];   // preenchimento: sobe pela escada do acorde (R 5ª 7ª oitava)
 const bassSeq = [0, null, null, 0, null, null, 2, null, 0, null, null, 0, 2, null, 4, null];   // grau da "escada" do acorde por passo: 0 R · 1 3ª · 2 5ª · 3 7ª · 4 oitava · null = pausa
 const zVol = z => ((clamp(z, -1, 1) + 1) / 2) ** cam.zCurve;   // Z → volume: fundo = mudo, frente = cheio
@@ -1068,6 +1118,7 @@ function playStep(st, t, s16) {
   if (curDeg !== mkDeg) { mkDeg = curDeg; MK.acorde(curDeg); }
   if (pos % 4 === 0) MK.energia(body.present && LIMBS[1].on && isTracked(1) ? clamp(.3 + .45 * zVol(LIMBS[1].z) + .4 * E, 0, 1) : 0);
   events.push({ t, kind: 'step', pos });
+  arpBassStep(pos, t, s16);
   return;
   for (const i of [0, 1]) {
     const l = LIMBS[i];
@@ -1637,7 +1688,7 @@ function frame(nowMs) {
   const la = clamp(1 - (nowMs - label.born) / 2200, 0, 1);
   if (la > 0) { ctx.fillStyle = `rgba(232,236,246,${la})`; ctx.font = '600 44px system-ui,sans-serif'; ctx.fillText(label.txt, W / 2, H / 2 - 20); }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(142,152,176,.8)'; ctx.font = '12px system-ui,sans-serif';
-  ctx.fillText('X nota · Y brilho · Z volume (theremin: Y nota · X filtro)  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
+  ctx.fillText('X nota · Y onda · Z volume · mão D fechada = filtro · mão E aberta = drive  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
   if (cam.on && cam.dbg && $('cDbg').checked) {   // diagnóstico do tracking das mãos
     const D = cam.dbg, pp = q => { const v = camXY(q); return [px(v.x), py(v.y)]; }, dot = (q, col, r) => { const [x, y] = pp(q); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); };
     ctx.save(); ctx.globalAlpha = 1;
@@ -1675,10 +1726,25 @@ function frame(nowMs) {
       }
     }
   }
+  if (S.handTest || $('cHud').checked) drawHandHud();
   const msg = cam.msg || (cam.on && !cam.detected ? 'Câmera ligada: nenhum corpo detectado' : (cam.on && !handsTracked() ? 'Mãos não detectadas: áudio pausado' : ''));
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 32); }
 }
 requestAnimationFrame(frame);
+function drawHandHud() {
+  const pc = v => Math.round(clamp(v, 0, 1) * 100) + '%', ab = v => v === null || v === undefined ? '—' : pc(v), nota = m => NOTES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+  const hz = h => h >= 19000 ? 'todo aberto' : h >= 1000 ? (h / 1000).toFixed(1) + ' kHz' : Math.round(h) + ' Hz';
+  const L1 = LIMBS[1], L2 = LIMBS[2], rows = [];
+  if (S.handTest !== 2) rows.push(['#fb7185', 'MÃO DIREITA · ARP BASS', !L1.on ? 'desligada' : !isTracked(1) ? 'não detectada' :
+    `X nota: ${chordName(curDeg)}  ·  Y onda: ${waveNome((L1.y + 1) / 2)}  ·  Z volume: ${pc(zVol(L1.z))}  ·  mão aberta ${ab(HUD.ab[1])} → filtro ${hz(HUD.filtro)}`]);
+  if (S.handTest !== 1) rows.push(['#38bdf8', 'MÃO ESQUERDA · LEAD', !L2.on ? 'desligada' : !isTracked(2) ? 'não detectada' :
+    `X nota: ${thDeg === null ? '—' : nota(degMidi(thDeg, 60))}  ·  Y onda: ${waveNome((L2.y + 1) / 2)}  ·  Z volume: ${pc(zVol(L2.z))}  ·  mão aberta ${ab(HUD.ab[2])} → drive ${pc(leadDrv)}`]);
+  ctx.save(); ctx.font = '13px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left';
+  const y0 = H - 92 - rows.length * 40;
+  ctx.fillStyle = 'rgba(9,11,16,.72)'; ctx.fillRect(10, y0 - 18, Math.min(W - 20, 820), rows.length * 40 + 8);
+  rows.forEach(([c, t, v], k) => { ctx.fillStyle = c; ctx.fillText(t, 20, y0 + k * 40); ctx.fillStyle = '#e5e7eb'; ctx.fillText(v, 20, y0 + k * 40 + 18); });
+  ctx.restore();
+}
 
 /* ---------- Controles ---------- */
 $('sRoot').innerHTML = NOTES.map((n, i) => `<option value="${i}" ${i === S.root ? 'selected' : ''}>${n}</option>`).join('');
@@ -1702,11 +1768,15 @@ $('cNorm').onchange = e => { cam.norm = e.target.checked; };
 $('cHands').onchange = e => { cam.useHands = e.target.checked; };
 $('rA').oninput = e => { cam.hr = +e.target.value; };
 $('rSens').oninput = e => { S.sens = +e.target.value; };
+$('handTest').onchange = e => {   // teste de uma mão: liga só o ponto escolhido; a outra mão e o fundo ficam mudos
+  S.handTest = +e.target.value; LIMBS[1].on = S.handTest !== 2; LIMBS[2].on = S.handTest !== 1;
+  if (S.handTest !== 2) setLeadDrive(0);
+};
 $('rBpm').oninput = e => { S.bpm = +e.target.value; $('vBpm').textContent = S.bpm; setDelayTime(); };
 $('bAudio').onclick = async () => {
   if (!ac) initAudio();
   if (ac.state === 'suspended') await ac.resume();
-  S.audio = !S.audio; step = 0; nextT = 0; events.length = 0; MK.mudo(!S.audio || mkGate === false);
+  S.audio = !S.audio; step = 0; nextT = 0; events.length = 0; MK.mudo(!S.audio || mkGate === false || S.handTest > 0);
   $('bAudio').textContent = S.audio ? 'Desligar áudio' : 'Ligar áudio'; $('bAudio').classList.toggle('on', S.audio);
 };
 $('bHide').onclick = () => $('ui').classList.add('hide');
@@ -2000,7 +2070,7 @@ function applyPreset(i) {
   if (ac && thOsc) {
     const c = ac.currentTime, H = TIM.th, Ld = TIM.lead;
     setWave(thOsc, H.t1); setWave(thOsc2, H.t2); thBreath.gain.setTargetAtTime(H.breath * .3, c, .05); thMix.gain.setTargetAtTime(H.mix, c, .05); thLP.Q.setTargetAtTime(H.q, c, .05); thLfo.frequency.setTargetAtTime(H.vibRate, c, .05);
-    if (bassWet) { bassWet.gain.setTargetAtTime(TIM.bass.sat * .6, c, .05); bassDry.gain.setTargetAtTime(1 - TIM.bass.sat * .4, c, .05); }
+    if (bassWet) { bassWet.gain.setTargetAtTime(0, c, .05); bassDry.gain.setTargetAtTime(1, c, .05); }   // arp bass limpo: o timbre vem da forma de onda (Y) e do filtro (mão)
     wahBP.Q.setTargetAtTime(Ld.wahQ, c, .05); wahWet.gain.setTargetAtTime(Ld.wahWet, c, .05); wahDryG.gain.setTargetAtTime(Ld.wahDry, c, .05);
   }
   if (TIM.bpm) { S.bpm = TIM.bpm; $('rBpm').value = S.bpm; $('vBpm').textContent = S.bpm; setDelayTime(); }
@@ -2355,7 +2425,8 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
     // direita: abrir/fechar a mão abre/fecha o filtro passa-baixa do baixo (filtroMin → filtroMax Hz)
     1: { filtro: true, filtroMin: 180, filtroMax: 16000 },
     // esquerda: aberta = delay longo · fechada = delay curto com feedback subindo (fbMax)
-    2: { ab: ['dlyL', 'th', .8], fe: ['dlyS', 'th', .85], fbMax: .82 },
+    // esquerda: fechada = drive desligado · abrindo = drive aumenta (até 100% com a mão toda aberta)
+    2: { drive: true },
     fundoEspera: 1.0, fundoSome: 1.5,
     // arpejador (Motor Knick): só toca com as DUAS mãos na tela e ABERTAS · abre acima de arpAbre, fecha abaixo de arpFecha (histerese)
     arpAbre: .55, arpFecha: .4, arpTolera: .3,   // arpTolera: segundos que uma mão pode sumir/piscar sem cortar o arpejo
@@ -2371,7 +2442,7 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
     if (ult[chave] !== undefined && Math.abs(ult[chave] - amt) < .02) return;
     ult[chave] = amt; window.td.gesto(chave, fx, inst, amt);
   };
-  let visto = -99, fundoOn = null, arpOn = null;
+  let visto = -99, fundoOn = null;
   const arpAb = { 1: false, 2: false }, arpVisto = { 1: -99, 2: -99 };
   setInterval(() => {
     if (!ac) return;
@@ -2385,9 +2456,10 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
       const fechada = v === null ? 0 : clamp((GES.abMin - v) / Math.max(.05, GES.abMin), 0, 1);
       if (GES[i].filtro) {   // mão direita: filtro do baixo segue a abertura (sem mão = filtro todo aberto)
         const F = window.__maoFiltro;
-        if (F) { const hz = v === null ? 20000 : GES[i].filtroMin * (GES[i].filtroMax / GES[i].filtroMin) ** v; F.frequency.setTargetAtTime(hz, ac.currentTime, .06); }
-        return;
+        if (F) { const hz = v === null ? 20000 : GES[i].filtroMin * (GES[i].filtroMax / GES[i].filtroMin) ** v; F.frequency.setTargetAtTime(hz, ac.currentTime, .06); HUD.filtro = hz; }
+        HUD.ab[i] = v; return;
       }
+      if (GES[i].drive) { HUD.ab[i] = v; setLeadDrive(v === null ? 0 : clamp((v - GES.abMin) / Math.max(.05, 1 - GES.abMin), 0, 1)); return; }
       enviar((i === 1 ? 'd' : 'e') + 'Ab', GES[i].ab, aberta);
       enviar((i === 1 ? 'd' : 'e') + 'Fe', GES[i].fe, fechada);
       if (GES[i].fbMax && FX && FX[GES[i].fe[0]]) {   // mão esquerda fechada: o feedback do delay sobe junto com o send
@@ -2396,20 +2468,12 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
       }
     });
     // arpejador: mão direita (baixo) E mão esquerda (theremin) na tela e abertas · sem câmera (dedo/joystick) fica sempre ligado
-    let arp = true;
-    if (cam.on) {
-      [1, 2].forEach(i => {
-        if (ab[i] === null) return;
-        arpVisto[i] = t;
-        if (ab[i] > GES.arpAbre) arpAb[i] = true; else if (ab[i] < GES.arpFecha) arpAb[i] = false;
-      });
-      arp = [1, 2].every(i => t - arpVisto[i] < GES.arpTolera && arpAb[i]);
-    }
-    if (arp !== arpOn) { arpOn = arp; MK.arpejos = arp; }
+    // (o arpejo agora é o arp bass da mão direita e toca sozinho; os arpejos do Motor Knick ficam desligados)
+    if (MK.arpejos) MK.arpejos = false;
     // fundo: com a câmera ligada, só toca enquanto há mão captada
     const temMao = !cam.on || (cam.handPts && (cam.handPts[1] || cam.handPts[2]));
     if (temMao) visto = t;
-    const on = t - visto < GES.fundoEspera;
+    const on = t - visto < GES.fundoEspera && !S.handTest;   // no teste de uma mão, sem fundo
     if (on !== fundoOn) { fundoOn = on; window.td.fundo(on, GES.fundoSome); }
   }, 66);
   window.__dbg = { cam, GES };

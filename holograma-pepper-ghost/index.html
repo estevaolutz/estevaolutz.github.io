@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Holograma Pepper's Ghost</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;color:#e8f4ff;-webkit-user-select:none;user-select:none}
+  canvas{display:block;touch-action:none}
+  #gear{position:fixed;right:14px;bottom:14px;width:48px;height:48px;border-radius:50%;border:1px solid #fff3;background:#111c;color:#fff;font-size:22px;transition:opacity .4s;z-index:5}
+  #gear.hide{opacity:0;pointer-events:none}
+  #panel{position:fixed;top:10px;right:10px;bottom:10px;width:min(340px,calc(100vw - 20px));overflow-y:auto;background:#0b0f14ee;border:1px solid #fff2;border-radius:14px;padding:14px 14px 20px;box-sizing:border-box;z-index:6;-webkit-overflow-scrolling:touch}
+  #panel[hidden]{display:none}
+  h2{margin:0 0 4px;font-size:17px;font-weight:700}
+  .sub{font-size:12px;color:#9ab;margin-bottom:6px}
+  .sec{margin:16px 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#6cf}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  button,.btn{background:#18222d;color:#e8f4ff;border:1px solid #fff2;border-radius:9px;padding:9px 6px;font-size:13px;font-family:inherit;cursor:pointer;text-align:center}
+  button.on{background:#1b4b6b;border-color:#6cf}
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .row>*{flex:1}
+  label.r{display:block;font-size:13px;margin:10px 0 2px}
+  label.r span{float:right;color:#9ab}
+  input[type=range]{width:100%;accent-color:#6cf}
+  label.ck{display:flex;align-items:center;gap:8px;font-size:13px;margin:8px 0}
+  label.ck input{width:18px;height:18px;accent-color:#6cf}
+  input[type=text]{width:100%;box-sizing:border-box;background:#18222d;border:1px solid #fff3;color:#fff;border-radius:9px;padding:9px;font-size:15px;margin-top:6px}
+  details{margin-top:16px;font-size:13px;line-height:1.45;color:#cde}
+  summary{cursor:pointer;color:#6cf;font-weight:600}
+  details p{margin:6px 0}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#123a;border:1px solid #6cf6;padding:8px 14px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:7;max-width:80vw;text-align:center}
+  #toast.show{opacity:1}
+  .pyr{display:none}
+  body.pyramid .pyr{display:block}
+  body.pyramid .single{display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="gear" aria-label="Ajustes">⚙</button>
+
+<div id="panel" hidden>
+  <h2>Holograma Pepper's Ghost</h2>
+  <div class="sub">Fundo preto, imagem espelhada. Deixe o ambiente escuro.</div>
+
+  <div class="sec">Animação</div>
+  <div class="grid" id="scenes"></div>
+  <div id="mediaRow" class="row" style="display:none">
+    <label class="btn">📁 Escolher vídeo ou imagem<input type="file" id="mediaIn" accept="video/*,image/*" hidden></label>
+  </div>
+  <div id="textRow" style="display:none"><input type="text" id="txt" maxlength="20" placeholder="Seu texto"></div>
+
+  <div class="sec">Montagem</div>
+  <div class="seg">
+    <button data-mode="single">Placa única</button>
+    <button data-mode="pyramid">Pirâmide 4 lados</button>
+  </div>
+  <label class="ck"><input type="checkbox" data-k="mirror"> Espelhar (esquerda ↔ direita)</label>
+  <label class="ck single"><input type="checkbox" data-k="flipV"> Inverter vertical (tela acima da placa)</label>
+  <label class="ck pyr"><input type="checkbox" data-k="invert"> Inverter as 4 vistas</label>
+  <label class="r">Tamanho <span id="v_scale"></span></label>
+  <input type="range" data-k="scale" min="0.3" max="1" step="0.01">
+  <label class="r pyr">Distância do centro <span id="v_gap"></span></label>
+  <input class="pyr" type="range" data-k="gap" min="0" max="0.2" step="0.005">
+
+  <div class="sec">Visual</div>
+  <label class="r">Velocidade <span id="v_speed"></span></label>
+  <input type="range" data-k="speed" min="0" max="3" step="0.05">
+  <label class="r">Cor <span id="v_hue"></span></label>
+  <input type="range" data-k="hue" min="0" max="360" step="1">
+  <label class="ck"><input type="checkbox" data-k="rainbow"> Arco-íris</label>
+  <label class="ck"><input type="checkbox" data-k="glow"> Brilho difuso (glow)</label>
+  <label class="r">Intensidade <span id="v_bright"></span></label>
+  <input type="range" data-k="bright" min="0.2" max="1" step="0.01">
+
+  <div class="sec">Reagir ao som</div>
+  <div class="row">
+    <button id="micBtn">🎤 Microfone</button>
+    <label class="btn">🎵 Arquivo<input type="file" id="audioIn" accept="audio/*" hidden></label>
+    <button id="playBtn" style="flex:.5">⏯</button>
+  </div>
+  <label class="r">Sensibilidade <span id="v_gain"></span></label>
+  <input type="range" data-k="gain" min="0.2" max="4" step="0.05">
+
+  <div class="sec">Tela</div>
+  <div class="row">
+    <button id="fsBtn">⛶ Tela cheia</button>
+    <button id="closeBtn">Fechar painel</button>
+  </div>
+
+  <details>
+    <summary>Como montar</summary>
+    <p><b>Placa única:</b> deite o celular, tablet ou monitor com a tela para cima. Coloque acima dele um acrílico, vidro ou filme holográfico inclinado a 45°, virado para quem assiste. Ligue <i>Espelhar</i>, porque o reflexo inverte a imagem.</p>
+    <p><b>Pirâmide:</b> recorte 4 trapézios de acrílico fino ou de capa de CD e cole as laterais. Para celular, use base maior de 6 cm, base menor de 1 cm e altura de 3,5 cm. Para tablet, use mais ou menos o dobro: 12, 2 e 7 cm. Apoie a ponta menor no centro da tela e ajuste a <i>Distância do centro</i> até cada vista ficar sob a sua face.</p>
+    <p>Se a imagem aparecer de cabeça para baixo, use <i>Inverter</i>. No escuro, com o brilho da tela no máximo, o efeito fica bem mais forte.</p>
+    <p>Toque na tela para mostrar ⚙. O botão some sozinho depois de alguns segundos.</p>
+  </details>
+</div>
+<div id="toast"></div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const cv=$('#c'), ctx=cv.getContext('2d');
+const S=720, off=document.createElement('canvas'); off.width=off.height=S;
+const o=off.getContext('2d');
+const hasFilter='filter' in ctx;
+let W=0,H=0,DPR=1;
+function resize(){DPR=Math.min(2,window.devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);cv.style.width=W+'px';cv.style.height=H+'px';}
+addEventListener('resize',resize);resize();
+
+// ---------- ajustes ----------
+const DEF={scene:'ico',mode:'single',mirror:true,flipV:false,invert:false,scale:.8,gap:.05,speed:1,hue:190,rainbow:true,glow:true,bright:1,gain:1.5,text:'OLÁ'};
+let st={...DEF};
+try{Object.assign(st,JSON.parse(localStorage.getItem('pepperGhost')||'{}'));}catch(e){}
+function save(){try{localStorage.setItem('pepperGhost',JSON.stringify(st));}catch(e){}}
+
+const toastEl=$('#toast');let toastT;
+function toast(m){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.classList.remove('show'),3200);}
+
+// ---------- cor ----------
+function C(f,l=60,a=1){const h=(st.hue+(st.rainbow?f*300:f*28))%360;return `hsla(${h},100%,${l}%,${a})`;}
+
+// ---------- 3D ----------
+const R=S*0.36;
+function rot(x,y,z,ax,ay){const cy=Math.cos(ay),sy=Math.sin(ay);const x1=x*cy+z*sy,z1=-x*sy+z*cy;const cx=Math.cos(ax),sx=Math.sin(ax);return [x1,y*cx-z1*sx,y*sx+z1*cx];}
+function proj(p,k=1){const f=2.6/(2.6+p[2]);return [S/2+p[0]*R*k*f,S/2+p[1]*R*k*f,f];}
+
+// icosaedro
+const PHI=(1+Math.sqrt(5))/2, IV=[];
+for(const a of[-1,1])for(const b of[-1,1]){IV.push([0,a,b*PHI],[a,b*PHI,0],[b*PHI,0,a]);}
+const IE=[];for(let i=0;i<12;i++)for(let j=i+1;j<12;j++){const d=IV[i].reduce((s,v,k)=>s+(v-IV[j][k])**2,0);if(Math.abs(d-4)<.01)IE.push([i,j]);}
+const IL=Math.hypot(1,PHI);IV.forEach(v=>{v[0]/=IL;v[1]/=IL;v[2]/=IL;});
+
+// toro
+const TOR=[];for(let i=0;i<1600;i++){const u=Math.random()*Math.PI*2,v=Math.random()*Math.PI*2;TOR.push([u,v]);}
+// esfera de Fibonacci
+const SPH=[];{const n=900;for(let i=0;i<n;i++){const y=1-2*(i+.5)/n,r=Math.sqrt(1-y*y),a=i*Math.PI*(3-Math.sqrt(5));SPH.push([Math.cos(a)*r,y,Math.sin(a)*r]);}}
+// galáxia
+const GAL=[];for(let i=0;i<2200;i++){const arm=i%3,d=Math.pow(Math.random(),.6),a=arm*2*Math.PI/3+d*4.2+(Math.random()-.5)*.6*(1-d*.5);GAL.push([d,a,(Math.random()-.5)*.12*(1-d)]);}
+// faíscas
+const SPK=[];for(let i=0;i<70;i++)SPK.push([Math.random()*2-1,Math.random()*2-1,Math.random()*2-1,Math.random()]);
+
+// ---------- áudio ----------
+let actx=null,analyser=null,fdata=null,audioEl=null,srcNode=null;
+const au={on:false,level:0};
+function initAudio(){
+  if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return false;actx=new AC();analyser=actx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=.8;fdata=new Uint8Array(analyser.frequencyBinCount);}
+  if(actx.state==='suspended')actx.resume();return true;
+}
+function updateAudio(){
+  if(!au.on||!analyser){au.level*=.92;return;}
+  analyser.getByteFrequencyData(fdata);let s=0;for(let i=1;i<70;i++)s+=fdata[i];
+  const lv=Math.min(1,s/69/255*st.gain*1.6);au.level+= (lv-au.level)*.35;
+}
+function band(i,n,t){ // 0..1
+  if(au.on&&fdata){const idx=2+Math.floor(i/n*100);return Math.min(1,fdata[idx]/255*st.gain);}
+  return .25+.25*Math.sin(i*.37+t*3)*Math.sin(t*1.3+i*.11)+.15*Math.sin(i*.9-t*2);
+}
+$('#micBtn').onclick=async()=>{
+  try{if(!initAudio())throw 0;const s=await navigator.mediaDevices.getUserMedia({audio:true});actx.createMediaStreamSource(s).connect(analyser);au.on=true;$('#micBtn').classList.add('on');toast('Microfone ligado');}
+  catch(e){toast('Microfone indisponível aqui. Use um arquivo de áudio ou abra a página direto no navegador.');}
+};
+$('#audioIn').onchange=e=>{
+  const f=e.target.files[0];if(!f||!initAudio())return;
+  if(!audioEl){audioEl=new Audio();audioEl.loop=true;srcNode=actx.createMediaElementSource(audioEl);srcNode.connect(analyser);srcNode.connect(actx.destination);}
+  audioEl.src=URL.createObjectURL(f);audioEl.play().then(()=>toast('Tocando: '+f.name)).catch(()=>toast('Toque em ⏯ para tocar'));au.on=true;
+};
+$('#playBtn').onclick=()=>{if(!audioEl)return toast('Escolha um arquivo de áudio primeiro');initAudio();audioEl.paused?audioEl.play().catch(()=>{}):audioEl.pause();};
+
+// ---------- mídia própria ----------
+let media=null;
+$('#mediaIn').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const url=URL.createObjectURL(f);
+  if(f.type.startsWith('video')){const v=document.createElement('video');v.src=url;v.loop=true;v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');v.play().catch(()=>{});media=v;}
+  else{const im=new Image();im.src=url;media=im;}
+};
+
+// ---------- cenas ----------
+const scenes={
+  ico:{name:'Icosaedro',draw(t){
+    const k=1+au.level*.45;o.lineCap='round';
+    const shells=[[1,t*.5,t*.7,0],[.5,-t*.8,-t*.6,.5]];
+    for(const[s,ax,ay,cf]of shells){
+      const P=IV.map(v=>proj(rot(v[0]*s,v[1]*s,v[2]*s,ax,ay),k));
+      o.lineWidth=S/(s>.7?230:330);
+      for(const[a,b]of IE){const A=P[a],B=P[b];o.strokeStyle=C(cf+(A[2]-.7)*.6,62,.55+.45*(A[2]+B[2]-1.4));o.beginPath();o.moveTo(A[0],A[1]);o.lineTo(B[0],B[1]);o.stroke();}
+      for(const p of P){o.fillStyle=C(cf+.2,80);o.beginPath();o.arc(p[0],p[1],S/120*p[2],0,7);o.fill();}
+    }
+    for(const s of SPK){const p=proj(rot(s[0]*1.4,s[1]*1.4,s[2]*1.4,t*.2,t*.3));o.fillStyle=C(s[3],75,.3+.5*Math.abs(Math.sin(t*2+s[3]*9)));o.fillRect(p[0],p[1],2,2);}
+  }},
+  torus:{name:'Toro',draw(t){
+    const k=.75*(1+au.level*.35),ax=t*.45+.6,ay=t*.3;
+    for(const[u,v]of TOR){const vv=v+t*.8,rr=1+.42*Math.cos(vv);const p=proj(rot(rr*Math.cos(u),.42*Math.sin(vv),rr*Math.sin(u),ax,ay),k);const sz=S/260*p[2]*p[2];o.fillStyle=C(u/6.283,60,.75);o.fillRect(p[0]-sz/2,p[1]-sz/2,sz,sz);}
+  }},
+  dna:{name:'DNA',draw(t){
+    const n=64,ax=.25*Math.sin(t*.3),k=1+au.level*.3;let prev=null;
+    for(let i=0;i<n;i++){
+      const y=-1.15+i*2.3/n,a=y*3.2+t*1.4,r=.42*k;
+      const p1=proj(rot(Math.cos(a)*r,y,Math.sin(a)*r,ax,0)),p2=proj(rot(-Math.cos(a)*r,y,-Math.sin(a)*r,ax,0));
+      if(i%3===0){o.strokeStyle=C(i/n+.5,55,.35);o.lineWidth=S/300;o.beginPath();o.moveTo(p1[0],p1[1]);o.lineTo(p2[0],p2[1]);o.stroke();}
+      for(const[p,c]of[[p1,0],[p2,.35]]){o.fillStyle=C(i/n*.6+c,62,.5+.5*(p[2]-.7));o.beginPath();o.arc(p[0],p[1],S/90*p[2]*p[2],0,7);o.fill();}
+    }
+    for(const s of SPK){const p=proj(rot(s[0]*1.2,((s[1]+t*.1)%2+2)%2-1,s[2]*1.2,0,t*.3));o.fillStyle=C(s[3],80,.5);o.fillRect(p[0],p[1],2,2);}
+  }},
+  sphere:{name:'Esfera viva',draw(t){
+    const ax=t*.25,ay=t*.4;
+    for(const v of SPH){const w=.82+.09*Math.sin(v[1]*7+t*2.2)*Math.cos(v[0]*5-t*1.7)+au.level*.35*(.5+.5*Math.sin(v[2]*9+t*6));
+      const p=proj(rot(v[0]*w,v[1]*w,v[2]*w,ax,ay));const sz=S/200*p[2]*p[2];o.fillStyle=C(.5+v[1]*.5,60+(w-.82)*150,.8);o.fillRect(p[0]-sz/2,p[1]-sz/2,sz,sz);}
+  }},
+  galaxy:{name:'Galáxia',draw(t){
+    const g=o.createRadialGradient(S/2,S/2,0,S/2,S/2,S*.16);g.addColorStop(0,C(.1,85,.9));g.addColorStop(1,C(.1,50,0));o.fillStyle=g;o.fillRect(0,0,S,S);
+    const tilt=1.05+.15*Math.sin(t*.2),k=1.15*(1+au.level*.25);
+    for(const[d,a,h]of GAL){const aa=a-t*.35*(1.2-d);const p=proj(rot(Math.cos(aa)*d,Math.sin(aa)*d,h,tilt,0),k);const sz=S/330*p[2]*(1.6-d);o.fillStyle=C(d*.7,55+30*(1-d),.7);o.fillRect(p[0]-sz/2,p[1]-sz/2,sz,sz);}
+  }},
+  jelly:{name:'Água-viva',draw(t){
+    const p=(Math.sin(t*2.1)+1)/2,cx=S/2+Math.sin(t*.4)*S*.03,cy=S*.36+Math.sin(t*.6)*S*.04;
+    const bw=S*(.2+.035*p+au.level*.05),bh=S*(.17-.035*p);
+    o.lineWidth=S/320;
+    for(let i=0;i<10;i++){ // tentáculos
+      const x0=cx+(i/9-.5)*bw*1.7;o.strokeStyle=C(.2+i*.03,65,.55);o.beginPath();o.moveTo(x0,cy+4);
+      for(let j=1;j<=34;j++){const f=j/34;o.lineTo(x0+Math.sin(j*.33-t*2.6+i*1.7)*S*.03*(f+.2)+(i/9-.5)*S*.06*f,cy+j*S*.0145*(1+.12*(1-p)));}o.stroke();
+    }
+    o.lineWidth=S/120;
+    for(let i=0;i<4;i++){ // braços orais
+      const x0=cx+(i/3-.5)*bw*.5;o.strokeStyle=C(.45,60,.35);o.beginPath();o.moveTo(x0,cy);
+      for(let j=1;j<=20;j++){o.lineTo(x0+Math.sin(j*.4-t*2+i*2)*S*.022,cy+j*S*.013);}o.stroke();
+    }
+    const g=o.createRadialGradient(cx,cy-bh*.4,bw*.05,cx,cy,bw*1.05);g.addColorStop(0,C(0,75,.7));g.addColorStop(.7,C(.12,55,.25));g.addColorStop(1,C(.2,50,.05));
+    o.fillStyle=g;o.strokeStyle=C(.05,75,.9);o.lineWidth=S/260;o.beginPath();o.ellipse(cx,cy,bw,bh,0,Math.PI,2*Math.PI);
+    const sc=10;for(let i=0;i<=sc;i++){const x=cx+bw-i*2*bw/sc;o.quadraticCurveTo(x+bw/sc,cy+S*.018*(1-p*.6),x,cy);}o.fill();o.stroke();
+    o.strokeStyle=C(.3,70,.5);o.lineWidth=S/400;
+    for(let i=0;i<4;i++){o.beginPath();o.ellipse(cx+(i-1.5)*bw*.3,cy-bh*.35,bw*.12,bh*.22,0,0,7);o.stroke();}
+  }},
+  rings:{name:'Anéis de som',draw(t){
+    const n=120,r0=S*(.17+au.level*.05);o.lineCap='round';o.lineWidth=S/220;
+    for(let i=0;i<n;i++){const m=i<n/2?i:n-1-i,v=band(m,n/2,t),a=i/n*Math.PI*2+t*.15-Math.PI/2,l=S*(.02+.2*v);
+      o.strokeStyle=C(m/(n/2),55+v*30,.9);o.beginPath();o.moveTo(S/2+Math.cos(a)*r0,S/2+Math.sin(a)*r0);o.lineTo(S/2+Math.cos(a)*(r0+l),S/2+Math.sin(a)*(r0+l));o.stroke();}
+    for(let k=0;k<4;k++){const ph=(t*.25+k/4)%1;o.strokeStyle=C(ph,60,(1-ph)*.6);o.lineWidth=S/300;o.beginPath();o.arc(S/2,S/2,r0+ph*S*.3,0,7);o.stroke();}
+    const g=o.createRadialGradient(S/2,S/2,0,S/2,S/2,r0*.9);g.addColorStop(0,C(.6,80,.3+au.level*.6));g.addColorStop(1,C(.6,50,0));o.fillStyle=g;o.beginPath();o.arc(S/2,S/2,r0*.9,0,7);o.fill();
+  }},
+  text:{name:'Texto',draw(t){
+    const s=st.text||' ';o.save();o.translate(S/2,S/2+Math.sin(t*1.2)*S*.03);let sx=Math.cos(t*.7);if(Math.abs(sx)<.04)sx=.04*(sx<0?-1:1);o.scale(sx,1+au.level*.25);
+    let fs=S*.3;o.font=`900 ${fs}px system-ui,sans-serif`;const w=o.measureText(s).width;if(w>S*.9){fs*=S*.9/w;o.font=`900 ${fs}px system-ui,sans-serif`;}
+    o.textAlign='center';o.textBaseline='middle';o.shadowColor=C(0,60);o.shadowBlur=S/25;
+    const g=o.createLinearGradient(-S*.4,0,S*.4,0);g.addColorStop(0,C(0,65));g.addColorStop(1,C(.4,65));o.fillStyle=g;o.fillText(s,0,0);
+    o.shadowBlur=0;o.lineWidth=S/400;o.strokeStyle=C(.2,85,.8);o.strokeText(s,0,0);o.restore();
+  }},
+  media:{name:'Meu vídeo/imagem',draw(t){
+    const el=media,w=el&&(el.videoWidth||el.naturalWidth),h=el&&(el.videoHeight||el.naturalHeight);
+    if(!w){o.fillStyle='#456';o.font=`${S*.045}px system-ui`;o.textAlign='center';o.fillText('Escolha um vídeo ou imagem',S/2,S/2);o.fillText('(use fundo preto)',S/2,S/2+S*.06);return;}
+    const k=Math.min(S/w,S/h)*(1+au.level*.15);o.globalCompositeOperation='source-over';o.drawImage(el,(S-w*k)/2,(S-h*k)/2,w*k,h*k);
+  }},
+};
+const order=['ico','torus','dna','sphere','galaxy','jelly','rings','text','media'];
+if(!scenes[st.scene])st.scene='ico';
+
+// ---------- interface ----------
+const sc=$('#scenes');
+order.forEach(id=>{const b=document.createElement('button');b.textContent=scenes[id].name;b.dataset.scene=id;b.onclick=()=>{st.scene=id;save();syncUI();};sc.appendChild(b);});
+$$('[data-mode]').forEach(b=>b.onclick=()=>{st.mode=b.dataset.mode;save();syncUI();});
+const fmt={scale:v=>Math.round(v*100)+'%',gap:v=>Math.round(v*100)+'%',speed:v=>v.toFixed(2)+'×',hue:v=>Math.round(v)+'°',bright:v=>Math.round(v*100)+'%',gain:v=>v.toFixed(1)+'×'};
+$$('[data-k]').forEach(el=>{
+  el.addEventListener('input',()=>{const k=el.dataset.k;st[k]=el.type==='checkbox'?el.checked:parseFloat(el.value);save();syncUI();});
+});
+const txt=$('#txt');txt.value=st.text;txt.addEventListener('input',()=>{st.text=txt.value;save();});
+function syncUI(){
+  $$('[data-scene]').forEach(b=>b.classList.toggle('on',b.dataset.scene===st.scene));
+  $$('[data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===st.mode));
+  document.body.classList.toggle('pyramid',st.mode==='pyramid');
+  $$('[data-k]').forEach(el=>{const k=el.dataset.k;if(el.type==='checkbox')el.checked=!!st[k];else el.value=st[k];const lab=$('#v_'+k);if(lab&&fmt[k])lab.textContent=fmt[k](st[k]);});
+  $('#mediaRow').style.display=st.scene==='media'?'flex':'none';
+  $('#textRow').style.display=st.scene==='text'?'block':'none';
+}
+syncUI();
+
+const panel=$('#panel'),gear=$('#gear');let hideT;
+function poke(){gear.classList.remove('hide');clearTimeout(hideT);hideT=setTimeout(()=>{if(panel.hidden)gear.classList.add('hide');},3000);}
+gear.onclick=()=>{panel.hidden=!panel.hidden;poke();};
+$('#closeBtn').onclick=()=>{panel.hidden=true;poke();};
+cv.addEventListener('pointerdown',()=>{if(!panel.hidden)panel.hidden=true;poke();});
+addEventListener('pointermove',poke);poke();
+
+let wake=null;
+$('#fsBtn').onclick=async()=>{
+  try{const d=document.documentElement;if(!document.fullscreenElement&&!document.webkitFullscreenElement){await(d.requestFullscreen?d.requestFullscreen():d.webkitRequestFullscreen());}else{await(document.exitFullscreen?document.exitFullscreen():document.webkitExitFullscreen());}}
+  catch(e){toast('Tela cheia não disponível aqui');}
+  try{if('wakeLock'in navigator&&!wake)wake=await navigator.wakeLock.request('screen');}catch(e){}
+  panel.hidden=true;poke();
+};
+
+// ---------- desenho ----------
+function tile(s){
+  ctx.globalCompositeOperation='lighter';
+  if(st.glow&&hasFilter){ctx.filter=`blur(${Math.max(2,s/70)}px)`;ctx.drawImage(off,-s/2,-s/2,s,s);ctx.filter='none';}
+  ctx.drawImage(off,-s/2,-s/2,s,s);
+  ctx.globalCompositeOperation='source-over';
+}
+let t=0,last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt*st.speed;updateAudio();
+  o.globalCompositeOperation='source-over';o.globalAlpha=1;o.fillStyle='#000';o.fillRect(0,0,S,S);
+  o.globalCompositeOperation='lighter';
+  try{scenes[st.scene].draw(t);}catch(e){console.log(e);}
+  o.globalCompositeOperation='source-over';o.shadowBlur=0;
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.setTransform(DPR,0,0,DPR,0,0);ctx.globalAlpha=st.bright;
+  const m=Math.min(W,H);
+  if(st.mode==='single'){
+    const s=m*st.scale;ctx.save();ctx.translate(W/2,H/2);ctx.scale(st.mirror?-1:1,st.flipV?-1:1);tile(s);ctx.restore();
+  }else{
+    const g=m*st.gap,s=(m/2-g)*st.scale;
+    for(let k=0;k<4;k++){ctx.save();ctx.translate(W/2,H/2);ctx.rotate(k*Math.PI/2);ctx.translate(0,g+s/2);if(!st.invert)ctx.rotate(Math.PI);if(st.mirror)ctx.scale(-1,1);tile(s);ctx.restore();}
+  }
+  ctx.globalAlpha=1;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -776,7 +776,7 @@ const IPAD = (() => {
     delayDF.connect(reverbSend);
 
     // Drone harmônico: o acorde inteiro (raiz grave + as cinco notas do acorde), filtrado e muito lento. Entra no reverb, não no drive/crush.
-    const padMaster = ctx.createGain(); padMaster.gain.value = params.droneLvl * 0.2;
+    const padMaster = ctx.createGain(); padMaster.gain.value = 0;   // sem drone: só as gotas e seus ecos
     const padDuck = ctx.createGain(); padDuck.gain.value = 1;
     const padLP = ctx.createBiquadFilter(); padLP.type = 'lowpass'; padLP.frequency.value = 1000; padLP.Q.value = 0.4;
     const padLfo = ctx.createOscillator(), padLfoG = ctx.createGain(); padLfo.frequency.value = 0.045; padLfoG.gain.value = 300;
@@ -798,7 +798,7 @@ const IPAD = (() => {
     applyInsert('drive'); applyInsert('bitcrush');
     padSetChord(true);
     applyDelay();
-    try { master.disconnect(); } catch (e) {}   // o som antigo não sai mais: quem toca é o Motor Knick
+    // o som das gotas (nota + ecos das ondas) sai por aqui; o motor de arpejos (Motor Knick) fica calado
     MK.mudo(true);   // começa calado: o botão Ligar som liga
   }
 
@@ -2222,7 +2222,7 @@ void main(){
       case 'delayTime': case 'delayFb': case 'delayStereo': case 'delayLow': case 'delayHi': case 'delaySat':
       case 'delayDepth': case 'delayRate': case 'delayDiff': case 'delaySize': applyDelay(); break;
       case 'reverbMix': ramp(fx.reverbWet.gain, v); break;
-      case 'droneLvl':  ramp(fx.pad.master.gain, v * 0.2); break;
+      case 'droneLvl':  break;   // drone desligado
       case 'driveAmt':  fx.drive.shaper.curve = driveCurve(v); break;
       case 'bitBits':   fx.crush.shaper.curve = crushCurve(map.bits(v)); break;
     }
@@ -2838,7 +2838,8 @@ void main(){
     new MutationObserver(marca).observe(audioBtn, { attributes: true, attributeFilter: ['class'] });
     new MutationObserver(marca).observe(rainBtn, { attributes: true, attributeFilter: ['class'] });
     marca();
-    IPAD.$('tSom').onclick = () => { IPAD.sessao('playback'); audioBtn.click(); };
+    let somMexido = false;   // se a pessoa nunca mexeu no 🔊, o primeiro toque no palco já liga o som
+    IPAD.$('tSom').onclick = () => { somMexido = true; IPAD.sessao('playback'); audioBtn.click(); };
     IPAD.$('tChuva').onclick = () => { rainBtn.click(); IPAD.dica(rainBtn.classList.contains('active') ? 'Chuva ligada' : 'Chuva desligada'); };
     const sel = document.getElementById('inSource'), inFile = document.getElementById('inFile'), inAudio = document.getElementById('inAudio');
     const fonte = (k) => { if (sel.value !== k) { sel.value = k; sel.dispatchEvent(new Event('change')); } };
@@ -2849,7 +2850,7 @@ void main(){
     if (IPAD.$('eToque')) IPAD.$('eToque').onclick = () => { IPAD.sessao('playback'); ligarSom(); fonte('off'); IPAD.entrada(false); IPAD.dica('Toque ou arraste para criar gotas'); };
     IPAD.$('eMic').onclick = () => { IPAD.sessao('play-and-record'); ligarSom(); fonte('mic'); IPAD.entrada(false); IPAD.dica('Microfone ligado'); confere('mic', 'o microfone'); };
     IPAD.$('eArq').onclick = () => { IPAD.sessao('playback'); ligarSom(); pendArq = true; inFile.click(); };
-    canvas.addEventListener('pointerdown', () => { IPAD.fechaSeEstreito(); if (sel.value === 'file' && inAudio.paused && inAudio.src) inAudio.play().catch(() => {}); });
+    canvas.addEventListener('pointerdown', () => { IPAD.fechaSeEstreito(); if (!somMexido && !somLigado()) { IPAD.sessao('playback'); ligarSom(); } if (sel.value === 'file' && inAudio.paused && inAudio.src) inAudio.play().catch(() => {}); });
     const reanima = () => { if (audioCtx && audioCtx.state !== 'running' && document.visibilityState === 'visible' && somLigado()) audioCtx.resume().catch(() => {}); };
     document.addEventListener('visibilitychange', reanima); addEventListener('pointerdown', reanima, true);
     setTimeout(() => window.dispatchEvent(new Event('resize')), 60);

@@ -80,7 +80,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
 <body>
 <div id="entrada" role="dialog" aria-labelledby="entT"><div class="c">
 <h1 id="entT">Dedalus</h1>
-<p>Uma obra audiovisual tocada pelas mãos. A câmera acompanha o seu corpo: a mão direita escolhe os acordes, a esquerda toca o theremin, e a distância controla o volume. Abrir e fechar cada mão muda os efeitos do som e da imagem. Sem mãos na tela, a música de fundo se apaga.</p>
+<p>Uma obra audiovisual tocada pelas mãos. A câmera acompanha o seu corpo: a mão direita escolhe os acordes, a esquerda toca o theremin, e a distância controla o volume. Abrir e fechar cada mão muda os efeitos do som e da imagem; o arpejador só toca com as duas mãos na tela e abertas. Sem mãos na tela, a música de fundo se apaga.</p>
 <p class="k">Fique a 1,5–2 m da câmera, com os ombros visíveis · use fones ou caixas de som · <span class="kTecla">H abre o painel</span></p>
 <label><input type="checkbox" id="entCam" checked> Usar a câmera (sem ela, o mouse faz o papel das mãos)</label>
 <div class="b"><button class="p" id="entOrg">Começar</button><button id="entSalvo" hidden>Começar · som original</button></div>
@@ -2357,6 +2357,8 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
     // esquerda: aberta = delay longo · fechada = delay curto com feedback subindo (fbMax)
     2: { ab: ['dlyL', 'th', .8], fe: ['dlyS', 'th', .85], fbMax: .82 },
     fundoEspera: 1.0, fundoSome: 1.5,
+    // arpejador (Motor Knick): só toca com as DUAS mãos na tela e ABERTAS · abre acima de arpAbre, fecha abaixo de arpFecha (histerese)
+    arpAbre: .55, arpFecha: .4, arpTolera: .3,   // arpTolera: segundos que uma mão pode sumir/piscar sem cortar o arpejo
   };
   window.GESTOS = GES;   // dá para mudar pelo console do navegador
   const abertura = h => {
@@ -2369,7 +2371,8 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
     if (ult[chave] !== undefined && Math.abs(ult[chave] - amt) < .02) return;
     ult[chave] = amt; window.td.gesto(chave, fx, inst, amt);
   };
-  let visto = -99, fundoOn = null;
+  let visto = -99, fundoOn = null, arpOn = null;
+  const arpAb = { 1: false, 2: false }, arpVisto = { 1: -99, 2: -99 };
   setInterval(() => {
     if (!ac) return;
     const t = performance.now() / 1000;
@@ -2392,6 +2395,17 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
         o.gL.gain.setTargetAtTime(fb, c, .08); o.gR.gain.setTargetAtTime(fb, c, .08);
       }
     });
+    // arpejador: mão direita (baixo) E mão esquerda (theremin) na tela e abertas · sem câmera (dedo/joystick) fica sempre ligado
+    let arp = true;
+    if (cam.on) {
+      [1, 2].forEach(i => {
+        if (ab[i] === null) return;
+        arpVisto[i] = t;
+        if (ab[i] > GES.arpAbre) arpAb[i] = true; else if (ab[i] < GES.arpFecha) arpAb[i] = false;
+      });
+      arp = [1, 2].every(i => t - arpVisto[i] < GES.arpTolera && arpAb[i]);
+    }
+    if (arp !== arpOn) { arpOn = arp; MK.arpejos = arp; }
     // fundo: com a câmera ligada, só toca enquanto há mão captada
     const temMao = !cam.on || (cam.handPts && (cam.handPts[1] || cam.handPts[2]));
     if (temMao) visto = t;

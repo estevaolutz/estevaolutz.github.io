@@ -1227,10 +1227,11 @@ const IPAD = (() => {
     if (AGUA) {   // água simulada: a gota entra como impacto na onda, empurrão na correnteza/óleo e tinta
       const paper = pal.mode === 'paper', rad = map.radiusMul(params.dropRadius) * v.rad, R = (2 + size * 0.42) * rad;
       const ink = (paper ? 0.95 : 0.7) * map.stain(params.stainInt) * v.strength, dyeR = 3.2 * map.stain(params.stainSize) * (0.8 + Math.random() * 0.5);
-      AGUA.drop(x, y, R, (0.55 + size * 0.05) * v.strength, pigOf(rgb, paper), ink, dyeR, 0.1 + size * 0.009, 0.85);
+      const wc = waveOf(rgb, paper);
+      AGUA.drop(x, y, R, (0.55 + size * 0.05) * v.strength, pigOf(rgb, paper), ink, dyeR, 0.1 + size * 0.009, 0.85, wc);
       if (size > 6 && Math.random() < 0.65) {   // gota de retorno (jato de Worthington): cai de novo perto, menor, um instante depois
         const a = Math.random() * 6.283, d = Math.random() * R * 0.8;
-        setTimeout(() => AGUA.drop(x + Math.cos(a) * d, y + Math.sin(a) * d, R * 0.45, 0.3 * v.strength, pigOf(rgb, paper), ink * 0.25, dyeR * 0.6, 0.02, 0.4), 160 + Math.random() * 140);
+        setTimeout(() => AGUA.drop(x + Math.cos(a) * d, y + Math.sin(a) * d, R * 0.45, 0.3 * v.strength, pigOf(rgb, paper), ink * 0.25, dyeR * 0.6, 0.02, 0.4, wc), 160 + Math.random() * 140);
       }
       return;
     }
@@ -1354,6 +1355,21 @@ void main(){
   float hn = (2. * h - hp + c * lap) * (damp - oilDamp * oil);
   o = vec4(clamp(hn, -4., 4.), h, 0., 1.);
 }`,
+      cwave: HEAD + `uniform sampler2D A, B, F; uniform float c2, damp, irr, oilDamp;
+// onda colorida: cada canal (R, G, B) obedece à mesma equação da onda de altura, então os anéis andam juntos
+// com o relevo; onde duas ondas de cores diferentes se cruzam, as cores se somam (interferência = mistura)
+void main(){
+  vec3 h = texture(A, uv).rgb, hp = texture(B, uv).rgb;
+  vec3 l = texture(A, uv - vec2(px.x, 0.)).rgb, r = texture(A, uv + vec2(px.x, 0.)).rgb;
+  vec3 d = texture(A, uv - vec2(0., px.y)).rgb, u = texture(A, uv + vec2(0., px.y)).rgb;
+  vec3 dg = .5 * (texture(A, uv + px).rgb + texture(A, uv - px).rgb + texture(A, uv + vec2(px.x, -px.y)).rgb + texture(A, uv + vec2(-px.x, px.y)).rgb);
+  vec3 lap = (l + r + u + d) * .6667 + dg * .3333 - 4. * h * (.6667 + .1667);
+  float m = fbm(uv * vec2(1.6, .9) + t * .004);
+  float c = c2 * (1. + irr * (m - .5) * 1.6);
+  float oil = texture(F, uv).b;
+  vec3 hn = (2. * h - hp + c * lap) * (damp - oilDamp * oil);
+  o = vec4(clamp(hn, -4., 4.), 1.);
+}`,
       flow: HEAD + `uniform sampler2D A, Wv; uniform float dt, kGrad, kCurl, decay, regen, oilScale;
 void main(){
   vec2 v = texture(A, uv).rg;
@@ -1378,7 +1394,7 @@ void main(){
   c = mix(c, nb, diff * (.5 + w));
   o = vec4(max(c * fade - .00015, 0.), 1.);
 }`,
-      splat: HEAD + `uniform sampler2D A; uniform int mode, nd; uniform vec4 P[${MAXD}], Q[${MAXD}], X[${MAXD}]; uniform float asp, irr;
+      splat: HEAD + `uniform sampler2D A; uniform int mode, nd; uniform vec4 P[${MAXD}], Q[${MAXD}], X[${MAXD}], K[${MAXD}]; uniform float asp, irr, kz;
 float shape(vec2 d, float R, float s, float k){
   float a = atan(d.y, d.x);
   float w = 1. + k * (.2 * sin(3. * a + s) + .12 * sin(5. * a + s * 1.7) + .07 * sin(9. * a + s * 2.3) + .05 * sin(17. * a + s * 3.1));
@@ -1395,6 +1411,10 @@ void main(){
       float rr = shape(d, p.z, x.y, irr * .6);
       float z = p.w * (-exp(-rr * rr * 2.2) + .55 * exp(-pow((rr - 1.25) / .38, 2.)));
       c.r += z; c.g += z * .55;
+    } else if (mode == 3) {    // a mesma cratera, carregando a cor da gota (kz = 1 agora, .55 no passo anterior)
+      float rr = shape(d, p.z, x.y, irr * .6);
+      float z = p.w * (-exp(-rr * rr * 2.2) + .55 * exp(-pow((rr - 1.25) / .38, 2.)));
+      c.rgb += z * kz * K[i].rgb;
     } else if (mode == 1) {    // fluxo: a gota empurra a água para fora e abre um buraco no óleo
       float rr = length(d) / (p.z * 2.2);
       vec2 dir = length(d) > 1e-5 ? normalize(d) : vec2(0.);
@@ -1409,7 +1429,7 @@ void main(){
   }
   o = c;
 }`,
-      show: HEAD + `uniform sampler2D Wv, F, D; uniform vec3 ground; uniform float paper, oilAmt, oilIri, refr, shade, spec;
+      show: HEAD + `uniform sampler2D Wv, F, D, CW; uniform vec3 ground; uniform float paper, oilAmt, oilIri, refr, shade, spec, wcol;
 void main(){
   float hl = texture(Wv, uv - vec2(px.x, 0.)).r, hr = texture(Wv, uv + vec2(px.x, 0.)).r;
   float hd = texture(Wv, uv - vec2(0., px.y)).r, hu = texture(Wv, uv + vec2(0., px.y)).r;
@@ -1435,6 +1455,13 @@ void main(){
   // tinta
   vec3 dy = texture(D, ruv).rgb;
   if (paper > .5) col *= exp(-dy); else col = col + (1. - exp(-dy)) * (1. - col * .6);
+  // cor das ondas: inclinação e crista de cada canal da onda colorida (anéis da cor da gota, misturados onde se cruzam)
+  vec3 cl = texture(CW, uv - vec2(px.x, 0.)).rgb, cr = texture(CW, uv + vec2(px.x, 0.)).rgb;
+  vec3 cd = texture(CW, uv - vec2(0., px.y)).rgb, cu = texture(CW, uv + vec2(0., px.y)).rgb;
+  vec3 gx = cr - cl, gy = cu - cd;
+  vec3 ring = sqrt(gx * gx + gy * gy) * 5. + abs(texture(CW, uv).rgb) * .45;
+  if (paper > .5) col *= exp(-ring * wcol * 1.15);
+  else col = col + (1. - exp(-ring * wcol * 2.2)) * (1. - col * .5);
   // luz nas ondas
   vec3 L = normalize(vec3(-.45, .55, .7));
   col *= 1. + (dot(n, L) - L.z) * shade;
@@ -1472,9 +1499,9 @@ void main(){
     // ruído suave (valor aleatório em 128×128 com interpolação linear e repetição)
     const NS = 128, nd = new Uint8Array(NS * NS * 4); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 255;
     const noiseT = tex(NS, NS, nd, 'u8');
-    const WV = pair(), FL = pair(), DY = pair();
+    const WV = pair(), FL = pair(), DY = pair(); let CA = pair(), CB = pair();   // onda colorida: CA = agora, CB = passo anterior
     const clear = (pp, v) => [pp.r, pp.w].forEach((x) => { gl.bindFramebuffer(gl.FRAMEBUFFER, x.fb); gl.viewport(0, 0, SW, SH); gl.clearColor(...v); gl.clear(gl.COLOR_BUFFER_BIT); });
-    clear(WV, [0, 0, 0, 1]); clear(FL, [0, 0, .5, 1]); clear(DY, [0, 0, 0, 1]);
+    clear(WV, [0, 0, 0, 1]); clear(FL, [0, 0, .5, 1]); clear(DY, [0, 0, 0, 1]); clear(CA, [0, 0, 0, 1]); clear(CB, [0, 0, 0, 1]);
     let T = 0;
     const use = (k) => { const p = P[k]; gl.useProgram(p.pr); const U = p.U;
       if (U.px) gl.uniform2f(U.px, PX[0], PX[1]); if (U.t) gl.uniform1f(U.t, T);
@@ -1483,24 +1510,27 @@ void main(){
     const run = (pp) => { gl.bindFramebuffer(gl.FRAMEBUFFER, pp.w.fb); gl.viewport(0, 0, SW, SH); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); pp.swap(); };
 
     const queue = [];
-    const drop = (x, y, R, amp, rgb, ink, dyeR, push, oilPush) => {
+    const drop = (x, y, R, amp, rgb, ink, dyeR, push, oilPush, wrgb) => {
       if (queue.length >= MAXD) queue.shift();
-      queue.push({ x: x / W, y: 1 - y / H, R: R / H, amp, rgb, ink, dyeR, seed: Math.random() * 100, push, oilPush });
+      queue.push({ x: x / W, y: 1 - y / H, R: R / H, amp, rgb, ink, dyeR, seed: Math.random() * 100, push, oilPush, wrgb: wrgb || rgb });
     };
-    const splat = (pp, mode) => {
-      const U = use('splat'), n = queue.length, A = new Float32Array(MAXD * 4), B = new Float32Array(MAXD * 4), C = new Float32Array(MAXD * 4);
-      queue.forEach((d, i) => { A.set([d.x, d.y, d.R, d.amp], i * 4); B.set([d.rgb[0], d.rgb[1], d.rgb[2], d.ink], i * 4); C.set([d.dyeR, d.seed, d.push, d.oilPush], i * 4); });
-      gl.uniform4fv(U.P, A); gl.uniform4fv(U.Q, B); gl.uniform4fv(U.X, C); gl.uniform1i(U.nd, n); gl.uniform1i(U.mode, mode);
+    const splat = (pp, mode, kz = 1) => {
+      const U = use('splat'), n = queue.length, A = new Float32Array(MAXD * 4), B = new Float32Array(MAXD * 4), C = new Float32Array(MAXD * 4), Kc = new Float32Array(MAXD * 4);
+      queue.forEach((d, i) => { A.set([d.x, d.y, d.R, d.amp], i * 4); B.set([d.rgb[0], d.rgb[1], d.rgb[2], d.ink], i * 4); C.set([d.dyeR, d.seed, d.push, d.oilPush], i * 4); Kc.set([d.wrgb[0], d.wrgb[1], d.wrgb[2], 0], i * 4); });
+      gl.uniform4fv(U.P, A); gl.uniform4fv(U.Q, B); gl.uniform4fv(U.X, C); if (U.K) gl.uniform4fv(U.K, Kc); if (U.kz) gl.uniform1f(U.kz, kz); gl.uniform1i(U.nd, n); gl.uniform1i(U.mode, mode);
       gl.uniform1f(U.asp, ASP); gl.uniform1f(U.irr, params.chaos);
       bindT(U, 'A', 0, pp.r.t); run(pp);
     };
     function step(dt, opt) {
       T += dt;
-      if (queue.length) { splat(WV, 0); splat(FL, 1); splat(DY, 2); queue.length = 0; }
+      if (queue.length) { splat(WV, 0); splat(FL, 1); splat(DY, 2); splat(CA, 3, 1); splat(CB, 3, .55); queue.length = 0; }
       // onda: 2 passos por quadro (frente mais rápida sem perder a estabilidade)
       for (let k = 0; k < 2; k++) {
         const U = use('wave'); bindT(U, 'A', 0, WV.r.t); bindT(U, 'F', 1, FL.r.t);
         gl.uniform1f(U.c2, .3); gl.uniform1f(U.damp, opt.damp); gl.uniform1f(U.irr, opt.irr); gl.uniform1f(U.oilDamp, opt.oilDamp); run(WV);
+        const V = use('cwave'); bindT(V, 'A', 0, CA.r.t); bindT(V, 'B', 1, CB.r.t); bindT(V, 'F', 2, FL.r.t);
+        gl.uniform1f(V.c2, .3); gl.uniform1f(V.damp, opt.damp); gl.uniform1f(V.irr, opt.irr); gl.uniform1f(V.oilDamp, opt.oilDamp);
+        run(CB); const x = CA; CA = CB; CB = x;   // o novo estado vira "agora"; o antigo "agora" vira "anterior"
       }
       { const U = use('flow'); bindT(U, 'A', 0, FL.r.t); bindT(U, 'Wv', 1, WV.r.t);
         gl.uniform1f(U.dt, dt); gl.uniform1f(U.kGrad, opt.kGrad); gl.uniform1f(U.kCurl, opt.kCurl); gl.uniform1f(U.decay, Math.pow(.45, dt));
@@ -1510,17 +1540,19 @@ void main(){
     }
     function show(w, h, opt) {
       if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
-      const U = use('show'); bindT(U, 'Wv', 0, WV.r.t); bindT(U, 'F', 1, FL.r.t); bindT(U, 'D', 2, DY.r.t);
+      const U = use('show'); bindT(U, 'Wv', 0, WV.r.t); bindT(U, 'F', 1, FL.r.t); bindT(U, 'D', 2, DY.r.t); bindT(U, 'CW', 3, CA.r.t); if (U.wcol) gl.uniform1f(U.wcol, opt.wcol == null ? 1 : opt.wcol);
       gl.uniform3f(U.ground, opt.ground[0] / 255, opt.ground[1] / 255, opt.ground[2] / 255); gl.uniform1f(U.paper, opt.paper ? 1 : 0);
       gl.uniform1f(U.oilAmt, opt.oilAmt); gl.uniform1f(U.oilIri, opt.oilIri); gl.uniform1f(U.refr, opt.refr); gl.uniform1f(U.shade, opt.shade); gl.uniform1f(U.spec, opt.spec);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       return glc;
     }
-    const lavar = () => clear(DY, [0, 0, 0, 1]);
+    const lavar = () => { clear(DY, [0, 0, 0, 1]); clear(CA, [0, 0, 0, 1]); clear(CB, [0, 0, 0, 1]); };
     return { drop, step, show, lavar };
   })();
   // pigmento de uma cor: no papel guarda absorção (as tintas se misturam subtraindo, como aquarela); na água guarda luz (somam)
   const pigOf = (rgb, paper) => rgb.map((v) => paper ? -Math.log(clamp(v / 255, 0.03, 1)) : v / 255);
+  // cor que a onda carrega: na água, luz da tinta; no papel, quanto a tinta absorve de cada canal (normalizado)
+  const waveOf = (rgb, paper) => { if (!paper) return rgb.map((v) => v / 255); const a = pigOf(rgb, true), m = Math.max(...a, 0.2); return a.map((v) => v / m); };
 
   // ---------- Loop ----------
   let lastT = performance.now();
@@ -1586,12 +1618,12 @@ void main(){
     }
     if (AGUA) {
       const paper = pal.mode === 'paper', life = map.stainLife(params.stainLife);
-      AGUA.step(dt, { damp: 0.986 + 0.0115 * params.rings, irr: params.chaos * 1.5, oilDamp: 0.006 * params.oilAmt, kGrad: 0.18 * params.interact,
+      AGUA.step(dt, { damp: 0.986 + 0.0115 * params.rings, irr: params.chaos * 1.5, oilDamp: 0.006 * params.oilAmt, kGrad: 0.4 * params.interact,
         kCurl: 0.035, regen: 0.05, oilScale: 0.5 + params.oilScale * 3, diff: 0.16, fade: Math.exp(-(0.1 / life + wash * 2) * dt) });
       wash = Math.max(0, wash - dt * 0.7);
       const gw = Math.min(canvas.width, 1600), gh = Math.max(1, Math.round(gw * canvas.height / Math.max(1, canvas.width)));
       ctx2d.globalCompositeOperation = 'source-over'; ctx2d.globalAlpha = 1;
-      ctx2d.drawImage(AGUA.show(gw, gh, { ground: pal.ground, paper, oilAmt: params.oilAmt, oilIri: params.oilIri, refr: 0.1 + 0.15 * params.interact, shade: paper ? 0.9 : 1.6, spec: 0.7 }), 0, 0, W, H);
+      ctx2d.drawImage(AGUA.show(gw, gh, { ground: pal.ground, paper, oilAmt: params.oilAmt, oilIri: params.oilIri, refr: 0.1 + 0.15 * params.interact, shade: paper ? 0.9 : 1.6, spec: 0.7, wcol: 0.5 + params.stainInt }), 0, 0, W, H);
       if (pal.grain > 0) { ctx2d.globalCompositeOperation = 'multiply'; ctx2d.globalAlpha = pal.grain * 0.7; ctx2d.fillStyle = grainPattern; ctx2d.fillRect(0, 0, W, H); ctx2d.globalAlpha = 1; ctx2d.globalCompositeOperation = 'source-over'; }
       meter.textContent = (inp.an ? `entrada ${'▁▂▃▄▅▆▇█'[Math.min(7, Math.floor(inp.level * 7.99))]}` : 'sem entrada') + (hand.on ? ` · mãos ${hand.n}` : '');
       requestAnimationFrame(loop);

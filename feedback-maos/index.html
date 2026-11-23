@@ -173,6 +173,7 @@
 html,body{margin:0;height:100%;background:#000;color:var(--fg);font:14px/1.45 system-ui,-apple-system,sans-serif;overflow:hidden;
   -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-text-size-adjust:100%;touch-action:none;overscroll-behavior:none}
 canvas#tela{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;background:#000}
+.semproj{position:fixed;inset:0;pointer-events:none;z-index:5}.semproj canvas{width:100%;height:100%;display:block}
 body.quieto,body.quieto canvas#tela{cursor:none}
 .app-ui{position:fixed;z-index:30;color:var(--fg)}
 #entrada{z-index:40;inset:0;display:grid;place-items:center;overflow-y:auto;
@@ -232,10 +233,11 @@ aside button.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
 </style>
 </head><body class="nopanel inicio">
 <canvas id="tela"></canvas>
+<div class="semproj"><canvas id="hud"></canvas></div>
 
 <div id="entrada" class="app-ui" role="dialog" aria-labelledby="entT"><div class="c">
   <h1 id="entT">Feedback das <b>Mãos</b></h1>
-  <p>As suas mãos tocam o feedback. As pontas dos dedos soltam luz, a pinça desenha, abrir a mão expande o laço e fechar contrai. Incline para girar, suba para mudar as cores. A câmera não aparece.</p>
+  <p>Uma mão controla, a outra desenha. Na mão de controle, encoste o polegar no indicador e arraste para mudar zoom e giro; no médio, cor e RGB. Ao soltar, o valor fica onde você deixou. A mão de desenho desenha com a pinça e leva o centro do laço com o dedo apontado. A câmera não aparece.</p>
   <button class="big p" id="eCamF" type="button">Câmera da frente<small>Fique de frente para a tela e mostre as mãos</small></button>
   <button class="big" id="eCamT" type="button">Câmera de trás<small>Aponte o aparelho para as mãos de alguém</small></button>
   <button class="big" id="eMapa" type="button">Gestos<small>Para consultar ou imprimir</small></button>
@@ -258,6 +260,15 @@ aside button.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
   <button id="fecharPainel" type="button" aria-label="Fechar ajustes">✕</button>
   <h2>Feedback das Mãos</h2>
   <p class="sub">Motor do Feedback Digital com rastreamento das mãos (MediaPipe). O esqueleto das mãos é a semente; os gestos mexem no laço.</p>
+  <div id="ctrlMaos">
+    <h4>Controle das mãos</h4>
+    <div class="row"><button type="button" data-ct="estilo:preciso">Preciso (agarrar)</button><button type="button" data-ct="estilo:classico">Clássico (contínuo)</button></div>
+    <h4>Mão de controle</h4>
+    <div class="row"><button type="button" data-ct="ctrl:E">Esquerda</button><button type="button" data-ct="ctrl:D">Direita</button></div>
+    <div class="chk"><input type="checkbox" id="cHud"><label for="cHud">Indicadores na tela (tecla H)</label></div>
+    <div class="chk"><input type="checkbox" id="cEixo"><label for="cEixo">Travar o eixo do arrasto</label></div>
+    <div class="row"><button type="button" id="bZerar">Voltar ao ponto de partida (Z)</button></div>
+  </div>
   <h4>Modo</h4>
   <div class="row" id="modos"></div>
   <div id="sliders"></div>
@@ -265,19 +276,26 @@ aside button.on{background:var(--ac);color:#1a0420;border-color:var(--ac)}
 
 <div id="mapa" class="app-ui" hidden><div class="folha">
   <h2>Feedback das <b>Mãos</b> — gestos</h2>
-  <p>Até duas mãos. A câmera é invisível: só o que as mãos fazem aparece.</p>
+  <p>Modo preciso: uma mão é de <b>controle</b> e a outra de <b>desenho</b> (escolha qual nos ajustes). Os valores só mudam enquanto os dedos estão encostados e ficam parados quando você solta. A câmera é invisível.</p>
   <table>
-    <tr><td>✋ Pontas dos dedos</td><td>Soltam luz o tempo todo (cada mão tem a sua cor)</td></tr>
-    <tr><td>🤏 Pinça (polegar + indicador)</td><td>Desenha um traço grosso enquanto estiver fechada</td></tr>
-    <tr><td>🖐 Mão aberta</td><td>Expande o laço (o túnel cresce para fora)</td></tr>
-    <tr><td>✊ Mão fechada</td><td>Contrai o laço (o desenho afunda para dentro)</td></tr>
-    <tr><td>↻ Inclinar a mão</td><td>Gira o laço para o lado da inclinação</td></tr>
-    <tr><td>↕ Altura da mão</td><td>No alto as cores giram para um lado, embaixo para o outro</td></tr>
-    <tr><td>💨 Mão rápida</td><td>Derrete mais</td></tr>
-    <tr><td>↔ Distância entre as mãos</td><td>Separação RGB (quanto mais longe, mais separa)</td></tr>
+    <tr><td colspan="2" style="color:var(--ac);padding-top:14px">MÃO DE CONTROLE</td></tr>
+    <tr><td>🤏 Polegar + indicador, arrastar ↕</td><td>Zoom do laço (sobe = expande, desce = afunda)</td></tr>
+    <tr><td>🤏 Polegar + indicador, arrastar ↔</td><td>Giro do laço</td></tr>
+    <tr><td>👌 Polegar + médio, arrastar ↕</td><td>Cor (giro de matiz)</td></tr>
+    <tr><td>👌 Polegar + médio, arrastar ↔</td><td>Separação RGB</td></tr>
+    <tr><td>Polegar + mínimo (toque)</td><td>Próximo modo</td></tr>
+    <tr><td>Polegar + anelar (toque)</td><td>Congelar / descongelar</td></tr>
+    <tr><td>✊ Punho por 1 s</td><td>Volta zoom, giro, cor, RGB e centro ao ponto de partida</td></tr>
+    <tr><td colspan="2" style="color:var(--ac);padding-top:14px">MÃO DE DESENHO</td></tr>
+    <tr><td>✋ Pontas dos dedos</td><td>Soltam luz (ajuste "Luz das pontas")</td></tr>
+    <tr><td>🤏 Pinça</td><td>Desenha um traço enquanto estiver fechada</td></tr>
+    <tr><td>☝️ Indicador apontado</td><td>Leva o centro do laço até a ponta do dedo (fica lá quando você para de apontar)</td></tr>
+    <tr><td>🖐 Abrir / ✊ fechar</td><td>Mais / menos derretimento</td></tr>
+    <tr><td colspan="2" style="color:var(--ac);padding-top:14px">AS DUAS</td></tr>
     <tr><td>✊✊ As duas fechadas por 1 s</td><td>Limpa a tela</td></tr>
-    <tr><td>Centro do laço</td><td>Segue a mão (ajuste "Centro segue a mão")</td></tr>
+    <tr><td>Arrasto começa</td><td>O primeiro movimento escolhe o eixo (↕ ou ↔) e trava nele</td></tr>
   </table>
+  <p style="margin-top:14px">Teclas: H indicadores · Z ponto de partida · C limpar · espaço congelar. Se as mãos ficarem trocadas, troque "Mão de controle" nos ajustes. O modo clássico (tudo contínuo, como antes) continua nos ajustes.</p>
   <div class="acoes"><button id="mImprimir" type="button">Imprimir</button><button id="mFechar" type="button">Fechar</button></div>
 </div></div>
 
@@ -643,7 +661,7 @@ function acaso(now, dt) {
 let querSalvar = false, nomeArquivo = 'feedback';
 function desenharQuadro(now, dt, mod = {}, semUniforms = null) {
   acaso(now, dt);
-  const Rv = AC.v, ac = P.Acaso, esc = camEscala(), mir = espelho();
+  const Rv = AC.v, ac = P.Acaso * (mod.acaso ?? 1), esc = camEscala(), mir = espelho();
   gl.viewport(0, 0, W, H);
   // 1 semente
   gl.bindFramebuffer(gl.FRAMEBUFFER, seedF); gl.useProgram(PS.p);
@@ -685,20 +703,34 @@ function desenharQuadro(now, dt, mod = {}, semUniforms = null) {
 function registrarSW() { if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {}); }
 
 
-/* =================== FEEDBACK DAS MÃOS =================== */
+/* =================== FEEDBACK DAS MÃOS — v2: controle preciso ===================
+   - filtro One Euro nos 21 pontos de cada mão (parado = sem tremor, rápido = sem atraso)
+   - forma da mão medida em 3D (ângulo das juntas), não pela distância na imagem
+   - cada mão tem um papel: mão de CONTROLE (agarra e arrasta parâmetros) e mão de DESENHO
+   - agarrar = encostar o polegar num dedo; o valor só muda enquanto os dedos estão encostados
+     e fica parado quando você solta (com correção do tranco da soltura)                        */
 nomeArquivo = 'feedback-maos';
 montaPainel([
   ['Mãos'],
   ['Pontas', 'Luz das pontas dos dedos', 0.012, 0, 0.04, 0.001],
   ['Esqueleto', 'Luz do esqueleto', 0.35, 0, 1, 0.01],
-  ['Pinca', 'Espessura da pinça', 0.022, 0.005, 0.08, 0.001],
+  ['Pinca', 'Espessura do traço', 0.022, 0.005, 0.08, 0.001],
+  ['Precisão'],
+  ['Filtro', 'Estabilidade (menos tremor)', 0.65, 0, 1, 0.01],
+  ['Resposta', 'Resposta a movimentos rápidos', 0.5, 0, 1, 0.01],
+  ['Sens', 'Sensibilidade do arrasto', 1, 0.2, 3, 0.05],
+  ['Pincacm', 'Distância do toque dos dedos (cm)', 3, 1.5, 6, 0.1],
+  ['Acasomao', 'Acaso com as mãos na tela', 0.25, 0, 1, 0.01],
+  ['Mão de desenho'],
+  ['Abertmao', 'Abertura da mão → derreter', 1.2, 0, 3, 0.05],
+  ['Velmao', 'Velocidade → derreter', 1.5, 0, 5, 0.05],
+  ['Seguecentro', 'Rapidez do centro seguindo o dedo', 0.5, 0.05, 1, 0.01],
+  ['Modo clássico'],
   ['Zoommao', 'Abrir/fechar → zoom', 0.014, 0, 0.04, 0.0005],
   ['Rotmao', 'Inclinação → giro', 0.03, 0, 0.1, 0.001],
   ['Matizmao', 'Altura → cor', 0.08, 0, 0.3, 0.005],
-  ['Velmao', 'Velocidade → derreter', 1.5, 0, 5, 0.05],
   ['Rgbmao', 'Distância entre mãos → RGB', 3, 0, 8, 0.1],
   ['Centromao', 'Centro segue a mão', 0.5, 0, 1, 0.01],
-  ['Suave', 'Suavização do rastreamento', 0.45, 0, 0.9, 0.01],
   ['Entradas'],
   ['Camera', 'Imagem da câmera (0 = transparente)', 0, 0, 1, 0.01],
 ], { Modo: 3, Zoom: 0.001, Acaso: 0.45, Rastro: 0.978 });
@@ -706,13 +738,42 @@ ligaTopo();
 const mapa = (v) => { $('mapa').hidden = !v; };
 $('tMapa').onclick = () => mapa(true); $('eMapa').onclick = () => mapa(true);
 $('mFechar').onclick = () => mapa(false); $('mImprimir').onclick = () => print();
-addEventListener('keydown', (e) => { const k = e.key.toLowerCase(); if (k === 'c') limpar(); if (k === ' ') setCongelar(!P.Congelar); if (k === 'escape') mapa(false); });
+
+/* ---------------- opções de controle (guardadas no navegador) ---------------- */
+const CT_KEY = 'feedback-maos-controle';
+const CT = Object.assign({ estilo: 'preciso', ctrl: 'E', hud: true, eixo: true }, (() => { try { return JSON.parse(localStorage.getItem(CT_KEY)) || {}; } catch (e) { return {}; } })());
+function pintaCT() {
+  document.querySelectorAll('#ctrlMaos [data-ct]').forEach((b) => { const [k, v] = b.dataset.ct.split(':'); b.classList.toggle('on', CT[k] === v); });
+  $('cHud').checked = CT.hud; $('cEixo').checked = CT.eixo;
+}
+function salvaCT() { try { localStorage.setItem(CT_KEY, JSON.stringify(CT)); } catch (e) {} pintaCT(); }
+document.querySelectorAll('#ctrlMaos [data-ct]').forEach((b) => { b.onclick = () => { const [k, v] = b.dataset.ct.split(':'); CT[k] = v; salvaCT(); }; });
+$('cHud').onchange = (e) => { CT.hud = e.target.checked; salvaCT(); };
+$('cEixo').onchange = (e) => { CT.eixo = e.target.checked; salvaCT(); };
+$('bZerar').onclick = () => zerar();
+pintaCT();
+addEventListener('keydown', (e) => {
+  if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName || '')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'c' && !e.shiftKey) limpar(); if (k === ' ') setCongelar(!P.Congelar); if (k === 'escape') mapa(false);
+  if (k === 'h' && !e.shiftKey) { CT.hud = !CT.hud; salvaCT(); dica(CT.hud ? 'Indicadores ligados' : 'Indicadores desligados', 1000); }
+  if (k === 'z' && !e.shiftKey) zerar();
+});
+
+/* ponto de partida: os valores do painel. "Zerar" volta para ele; mexer num controle do painel muda o ponto de partida */
+const CONTROLADOS = ['Zoom', 'Rotacao', 'Matiz', 'Rgb'];
+const BASE = {}; CONTROLADOS.forEach((k) => { BASE[k] = P[k]; });
+CONTROLADOS.forEach((k) => { const el = $('s_' + k); if (el) el.addEventListener('input', () => { BASE[k] = P[k]; }); });
+const rebase = () => setTimeout(() => CONTROLADOS.forEach((k) => { BASE[k] = P[k]; }), 300);
+$('fAj').addEventListener('change', rebase); $('bPadrao').addEventListener('click', rebase);
+const specDe = (k) => SPEC.find((s) => s[0] === k && s.length > 1);
 
 /* ---------------- MediaPipe ---------------- */
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15';
 const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const LIG = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
 const PONTAS = [4, 8, 12, 16, 20];
+const DEDOS = [[5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]];
 let det = null, carregando = null;
 async function carregarMaos() {
   if (det) return det; if (carregando) return carregando;
@@ -720,62 +781,188 @@ async function carregarMaos() {
     const mod = await import(MP + '/vision_bundle.mjs');
     const vision = await mod.FilesetResolver.forVisionTasks(MP + '/wasm');
     const o = (d) => ({ baseOptions: { modelAssetPath: HAND_MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2,
-      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
+      minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.6 });
     try { det = await mod.HandLandmarker.createFromOptions(vision, o('GPU')); } catch (e) { det = await mod.HandLandmarker.createFromOptions(vision, o('CPU')); }
     return det;
   })();
   return carregando;
 }
 
-// mãos rastreadas (coordenadas de tela 0–1, y para baixo)
-const MAOS = [];   // { pts:[[x,y]...21], vista, ab, roll, pinca, cx, cy, vel, cor, pcx, pcy, traco:[x,y]|null }
-let ultimoTs = -1, fechadas = 0;
+/* ---------------- filtro One Euro ---------------- */
+const OE = () => ({ x: null, dx: 0 });
+function oef(o, x, dt, minC, beta) {
+  if (o.x === null) { o.x = x; o.dx = 0; return x; }
+  const al = (c) => { const r = 2 * Math.PI * c * dt; return r / (r + 1); };
+  o.dx += al(1) * ((x - o.x) / dt - o.dx);
+  o.x += al(minC + beta * Math.abs(o.dx)) * (x - o.x);
+  return o.x;
+}
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const cos3 = (u, v) => (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(u[0], u[1], u[2]) * Math.hypot(v[0], v[1], v[2]) + 1e-9);
+
+/* ---------------- rastreamento ---------------- */
+// mão: pts (tela 0–1, y para baixo, filtrados), w (3D filtrado), est (quanto cada dedo está esticado 0–1), papel 'C'|'D'
+const MAOS = [];
+let ultimoTs = -1;
+function novaMao(p9) {
+  return { pts: Array.from({ length: 21 }, () => [p9[0], p9[1]]), fs: Array.from({ length: 42 }, OE),
+    w: Array.from({ length: 21 }, () => [0, 0, 0]), fw: Array.from({ length: 63 }, OE), novo: true, tsAnt: 0,
+    cx: p9[0], cy: p9[1], ab: 0.5, est: [1, 1, 1, 1], roll: 0, vel: 0, sd: 0, papel: null,
+    contato: 0, cand: 0, candN: 0, tContato: 0, tTap: 0, punho: false, aponta: false,
+    traco: null, desenha: false, drag: null, perdida: 0, vista: false };
+}
 function rastrear(now, dt) {
   if (!det || !CAM.on || !CAM.novo) { if (!CAM.on) MAOS.length = 0; return; }
   let ts = performance.now(); if (ts <= ultimoTs) ts = ultimoTs + 1; ultimoTs = ts;
   let r; try { r = det.detectForVideo(video, ts); } catch (e) { return; }
-  const vistas = r.landmarks || [], lados = r.handednesses || r.handedness || [];
-  const novas = vistas.map((lm, i) => ({ lm, lado: (lados[i] && lados[i][0] && lados[i][0].categoryName) || '' }));
-  // associa por proximidade às mãos já conhecidas
+  const vistas = r.landmarks || [], mundo = r.worldLandmarks || [], lados = r.handednesses || r.handedness || [];
   const usadas = new Set();
   for (const m of MAOS) m.vista = false;
-  for (const nv of novas) {
-    const p9 = camParaTela(nv.lm[9].x, nv.lm[9].y);
-    let melhor = null, dm = 0.35;
-    for (const m of MAOS) { if (usadas.has(m)) continue; const d = Math.hypot(m.cx - p9[0], m.cy - p9[1]); if (d < dm) { dm = d; melhor = m; } }
-    if (!melhor) { melhor = { pts: nv.lm.map((p) => camParaTela(p.x, p.y)), cx: p9[0], cy: p9[1], ab: 0.5, roll: 0, vel: 0, cor: MAOS.length ? 0.1 : 0.58, traco: null, perdida: 0 }; MAOS.push(melhor); }
-    usadas.add(melhor); melhor.vista = true; melhor.perdida = 0;
-    const k = 1 - P.Suave;
-    nv.lm.forEach((p, j) => { const s = camParaTela(p.x, p.y); melhor.pts[j][0] += (s[0] - melhor.pts[j][0]) * k; melhor.pts[j][1] += (s[1] - melhor.pts[j][1]) * k; });
-    const q = melhor.pts, asp = W / H, d = (a, b) => Math.hypot((q[a][0] - q[b][0]) * asp, q[a][1] - q[b][1]);
-    const palma = Math.max(1e-3, d(0, 9));
-    const pontas = PONTAS.slice(1).reduce((s, t) => s + d(t, 0), 0) / 4 / palma;
-    melhor.ab = clamp((pontas - 1.05) / 0.85, 0, 1);
-    melhor.pinca = d(4, 8) / palma < 0.32 && melhor.ab > 0.15;
-    const ang = Math.atan2(-(q[9][1] - q[0][1]), (q[9][0] - q[0][0]) * asp);   // 90° = mão de pé
+  const minC = 4 - 3.7 * P.Filtro, beta = P.Resposta * 6;
+  vistas.forEach((lm, i) => {
+    const p9 = camParaTela(lm[9].x, lm[9].y);
+    let m = null, dm = 0.3;
+    for (const x of MAOS) { if (usadas.has(x)) continue; const d = Math.hypot(x.cx - p9[0], x.cy - p9[1]); if (d < dm) { dm = d; m = x; } }
+    if (!m) { m = novaMao(p9); MAOS.push(m); }
+    usadas.add(m); m.vista = true; m.perdida = 0;
+    const dtv = m.novo ? 1 / 30 : clamp((ts - m.tsAnt) / 1000, 1 / 120, 0.25); m.tsAnt = ts;
+    lm.forEach((p, j) => { const s = camParaTela(p.x, p.y); m.pts[j][0] = oef(m.fs[j * 2], s[0], dtv, minC, beta); m.pts[j][1] = oef(m.fs[j * 2 + 1], s[1], dtv, minC, beta); });
+    const wl = mundo[i] && mundo[i].length === 21 ? mundo[i] : lm;
+    wl.forEach((p, j) => { for (let c = 0; c < 3; c++) m.w[j][c] = oef(m.fw[j * 3 + c], [p.x, p.y, p.z || 0][c], dtv, minC * 2, beta * 8); });
+    m.novo = false;
+    // lado da pessoa (o MediaPipe supõe imagem espelhada; a nossa não é, então "Left" = mão direita da pessoa)
+    const cat = lados[i] && lados[i][0] ? lados[i][0].categoryName : '';
+    if (cat) m.sd = m.sd * 0.85 + (cat === 'Left' ? 1 : -1) * 0.15;
+    forma(m, now);
+    const q = m.pts, asp = W / H;
+    const ang = Math.atan2(-(q[9][1] - q[0][1]), (q[9][0] - q[0][0]) * asp);
     let roll = ang - Math.PI / 2; if (roll > Math.PI) roll -= 2 * Math.PI; if (roll < -Math.PI) roll += 2 * Math.PI;
-    melhor.roll = Math.abs(roll) < 0.18 ? 0 : roll - Math.sign(roll) * 0.18;
-    const ncx = q[9][0], ncy = q[9][1];
-    melhor.vel = lag(melhor.vel, Math.hypot((ncx - melhor.cx) * asp, ncy - melhor.cy) / Math.max(dt, 1 / 60), 0.05, 0.3, dt);
-    melhor.pcx = melhor.cx; melhor.pcy = melhor.cy; melhor.cx = ncx; melhor.cy = ncy;
+    m.roll = Math.abs(roll) < 0.18 ? 0 : roll - Math.sign(roll) * 0.18;
+    m.vel = lag(m.vel, Math.hypot((q[9][0] - m.cx) * asp, q[9][1] - m.cy) / Math.max(dt, 1 / 60), 0.05, 0.3, dt);
+    m.cx = q[9][0]; m.cy = q[9][1];
+  });
+  for (let i = MAOS.length - 1; i >= 0; i--) if (!MAOS[i].vista && ++MAOS[i].perdida > 8) { fimContato(MAOS[i], now); MAOS.splice(i, 1); }
+}
+// forma da mão em 3D: dedos esticados, punho, apontar, toque polegar-dedo (com histerese)
+function forma(m, now) {
+  const w = m.w;
+  m.est = DEDOS.map(([a, b, c, d]) => {
+    const c0 = cos3(sub3(w[a], w[0]), sub3(w[b], w[a])), c1 = cos3(sub3(w[b], w[a]), sub3(w[c], w[b])), c2 = cos3(sub3(w[c], w[b]), sub3(w[d], w[c]));
+    return clamp(((c0 + c1 + c2) / 3 + 0.3) / 1.3, 0, 1);
+  });
+  const media = m.est.reduce((s, e) => s + e, 0) / 4;
+  m.ab = clamp((media - 0.35) / 0.55, 0, 1);
+  const palma = Math.max(1e-5, dist3(w[0], w[9]));
+  const cm = (t) => dist3(w[4], w[t]) / palma * 9;   // a palma mede ~9 cm: vale para qualquer distância da câmera
+  const lim = P.Pincacm;
+  if (m.contato) { if (cm(m.contato) > lim * 1.5) fimContato(m, now); }
+  else {
+    let best = 0, bd = 1e9, seg = 1e9;
+    for (const t of [8, 12, 16, 20]) { const d = cm(t); if (d < bd) { seg = bd; bd = d; best = t; } else if (d < seg) seg = d; }
+    const outros = m.est.some((e, i) => [8, 12, 16, 20][i] !== best && e > 0.55);
+    const ok = bd < lim && seg > bd * 1.2 && outros;
+    if (ok && best === m.cand) { if (++m.candN >= 2) inicioContato(m, best, now); }
+    else { m.cand = ok ? best : 0; m.candN = ok ? 1 : 0; }
   }
-  for (let i = MAOS.length - 1; i >= 0; i--) if (!MAOS[i].vista && ++MAOS[i].perdida > 8) MAOS.splice(i, 1);
+  m.punho = m.punho ? m.est.every((e) => e < 0.62) : (!m.contato && m.est.every((e) => e < 0.5));
+  m.aponta = !m.contato && m.est[0] > 0.75 && m.est[1] < 0.55 && m.est[2] < 0.55 && m.est[3] < 0.6;
+}
+const pontoContato = (m) => { const t = m.contato || 8; return [(m.pts[4][0] + m.pts[t][0]) / 2, (m.pts[4][1] + m.pts[t][1]) / 2]; };
+
+/* ---------------- papéis das mãos ---------------- */
+function papeis(vis) {
+  const ctrlLado = CT.ctrl;   // 'E' ou 'D' (lado da pessoa)
+  const ladoDe = (m) => (m.sd > 0 ? 'D' : 'E');
+  if (vis.length === 1) { const m = vis[0]; if (!m.drag) m.papel = ladoDe(m) === ctrlLado ? 'C' : 'D'; return; }
+  if (vis.length !== 2) return;
+  const [a, b] = vis;
+  if (a.drag || b.drag) { const fixo = a.drag ? a : b, outro = fixo === a ? b : a; outro.papel = fixo.papel === 'C' ? 'D' : 'C'; return; }
+  let esqA;
+  if (Math.sign(a.sd) !== Math.sign(b.sd) && Math.abs(a.sd - b.sd) > 0.6) esqA = a.sd < b.sd;
+  else esqA = CAM.facing === 'user' ? a.cx < b.cx : a.cx > b.cx;   // na câmera da frente a imagem é espelhada
+  const esq = esqA ? a : b, dir = esqA ? b : a;
+  esq.papel = ctrlLado === 'E' ? 'C' : 'D'; dir.papel = ctrlLado === 'E' ? 'D' : 'C';
 }
 
-// gestos → modulações (com inércia, para não tremer)
-const G = { zoom: 0, rot: 0, hue: 0, desl: 1, rgb: 0, cx: 0, cy: 0 };
+/* ---------------- toques e arrastos ---------------- */
+const GRUPOS = { 8: { v: 'Zoom', h: 'Rotacao', nv: 'Zoom', nh: 'Giro' }, 12: { v: 'Matiz', h: 'Rgb', nv: 'Cor', nh: 'Separação RGB' } };
+const MODO_NOMES = MODOS;
+function inicioContato(m, t, now) {
+  m.contato = t; m.tContato = now; m.cand = 0; m.candN = 0;
+  if (CT.estilo !== 'preciso') return;
+  if (m.papel === 'C') {
+    if (GRUPOS[t]) { const [x, y] = pontoContato(m); const g = GRUPOS[t];
+      m.drag = { g, x0: x, y0: y, v0: { [g.v]: P[g.v], [g.h]: P[g.h] }, eixo: CT.eixo ? null : 'ambos', hist: [] }; }
+    else if (now - m.tTap > 0.6) {
+      m.tTap = now;
+      if (t === 20) { setModo(P.Modo + 1); dica('Modo: ' + MODO_NOMES[P.Modo], 1300); }
+      if (t === 16) { setCongelar(!P.Congelar); dica(P.Congelar ? 'Congelado' : 'Descongelado', 1100); }
+    }
+  }
+}
+function fimContato(m, now) {
+  if (m.drag) {   // desfaz o tranco da soltura: volta ao valor de ~0,12 s antes
+    const d = m.drag, h = d.hist.filter((e) => e[0] <= now - 0.12).pop();
+    if (h) { setP(d.g.v, h[1]); setP(d.g.h, h[2]); }
+    m.drag = null;
+  }
+  m.contato = 0; m.traco = null;
+}
+function arrastar(m, now) {
+  const d = m.drag, [x, y] = pontoContato(m), asp = W / H;
+  const dx = (x - d.x0) * asp, dy = d.y0 - y;
+  if (!d.eixo) { if (Math.hypot(dx, dy) > 0.025) { d.eixo = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'; d.x0 = x; d.y0 = y; } return; }
+  const ap = (k, delta) => { const s = specDe(k), span = s[4] - s[3]; let v = d.v0[k] + delta * span / 0.6 * P.Sens;
+    if (Math.abs(v - BASE[k]) < span * 0.015) v = BASE[k];   // trava suave no ponto de partida
+    setP(k, v); };
+  if (d.eixo !== 'h') ap(d.g.v, dy);
+  if (d.eixo !== 'v') ap(d.g.h, dx);
+  d.hist.push([now, P[d.g.v], P[d.g.h]]); while (d.hist.length && d.hist[0][0] < now - 0.5) d.hist.shift();
+}
+function zerar() { CONTROLADOS.forEach((k) => setP(k, BASE[k])); G.cxA = 0; G.cyA = 0; dica('De volta ao ponto de partida', 1300); }
+
+/* ---------------- gestos → modulações ---------------- */
+const G = { zoom: 0, rot: 0, hue: 0, desl: 1, rgb: 0, cx: 0, cy: 0, cxA: 0, cyA: 0, acaso: 1, tPunho: 0, tLimpa: 0 };
 function gestos(now, dt) {
-  const vis = MAOS.filter((m) => m.vista);
+  const vis = MAOS.filter((m) => m.vista), asp = W / H;
+  for (const m of vis) m.desenha = false;
+  // duas mãos fechadas por 1 s: limpa a tela
+  const duas = vis.length === 2 && vis.every((m) => m.punho);
+  G.tLimpa = duas ? G.tLimpa + dt : 0;
+  if (G.tLimpa > 1) { G.tLimpa = -2; limpar(); dica('Tela limpa', 900); }
+
+  if (CT.estilo === 'preciso') {
+    papeis(vis);
+    const C = vis.find((m) => m.papel === 'C'), D = vis.find((m) => m.papel === 'D');
+    // mão de controle
+    if (C) { C.cor = 0.11; if (C.drag) arrastar(C, now); }
+    G.tPunho = C && C.punho && !duas ? G.tPunho + dt : 0;
+    if (G.tPunho > 1.2) { G.tPunho = -3; zerar(); }
+    // mão de desenho
+    let desl = 1;
+    if (D) {
+      D.cor = 0.55;
+      D.desenha = D.contato === 8;
+      if (D.aponta) { G.cxA = (D.pts[8][0] - 0.5) * asp; G.cyA = 0.5 - D.pts[8][1]; }
+      desl = 0.4 + D.ab * P.Abertmao + Math.min(D.vel, 3) * P.Velmao * 0.5;
+    }
+    const tau = 1.25 - 1.15 * P.Seguecentro;
+    G.cx = lag(G.cx, G.cxA, tau, tau, dt); G.cy = lag(G.cy, G.cyA, tau, tau, dt);
+    G.desl = lag(G.desl, desl, 0.08, 0.5, dt);
+    G.acaso = lag(G.acaso, vis.length ? P.Acasomao : 1, 0.3, 1.5, dt);
+    G.zoom = lag(G.zoom, 0, .2, .2, dt); G.rot = lag(G.rot, 0, .2, .2, dt); G.hue = lag(G.hue, 0, .2, .2, dt); G.rgb = lag(G.rgb, 0, .2, .2, dt);
+    return G;
+  }
+  // ---- clássico: tudo contínuo, como na primeira versão ----
   let zoom = 0, rot = 0, hue = 0, vel = 0, rgb = 0, cx = 0, cy = 0;
   if (vis.length) {
-    for (const m of vis) { zoom += (m.ab - 0.5) * 2; rot += m.roll; hue += (0.5 - m.cy) * 2; vel = Math.max(vel, m.vel); cx += m.cx; cy += m.cy; }
+    for (const m of vis) { m.papel = null; m.cor = vis.indexOf(m) ? 0.1 : 0.58; m.desenha = m.contato === 8;
+      zoom += (m.ab - 0.5) * 2; rot += m.roll; hue += (0.5 - m.cy) * 2; vel = Math.max(vel, m.vel); cx += m.cx; cy += m.cy; }
     zoom /= vis.length; rot /= vis.length; hue /= vis.length; cx /= vis.length; cy /= vis.length;
-    if (vis.length === 2) rgb = Math.hypot((vis[0].cx - vis[1].cx) * W / H, vis[0].cy - vis[1].cy);
-    const todasFechadas = vis.length === 2 && vis.every((m) => m.ab < 0.12);
-    fechadas = todasFechadas ? fechadas + dt : 0;
-    if (fechadas > 1) { fechadas = -2; limpar(); dica('Tela limpa', 900); }
+    if (vis.length === 2) rgb = Math.hypot((vis[0].cx - vis[1].cx) * asp, vis[0].cy - vis[1].cy);
   }
-  const a = vis.length ? 1 : 0, asp = W / H;
+  const a = vis.length ? 1 : 0;
   G.zoom = lag(G.zoom, zoom * P.Zoommao * a, 0.12, 0.4, dt);
   G.rot = lag(G.rot, -rot * P.Rotmao * a, 0.12, 0.4, dt);
   G.hue = lag(G.hue, hue * P.Matizmao * a, 0.2, 0.6, dt);
@@ -783,10 +970,11 @@ function gestos(now, dt) {
   G.rgb = lag(G.rgb, rgb * P.Rgbmao * a, 0.1, 0.4, dt);
   G.cx = lag(G.cx, a ? (cx - 0.5) * asp * P.Centromao : 0, 0.25, 1.2, dt);
   G.cy = lag(G.cy, a ? (0.5 - cy) * P.Centromao : 0, 0.25, 1.2, dt);
+  G.acaso = lag(G.acaso, 1, 0.3, 1.5, dt);
   return G;
 }
 
-// semente: esqueleto, pontas e pinça
+/* ---------------- semente: esqueleto, pontas e traço ---------------- */
 const hsl = (t, l = 60, a = 1) => `hsla(${(((t % 1) + 1) % 1) * 360},95%,${l}%,${a})`;
 function desenharSemente(now) {
   const w = semCanvas.width, h = semCanvas.height;
@@ -794,7 +982,7 @@ function desenharSemente(now) {
   sctx.globalCompositeOperation = 'lighter'; sctx.lineCap = 'round';
   for (const m of MAOS) {
     if (!m.vista) { m.traco = null; continue; }
-    const q = m.pts, cor = m.cor + now * 0.05;
+    const q = m.pts, cor = (m.cor ?? 0.58) + now * 0.05;
     if (P.Esqueleto > 0) {
       sctx.strokeStyle = hsl(cor + 0.08, 55, P.Esqueleto); sctx.lineWidth = Math.max(1, h * 0.0035);
       sctx.beginPath(); for (const [a, b] of LIG) { sctx.moveTo(q[a][0] * w, q[a][1] * h); sctx.lineTo(q[b][0] * w, q[b][1] * h); } sctx.stroke();
@@ -803,8 +991,8 @@ function desenharSemente(now) {
       const r = P.Pontas * h * (0.6 + m.ab * 0.8);
       PONTAS.forEach((t, i) => { sctx.fillStyle = hsl(cor + i * 0.06, 62); sctx.beginPath(); sctx.arc(q[t][0] * w, q[t][1] * h, r, 0, 6.2832); sctx.fill(); });
     }
-    if (m.pinca) {
-      const x = (q[4][0] + q[8][0]) / 2, y = (q[4][1] + q[8][1]) / 2;
+    if (m.desenha) {
+      const [x, y] = pontoContato(m);
       const [x0, y0] = m.traco || [x, y];
       sctx.strokeStyle = hsl(cor + 0.5, 64); sctx.lineWidth = Math.max(2, P.Pinca * h * 2);
       sctx.beginPath(); sctx.moveTo(x0 * w, y0 * h); sctx.lineTo(x * w + 0.01, y * h); sctx.stroke();
@@ -814,11 +1002,70 @@ function desenharSemente(now) {
   subirCanvas();
 }
 
+/* ---------------- indicadores na tela (não vão para a projeção nem para a gravação) ---------------- */
+const hud = $('hud'), hx = hud.getContext('2d');
+let hudLimpo = true;
+function desenharHud(now) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), cw = Math.round(innerWidth * dpr), ch = Math.round(innerHeight * dpr);
+  if (hud.width !== cw || hud.height !== ch) { hud.width = cw; hud.height = ch; }
+  if (!CT.hud || CT.estilo !== 'preciso') { if (!hudLimpo) { hx.clearRect(0, 0, cw, ch); hudLimpo = true; } return; }
+  hx.clearRect(0, 0, cw, ch); hudLimpo = false;
+  const u = Math.max(cw, ch) / 1000, f = (px) => `600 ${Math.round(px * u)}px system-ui,-apple-system,sans-serif`;
+  hx.lineCap = 'round'; hx.textBaseline = 'middle';
+  for (const m of MAOS) {
+    if (!m.vista) continue;
+    const ctrl = m.papel === 'C', cor = ctrl ? '251,191,36' : '103,232,249';
+    const px = m.pts[9][0] * cw, py = m.pts[9][1] * ch;
+    // marca da mão
+    hx.strokeStyle = `rgba(${cor},.55)`; hx.lineWidth = 2 * u;
+    hx.beginPath(); hx.arc(px, py, 14 * u, 0, 6.2832); hx.stroke();
+    hx.fillStyle = `rgba(${cor},.8)`; hx.font = f(11); hx.textAlign = 'center';
+    hx.fillText(ctrl ? 'controle' : 'desenho', px, py + 28 * u);
+    // punho segurando: anel de progresso
+    if (ctrl && G.tPunho > 0.15) { hx.strokeStyle = `rgba(${cor},.95)`; hx.lineWidth = 4 * u;
+      hx.beginPath(); hx.arc(px, py, 22 * u, -Math.PI / 2, -Math.PI / 2 + 6.2832 * Math.min(1, G.tPunho / 1.2)); hx.stroke(); }
+    // dedo apontando: mira no centro do laço
+    if (!ctrl && m.aponta) { const tx = m.pts[8][0] * cw, ty = m.pts[8][1] * ch; hx.strokeStyle = `rgba(${cor},.9)`; hx.lineWidth = 2 * u;
+      hx.beginPath(); hx.arc(tx, ty, 10 * u, 0, 6.2832); hx.moveTo(tx - 18 * u, ty); hx.lineTo(tx + 18 * u, ty); hx.moveTo(tx, ty - 18 * u); hx.lineTo(tx, ty + 18 * u); hx.stroke(); }
+    // dedos encostados
+    if (m.contato) { const [cx, cy] = pontoContato(m); hx.fillStyle = `rgba(${cor},.95)`; hx.beginPath(); hx.arc(cx * cw, cy * ch, 6 * u, 0, 6.2832); hx.fill(); }
+    // arrasto: eixo travado e valor
+    if (m.drag) {
+      const d = m.drag, [cx, cy] = pontoContato(m), X = cx * cw, Y = cy * ch;
+      const ax = d.x0 * cw, ay = d.y0 * ch;
+      hx.strokeStyle = `rgba(${cor},.35)`; hx.lineWidth = 1.5 * u; hx.setLineDash([6 * u, 6 * u]); hx.beginPath();
+      if (d.eixo !== 'h') { hx.moveTo(ax, ay - 220 * u); hx.lineTo(ax, ay + 220 * u); }
+      if (d.eixo !== 'v') { hx.moveTo(ax - 220 * u, ay); hx.lineTo(ax + 220 * u, ay); }
+      hx.stroke(); hx.setLineDash([]);
+      const linhas = !d.eixo ? [['arraste ↕ ' + d.g.nv + '  ·  ↔ ' + d.g.nh]] :
+        [d.eixo !== 'h' && [d.g.nv, d.g.v], d.eixo !== 'v' && [d.g.nh, d.g.h]].filter(Boolean);
+      hx.textAlign = 'left';
+      linhas.forEach((ln, i) => {
+        const yy = Y - 34 * u - i * 34 * u, xx = X + 24 * u;
+        hx.font = f(14); hx.fillStyle = `rgba(${cor},1)`;
+        if (ln.length === 1) { hx.fillText(ln[0], xx, yy); return; }
+        const [nome, k] = ln, s = specDe(k), v = P[k];
+        hx.fillText(`${nome}  ${v >= 0 ? '+' : ''}${fmtV(v, s[5])}`, xx, yy);
+        const bw = 150 * u, by = yy + 13 * u, t = (v - s[3]) / (s[4] - s[3]), tb = (BASE[k] - s[3]) / (s[4] - s[3]);
+        hx.fillStyle = 'rgba(255,255,255,.18)'; hx.fillRect(xx, by, bw, 3 * u);
+        hx.fillStyle = 'rgba(255,255,255,.6)'; hx.fillRect(xx + tb * bw - u, by - 4 * u, 2 * u, 11 * u);
+        hx.fillStyle = `rgba(${cor},1)`; hx.beginPath(); hx.arc(xx + t * bw, by + 1.5 * u, 5 * u, 0, 6.2832); hx.fill();
+      });
+    }
+  }
+}
+
 function estado() {
   const vis = MAOS.filter((m) => m.vista);
+  const desc = (m) => {
+    if (m.drag) return m.drag.eixo === 'v' ? m.drag.g.nv : m.drag.eixo === 'h' ? m.drag.g.nh : 'agarrou';
+    if (m.contato === 8) return '🤏'; if (m.contato) return '👌';
+    if (m.punho) return '✊'; if (m.aponta) return '☝️'; return m.ab > 0.6 ? '🖐' : '✋';
+  };
   const txt = !CAM.on ? 'sem câmera' : !det ? 'carregando o rastreamento…' : !vis.length ? 'mostre as mãos' :
-    vis.map((m) => (m.pinca ? '🤏 pinça' : m.ab > 0.65 ? '🖐 aberta' : m.ab < 0.2 ? '✊ fechada' : '✋')).join(' · ');
-  $('estado').innerHTML = `<b>${MODOS[P.Modo]}</b> · ${txt}`;
+    CT.estilo === 'preciso' ? vis.slice().sort((a, b) => (a.papel === 'C' ? -1 : 1) - (b.papel === 'C' ? -1 : 1)).map((m) => (m.papel === 'C' ? 'controle ' : 'desenho ') + desc(m)).join(' · ')
+      : vis.map(desc).join(' · ');
+  $('estado').innerHTML = `<b>${MODOS[P.Modo]}</b>${P.Congelar ? ' ❄︎' : ''} · ${txt}`;
 }
 
 /* ---------------- laço ---------------- */
@@ -831,8 +1078,9 @@ function quadro(ms) {
   rastrear(now, dt);
   const g = gestos(now, dt);
   desenharSemente(now);
-  desenharQuadro(now, dt, { zoom: g.zoom, rot: g.rot, hue: g.hue, desl: g.desl, rgb: g.rgb, cx: g.cx, cy: g.cy });
-  if (now - tEst > 0.25) { tEst = now; estado(); }
+  desenharQuadro(now, dt, { zoom: g.zoom, rot: g.rot, hue: g.hue, desl: g.desl, rgb: g.rgb, cx: g.cx, cy: g.cy, acaso: g.acaso });
+  desenharHud(now);
+  if (now - tEst > 0.2) { tEst = now; estado(); }
 }
 async function comecar(qual) {
   entrada(false); mapa(false); dica('Ligando a câmera…', 1500);
@@ -846,6 +1094,6 @@ $('eCamF').onclick = () => comecar('frente');
 $('eCamT').onclick = () => comecar('tras');
 cv.addEventListener('pointerdown', () => { if (!document.body.classList.contains('nopanel') && matchMedia('(max-width:999px)').matches) painel(false); });
 alocar(); requestAnimationFrame(quadro); registrarSW();
-window.__fb = { P, MAOS, G, gl };
+window.__fb = { P, MAOS, G, CT, BASE, gl };
 </script>
 </body></html>

@@ -99,7 +99,9 @@ input[type=range]{accent-color:var(--ac);width:110px}
   <label><input id="cMirror" type="checkbox" checked> Espelhar</label>
   <label>Tema visual <select id="visTheme" title="T alterna"><option value="cyber" selected>Cyberpunk</option><option value="classic">Clássico</option></select></label>
   <span class="som-antigo" hidden><label>Tônica <select id="sRoot"></select></label></span>
-  <label>Notas do lead <select id="thMode" title="Livre: toda a escala · Escala do acorde: notas do acorde e tensões, sem as notas que chocam · Só acorde: fundamental, 3ª, 5ª, 7ª"><option value="0">Escala toda</option><option value="1" selected>Escala do acorde</option><option value="2">Só notas do acorde</option></select></label>
+  <label title="Como as notas do lead seguem o arp bass">Notas do lead <select id="leadNotes"><option value="0" selected>Escala do baixo (nota a nota)</option><option value="1">Só as notas do arpejo</option></select></label>
+  <label title="Quanto drive o lead ganha com a mão esquerda totalmente aberta">Drive máximo <input id="rDrvMax" type="range" min="0" max="1" step=".05" value=".35"><span id="vDrvMax">35%</span></label>
+  <select id="thMode" hidden><option value="0">0</option><option value="1" selected>1</option><option value="2">2</option></select>
   <span class="som-antigo" hidden><label>Escala <select id="sScale">
     <optgroup label="Menores">
       <option value="aeolian">Menor natural (eólio)</option><option value="harmonicMinor">Menor harmônica</option><option value="melodicMinor">Menor melódica</option>
@@ -289,7 +291,7 @@ const jiHz = (m, rootM) => TIM.ji ? mtof(rootM) * 2 ** Math.floor((m - rootM) / 
 let nbuf = null;
 function getNoise() { if (!nbuf) { nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } return nbuf; }
 const HUD = { ab: { 1: null, 2: null }, filtro: 20000 };
-const S = { handTest: 0, root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
+const S = { handTest: 0, leadNotes: 0, drvMax: .35, root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
 const vGain = v => v * v * 1.56;   // curva perceptual: .8 ≈ ganho unitário
 const sc = () => SCALES[S.scale];
 const chordOffs = () => (sc().length === 7 ? [0,2,4,6] : [0,1,2,3]);
@@ -969,19 +971,28 @@ function initTheremin() {
   applyPreset(S.preset | 0);
 }
 let thAllowed = [], thAKey = '';
+const LEAD_BASE = 60, LEAD_OIT = 2, LEAD_HIST = .18;   // nota mais grave = tônica da oitava 4 · duas oitavas na largura da tela
+function leadNotas() {   // graus (contados a partir da tônica) que a mão esquerda alcança, da esquerda para a direita
+  const n = sc().length, L = [];
+  if (S.leadNotes === 1) {   // só as notas do arpejo do baixo (fundamental, 3ª, 5ª e, se ligada, 7ª do acorde atual), em todas as oitavas
+    const offs = (S.arpSev ? [0, 2, 4, 6] : [0, 2, 4]).map(o => (((curDeg + o) % n) + n) % n);
+    for (let d = 0; d <= n * LEAD_OIT; d++) if (offs.includes(d % n)) L.push(d);
+  } else for (let d = 0; d <= n * LEAD_OIT; d++) L.push(d);   // escala inteira, nota por nota
+  return L;
+}
 /* DRIVE do lead (mão esquerda): fechada = sem drive · abrindo = mais saturação. Seco/saturado com volume compensado. */
 let leadDrvIn, leadDry, leadPre, leadWet, leadDrv = 0; const leadVozes = []; let leadWaveK = -1;
 function initLeadDrive() {
   leadDrvIn = ac.createGain(); leadDry = ac.createGain(); leadPre = ac.createGain(); leadWet = ac.createGain();
   const sh = ac.createWaveShaper(), N = 2048, cur = new Float32Array(N); for (let i = 0; i < N; i++) { const x = i / (N - 1) * 2 - 1; cur[i] = Math.tanh(x * 3) / Math.tanh(3); } sh.curve = cur; sh.oversample = '4x';
-  const tone = ac.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 6500; tone.Q.value = .5;
+  const tone = ac.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 4200; tone.Q.value = .5;   // tira a aspereza dos agudos da saturação
   leadDry.gain.value = 1; leadPre.gain.value = 1; leadWet.gain.value = 0;
   leadDrvIn.connect(leadDry); leadDry.connect(thBus); leadDrvIn.connect(leadPre); leadPre.connect(sh); sh.connect(tone); tone.connect(leadWet); leadWet.connect(thBus);
 }
 function setLeadDrive(a) {
-  if (!leadPre) return; a = clamp(a, 0, 1); leadDrv = a;
-  const P = 1 + 16 * a * a, a0 = .15, comp = a0 / (Math.tanh(3 * a0 * P) / Math.tanh(3)), c = ac.currentTime;
-  leadPre.gain.setTargetAtTime(P, c, .05); leadWet.gain.setTargetAtTime(a * comp, c, .05); leadDry.gain.setTargetAtTime(1 - a, c, .05);
+  if (!leadPre) return; a = clamp(a, 0, 1) * S.drvMax; leadDrv = a;   // a = quanto a mão abriu × "Drive máximo" do painel
+  const P = 1 + 9 * a, a0 = .15, comp = a0 / (Math.tanh(3 * a0 * P) / Math.tanh(3)), w = a * .8, c = ac.currentTime;   // nunca 100% saturado: sempre sobra som limpo
+  leadPre.gain.setTargetAtTime(P, c, .08); leadWet.gain.setTargetAtTime(w * comp, c, .08); leadDry.gain.setTargetAtTime(1 - w * .7, c, .08);
 }
 /* Notas permitidas do theremin sobre o acorde do momento. modo 1 = "escala do acorde": notas do acorde (fundamental, 3ª, 5ª, 7ª) + tensões da escala,
    exceto as "notas a evitar" (a meio-tom acima de uma nota do acorde, que chocam com ela) · modo 2 = só as notas do acorde. */
@@ -1019,31 +1030,20 @@ function updateTheremin() {
   if (mkGate !== ok || mkSolo !== S.handTest) { mkGate = ok; mkSolo = S.handTest; MK.mudo(!ok || !S.audio || S.handTest > 0); }   // teste de uma mão: o fundo cala   // o Motor Knick também cala sem as mãos
   const l = LIMBS[2], c = ac.currentTime, n = sc().length, top = 2 * n + 3;   // ~2,5 oitavas
   const on = S.audio && body.present && l.on && isTracked(2), zv = zVol(l.z);
-  // PITCH (Y): só graus da escala escolhida, com histerese (não treme na fronteira) e portamento curto entre as notas
-  // Ímã: tons do acorde (fundamental, 3ª, 5ª) têm bacia de captura larga; as notas de passagem, estreita
-  const pos = ((l.x + 1) / 2) * top;   // eixo X = altura da nota (grave à esquerda)
-  const tones = chordOffs().slice(0, 3), isTone = d => tones.includes((((d - curDeg) % n) + n) % n);
-  const pick = () => {
-    let best = null, bd = 9;
-    for (let d = Math.max(0, Math.floor(pos) - 1); d <= Math.min(top, Math.ceil(pos) + 1); d++) {
-      const dist = Math.abs(pos - d);
-      if (isTone(d) && dist < .85 && dist < bd) { best = d; bd = dist; }
-    }
-    return best !== null ? best : clamp(Math.round(pos), 0, top);
-  };
-  if (S.thMode > 0) {   // só notas do acorde / escala do acorde, com histerese (chord tones são mais "pegajosos")
-    const key = `${curDeg}|${S.root}|${S.scale}|${S.thMode}`; if (key !== thAKey) { thAKey = key; thAllowed = thComputeAllowed(top, n); }
-    let best = null, bd = 99; thAllowed.forEach(d => { const dist = Math.abs(pos - d) - (thIsTone(d) ? .25 : 0); if (dist < bd) { bd = dist; best = d; } });
-    if (thDeg === null || thChord !== curDeg || !thAllowed.includes(thDeg) || Math.abs(pos - thDeg) - (thIsTone(thDeg) ? .25 : 0) > bd + .3) { thDeg = best; thChord = curDeg; }
-  } else if (thDeg === null || thChord !== curDeg || Math.abs(pos - thDeg) > (isTone(thDeg) ? .85 : .6)) { thDeg = Math.min(pick(), top); thChord = curDeg; }   // modo livre: re-encaixa quando o acorde muda
-  const f = jiHz(degMidi(thDeg, 60), degMidi(curDeg, 60));   // registro: mais uma oitava abaixo (antes a base era 72)
+  // NOTA (X), direta como no Trava de Frequência e no Eclipse Sonoro: a largura da tela é dividida em faixas iguais,
+  // uma por nota, na MESMA escala e tônica do arp bass. Modo "Notas do arpejo": só as notas que o baixo está arpejando agora.
+  const lista = leadNotas(), pos = clamp((l.x + 1) / 2, 0, .9999) * lista.length;
+  let ix = thDeg === null ? -1 : lista.indexOf(thDeg);
+  if (ix < 0 || Math.abs(pos - (ix + .5)) > .5 + LEAD_HIST) ix = Math.floor(pos);   // histerese pequena: não treme na fronteira
+  thDeg = lista[ix]; thChord = curDeg;
+  const f = mtof(degMidi(thDeg, LEAD_BASE));   // mesma afinação do baixo (temperada): as notas casam exatamente   // registro: mais uma oitava abaixo (antes a base era 72)
   // o theremin ataca NOTAS: cada mudança de grau (ou de acorde) inicia uma nota nova; mão parada reinicia a nota a cada 4 tempos
   const xn = .6, wy = clamp((l.y + 1) / 2, 0, 1);   // eixo Y = forma de onda
   if (on && morphKey(wy) !== leadWaveK) { leadWaveK = morphKey(wy); const w = morphWave(wy); leadVozes.forEach(v => { if (v.end > c) { try { v.o1.setPeriodicWave(w); v.o2.setPeriodicWave(w); } catch (e) {} } }); }   // a nota que está soando também muda de onda
   thGain.gain.setTargetAtTime(0, c, .05);   // oscilador contínuo (drone) fica mudo
   if (on) {
     const changed = thLastDeg !== thDeg, hold = 240 / Math.max(40, S.bpm);
-    if ((changed && c - thLastT > .22) || (!changed && c - thLastT > hold)) {
+    if ((changed && c - thLastT > .1) || (!changed && c - thLastT > hold)) {
       thereminNote(c + .01, f, { peak: zv * .2 * TIM.th.gain * vGain(l.vol), xn, wy, vib: 1 - clamp(l.speed * 2, 0, 1) * .6 });
       events.push({ t: c + .01 + ADSR.th.a * .6, kind: 'note', i: 2 }); thEnv = 1; thLastT = c; thLastDeg = thDeg; thNotes++;
     }
@@ -1580,26 +1580,27 @@ function drawVfx(M, dt, nowMs) {
 
 function ghostAt(h, tt) { for (let k = h.length - 1; k >= 0; k--) if (h[k].t <= tt) return h[k]; return null; }
 
-function drawGuides() {
-  if (LIMBS[1].on) {   // faixas de acordes na lateral: altura da mão D = grau do modo
-    const n = sc().length, sel = chordFromHand();
-    ctx.textAlign = 'right'; ctx.font = '600 12px system-ui,sans-serif';
+function drawGuides() {   // réguas das notas ao longo do eixo X: arp bass embaixo, lead em cima
+  ctx.save(); ctx.font = '600 11px system-ui,sans-serif'; ctx.textAlign = 'center';
+  if (LIMBS[1].on) {   // arp bass: uma faixa por acorde da escala
+    const n = sc().length, sel = chordFromHand(), h = 20, y = 46;
     for (let d = 0; d < n; d++) {
-      const yTop = py((d + 1) / n * 2 - 1), yBot = py(d / n * 2 - 1), act = d === sel;
-      ctx.fillStyle = act ? (body.present ? 'rgba(251,113,133,.05)' : 'rgba(142,152,176,.04)') : (d % 2 ? 'rgba(255,255,255,.006)' : 'rgba(255,255,255,.014)');
-      ctx.fillRect(W - 96, yTop, 96, yBot - yTop);
-      ctx.fillStyle = act ? '#fecdd3' : 'rgba(142,152,176,.75)';
-      ctx.fillText(chordName(d), W - 10, (yTop + yBot) / 2 + 4);
+      const x0 = d / n * W, act = d === sel;
+      ctx.fillStyle = act ? 'rgba(251,113,133,.16)' : (d % 2 ? 'rgba(255,255,255,.015)' : 'rgba(255,255,255,.035)');
+      ctx.fillRect(x0, y, W / n, h);
+      ctx.fillStyle = act ? '#fecdd3' : 'rgba(142,152,176,.6)'; ctx.fillText(chordName(d), x0 + W / n / 2, y + 15);
     }
   }
-  if (LIMBS[2].on) {   // régua do theremin na borda esquerda: tons do acorde com marca longa, nota atual acesa
-    const n = sc().length, top = 2 * n + 3, tones = chordOffs().slice(0, 3);
-    for (let d = 0; d <= top; d++) {
-      const y = py(d / top * 2 - 1), tone = tones.includes((((d - curDeg) % n) + n) % n), cur = d === thDeg && thLevel > .02, ok = S.thMode === 0 || thAllowed.includes(d);
-      ctx.fillStyle = cur ? '#7dd3fc' : (tone ? 'rgba(56,189,248,.8)' : ok ? 'rgba(142,152,176,.45)' : 'rgba(142,152,176,.14)');
-      ctx.fillRect(0, y - 1, tone ? 26 : ok ? 14 : 6, cur ? 4 : 2);
-    }
+  if (LIMBS[2].on) {   // lead: uma marca por nota; notas do arpejo atual mais longas, nota tocando acesa
+    const L = leadNotas(), n = sc().length, k = L.length, arp = (S.arpSev ? [0, 2, 4, 6] : [0, 2, 4]).map(o => (((curDeg + o) % n) + n) % n);
+    L.forEach((d, i) => {
+      const x = (i + .5) / k * W, tone = arp.includes(((d % n) + n) % n), cur = d === thDeg && thLevel > .02;
+      ctx.fillStyle = cur ? '#7dd3fc' : tone ? 'rgba(56,189,248,.75)' : 'rgba(142,152,176,.35)';
+      ctx.fillRect(x - (cur ? 2 : 1), 0, cur ? 4 : 2, tone ? 22 : 12);
+      if (cur || i % n === 0) { ctx.fillStyle = cur ? '#7dd3fc' : 'rgba(142,152,176,.55)'; ctx.fillText(NOTES[(((degMidi(d, LEAD_BASE)) % 12) + 12) % 12], x, 36); }
+    });
   }
+  ctx.restore();
 }
 let last = performance.now();
 function frame(nowMs) {
@@ -1749,7 +1750,9 @@ function drawHandHud() {
 /* ---------- Controles ---------- */
 $('sRoot').innerHTML = NOTES.map((n, i) => `<option value="${i}" ${i === S.root ? 'selected' : ''}>${n}</option>`).join('');
 $('sRoot').onchange = e => { S.root = +e.target.value; };
-$('thMode').onchange = e => { S.thMode = +e.target.value; thAKey = ''; thDeg = null; };
+$('thMode').onchange = e => { S.thMode = +e.target.value; thAKey = ''; };
+$('leadNotes').onchange = e => { S.leadNotes = +e.target.value; thDeg = null; };
+$('rDrvMax').oninput = e => { S.drvMax = +e.target.value; $('vDrvMax').textContent = Math.round(S.drvMax * 100) + '%'; };
 $('sScale').onchange = e => { S.scale = e.target.value; LIMBS.forEach(l => (l.idx = 3)); mkDoDedalus(); };
 { const r0 = $('sRoot').onchange; $('sRoot').onchange = e => { r0(e); mkDoDedalus(); }; }
 MK.painel($('mkSom'));

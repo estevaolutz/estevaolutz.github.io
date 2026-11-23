@@ -424,6 +424,13 @@ const IPAD = (() => {
     <div class="section">
       <div class="section-head"><h2><span class="dot" style="--c:#e5e7eb"></span>Superfície</h2></div>
       <div class="row" style="align-items:center">
+        <select id="surfMode" aria-label="Tipo de superfície">
+          <option value="papel" selected>Papel de aquarela úmido</option>
+          <option value="agua">Água (ondas e óleo)</option>
+        </select>
+        <div class="knob-wrap" id="paperWetWrap"><span class="knob-title">Umidade</span><div class="knob" data-param="paperWet" data-value="0.55" data-color="#e5e7eb" aria-label="Quanto o papel está molhado: mais molhado, as manchas correm mais longe e se misturam mais"></div><span class="knob-val" id="paperWetVal"></span></div>
+      </div>
+      <div class="row" style="align-items:center">
         <input type="color" id="surfColor" value="#f5f3ee" aria-label="Cor da superfície (papel ou água)" title="Cor da superfície">
         <button id="surfReset" type="button" title="Volta à cor da paleta escolhida">Cor da paleta</button>
         <div class="knob-wrap" style="margin-left:auto"><span class="knob-title">Brilho</span><div class="knob" data-param="surfLum" data-value="0.5" data-color="#e5e7eb" aria-label="Brilho da superfície"></div><span class="knob-val" id="surfLumVal"></span></div>
@@ -452,12 +459,12 @@ const IPAD = (() => {
       </div>
       <div class="knob-row">
         <div class="knob-wrap"><span class="knob-title">Raio</span><div class="knob" data-param="dropRadius" data-value="0.29" data-color="#5eead4" aria-label="Raio de cada gota"></div><span class="knob-val" id="dropRadiusVal"></span></div>
-        <div class="knob-wrap"><span class="knob-title">Ondas</span><div class="knob" data-param="rings" data-value="0.29" data-color="#5eead4" aria-label="Número de ondas por gota"></div><span class="knob-val" id="ringsVal"></span></div>
+        <div class="knob-wrap" id="ringsWrap"><span class="knob-title">Ondas</span><div class="knob" data-param="rings" data-value="0.29" data-color="#5eead4" aria-label="Número de ondas por gota"></div><span class="knob-val" id="ringsVal"></span></div>
         <div class="knob-wrap"><span class="knob-title">Interação</span><div class="knob" data-param="interact" data-value="0.6" data-color="#5eead4" aria-label="Força de repulsão e atração entre ondas"></div><span class="knob-val" id="interactVal"></span></div>
         <div class="knob-wrap"><span class="knob-title">Acaso</span><div class="knob" data-param="chaos" data-value="0.35" data-color="#5eead4" aria-label="Aleatoriedade dos parâmetros de cada gota"></div><span class="knob-val" id="chaosVal"></span></div>
       </div>
     </div>
-    <div class="section">
+    <div class="section" id="oilSection">
       <div class="section-head"><h2><span class="dot" style="--c:#d4a24c"></span>Camada de óleo</h2></div>
       <div class="knob-row">
         <div class="knob-wrap"><span class="knob-title">Óleo</span><div class="knob" data-param="oilAmt" data-value="0.6" data-color="#d4a24c" aria-label="Quanto óleo cobre a superfície"></div><span class="knob-val" id="oilAmtVal"></span></div>
@@ -613,7 +620,7 @@ const IPAD = (() => {
   const params = { inSpread: 0.7, delayTime: 0.39, delayFb: 0.55, delayMix: 0.5, reverbMix: 0.65, driveAmt: 0.4, bitBits: 0.43,
                    dropRadius: 0.29, rings: 0.29, interact: 0.6, chaos: 0.35, droneLvl: 0.35, weather: 0.5, stainSize: 0.5, stainInt: 0.5, stainLife: 0.5,
                    delayStereo: 0.35, delayLow: 0.1, delayHi: 0.5, delaySat: 0, delayDuck: 0, delayDepth: 0.15, delayRate: 0.3, delayDiff: 0, delaySize: 0.4,
-                   inkHue: 0.5, inkSat: 0.5, inkLum: 0.5, inGain: 0.5, inSens: 0.5, inGap: 0.3, hSens: 0.5, hGap: 0.3, hReach: 0.5, jSpeed: 0.5, oilAmt: 0.6, oilIri: 0.5, oilScale: 0.4 };
+                   inkHue: 0.5, inkSat: 0.5, inkLum: 0.5, inGain: 0.5, inSens: 0.5, inGap: 0.3, hSens: 0.5, hGap: 0.3, hReach: 0.5, jSpeed: 0.5, oilAmt: 0.6, oilIri: 0.5, oilScale: 0.4, paperWet: 0.55 };
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -979,6 +986,7 @@ const IPAD = (() => {
     noite: { ground: [3, 5, 10], mode: 'water', ink: 0.018, ring: 0.95, fade: 0.02, grain: 0, inks: null }
   };
   let basePal = PALETTES.aquarela, pal = basePal, surfOverride = null, surfLum = 1;
+  let superficie = 'papel';   // 'papel' = papel de aquarela úmido · 'agua' = água com ondas e óleo
 
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   function hslToRgb(h, s, l) {
@@ -1224,6 +1232,12 @@ const IPAD = (() => {
     const life = (size > 10 ? 1.8 : 1.1) * (0.7 + 0.3 * mul) * v.life;
     const count = clamp(map.rings(params.rings) + v.rings, 1, 8);
     const gap = RING_GAP * v.gap;
+    if (superficie === 'papel' && PAPEL) {   // papel úmido: a gota molha uma poça irregular e deposita o pigmento, que corre com a água
+      const rad = map.radiusMul(params.dropRadius) * v.rad, R = (2 + size * 0.42) * rad * 4.2 * map.stain(params.stainSize) * (0.8 + Math.random() * 0.5);
+      const ink = 1.6 * map.stain(params.stainInt) * v.strength;
+      PAPEL.drop(x, y, R, (0.9 + size * 0.02) * v.strength, pigOf(rgb, true).map((a) => a * ink));
+      return;
+    }
     if (AGUA) {   // água simulada: a gota entra como impacto na onda, empurrão na correnteza/óleo e tinta
       const paper = pal.mode === 'paper', rad = map.radiusMul(params.dropRadius) * v.rad, R = (2 + size * 0.42) * rad;
       const ink = (paper ? 0.95 : 0.7) * map.stain(params.stainInt) * v.strength, dyeR = 3.2 * map.stain(params.stainSize) * (0.8 + Math.random() * 0.5);
@@ -1549,6 +1563,222 @@ void main(){
     const lavar = () => { clear(DY, [0, 0, 0, 1]); clear(CA, [0, 0, 0, 1]); clear(CB, [0, 0, 0, 1]); };
     return { drop, step, show, lavar };
   })();
+  // ---------- Papel de aquarela úmido ----------
+  // Três camadas na GPU: água (quanto o papel está molhado), pigmento em suspensão (anda com a água) e pigmento
+  // assentado (preso às fibras). A água escorre do mais molhado para o menos molhado pelas fibras do papel, levando o
+  // pigmento; na borda que seca o pigmento se acumula (contorno escuro da aquarela); onde cai água nova sobre tinta quase
+  // seca, ela levanta o pigmento e empurra para fora (as "couve-flores"). As tintas se misturam por absorção:
+  // azul + amarelo dá verde, como pigmento de verdade.
+  const PAPEL = (() => {
+    const glc = document.createElement('canvas');
+    const gl = glc.getContext('webgl2', { alpha: false, antialias: false, preserveDrawingBuffer: true, premultipliedAlpha: false });
+    if (!gl || !gl.getExtension('EXT_color_buffer_float')) return null;
+    const SW = 640, SH = 360, PX = [1 / SW, 1 / SH], MAXD = 16;
+    const ASP = () => W / H;
+    const VS = `#version 300 es
+in vec2 p; out vec2 uv; void main(){ uv = p * .5 + .5; gl_Position = vec4(p, 0., 1.); }`;
+    const HEAD = `#version 300 es
+precision highp float; in vec2 uv; out vec4 o; uniform vec2 px; uniform float t, asp;
+uniform sampler2D N;
+float nz(vec2 q){ vec2 x = q * 8., i = floor(x), f = fract(x); f = f * f * (3. - 2. * f); return texture(N, (i + f + .5) / 128.).r; }
+float fbm(vec2 q){ return .5 * nz(q) + .28 * nz(q * 2.03 + .17) + .14 * nz(q * 4.11 + .41) + .08 * nz(q * 8.3 + .7); }
+`;
+    // transporte comum à suspensão e ao assentado (as duas passadas calculam exatamente o mesmo, para não perder tinta)
+    const MOVE = `uniform sampler2D S, D, Wt, Fb; uniform float dt, flow, dep, lift, fadeS, fadeD, base, swirl;
+float wAt(vec2 q){ return texture(Wt, q).r; }
+void move(out vec3 sN, out vec3 dN){
+  float w = wAt(uv);
+  vec2 gw = vec2(wAt(uv + vec2(px.x, 0.)) - wAt(uv - vec2(px.x, 0.)), wAt(uv + vec2(0., px.y)) - wAt(uv - vec2(0., px.y)));
+  vec4 fb = texture(Fb, uv);
+  // a água empurra o pigmento para onde está mais seco (a borda), um pouco desviada pela direção das fibras
+  vec2 v = -gw * flow * smoothstep(.02, .3, w);
+  v += (fb.ba - .5) * length(gw) * flow * .6;
+  vec2 q0 = uv * vec2(asp, 1.) * 2.2 + t * .03; float e = .02;
+  vec2 curl = vec2(fbm(q0 + vec2(0., e)) - fbm(q0 - vec2(0., e)), -(fbm(q0 + vec2(e, 0.)) - fbm(q0 - vec2(e, 0.)))) / (2. * e);
+  v += curl * swirl * smoothstep(base + .05, base + .6, w);
+  vec3 s = texture(S, uv - v * dt * px).rgb;
+  // difusão pelo papel molhado: só anda onde os dois vizinhos estão molhados, mais fácil ao longo das fibras
+  vec3 acc = vec3(0.); float ws = 0.;
+  for (int k = 0; k < 8; k++) {
+    vec2 o2 = k == 0 ? vec2(1,0) : k == 1 ? vec2(-1,0) : k == 2 ? vec2(0,1) : k == 3 ? vec2(0,-1) : k == 4 ? vec2(1,1) : k == 5 ? vec2(-1,-1) : k == 6 ? vec2(1,-1) : vec2(-1,1);
+    vec2 q = uv + o2 * px * 2.;
+    float wk = min(min(w, wAt(q)), 1.) * texture(Fb, q).r * (k < 4 ? 1. : .6);
+    acc += wk * (texture(S, q).rgb - s); ws += wk;
+  }
+  s += acc * min(.12, .85 / max(ws, 1e-3));   // limite de estabilidade
+  vec3 d = texture(D, uv).rgb;
+  // assenta: rápido quando seca, mais ainda na frente de secagem (borda escura) e nos vales do grão (granulação)
+  float dry = 1. - smoothstep(base * .6, base + .45, w);
+  float front = smoothstep(.0, .06, length(gw));
+  float r = dep * (.15 + 2.2 * dry + .8 * front * dry) * (.55 + .9 * fb.g);
+  vec3 a = s * clamp(r * dt, 0., 1.);
+  // água nova sobre tinta assentada a levanta de volta
+  vec3 l = d * clamp(lift * max(w - base - .35, 0.) * dt, 0., .5);
+  sN = clamp((s - a + l) * fadeS, 0., 6.);
+  dN = clamp((d + a - l) * fadeD - .00002, 0., 6.);
+}
+`;
+    const SRC = {
+      fiber: HEAD + `void main(){
+  vec2 q = uv * vec2(asp, 1.);
+  // fibras: riscos finos em várias direções + manchas grandes de permeabilidade (o papel não absorve igual em todo lugar)
+  float f = 0.; vec2 dir = vec2(0.);
+  for (int i = 0; i < 4; i++) {
+    float a = float(i) * 1.7 + nz(q * .7 + float(i)) * 2.;
+    mat2 R = mat2(cos(a), -sin(a), sin(a), cos(a));
+    float s = smoothstep(.55, .8, nz(R * q * vec2(26., 2.2) + float(i) * 3.1));
+    f += s; dir += s * vec2(cos(a), sin(a));
+  }
+  float big = fbm(q * 1.3 + 4.);
+  float perm = clamp(.12 + 1.5 * big * big + .25 * f, .08, 1.3);
+  float tooth = .55 * nz(q * 46.) + .3 * nz(q * 97. + 3.) + .15 * fbm(q * 9.);
+  vec2 dd = length(dir) > .001 ? normalize(dir) * .5 + .5 : vec2(.5);
+  o = vec4(perm, tooth, dd);
+}`,
+      water: HEAD + `uniform sampler2D A, Fb; uniform float spread, evap, base;
+void main(){
+  float w = texture(A, uv).r, p = texture(Fb, uv).r;
+  float acc = 0., cs = 0.;
+  for (int k = 0; k < 8; k++) {
+    vec2 o2 = k == 0 ? vec2(1,0) : k == 1 ? vec2(-1,0) : k == 2 ? vec2(0,1) : k == 3 ? vec2(0,-1) : k == 4 ? vec2(1,1) : k == 5 ? vec2(-1,-1) : k == 6 ? vec2(1,-1) : vec2(-1,1);
+    vec2 q = uv + o2 * px * 1.5;
+    float wq = texture(A, q).r, pq = texture(Fb, q).r;
+    // meio poroso: quanto mais molhado, mais fácil a água passa (frentes nítidas e irregulares, não um borrão)
+    float m = min(.5 * (w + wq), 1.), c = min(p, pq) * (m * m * 1.6 + .04) * (k < 4 ? 1. : .5);
+    acc += c * (wq - w); cs += c;
+  }
+  w += acc * min(spread, .85 / max(cs, 1e-3));
+  w += (base * (.85 + .3 * p) - w) * evap;   // evapora até a umidade do papel
+  o = vec4(clamp(w, 0., 1.6), 0., 0., 1.);
+}`,
+      sus: HEAD + MOVE + `void main(){ vec3 s, d; move(s, d); o = vec4(s, 1.); }`,
+      set: HEAD + MOVE + `void main(){ vec3 s, d; move(s, d); o = vec4(d, 1.); }`,
+      splat: HEAD + `uniform sampler2D A; uniform int mode, nd; uniform vec4 P[${MAXD}], Q[${MAXD}]; uniform float irr;
+float shape(vec2 d, float R, float s, float k){
+  float a = atan(d.y, d.x);
+  float w = 1. + k * (.22 * sin(3. * a + s) + .14 * sin(5. * a + s * 1.7) + .08 * sin(9. * a + s * 2.3) + .05 * sin(17. * a + s * 3.1));
+  w *= 1. + k * .5 * (nz(d * 3. + s) - .5);
+  return length(d) / (R * w);
+}
+void main(){
+  vec4 c = texture(A, uv);
+  for (int i = 0; i < ${MAXD}; i++) {
+    if (i >= nd) break;
+    vec4 p = P[i], q = Q[i];
+    vec2 d = (uv - p.xy) * vec2(asp, 1.);
+    if (mode == 0) {   // água: poça de contorno irregular
+      float rr = shape(d, p.z, q.w, .5 + irr);
+      c.r = min(c.r + p.w * smoothstep(1.1, .55, rr), 1.5);
+    } else {           // pigmento: um pouco menor que a poça, mais carregado no centro, com fiapos
+      float rr = shape(d, p.z * .78, q.w + 11., .45 + irr);
+      float m = smoothstep(1.05, .2, rr) + .35 * smoothstep(1.3, .9, rr) * smoothstep(.5, .8, nz(d * 11. + q.w));
+      c.rgb += q.rgb * m;
+    }
+  }
+  o = c;
+}`,
+      show: HEAD + `uniform sampler2D S, D, Wt, Fb; uniform vec3 ground; uniform float dens, gran, base;
+void main(){
+  vec4 fb = texture(Fb, uv);
+  float w = texture(Wt, uv).r;
+  vec3 s = texture(S, uv).rgb, d = texture(D, uv).rgb;
+  // granulação: o pigmento assentado pesa mais nos vales do grão do papel
+  vec3 A = d * mix(1., .45 + 1.25 * fb.g, gran) + s * .8;
+  vec3 paper = ground * (1. - .07 * (fb.g - .5) - .035 * (fb.r - .7));
+  vec3 col = paper * exp(-A * dens);
+  // papel molhado: um pouco mais escuro e com brilho leve onde a água ainda está por cima
+  float wet = smoothstep(base + .05, base + .7, w);
+  col *= 1. - .07 * wet;
+  float wl = texture(Wt, uv - vec2(px.x, 0.)).r, wr = texture(Wt, uv + vec2(px.x, 0.)).r;
+  float wd = texture(Wt, uv - vec2(0., px.y)).r, wu = texture(Wt, uv + vec2(0., px.y)).r;
+  vec3 n = normalize(vec3(-(wr - wl) * 6., -(wu - wd) * 6., 1.));
+  col += pow(max(dot(n, normalize(vec3(-.3, .4, 1.))), 0.), 160.) * .12 * wet;
+  o = vec4(clamp(col, 0., 1.), 1.);
+}`
+    };
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    const P = {};
+    try {
+      const vs = sh(gl.VERTEX_SHADER, VS);
+      for (const k in SRC) {
+        const pr = gl.createProgram(); gl.attachShader(pr, vs); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, SRC[k])); gl.bindAttribLocation(pr, 0, 'p'); gl.linkProgram(pr);
+        if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+        const U = {}, n = gl.getProgramParameter(pr, gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(pr, i).name.replace(/\[0\]$/, ''); U[nm] = gl.getUniformLocation(pr, nm); }
+        P[k] = { pr, U };
+      }
+    } catch (e) { console.warn('Gotas: papel úmido indisponível, uso a água.', e); return null; }
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    const tex = (w, h, data, fmt) => {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      if (fmt === 'u8') gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const wrap = fmt === 'u8' ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+      return t;
+    };
+    const fbo = () => { const t = tex(SW, SH); const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return { t, fb }; };
+    const pair = () => { const a = [fbo(), fbo()]; return { r: a[0], w: a[1], swap() { const x = this.r; this.r = this.w; this.w = x; } }; };
+    const NS = 128, nd = new Uint8Array(NS * NS * 4); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 255;
+    const noiseT = tex(NS, NS, nd, 'u8');
+    const WT = pair(), SP = pair(), DP = pair(), FB = fbo();
+    const clear = (x, v) => { gl.bindFramebuffer(gl.FRAMEBUFFER, x.fb); gl.viewport(0, 0, SW, SH); gl.clearColor(...v); gl.clear(gl.COLOR_BUFFER_BIT); };
+    const clearP = (pp, v) => { clear(pp.r, v); clear(pp.w, v); };
+    let T = 0, fibAsp = 0;
+    const use = (k) => { const p = P[k]; gl.useProgram(p.pr); const U = p.U;
+      if (U.px) gl.uniform2f(U.px, PX[0], PX[1]); if (U.t) gl.uniform1f(U.t, T); if (U.asp) gl.uniform1f(U.asp, ASP());
+      gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, noiseT); if (U.N) gl.uniform1i(U.N, 7); return U; };
+    const bindT = (U, name, unit, t) => { if (!U[name]) return; gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(U[name], unit); };
+    const draw = (x) => { gl.bindFramebuffer(gl.FRAMEBUFFER, x.fb); gl.viewport(0, 0, SW, SH); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); };
+    const run = (pp) => { draw(pp.w); pp.swap(); };
+    const fiber = () => { use('fiber'); draw(FB); fibAsp = ASP(); };
+    let started = false;
+    const start = (base) => { clearP(WT, [base, 0, 0, 1]); clearP(SP, [0, 0, 0, 1]); clearP(DP, [0, 0, 0, 1]); fiber(); started = true; };
+
+    const queue = [];
+    // x, y em px do palco; R em px; water = quanto molha; rgb = absorção do pigmento (já multiplicada pela carga de tinta)
+    const drop = (x, y, R, water, rgb) => {
+      if (queue.length >= MAXD) queue.shift();
+      queue.push({ x: x / W, y: 1 - y / H, R: R / H, water, rgb, seed: Math.random() * 100 });
+    };
+    const splat = (pp, mode) => {
+      const U = use('splat'), n = queue.length, A = new Float32Array(MAXD * 4), B = new Float32Array(MAXD * 4);
+      queue.forEach((d, i) => { A.set([d.x, d.y, d.R, d.water], i * 4); B.set([d.rgb[0], d.rgb[1], d.rgb[2], d.seed], i * 4); });
+      gl.uniform4fv(U.P, A); gl.uniform4fv(U.Q, B); gl.uniform1i(U.nd, n); gl.uniform1i(U.mode, mode); gl.uniform1f(U.irr, params.chaos);
+      bindT(U, 'A', 0, pp.r.t); run(pp);
+    };
+    function step(dt, opt) {
+      if (!started) start(opt.base);
+      if (Math.abs(fibAsp - ASP()) > 0.01) fiber();
+      T += dt;
+      if (queue.length) { splat(WT, 0); splat(SP, 1); queue.length = 0; }
+      const sub = 4, h = dt / sub;
+      for (let k = 0; k < sub; k++) {
+        { const U = use('water'); bindT(U, 'A', 0, WT.r.t); bindT(U, 'Fb', 1, FB.t);
+          gl.uniform1f(U.spread, Math.min(0.07, opt.spread * h * 60)); gl.uniform1f(U.evap, Math.min(1, opt.evap * h)); gl.uniform1f(U.base, opt.base); run(WT); }
+        const uni = (U) => { bindT(U, 'S', 0, SP.r.t); bindT(U, 'D', 1, DP.r.t); bindT(U, 'Wt', 2, WT.r.t); bindT(U, 'Fb', 3, FB.t);
+          gl.uniform1f(U.dt, h); gl.uniform1f(U.flow, opt.flow); gl.uniform1f(U.dep, opt.dep); gl.uniform1f(U.lift, opt.lift); if (U.swirl) gl.uniform1f(U.swirl, opt.swirl);
+          gl.uniform1f(U.fadeS, Math.pow(opt.fade, h)); gl.uniform1f(U.fadeD, Math.pow(opt.fade, h)); gl.uniform1f(U.base, opt.base); };
+        // as duas passadas leem o mesmo estado anterior
+        { const U = use('set'); uni(U); draw(DP.w); }
+        { const U = use('sus'); uni(U); draw(SP.w); }
+        DP.swap(); SP.swap();
+      }
+    }
+    function show(w, h, opt) {
+      if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
+      const U = use('show'); bindT(U, 'S', 0, SP.r.t); bindT(U, 'D', 1, DP.r.t); bindT(U, 'Wt', 2, WT.r.t); bindT(U, 'Fb', 3, FB.t);
+      gl.uniform3f(U.ground, opt.ground[0] / 255, opt.ground[1] / 255, opt.ground[2] / 255);
+      gl.uniform1f(U.dens, opt.dens); gl.uniform1f(U.gran, opt.gran); gl.uniform1f(U.base, opt.base);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      return glc;
+    }
+    const lavar = () => { clearP(SP, [0, 0, 0, 1]); clearP(DP, [0, 0, 0, 1]); };
+    return { drop, step, show, lavar };
+  })();
   // pigmento de uma cor: no papel guarda absorção (as tintas se misturam subtraindo, como aquarela); na água guarda luz (somam)
   const pigOf = (rgb, paper) => rgb.map((v) => paper ? -Math.log(clamp(v / 255, 0.03, 1)) : v / 255);
   // cor que a onda carrega: na água, luz da tinta; no papel, quanto a tinta absorve de cada canal (normalizado)
@@ -1615,6 +1845,19 @@ void main(){
       rp.r = 1 + (1 - Math.pow(1 - frac, 2.2)) * rp.maxR;   // desacelera como onda real
       rp.alpha = (1 - frac) * rp.strength;
       if (rp.alpha > 0.02) live.push(rp);
+    }
+    if (superficie === 'papel' && PAPEL) {
+      const life = map.stainLife(params.stainLife), base = 0.1 + 0.55 * params.paperWet;
+      PAPEL.step(dt, { base, spread: 0.035 + 0.05 * params.interact, evap: 0.1 / life, flow: 30 + 140 * params.interact,
+        dep: 0.45, lift: 1.6, swirl: 12 + 40 * params.chaos, fade: Math.exp(-(0.012 / life + wash * 2.5)) });
+      wash = Math.max(0, wash - dt * 0.7);
+      const gw = Math.min(canvas.width, 1600), gh = Math.max(1, Math.round(gw * canvas.height / Math.max(1, canvas.width)));
+      const ground = lumaOf(pal.ground) > 0.42 ? pal.ground : [245, 243, 238];   // paletas de água escura usam papel claro
+      ctx2d.globalCompositeOperation = 'source-over'; ctx2d.globalAlpha = 1;
+      ctx2d.drawImage(PAPEL.show(gw, gh, { ground, dens: 1, gran: 0.65, base }), 0, 0, W, H);
+      meter.textContent = (inp.an ? `entrada ${'▁▂▃▄▅▆▇█'[Math.min(7, Math.floor(inp.level * 7.99))]}` : 'sem entrada') + (hand.on ? ` · mãos ${hand.n}` : '');
+      requestAnimationFrame(loop);
+      return;
     }
     if (AGUA) {
       const paper = pal.mode === 'paper', life = map.stainLife(params.stainLife);
@@ -1713,6 +1956,16 @@ void main(){
   });
   document.getElementById('surfReset').addEventListener('click', () => { surfOverride = null; buildPal(); syncSurfInput(); });
   document.getElementById('paletteSelect').addEventListener('change', (e) => { setPalette(e.target.value); });
+  function setSuperficie(v) {
+    superficie = v === 'agua' || !PAPEL ? 'agua' : 'papel';
+    const papel = superficie === 'papel';
+    document.getElementById('oilSection').hidden = papel;
+    document.getElementById('ringsWrap').hidden = papel;
+    document.getElementById('paperWetWrap').hidden = !papel;
+    if (PAPEL) PAPEL.lavar(); if (AGUA) AGUA.lavar();
+  }
+  document.getElementById('surfMode').addEventListener('change', (e) => setSuperficie(e.target.value));
+  setSuperficie(document.getElementById('surfMode').value);
   document.getElementById('rainDensity').addEventListener('change', (e) => {
     rainRate = parseFloat(e.target.value);
     nextRain = performance.now() + (1000 / rainRate) * (0.3 + Math.random() * 0.4);
@@ -1770,6 +2023,7 @@ void main(){
       case 'dropRadius':return `×${map.radiusMul(v).toFixed(1).replace('.', ',')}`;
       case 'surfLum':   return `×${(0.4 + 1.2 * v).toFixed(1).replace('.', ',')}`;
       case 'stainSize': case 'stainInt': return `×${map.stain(v).toFixed(1).replace('.', ',')}`;
+      case 'paperWet':  return `${Math.round(v * 100)}% molhado`;
       case 'stainLife': return `×${map.stainLife(v).toFixed(1).replace('.', ',')}`;
       case 'rings':     { const n = map.rings(v); return n === 1 ? '1 onda' : `${n} ondas`; }
       default:          return `${Math.round(v * 100)}%`;
@@ -2224,7 +2478,7 @@ void main(){
   // ESTADO_EMBUTIDO (abaixo) vale como padrão quando não há nada salvo.
   const ESTADO_EMBUTIDO = null;
   const STATE_KEY = 'gotas_estado_v1';
-  const SEL_IDS = ['delayStyle', 'delaySync', 'paletteSelect', 'scaleSelect', 'timbreSelect', 'rainDensity', 'harmonySelect', 'inMapX', 'inMapY', 'hMode', 'jMode', 'jImg'];
+  const SEL_IDS = ['surfMode', 'delayStyle', 'delaySync', 'paletteSelect', 'scaleSelect', 'timbreSelect', 'rainDensity', 'harmonySelect', 'inMapX', 'inMapY', 'hMode', 'jMode', 'jImg'];
   const TOG_IDS = ['toggleDelay', 'toggleReverb', 'toggleDrive', 'toggleBitCrush', 'rainBtn', 'inkMonoBtn', 'hMirror'];
   const byId = (id) => document.getElementById(id);
   const hex2 = (a) => '#' + a.map((v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');

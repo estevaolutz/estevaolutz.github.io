@@ -218,13 +218,12 @@
 <body>
 <div id="entrada" class="app-ui" role="dialog" aria-labelledby="entT"><div class="c">
   <h1 id="entT">Go<b>tas</b></h1>
-  <p id="entradaP">Cada toque vira uma gota que soa. Toque ou arraste no palco; a chuva cai junto. Ajustes completos no ⚙.</p>
-  <button class="big p" id="eToque" type="button">Tocar com os dedos<small>Toque e arraste no palco, com a chuva automática</small></button>
-  <button class="big" id="eMic" type="button">Microfone<small>Cada som que o aparelho ouvir vira uma gota (use fones)</small></button>
-  <button class="big" id="eArq" type="button">Arquivo de áudio<small>Uma música do app Arquivos: cada ataque vira uma gota</small></button>
+  <p id="entradaP">Gotas não faz som: escuta. Cada som que chega vira uma gota na água. Ajustes completos no ⚙.</p>
+    <button class="big p" id="eMic" type="button">Microfone<small>Cada som que o aparelho ouvir vira uma gota</small></button>
+  <button class="big" id="eArq" type="button">Arquivo de áudio<small>Uma música do app Arquivos: ela toca e cada ataque vira uma gota</small></button>
 </div></div>
 <div id="topo" class="app-ui">
-  <button class="ic" id="tSom" type="button" aria-label="Ligar ou desligar o som">🔊</button>
+  <button class="ic" id="tSom" type="button" aria-label="Ligar ou desligar o som" hidden>🔊</button>
   <button class="ic" id="tChuva" type="button" aria-label="Chuva automática">☂︎</button>
   <button class="ic" id="tFonte" type="button" aria-label="Trocar a entrada">⇄</button>
   <button class="ic" id="tAjustes" type="button" aria-label="Todos os ajustes">⚙︎</button>
@@ -278,22 +277,22 @@ const IPAD = (() => {
   <div class="card">
     <header>
       <h1>Gotas</h1>
-      <p>Toque ou arraste no palco para criar gotas</p>
+      <p>A obra não faz som: cada som que chega vira uma gota</p>
     </header>
     <div class="canvas-box">
-      <canvas id="stage" aria-label="Palco: cada gota gera uma nota"></canvas>
+      <canvas id="stage" aria-label="Palco: cada som que chega vira uma gota"></canvas>
       <span class="meter" id="meter">vozes 0</span>
       <button id="fsBtn" class="fs-btn" type="button" aria-label="Tela cheia" title="Tela cheia (tecla F). Esc para sair.">Tela cheia (F)</button>
     </div>
     <div class="toolbar">
-      <button id="audioBtn" type="button">Ligar som</button>
+      <button id="audioBtn" type="button" hidden>Ligar som</button>
       <button id="rainBtn" type="button" class="active">Chuva automática: ligada</button>
       <button id="saveBtn" type="button" title="Guarda todos os parâmetros neste navegador; na próxima vez que abrir, eles voltam sozinhos">Salvar parâmetros</button>
       <button id="copyStateBtn" type="button" title="Copia os parâmetros como texto (para me enviar ou guardar num arquivo)">Copiar estado</button>
       <button id="clearStateBtn" type="button" title="Apaga o que foi salvo e volta ao padrão" hidden>Apagar salvo</button>
     </div>
     <div class="section">
-      <div class="section-head"><h2>Escala, timbre, cor e chuva</h2></div>
+      <div class="section-head"><h2>Cor e chuva</h2></div>
       <div class="row">
         <select id="scaleSelect" hidden aria-label="Escala">
           <option value="major">Pentatônica maior (Dó)</option>
@@ -460,7 +459,7 @@ const IPAD = (() => {
     </div>
   </div>
 
-  <section class="card" aria-label="Som">
+  <section class="card" aria-label="Som" hidden>
     <div class="section"><div class="section-head"><h2><span class="dot" style="--c:#9cc8ff"></span>Som</h2></div><div id="mkSom"></div></div>
   </section>
   <div class="som-antigo" hidden><section class="card" aria-label="Efeitos">
@@ -857,7 +856,6 @@ const IPAD = (() => {
     const big = size > 10;
     const yn = y / H;
     const vel = clamp((big ? 1 : 0.45 + size * 0.04) * v.strength, 0.2, 1);   // força do toque
-    MK.nota(f, { forca: vel, pan: clamp((x / W) * 2 - 1, -1, 1) });
     return null;
     // gotas maiores soam por mais tempo
     const len = (big ? 2.2 : 0.9 + size * 0.06) * T.len * (0.6 + 0.4 * map.radiusMul(params.dropRadius) * v.rad);
@@ -1428,8 +1426,8 @@ const IPAD = (() => {
     }
     audioOn = !audioOn;
     fx.master.gain.setTargetAtTime(audioOn ? 0.85 : 0, audioCtx.currentTime, audioOn ? 0.05 : 0.15);
-    MK.mudo(!audioOn);
-    audioBtn.textContent = audioOn ? 'Som ligado' : 'Ligar som';
+    MK.mudo(true);   // a obra não gera som: só escuta
+    audioBtn.textContent = audioOn ? 'Áudio ativo' : 'Ativar áudio';
     audioBtn.classList.toggle('active', audioOn);
   });
 
@@ -1640,7 +1638,7 @@ const IPAD = (() => {
     an.fftSize = 2048; an.smoothingTimeConstant = 0; anL.fftSize = anR.fftSize = 512;
     src.connect(split); split.connect(gL, 0); split.connect(gR, 1); gL.connect(g); gR.connect(g); g.connect(an);
     split.connect(anL, 0); split.connect(anR, 1);
-    mon.gain.value = 0; src.connect(mon); mon.connect(fx.comp);
+    mon.gain.value = 0; src.connect(mon); mon.connect(ac.destination);   // única coisa que soa: a própria entrada (arquivo), se pedido
     Object.assign(inp, { g, gL, gR, an, anL, anR, mon, prev: null, flux: [], last: 0, pend: null });
     applyInput(); setMonitor(monitor);
   }
@@ -1733,7 +1731,7 @@ const IPAD = (() => {
         inp.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false } });
         inputBuild(audioCtx.createMediaStreamSource(inp.stream), false);
         $in('inChan').value = 'stereo'; applyInput();
-        say('Microfone ativo. Use fones de ouvido: sem eles, o som das próprias gotas volta pelo microfone e cria gotas sozinho.');
+        say('Microfone ativo: cada som que chega vira uma gota.');
       } else if (kind === 'interface') {
         const n = await fillDevices(true);
         if (!n) throw new Error('Nenhuma entrada de áudio encontrada.');
@@ -2052,7 +2050,7 @@ const IPAD = (() => {
     let pendArq = false;
     inFile.addEventListener('change', () => { if (!pendArq) return; pendArq = false; fonte('file'); IPAD.entrada(false);
       setTimeout(() => IPAD.dica(inAudio.paused ? 'Toque no palco para começar a música' : 'Tocando o arquivo'), 600); });
-    IPAD.$('eToque').onclick = () => { IPAD.sessao('playback'); ligarSom(); fonte('off'); IPAD.entrada(false); IPAD.dica('Toque ou arraste para criar gotas'); };
+    if (IPAD.$('eToque')) IPAD.$('eToque').onclick = () => { IPAD.sessao('playback'); ligarSom(); fonte('off'); IPAD.entrada(false); IPAD.dica('Toque ou arraste para criar gotas'); };
     IPAD.$('eMic').onclick = () => { IPAD.sessao('play-and-record'); ligarSom(); fonte('mic'); IPAD.entrada(false); IPAD.dica('Microfone ligado'); confere('mic', 'o microfone'); };
     IPAD.$('eArq').onclick = () => { IPAD.sessao('playback'); ligarSom(); pendArq = true; inFile.click(); };
     canvas.addEventListener('pointerdown', () => { IPAD.fechaSeEstreito(); if (sel.value === 'file' && inAudio.paused && inAudio.src) inAudio.play().catch(() => {}); });

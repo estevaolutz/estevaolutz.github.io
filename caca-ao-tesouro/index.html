@@ -106,7 +106,10 @@ button{font:inherit;cursor:pointer;border:0}
 /* relâmpago */
 .relogio{width:150px;height:150px;position:relative}
 .relogio svg{width:100%;height:100%;transform:rotate(-90deg)}
-.relogio .num{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:48px;font-weight:800}
+.relogio .num{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:40px;font-weight:800}
+.ajTempo{display:flex;align-items:center;justify-content:center;gap:12px;margin:10px 0 4px}
+.ajTempo .btn{padding:6px 14px;font-size:18px}
+.ajTempo b{font-size:30px;min-width:90px;display:inline-block}
 .placar{color:#fff;font-size:22px;font-weight:800;text-align:center}
 .flash{position:absolute;top:10px;left:50%;transform:translateX(-50%);font-size:22px;font-weight:800;padding:4px 16px;border-radius:999px;background:#fff;opacity:0;transition:opacity .2s}
 .flash.on{opacity:1}
@@ -739,14 +742,18 @@ function introIlha(i){
   const il=ILHAS[i];
   const desc={missao:`Acerte <b>6 desafios</b> de ${il.ops.map(o=>OPS[o].nome.toLowerCase()).join(' e ')} para achar a pista.`,
     torre:`Cada acerto empilha um bloco. Construa a torre até a <b>bandeira</b> (10 blocos)! Errar duas vezes derruba um bloco.`,
-    raio:`Você tem <b>60 segundos</b>! Acerte o máximo de contas que conseguir. Precisa de pelo menos <b>8</b> para passar.`,
+    raio:`Acerte o máximo de contas que conseguir antes do tempo acabar. Precisa de pelo menos <b>8</b> para passar.<div class="ajTempo"><button class="btn cinza" id="tMenos">−10s</button><b id="tVal">${fmtTempo(tempoRaio())}</b><button class="btn cinza" id="tMais">+10s</button></div><small>⏱️ Ajuste o tempo antes de começar</small>`,
     monstro:`O monstro guarda o tesouro! <b>Ataque com multiplicação</b> e <b>defenda com divisão</b>. Você tem 3 vidas.`,
     bau:`Você chegou ao tesouro! Toque no baú para abrir.`}[il.tipo];
   const est=E.estrelas[chaveEst(i)]||0;
   modal(`<div style="font-size:60px">${il.ic}</div><h2>${il.nome}</h2><p>${desc}</p>${est&&il.tipo!=='bau'?`<div class="estrelas" style="font-size:26px">${estrelasHTML(est)}</div>`:''}
     <div class="botoes"><button class="btn cinza" onclick="fechaModal()">Voltar</button><button class="btn" id="btIr">${il.tipo==='bau'?'Abrir!':'Vamos lá!'}</button></div>`);
+  if(il.tipo==='raio'){const at=d=>{E.tempoRaio=Math.max(TR_MIN,Math.min(TR_MAX,tempoRaio()+d));$('#tVal').textContent=fmtTempo(E.tempoRaio);salvar()};$('#tMenos').onclick=()=>at(-10);$('#tMais').onclick=()=>at(10)}
   $('#btIr').onclick=()=>{fechaModal();comecar(i)};
 }
+const TR_MIN=20,TR_MAX=180;
+function tempoRaio(){return E.tempoRaio||120}
+function fmtTempo(t){t=Math.max(0,t);return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')}
 function estrelasHTML(n){let s='';for(let k=1;k<=3;k++)s+=`<span class="${k<=n?'':'apagada'}">⭐</span>`;return s}
 
 /* ============ motor do jogo ============ */
@@ -762,7 +769,7 @@ function comecar(i){
   if(il.tipo==='missao'){J.meta=6}
   if(il.tipo==='torre'){J.meta=10;J.blocos=[];J.caidos=0;J.errSeg=0}
   if(il.tipo==='monstro'){J.m=MONSTROS[(E.mundo-1)%MONSTROS.length];J.hpMax=5;J.hp=5;J.vidas=3;J.fase='atk'}
-  if(il.tipo==='raio'){J.pontos=0;J.tempo=60}
+  if(il.tipo==='raio'){J.pontos=0;J.tempoTotal=tempoRaio();J.tempo=J.tempoTotal}
   if(il.tipo==='bau'){telaBau();return}
   desenhaPalco();
   proxima();
@@ -908,10 +915,10 @@ function desenhaPalco(anim){
   if(t==='raio'){
     const C=2*Math.PI*64;
     if(!$('#palco .relogio')){
-      p.innerHTML=`<div class="arena"><div class="flash"></div><div class="relogio"><svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="64" stroke="rgba(255,255,255,.2)" stroke-width="14" fill="none"/><circle id="arco" cx="75" cy="75" r="64" stroke="#f5b81c" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg><div class="num" id="rNum">60</div></div><div class="placar">⚡ <span id="rPts">0</span> acertos · recorde ${E.recordeRaio}</div></div>`;
+      p.innerHTML=`<div class="arena"><div class="flash"></div><div class="relogio"><svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="64" stroke="rgba(255,255,255,.2)" stroke-width="14" fill="none"/><circle id="arco" cx="75" cy="75" r="64" stroke="#f5b81c" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg><div class="num" id="rNum"></div></div><div class="placar">⚡ <span id="rPts">0</span> acertos · recorde ${E.recordeRaio}</div></div>`;
     }
-    $('#rPts').textContent=J.pontos;$('#rNum').textContent=J.tempo;
-    $('#arco').style.strokeDashoffset=C*(1-J.tempo/60);$('#arco').style.stroke=J.tempo<=10?'#e0493b':'#f5b81c';
+    $('#rPts').textContent=J.pontos;$('#rNum').textContent=fmtTempo(J.tempo);
+    $('#arco').style.strokeDashoffset=C*(1-J.tempo/J.tempoTotal);$('#arco').style.stroke=J.tempo<=10?'#e0493b':'#f5b81c';
   }
 }
 function derrubaBloco(){
@@ -947,7 +954,7 @@ function fim(venceu){
     const bonus=e*10;E.moedas+=bonus;
     if(J.i===E.liberada&&E.liberada<ILHAS.length-1)E.liberada++;
     salvar();SOM.vitoria();confete();
-    const msg={missao:'Você achou a pista! 🗺️',torre:'A torre chegou na bandeira! 🚩',monstro:`Você venceu o ${J.m?J.m.nome:''}! 🎉`,raio:`${J.pontos} acertos em 60 segundos! ⚡`}[J.tipo];
+    const msg={missao:'Você achou a pista! 🗺️',torre:'A torre chegou na bandeira! 🚩',monstro:`Você venceu o ${J.m?J.m.nome:''}! 🎉`,raio:`${J.pontos} acertos em ${fmtTempo(J.tempoTotal)}! ⚡`}[J.tipo];
     modal(`<h2>${msg}</h2><div class="estrelas">${estrelasHTML(e)}</div><p>+${bonus} 🪙 de bônus ${novas.join(' ')}</p>${medalhasNovasHTML()}
       <div class="botoes"><button class="btn cinza" id="bDeNovo">Jogar de novo</button><button class="btn" id="bMapa">Seguir no mapa ⛵</button></div>`);
   }else{

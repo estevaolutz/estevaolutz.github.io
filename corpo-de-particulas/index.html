@@ -26,10 +26,12 @@
    e da velocidade das mãos (parado, silêncio); mover a mão toca notas (altura da mão = nota, lado = estéreo, velocidade =
    força) e os arpejos repetem essas notas no ritmo em que caíram; fechar a mão escolhe o acorde pela altura do punho.
    v6: as mãos também tocam os efeitos do som — abrir/fechar a mão abre/fecha o filtro, a velocidade das mãos
-   satura o drive e o afastamento entre as duas mãos (ou, com uma só, a proximidade da câmera) aumenta o delay. */
+   satura o drive e o afastamento entre as duas mãos (ou, com uma só, a proximidade da câmera) aumenta o delay.
+   v7: pinças mudam a imagem — polegar com o dedo 2 (indicador) gira a matiz, com o 3 (médio) a saturação,
+   com o 4 (anelar) o brilho e com o 5 (mínimo) o rastro; pinçar e subir/descer a mão ajusta, soltar fixa o valor. */
 const O = ObraBase({
   titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa', toque: false,
-  texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. A música nasce do seu movimento: parado, silêncio; mova as mãos para tocar notas (mais alto, mais agudo). Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho e escolher o acorde, e abra para devolver. As mãos também mexem no som: mão fechada abafa o filtro e aberta abre; gestos rápidos saturam o drive; afastar uma mão da outra (ou aproximar a mão da câmera) espalha o delay. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
+  texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. A música nasce do seu movimento: parado, silêncio; mova as mãos para tocar notas (mais alto, mais agudo). Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho e escolher o acorde, e abra para devolver. As mãos também mexem no som: mão fechada abafa o filtro e aberta abre; gestos rápidos saturam o drive; afastar uma mão da outra (ou aproximar a mão da câmera) espalha o delay. Pinças mudam a imagem: junte o polegar a um dedo e suba ou desça a mão — indicador gira a cor, médio muda a saturação, anelar o brilho, mínimo o rastro; solte para fixar (tecla C volta ao original). O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
   controles: [
     ['Corpo'],
     ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
@@ -75,6 +77,9 @@ const O = ObraBase({
     ['FxRes', 'Ressonância do filtro', 0.35, 0, 1, 0.01],
     ['FxDrive', 'Drive (velocidade das mãos)', 0.8, 0, 1.5, 0.01],
     ['FxDelay', 'Delay (afastar as mãos)', 0.8, 0, 1, 0.01],
+    ['Pinças (imagem)'],
+    ['Pinca', 'Pinças mudam a imagem', 1, 0, 1, 1],
+    ['PinSens', 'Sensibilidade das pinças', 1, 0.3, 3, 0.05],
     ['Dados'],
     ['Hud', 'Dados na tela', 0.75, 0, 1, 0.01],
     ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
@@ -397,12 +402,22 @@ void main(){
   o = vec4(s, 1.);
 }`);
 const final = ObraBase.programa(gl, QV, `#version 300 es
-precision highp float; in vec2 vU; uniform sampler2D uA, uBl; uniform float uGlow, uGrao, uT, uHdr; uniform vec2 uRes; out vec4 o;
+precision highp float; in vec2 vU; uniform sampler2D uA, uBl; uniform float uGlow, uGrao, uT, uHdr, uMatiz, uSat, uExp; uniform vec2 uRes; out vec4 o;
+vec3 hsv(float h){ return clamp(abs(fract(h + vec3(0., 2./3., 1./3.)) * 6. - 3.) - 1., 0., 1.); }
+vec3 giraMatiz(vec3 c, float a){          // rotação de matiz em YIQ
+  float y = dot(c, vec3(.299,.587,.114)), i = dot(c, vec3(.596,-.274,-.322)), q = dot(c, vec3(.211,-.523,.312));
+  float cs = cos(a), sn = sin(a); vec2 iq = vec2(i*cs - q*sn, i*sn + q*cs);
+  return vec3(y + .956*iq.x + .621*iq.y, y - .272*iq.x - .647*iq.y, y - 1.106*iq.x + 1.703*iq.y);
+}
 float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main(){
   vec3 c = texture(uA, vU).rgb, b = texture(uBl, vU).rgb;
   c += b * uGlow * 1.6;
+  c *= uExp;
   if (uHdr > .5) c = 1. - exp(-c * 1.6);
+  // pinças: matiz gira as cores existentes; saturação tinge a luz (branca) com a cor da matiz
+  vec3 tom = hsv(uMatiz + .62); float L = dot(c, vec3(.299,.587,.114));
+  c = mix(giraMatiz(c, uMatiz * 6.2831853), L * tom / max(dot(tom, vec3(.299,.587,.114)), .25) * .9, uSat);
   float g = h(floor(vU*uRes) + fract(uT*7.31)*91.7) - .5;
   c *= 1. + g * uGrao * .9;                       // grão nas partículas
   c += g * uGrao * .018 + uGrao * .006;           // grão fino no escuro
@@ -636,7 +651,34 @@ function desfazer(f) {
   }
   if (f * O.P.Desfaz > scat) { scat = Math.min(1.2, f * O.P.Desfaz); scatX = cx; }
 }
-O.aoTecla = (k) => { if (k === ' ') desfazer(1); };
+O.aoTecla = (k) => { if (k === ' ') desfazer(1); if (k === 'c' || k === 'C') { PIN.matiz = 0; PIN.sat = 0; PIN.brilho = 0; PIN.rastro = 0; O.dica('cor original', 1200); } };
+
+// ---------------- pinças: polegar + dedo 2/3/4/5 ajusta matiz / saturação / brilho / rastro ----------------
+// pinçar e mover a mão para cima aumenta, para baixo diminui; soltar fixa. Só vale com os outros dedos esticados (punho fechado não conta).
+const PIN = { matiz: 0, sat: 0, brilho: 0, rastro: 0 };
+const valorPin = (k) => k === 'matiz' ? `${Math.round((PIN.matiz - Math.floor(PIN.matiz)) * 360)}°` : k === 'brilho' ? `${PIN.brilho >= 0 ? '+' : ''}${PIN.brilho.toFixed(1)}` : `${Math.round((k === 'rastro' ? clamp(O.P.Rastro + PIN.rastro, 0, 0.96) : PIN.sat) * 100)}%`;
+const PINCAS = [null, { dedo: 8, nome: 'MATIZ', k: 'matiz' }, { dedo: 12, nome: 'SATURAÇÃO', k: 'sat' }, { dedo: 16, nome: 'BRILHO', k: 'brilho' }, { dedo: 20, nome: 'RASTRO', k: 'rastro' }];
+const LIM = { matiz: null, sat: [0, 1], brilho: [-1.5, 1.5], rastro: [-0.95, 0.95] };
+function pincas(mm, asp) {
+  for (const m of mm) {
+    const r = m.ref;
+    if (!r.pts || !O.P.Pinca || r.perdida > 0) { if (r.perdida > 3 || !O.P.Pinca) r.pinca = 0; continue; }
+    const q = r.pts, d = (a, b) => Math.hypot((q[a][0] - q[b][0]) * asp, q[a][1] - q[b][1]), pal = Math.max(1e-3, r.palma);
+    // qual dedo está mais perto do polegar
+    let melhor = 0, dm = 9;
+    for (let f = 1; f <= 4; f++) { const v = d(4, PINCAS[f].dedo) / pal; if (v < dm) { dm = v; melhor = f; } }
+    const esticados = (f) => [1, 2, 3, 4].filter((g) => g !== f && d(PINCAS[g].dedo, 0) / pal > 1.25).length;
+    if (r.pinca) {
+      const f = r.pinca;
+      if (d(4, PINCAS[f].dedo) / pal > 0.5) { r.pinca = 0; continue; }       // soltou
+      const pc = PINCAS[f], dy = (r.py0 - (q[4][1] + q[PINCAS[f].dedo][1]) / 2) * O.P.PinSens;
+      if (pc.k === 'matiz') PIN.matiz = r.v0 + dy * 1.4;
+      else { const [a, b] = LIM[pc.k], ganho = pc.k === 'sat' ? 1.6 : pc.k === 'brilho' ? 4 : 2.2; PIN[pc.k] = clamp(r.v0 + dy * ganho, a, b); }
+    } else if (dm < 0.3 && esticados(melhor) >= 2) {
+      r.pinca = melhor; r.py0 = (q[4][1] + q[PINCAS[melhor].dedo][1]) / 2; r.v0 = PIN[PINCAS[melhor].k];
+    }
+  }
+}
 O.onNota((n) => { if (n.camada === 'bumbo') desfazer(0.35); });
 
 let ultAt = 0, tEntrada = 0, corpoAnt = false;
@@ -684,6 +726,7 @@ O.quadro((t, dt) => {
     v.suga += (alvoS - v.suga) * (1 - Math.exp(-dt * taxa));
     v.vis += ((m && m.ref.pts ? 1 : 0) - v.vis) * Math.min(1, dt * 8);
   }
+  pincas(mm, asp);
   const SG = VAGA.map((v) => ({ x: v.x, y: v.y, g: v.suga * P.Suga, r: Math.max(0.03, v.palma * 0.6) }));
   const sugaMax = Math.max(SG[0].g, SG[1].g);
   // ---- música do movimento: energia (corpo + mãos) e notas tocadas pelo caminho das mãos ----
@@ -769,7 +812,7 @@ O.quadro((t, dt) => {
   // 1) acúmulo com rastro
   gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ac.fb); gl.viewport(0, 0, RT.ac.w, RT.ac.h);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.useProgram(fade.p); gl.uniform1f(fade.u.uA, 1 - P.Rastro);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.useProgram(fade.p); gl.uniform1f(fade.u.uA, 1 - clamp(P.Rastro + PIN.rastro, 0, 0.96));
   gl.bindVertexArray(vaoQ); gl.drawArrays(gl.TRIANGLES, 0, 3);
   // 2) partículas em 3D
   gl.blendFunc(gl.ONE, gl.ONE); gl.useProgram(prog.p);
@@ -842,6 +885,7 @@ O.quadro((t, dt) => {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, RT.ac.tex); gl.uniform1i(final.u.uA, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, RT.b2.tex); gl.uniform1i(final.u.uBl, 1);
   gl.uniform1f(final.u.uGlow, P.Glow); gl.uniform1f(final.u.uGrao, P.Grao); gl.uniform1f(final.u.uT, t); gl.uniform1f(final.u.uHdr, HDR ? 1 : 0);
+  gl.uniform1f(final.u.uMatiz, PIN.matiz - Math.floor(PIN.matiz)); gl.uniform1f(final.u.uSat, PIN.sat); gl.uniform1f(final.u.uExp, Math.pow(2, PIN.brilho));
   gl.uniform2f(final.u.uRes, gl.drawingBufferWidth, gl.drawingBufferHeight);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(null);
@@ -857,7 +901,7 @@ O.quadro((t, dt) => {
   for (const m of mm) {
     const r = m.ref, nome = r === mouse ? 'CURSOR' : 'MÃO';
     const vg = VAGA.find((v) => v.ref === r), sug = vg && vg.suga * P.Suga > 0.05 ? ` · SUGANDO ${(vg.suga * P.Suga * 100) | 0}%` : '';
-    HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%${sug}`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);
+    HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, r.pinca ? `PINÇA ${r.pinca + 1} · ${PINCAS[r.pinca].nome} ${valorPin(PINCAS[r.pinca].k)}` : `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%${sug}`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);
     if (r.pts && P.Esqueleto) {
       hx.save(); hx.globalAlpha = ha * 0.5; hx.strokeStyle = '#fff'; hx.lineWidth = 1; hx.beginPath();
       for (const [a, b] of LIG) { hx.moveTo(r.pts[a][0] * W, r.pts[a][1] * H); hx.lineTo(r.pts[b][0] * W, r.pts[b][1] * H); }
@@ -870,6 +914,7 @@ O.quadro((t, dt) => {
   HUD.texto(hx, 'CORPO DE PARTÍCULAS', 24, 34, ha * 0.9);
   if (O.fonte === 'motor') HUD.texto(hx, `MOVIMENTO ${(energiaMus * 100) | 0}% · CORPO ${(eCorpo * 100) | 0}% · MÃOS ${(eMao * 100) | 0}%`, 24, 62, ha * 0.5);
   if (O.fonte === 'motor') HUD.texto(hx, `FILTRO ${FX.hz >= 1000 ? (FX.hz / 1000).toFixed(1) + ' kHz' : (FX.hz | 0) + ' Hz'} · DRIVE ${(FX.drive * P.FxDrive * 100) | 0}% · DELAY ${(FX.delay * P.FxDelay * 100) | 0}%`, 24, 76, ha * 0.5);
+  if (PIN.matiz || PIN.sat || PIN.brilho || PIN.rastro) HUD.texto(hx, `MATIZ ${valorPin('matiz')} · SATURAÇÃO ${valorPin('sat')} · BRILHO ${valorPin('brilho')} · RASTRO ${valorPin('rastro')}`, 24, 90, ha * 0.5);
   HUD.texto(hx, camOn ? (seg ? 'RASTREAMENTO ATIVO' : semRastreio ? 'SEM RASTREAMENTO · MOUSE = MÃO' : 'CARREGANDO RASTREAMENTO') : 'SEM CÂMERA · MOUSE = MÃO', 24, 48, ha * 0.5);
 });
 </script>

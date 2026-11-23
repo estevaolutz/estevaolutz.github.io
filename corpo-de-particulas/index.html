@@ -18,13 +18,17 @@
    v3: camada fina de centenas de milhares de partículas calculada na placa de vídeo, com a luz lida da câmera em
    resolução cheia (olhos, boca, cabelo, barba), e detector de rosto que concentra partículas e nitidez no rosto.
    Mão aberta espalha o corpo, mão fechada junta as partículas em volta do punho; o som faz o corpo respirar
-   e os ataques desprendem pedaços que voam em direção a quem olha. Sem ninguém na frente, as partículas flutuam soltas em 3D. */
+   e os ataques desprendem pedaços que voam em direção a quem olha. Sem ninguém na frente, as partículas flutuam soltas em 3D.
+   v4: as mãos ganham partículas próprias (esqueleto e palma da mão rastreada, com profundidade); fechar a mão suga todas
+   as partículas do rosto para dentro do punho, num redemoinho, e abrir devolve; rastreamento mais rápido (mãos e corpo
+   a cada quadro novo da câmera, menos atraso na suavização e partículas mais ágeis). */
 const O = ObraBase({
   titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa', toque: false,
-  texto: 'Fique diante da câmera: seu corpo vira partículas de luz, com volume, relevo e sombra. Abra a mão para espalhar, feche para juntar. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
+  texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho, e abra para devolver. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
   controles: [
     ['Corpo'],
     ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
+    ['Agil', 'Agilidade do rastreamento', 0.8, 0, 1, 0.01],
     ['Coesao', 'Coesão', 0.6, 0.05, 1.5, 0.01],
     ['Contorno', 'Contorno', 0.45, 0, 1, 0.01],
     ['Fluxo', 'Fluxo orgânico', 0.35, 0, 1.5, 0.01],
@@ -51,6 +55,10 @@ const O = ObraBase({
     ['Junta', 'Mão fechada junta', 1, 0, 2.5, 0.01],
     ['Raio', 'Alcance da mão', 0.35, 0.1, 0.8, 0.01],
     ['MaoNota', 'Abrir a mão toca nota', 1, 0, 1, 1],
+    ['MaoPart', 'Partículas nas mãos', 1, 0, 2, 0.01],
+    ['MaoEsp', 'Espessura dos dedos', 1, 0.3, 2.5, 0.01],
+    ['Suga', 'Mão fechada suga o rosto', 1, 0, 1, 0.01],
+    ['SugaVel', 'Velocidade da sucção', 1, 0.2, 3, 0.01],
     ['Dados'],
     ['Hud', 'Dados na tela', 0.75, 0, 1, 0.01],
     ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
@@ -192,11 +200,12 @@ const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15';
 const SEG = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
 const MAO = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const ROSTO = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
-let seg = null, det = null, face = null, tsAnt = -1, alterna = 0, semRastreio = false;
+let seg = null, det = null, face = null, tsAnt = -1, alterna = 0, semRastreio = false, quadroNovo = true, temRVFC = false, ultVid = -1;
 async function iniciarCamera() {
   try {
-    const st = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false });
+    const st = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } }, audio: false });
     video.srcObject = st; await video.play(); camOn = true;
+    if (video.requestVideoFrameCallback) { const cb = () => { quadroNovo = true; video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); temRVFC = true; }
   } catch (e) { O.dica('sem câmera — o mouse faz a mão', 3500); return; }
   O.dica('carregando o rastreamento…', 2500);
   try {
@@ -216,10 +225,10 @@ addEventListener('camera-trocada', () => { if (video.srcObject) video.play().cat
 function segmentar(ts) {
   seg.segmentForVideo(video, ts, (r) => {
     const cm = r && r.confidenceMasks && r.confidenceMasks[0]; if (!cm) return;
-    const f = cm.getAsFloat32Array(), w = cm.width, h = cm.height; let soma = 0;
+    const f = cm.getAsFloat32Array(), w = cm.width, h = cm.height, kM = 0.5 + 0.45 * O.P.Agil; let soma = 0;
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
       const v = f[Math.floor(y / MH * h) * w + Math.floor(x / MW * w)], i = y * MW + x;
-      mascara[i] += (v - mascara[i]) * 0.6; soma += mascara[i];
+      mascara[i] += (v - mascara[i]) * kM; soma += mascara[i];
     }
     temPessoa = soma / NG;
     if (temPessoa > 0.02) { ultPessoa = performance.now() / 1000; analisarGrades(ultPessoa); }
@@ -232,7 +241,7 @@ function rastrearRosto(ts) {
     const b = d.boundingBox, k = rosto.c > 0.3 ? 0.4 : 1;
     rosto.u0 += (b.originX / vw - rosto.u0) * k; rosto.v0 += (b.originY / vh - rosto.v0) * k;
     rosto.u1 += ((b.originX + b.width) / vw - rosto.u1) * k; rosto.v1 += ((b.originY + b.height) / vh - rosto.v1) * k;
-    rosto.c = Math.min(1, rosto.c + 0.25);
+    rosto.c = Math.min(1, rosto.c + 0.25); rosto.ok = true;
   } else rosto.c = Math.max(0, rosto.c - 0.1);
 }
 const MAOS = [];   // { pts, cx, cy, ab, vista, perdida, abAnt }
@@ -243,18 +252,24 @@ function rastrearMaos(ts) {
   for (const lm of vistas) {
     const pm = lm.map((p) => vidParaTela(p.x, p.y));
     let m = MAOS.find((q) => !q.vista && Math.hypot(q.cx - pm[9][0], q.cy - pm[9][1]) < 0.3);
-    if (!m) { m = { pts: pm, cx: pm[9][0], cy: pm[9][1], ab: 0.5, abAnt: 0.5, perdida: 0 }; MAOS.push(m); }
+    if (!m) { m = { pts: pm, pz: lm.map((p) => p.z), cx: pm[9][0], cy: pm[9][1], ab: 0.5, abAnt: 0.5, perdida: 0, palma: 0.1 }; MAOS.push(m); }
     m.vista = true; m.perdida = 0;
-    pm.forEach((p, j) => { m.pts[j][0] += (p[0] - m.pts[j][0]) * 0.55; m.pts[j][1] += (p[1] - m.pts[j][1]) * 0.55; });
+    // suavização adaptativa: firme parada, quase sem atraso quando a mão se move rápido
+    const mov = Math.hypot(pm[9][0] - m.pts[9][0], pm[9][1] - m.pts[9][1]), base = 0.45 + 0.5 * O.P.Agil, k = Math.min(1, base + mov * 14);
+    pm.forEach((p, j) => { m.pts[j][0] += (p[0] - m.pts[j][0]) * k; m.pts[j][1] += (p[1] - m.pts[j][1]) * k; m.pz[j] += (lm[j].z - m.pz[j]) * k; });
     const q = m.pts, asp = O.W / O.H, d = (a, b) => Math.hypot((q[a][0] - q[b][0]) * asp, q[a][1] - q[b][1]);
     const palma = Math.max(1e-3, d(0, 9)), pontas = PONTAS.slice(1).reduce((s, t) => s + d(t, 0), 0) / 4 / palma;
-    m.ab += (clamp((pontas - 1.05) / 0.85, 0, 1) - m.ab) * 0.4;
+    m.palma = palma;
+    m.ab += (clamp((pontas - 1.05) / 0.85, 0, 1) - m.ab) * (0.4 + 0.4 * O.P.Agil);
     m.cx = q[9][0]; m.cy = q[9][1];
   }
   for (let i = MAOS.length - 1; i >= 0; i--) if (!MAOS[i].vista && ++MAOS[i].perdida > 8) MAOS.splice(i, 1);
 }
 // mouse/dedo como mão quando não há rastreamento: mover = mão aberta, apertar = mão fechada
-const mouse = { x: 0.5, y: 0.5, ab: 0, ativo: 0, abAnt: 0 };
+const mouse = { x: 0.5, y: 0.5, ab: 0, ativo: 0, abAnt: 0, palma: 0.07 };
+// duas "vagas" de mão que guardam posição e sucção, para o rosto voltar suave quando a mão some
+const VAGA = [0, 1].map(() => ({ ref: null, x: 0.5, y: 0.5, ab: 1, on: 0, vis: 0, suga: 0, fecha: 0, palma: 0.1 }));
+const sst = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }, fr = (x) => x - Math.floor(x);
 addEventListener('pointermove', (e) => { mouse.x = e.clientX / O.W; mouse.y = e.clientY / O.H; mouse.ativo = 1.5; if (mouse.ab < 0.5) mouse.ab = 1; });
 addEventListener('pointerdown', (e) => { if (e.target.closest('#ob-panel,#ob-dot,#ob-start')) return; mouse.ab = 0; mouse.ativo = 3; });
 addEventListener('pointerup', () => { mouse.ab = 1; });
@@ -339,6 +354,7 @@ uniform sampler2D uG, uV;
 uniform float uPt, uAsp, uYaw, uPitch, uDep, uFoco, uDesf, uT, uMax, uEx, uEy, uResp, uInfla, uPres, uScat, uScatX, uLuz, uMed, uDp, uVid, uR, uEsp, uJun, uFlu, uBF, uAz;
 uniform vec2 uTx;
 uniform vec4 uMao[2];
+uniform vec4 uSg[2], uRo; uniform float uRoOn, uHZ;
 out vec3 vC; out float vBlur;
 float hs(float n){ return fract(sin(n) * 43758.5453); }
 void main(){
@@ -369,6 +385,23 @@ void main(){
     if (m.z > .5) { s0 += d / max(r, 1e-3) / vec2(uAsp, 1.) * w * uR * .9 * (m.z - .4) * uEsp; z += w * (hs(sd * 9.1) - .5) * 2. * uEsp; }
     else { float q = w * (.5 - m.z) * 2. * min(1., uJun); vec2 rr = vec2(-d.y, d.x) * .5 + d * .2; s0 = mix(s0, m.xy + rr / vec2(uAsp, 1.), q); }
   }
+  // mão fechada: o rosto inteiro é sugado para dentro do punho, em fila e girando
+  float voa = 0., suc = 0.;
+  if (uRoOn > .5 && max(uSg[0].z, uSg[1].z) > .002) {
+    float fm = smoothstep(1., .72, length((uv - uRo.xy) / uRo.zw));
+    if (fm > 0.) {
+      bool um = uSg[1].z > uSg[0].z + .15 || (abs(uSg[1].z - uSg[0].z) <= .15 && hs(sd * 2.9) > .5);
+      vec4 sg = um ? uSg[1] : uSg[0];
+      float q = clamp(sg.z * fm * 1.6 - hs(sd * 21.7) * .6, 0., 1.);
+      if (q > 0.) {
+        float e = q * q * (3. - 2. * q), an = uT * (2. + hs(sd * 6.1) * 3.) + sd * 40., rad = sg.w * (.12 + .88 * sqrt(hs(sd * 4.4)));
+        vec2 f = sg.xy + vec2(cos(an) / uAsp, sin(an)) * rad, dv = f - s0;
+        voa = sin(3.1416 * e); suc = e;
+        s0 = mix(s0, f, e) + vec2(-dv.y, dv.x) * voa * (hs(sd * 8.3) - .5) * .7;
+        z = mix(z, uHZ + (hs(sd * 1.9) - .5) * .5, e) + voa * .7;
+      }
+    }
+  }
   vec3 p = vec3((s0.x - .5) * uAsp, .5 - s0.y, z * uDep * .3);
   float cy = cos(uYaw), sy = sin(uYaw); p = vec3(cy*p.x + sy*p.z, p.y, -sy*p.x + cy*p.z);
   float cp = cos(uPitch), sp = sin(uPitch); p = vec3(p.x, cp*p.y - sp*p.z, sp*p.y + cp*p.z);
@@ -380,8 +413,10 @@ void main(){
   float pele = .1 + 1.4 * pow(l, 1.25);
   float luz = 1. + uLuz * (g.b * pele - 1.);
   luz *= 1. + ar * .6;
+  luz = mix(luz, 1., suc) * (1. + voa * .35) * (1. - suc * .35);
   float nev = mix(1., .28, clamp(-p.z * 1.8, 0., 1.) * min(1., uDep));
   vec3 cor = mix(vec3(.72, .82, 1.), vec3(1., .97, .92), clamp(.5 + p.z * 1.6, 0., 1.));
+  cor = mix(cor, vec3(.45, .6, 1.), suc * uAz * .5);
   for (int k = 0; k < 2; k++) { vec4 m = uMao[k]; if (m.w < .5) continue;
     float w = smoothstep(uR * 1.4, 0., length((s0 - m.xy) * vec2(uAsp, 1.))); cor = mix(cor, vec3(.3, .45, 1.), w * uAz); }
   vC = cor * (.35 + .65 * hs(sd * 13.7)) * luz * vis * uBF * nev * s * s / pow(1. + blur, 1.35);
@@ -416,7 +451,71 @@ function sortearFina(a, b) {
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, bufF); gl.bufferSubData(gl.ARRAY_BUFFER, a * 16, fina, a * 4, (b - a) * 4);
 }
-const maoU = new Float32Array(8);
+const maoU = new Float32Array(8), sgU = new Float32Array(8);
+
+// ---------------- camada das mãos (placa de vídeo) ----------------
+// milhares de pontos presos ao esqueleto rastreado: ossos dos dedos (com espessura) e palma, com a profundidade da mão
+const NHM = matchMedia('(pointer:coarse)').matches ? 5000 : 12000;
+const PALMA = [[0, 1, 5], [0, 5, 9], [0, 9, 13], [0, 13, 17]];
+const maoBuf = new Float32Array(NHM * 2 * 8);
+for (let h = 0, o = 0; h < 2; h++) for (let i = 0; i < NHM; i++, o += 8) {
+  if (Math.random() < 0.64) {
+    const b = LIG[(Math.random() * LIG.length) | 0];
+    maoBuf.set([b[0], b[1], b[0], Math.random(), 0, Math.random(), h, 0], o);
+  } else {
+    const tr = PALMA[(Math.random() * PALMA.length) | 0]; let u = Math.random(), v = Math.random(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
+    maoBuf.set([tr[0], tr[1], tr[2], u, v, Math.random(), h, 1], o);
+  }
+}
+const progM = ObraBase.programa(gl, `#version 300 es
+layout(location=0) in vec4 aA; layout(location=1) in vec4 aB;
+uniform vec3 uLm[42]; uniform vec4 uMH[2];
+uniform float uPt, uAsp, uYaw, uPitch, uDep, uFoco, uDesf, uT, uMax, uBF, uAz, uHZ, uEspD;
+out vec3 vC; out float vBlur;
+float hs(float n){ return fract(sin(n) * 43758.5453); }
+void main(){
+  int h = int(aB.z + .5); vec4 mh = h == 1 ? uMH[1] : uMH[0];
+  if (mh.x < .01) { gl_Position = vec4(2., 2., 2., 1.); gl_PointSize = 0.; vC = vec3(0.); vBlur = 0.; return; }
+  int b = h * 21;
+  vec3 A = uLm[b + int(aA.x + .5)], B = uLm[b + int(aA.y + .5)], C = uLm[b + int(aA.z + .5)];
+  float u = aA.w, v = aB.x, sd = aB.y;
+  vec3 P = A * (1. - u - v) + B * u + C * v;
+  float rad = mh.w * uEspD * (aB.w > .5 ? .025 : mix(.075, .05, u));
+  float an = hs(sd * 3.3) * 6.2832, rr = sqrt(hs(sd * 5.7)) * rad;
+  vec2 s0 = P.xy + vec2(cos(an) / uAsp, sin(an)) * rr;
+  float a1 = sd * 91.7, ph = uT * (.6 + hs(a1) * 1.2);
+  s0 += vec2(sin(ph + a1), cos(ph * 1.3 + a1 * 1.7)) * .0006;
+  float z = uHZ - P.z * 7. + sin(an) * rr * 4.;
+  vec3 p = vec3((s0.x - .5) * uAsp, .5 - s0.y, z * uDep * .3);
+  float cy = cos(uYaw), sy = sin(uYaw); p = vec3(cy*p.x + sy*p.z, p.y, -sy*p.x + cy*p.z);
+  float cp = cos(uPitch), sp = sin(uPitch); p = vec3(p.x, cp*p.y - sp*p.z, sp*p.y + cp*p.z);
+  float s = 2.4 / max(.4, 2.4 - p.z);
+  gl_Position = vec4(p.x * s / uAsp * 2., p.y * s * 2., 0., 1.);
+  float blur = min(9., abs(p.z - uFoco * uDep * .3) * uDesf * 9.);
+  gl_PointSize = min(uMax, uPt * mix(.5, 1., hs(sd * 5.1)) * s * (1. + blur));
+  vBlur = blur;
+  float borda = aB.w > .5 ? .8 : .75 + .5 * smoothstep(.4, 1., rr / max(rad, 1e-5));   // contorno dos dedos mais aceso
+  vec3 cor = mix(vec3(.75, .84, 1.), vec3(1., .97, .92), clamp(.5 + p.z * 1.2, 0., 1.));
+  cor = mix(cor, vec3(.3, .45, 1.), clamp((1. - mh.y) * .5 + mh.z * .5, 0., 1.) * uAz);
+  float tw = fract(sd * 11.3) > .8 ? .55 + .45 * sin(uT * (1.5 + sd * 6.) + sd * 80.) : 1.;
+  vC = cor * (.4 + .6 * hs(sd * 13.7)) * borda * tw * mh.x * (1. + mh.z * .7) * uBF * s * s / pow(1. + blur, 1.35);
+}`, `#version 300 es
+precision highp float; in vec3 vC; in float vBlur; uniform float uB; out vec4 o;
+void main(){
+  vec2 c = gl_PointCoord - .5; float r = length(c) * 2.;
+  float nucleo = exp(-r*r*6.);
+  float disco = smoothstep(1., .82, r) * (.55 + .45*smoothstep(.45, .92, r));
+  float m = mix(nucleo, disco * .6, clamp(vBlur * .5, 0., 1.));
+  if (m < .004) discard;
+  o = vec4(vC * m * uB, 1.);
+}`);
+const vaoM = gl.createVertexArray(), bufM = gl.createBuffer();
+gl.bindVertexArray(vaoM); gl.bindBuffer(gl.ARRAY_BUFFER, bufM); gl.bufferData(gl.ARRAY_BUFFER, maoBuf, gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16);
+gl.bindVertexArray(null);
+const lmU = new Float32Array(126), mhU = new Float32Array(8);
+const Z_MAO = 1.35;   // as mãos ficam à frente do corpo
 
 // alvos de renderização: acúmulo (com rastro) em ponto flutuante quando o aparelho permite + bloom em 1/4
 const HDR = !!gl.getExtension('EXT_color_buffer_float');
@@ -465,18 +564,25 @@ O.onNota((n) => { if (n.camada === 'bumbo') desfazer(0.35); });
 let ultAt = 0, tEntrada = 0, corpoAnt = false;
 O.quadro((t, dt) => {
   const P = O.P, A = O.A, W = O.W, H = O.H, asp = W / H;
-  // rastreamento (segmentação e mãos em quadros alternados)
+  // rastreamento: a cada quadro NOVO da câmera, mãos e corpo juntos (antes as mãos só eram vistas 1 em cada 3 quadros);
+  // o rosto, que se move menos, a cada 3 quadros novos. Em máquina lenta, o corpo alterna para não travar.
   if (camOn && video.readyState >= 2 && (seg || det)) {
-    let ts = performance.now(); if (ts <= tsAnt) ts = tsAnt + 1; tsAnt = ts;
-    // segmentação a cada 2 quadros; mãos e rosto se revezam nos outros
-    try { const a = alterna++; if ((a % 2 === 0 && seg) || !det) segmentar(ts); else if (face && a % 6 === 3) rastrearRosto(ts); else rastrearMaos(ts); } catch (e) {}
+    if (!temRVFC && video.currentTime !== ultVid) { ultVid = video.currentTime; quadroNovo = true; }
+    if (quadroNovo) {
+      quadroNovo = false;
+      let ts = performance.now(); if (ts <= tsAnt) ts = tsAnt + 1; tsAnt = ts;
+      const a = alterna++, lento = dt > 1 / 32 && P.Agil < 0.95;
+      try { if (det) rastrearMaos(ts); } catch (e) {}
+      try { if (seg && (!lento || a % 2 === 0)) segmentar(ts); } catch (e) {}
+      try { if (face && a % 3 === 1) rastrearRosto(ts); } catch (e) {}
+    }
   }
   const entrou = temCorpo() && performance.now() / 1000 - tEntrada < 1.5;
   realvo((entrou ? 0.04 : 0.003) + A.ataque * 0.008);
   if (A.ataque > 0.4 && t - ultAt > 0.35) { ultAt = t; desfazer(A.ataque); }
 
-  // forças das mãos
-  const mm = MAOS.filter((m) => m.vista).map((m) => ({ x: m.cx, y: m.cy, ab: m.ab, ref: m }));
+  // forças das mãos (uma mão perdida por poucos quadros continua valendo, sem piscar)
+  const mm = MAOS.filter((m) => m.perdida <= 3).map((m) => ({ x: m.cx, y: m.cy, ab: m.ab, ref: m }));
   mouse.ativo = Math.max(0, mouse.ativo - dt);
   if (!mm.length && mouse.ativo > 0) mm.push({ x: mouse.x, y: mouse.y, ab: mouse.ab, ref: mouse });
   for (const m of mm) {
@@ -485,8 +591,23 @@ O.quadro((t, dt) => {
     if (r.abAnt < 0.35 && m.ab > 0.7) desfazer(0.4);
     r.abAnt = m.ab;
   }
+  // vagas: cada mão fica na mesma vaga enquanto existir; a sucção sobe com a mão fechada e desce suave quando abre ou some
+  for (const v of VAGA) if (v.ref && !mm.some((m) => m.ref === v.ref)) v.ref = null;
+  for (const m of mm) if (!VAGA.some((v) => v.ref === m.ref)) { const v = VAGA.find((q) => !q.ref); if (v) { v.ref = m.ref; v.fecha = 0; } }
+  for (const v of VAGA) {
+    const m = mm.find((q) => q.ref === v.ref);
+    if (m) { v.x = m.x; v.y = m.y; v.ab = m.ab; v.on = 1; v.palma = m.ref.palma || 0.08; if (m.ab < 0.35) v.fecha = 1; else if (m.ab > 0.55) v.fecha = 0; }
+    else { v.on = 0; v.fecha = 0; }
+    const alvoS = v.fecha, taxa = (alvoS > v.suga ? 1.3 : 2.4) * P.SugaVel;
+    v.suga += (alvoS - v.suga) * (1 - Math.exp(-dt * taxa));
+    v.vis += ((m && m.ref.pts ? 1 : 0) - v.vis) * Math.min(1, dt * 8);
+  }
+  const SG = VAGA.map((v) => ({ x: v.x, y: v.y, g: v.suga * P.Suga, r: Math.max(0.03, v.palma * 0.6) }));
+  const sugaMax = Math.max(SG[0].g, SG[1].g);
+  // caixa do rosto (coordenadas do vídeo), ampliada para pegar testa, cabelo e queixo; a última vista vale se a mão cobrir o rosto
+  const ro = rosto.ok ? { cx: (rosto.u0 + rosto.u1) / 2, cy: (rosto.v0 + rosto.v1) / 2 - (rosto.v1 - rosto.v0) * 0.1, hx: (rosto.u1 - rosto.u0) * 0.78, hy: (rosto.v1 - rosto.v0) * 0.9 } : null;
 
-  const coes = P.Coesao * (2.5 + A.grave * P.Respira * 3), am = Math.exp(-dt * 3), fl = P.Fluxo * 0.06, R2 = P.Raio * P.Raio;
+  const coes = P.Coesao * (2.5 + A.grave * P.Respira * 3) * (1 + P.Agil * 6), am = Math.exp(-dt * (3 + P.Agil * 6)), fl = P.Fluxo * 0.06, R2 = P.Raio * P.Raio;
   const corpo = temCorpo(), flL = corpo ? 1 : 0.5;
   if (corpo && !corpoAnt) tEntrada = performance.now() / 1000; corpoAnt = corpo;
   const vw = video.videoWidth || 4, vh = video.videoHeight || 3, esc = Math.max(W / vw, H / vh), ex = vw * esc / W, ey = vh * esc / H;
@@ -499,7 +620,24 @@ O.quadro((t, dt) => {
     const kx = 0.5 + (tx[i] - 0.5) * resp, ky = 0.5 + (ty[i] - 0.5) * resp;
     let sh = 1;
     if (s > 0) { solto[i] = s - dt * 0.55; ay -= 0.04; azz += (fz[i] - z) * 0.15; }
-    else if (corpo && j >= 0) { ax += (kx - x) * coes * 1.6; ay += (ky - y) * coes * 1.6; azz += (Z[j] * inflar - z) * coes * 1.4; sh = SH[j]; }
+    else if (corpo && j >= 0) {
+      let gx = kx, gy = ky, gz = Z[j] * inflar, ke = 1;
+      if (sugaMax > 0.002 && ro) {
+        const dd = Math.hypot((tu[i] - ro.cx) / ro.hx, (tv[i] - ro.cy) / ro.hy);
+        if (dd < 1) {
+          const fm = sst(1, 0.72, dd), h2 = fr(sem[i] * 2.9);
+          const sg = SG[1].g > SG[0].g + 0.15 || (Math.abs(SG[1].g - SG[0].g) <= 0.15 && h2 > 0.5) ? SG[1] : SG[0];
+          const q = clamp(sg.g * fm * 1.6 - fr(sem[i] * 21.7) * 0.6, 0, 1);
+          if (q > 0) {
+            const e = q * q * (3 - 2 * q), an = t * (2 + fr(sem[i] * 6.1) * 3) + sem[i] * 40, rad = sg.r * (0.12 + 0.88 * Math.sqrt(fr(sem[i] * 4.4)));
+            const fx = sg.x + Math.cos(an) * rad / asp, fy = sg.y + Math.sin(an) * rad, dvx = fx - gx, dvy = fy - gy, arco = Math.sin(Math.PI * e) * (fr(sem[i] * 8.3) - 0.5) * 0.7;
+            gx += dvx * e - dvy * arco; gy += dvy * e + dvx * arco;
+            gz += (Z_MAO + (fr(sem[i] * 1.9) - 0.5) * 0.5 - gz) * e + Math.sin(Math.PI * e) * 0.7; ke = 1 + e * 2;
+          }
+        }
+      }
+      ax += (gx - x) * coes * 1.6 * ke; ay += (gy - y) * coes * 1.6 * ke; azz += (gz - z) * coes * 1.4 * ke; sh = SH[j];
+    }
     else azz += (fz[i] - z) * 0.5;
     const f = fluxo(x, y, t), ff = fl * (1 + s * 3) * flL * (s <= 0 && corpo && j >= 0 ? 0.3 : 1);
     ax += f[0] * ff; ay += f[1] * ff; azz += (f[0] - f[1]) * ff * 3;
@@ -566,8 +704,27 @@ O.quadro((t, dt) => {
     gl.uniform1f(u.uR, P.Raio); gl.uniform1f(u.uEsp, P.Espalha); gl.uniform1f(u.uJun, P.Junta); gl.uniform1f(u.uFlu, P.Fluxo); gl.uniform1f(u.uAz, P.Acento);
     maoU.fill(0); mm.slice(0, 2).forEach((m, k) => { maoU[k * 4] = m.x; maoU[k * 4 + 1] = m.y; maoU[k * 4 + 2] = m.ab; maoU[k * 4 + 3] = 1; });
     gl.uniform4fv(u.uMao, maoU);
+    SG.forEach((g, k) => { sgU[k * 4] = g.x; sgU[k * 4 + 1] = g.y; sgU[k * 4 + 2] = g.g; sgU[k * 4 + 3] = g.r; });
+    gl.uniform4fv(u.uSg, sgU); gl.uniform1f(u.uRoOn, ro ? 1 : 0); gl.uniform1f(u.uHZ, Z_MAO);
+    if (ro) gl.uniform4f(u.uRo, ro.cx, ro.cy, ro.hx, ro.hy);
     gl.bindVertexArray(vaoF); gl.drawArrays(gl.POINTS, 0, nDesenha);
     gl.activeTexture(gl.TEXTURE0);
+  }
+  // 2c) partículas das mãos
+  if (P.MaoPart > 0.01 && (VAGA[0].vis > 0.01 || VAGA[1].vis > 0.01)) {
+    VAGA.forEach((v, k) => {
+      const r = v.ref;
+      if (r && r.pts) for (let j = 0; j < 21; j++) { const o = (k * 21 + j) * 3; lmU[o] = r.pts[j][0]; lmU[o + 1] = r.pts[j][1]; lmU[o + 2] = r.pz ? r.pz[j] : 0; }
+      mhU[k * 4] = v.vis; mhU[k * 4 + 1] = v.ab; mhU[k * 4 + 2] = v.suga * P.Suga; mhU[k * 4 + 3] = v.palma;
+    });
+    gl.useProgram(progM.p); const u = progM.u;
+    gl.uniform3fv(u.uLm, lmU); gl.uniform4fv(u.uMH, mhU);
+    gl.uniform1f(u.uPt, P.Tamanho * O.DPR * Math.sqrt(Math.min(W, H) / 700) * 1.5);
+    gl.uniform1f(u.uB, 1); gl.uniform1f(u.uBF, P.Brilho * P.MaoPart * (HDR ? 0.8 : 0.5) * Math.sqrt(12000 / NHM));
+    gl.uniform1f(u.uAsp, asp); gl.uniform1f(u.uYaw, yaw); gl.uniform1f(u.uPitch, pitch); gl.uniform1f(u.uDep, dep);
+    gl.uniform1f(u.uFoco, P.Foco * 2); gl.uniform1f(u.uDesf, P.Desfoque); gl.uniform1f(u.uT, t); gl.uniform1f(u.uMax, MAXPT);
+    gl.uniform1f(u.uAz, P.Acento); gl.uniform1f(u.uHZ, Z_MAO); gl.uniform1f(u.uEspD, P.MaoEsp);
+    gl.bindVertexArray(vaoM); gl.drawArrays(gl.POINTS, 0, NHM * 2);
   }
   // 3) brilho difuso (bloom) em 1/4 da resolução
   gl.disable(gl.BLEND); gl.bindVertexArray(vaoQ);
@@ -590,11 +747,12 @@ O.quadro((t, dt) => {
   // caixa do corpo
   let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
   for (let i = 0; i < N; i += 37) { if (solto[i] > 0) continue; x0 = Math.min(x0, tx[i]); x1 = Math.max(x1, tx[i]); y0 = Math.min(y0, ty[i]); y1 = Math.max(y1, ty[i]); }
-  if (corpo && x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${N + Math.floor(NF * P.Fina)} PTS · ${(temPessoa * 100).toFixed(1)}% · Z ${dep.toFixed(2)}`, ha * 0.45);
+  if (corpo && x1 > x0) HUD.caixa(hx, x0 * W - 10, y0 * H - 10, (x1 - x0) * W + 20, (y1 - y0) * H + 20, `CORPO · ${N + Math.floor(NF * P.Fina) + (P.MaoPart > 0.01 ? NHM * 2 : 0)} PTS · ${(temPessoa * 100).toFixed(1)}% · Z ${dep.toFixed(2)}`, ha * 0.45);
   if (corpo && rosto.c > 0.3) { const p0 = vidParaTela(rosto.u1, rosto.v0), p1 = vidParaTela(rosto.u0, rosto.v1); HUD.caixa(hx, p0[0] * W, p0[1] * H, (p1[0] - p0[0]) * W, (p1[1] - p0[1]) * H, `ROSTO ${(rosto.c * 100) | 0}%`, ha * 0.6); }
   for (const m of mm) {
     const r = m.ref, nome = r === mouse ? 'CURSOR' : 'MÃO';
-    HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);
+    const vg = VAGA.find((v) => v.ref === r), sug = vg && vg.suga * P.Suga > 0.05 ? ` · SUGANDO ${(vg.suga * P.Suga * 100) | 0}%` : '';
+    HUD.caixa(hx, m.x * W - 34, m.y * H - 34, 68, 68, `${nome} ${m.ab > 0.5 ? 'ABERTA' : 'FECHADA'} ${(m.ab * 100) | 0}%${sug}`, ha * 0.8, `rgba(90,120,255,${P.Acento})`);
     if (r.pts) {
       hx.save(); hx.globalAlpha = ha * 0.5; hx.strokeStyle = '#fff'; hx.lineWidth = 1; hx.beginPath();
       for (const [a, b] of LIG) { hx.moveTo(r.pts[a][0] * W, r.pts[a][1] * H); hx.lineTo(r.pts[b][0] * W, r.pts[b][1] * H); }

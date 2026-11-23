@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><script src="../lib/projecao.js"></script><script src="../lib/gravacao.js"></script><script src="../lib/motor-knick.js"></script>
+<head><script src="../lib/projecao.js"></script><script src="../lib/gravacao.js"></script><script src="../lib/motor-natureza.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -259,7 +259,7 @@ window.Vista3D = function(opt = {}){
 (() => {
 'use strict';
 // ---------- núcleo v2 das conjecturas ----------
-// Som: desde nov/2026 é o Motor Knick (lib/motor-knick.js, embutido pelo build2.py) com o painel simplificado.
+// Som: desde 23/nov/2026 é o Motor Natureza (lib/motor-natureza.js), o motor das obras da aba Natureza (o Knick ficou só nas Conjecturas).
 // Motor de som do Cometa de Goldbach / Recamán (um canal por elemento com volume e envios para reverb Valhalla, delay,
 // pitch delay e bit crusher; filtro, saturação e largura na saída), timbres e ADSR do Corredor Solitário, efeitos de
 // vídeo (brilho, contraste, saturação, matiz, brilho difuso, desfoque, rastro com zoom e giro, inverter, espelho) e o
@@ -281,8 +281,8 @@ function Nucleo(cfg){
   const TLIST = [['sino','Sino'],['corda','Corda'],['macio','Macio'],['vidro','Vidro'],['marimba','Marimba'],['celesta','Celesta'],['kalimba','Kalimba'],
     ['sopro','Sopro'],['sinoGrave','Sino grave'],['harpa','Harpa'],['pad','Pad'],['seno','Seno puro'],['grave','Baixo redondo'],['percussao','Percussão']];
   const nucleo = $('nucleo'), nVideo = $('nucleoVideo');
-  // som: Motor Knick (lib/motor-knick.js) — painel simplificado igual em todas as obras
-  const MK = MotorKnick({ padroes: cfg.som || {} });
+  // som: Motor Natureza (lib/motor-natureza.js) — painel igual em todas as obras da aba Natureza
+  const MK = MotorNatureza({ obra: 'micelio', padroes: cfg.som || {} });
   if (nucleo) MK.painel(nucleo);
   if (nVideo){
     nVideo.innerHTML = '<h2>Vídeo</h2>' + rg('vBri', 'Brilho', 0.3, 2.5, 0.01, 1) + rg('vCon', 'Contraste', 0.4, 2.5, 0.01, 1) + rg('vSat', 'Saturação', 0, 3, 0.01, 1)
@@ -308,9 +308,9 @@ function Nucleo(cfg){
   }
   const setCtl = (k, v) => { const el = $(k); if (!el) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
 
-  // ---------- áudio: tudo passa pelo Motor Knick ----------
-  // A obra continua chamando note/play/hit/kick/voz/setDrone como antes; o motor recebe isso como
-  // acontecimentos (notas de vidro no pulso, energia do arranjo, troca de acorde) e faz a música.
+  // ---------- áudio: tudo passa pelo Motor Natureza ----------
+  // A obra continua chamando note/play/hit/kick/voz/setDrone como antes; o motor toca cada espécie com a sua voz
+  // (madeira, cristal, corda, sopro, sino, kalimba) em tempo livre, o drone vira o bordão e os esporos viram gravetos.
   let AC = null;
   const SCALES = {
     jonico:[0,2,4,5,7,9,11], dorico:[0,2,3,5,7,9,10], frigio:[0,1,3,5,7,8,10], lidio:[0,2,4,6,7,9,11],
@@ -335,7 +335,10 @@ function Nucleo(cfg){
   const noteName = d => NOTAS[((semi(d) % 12) + 12) % 12];
   // entrega no tempo certo (as obras agendam notas um pouco à frente)
   const quando = (t, fn) => { const dt = AC ? t - AC.currentTime : 0; if (dt > 0.03) setTimeout(fn, dt*1000); else fn(); };
-  function note(src, f, t, vel = 0.8, pan = 0){ if (!AC || !(f > 15 && f < 20000)) return; quando(t, () => MK.nota(f, { forca: Math.min(1, vel), pan })); }
+  // timbre do elemento (painel antigo) → voz do Motor Natureza
+  const VOZ = { vidro: 'cristal', marimba: 'madeira', harpa: 'corda', macio: 'sopro', celesta: 'sino', kalimba: 'kalimba', grave: 'madeira', sinoGrave: 'sino', sino: 'sino', corda: 'corda', sopro: 'sopro' };
+  const vozDe = src => { const e = EL.find(x => x.k === src); return e ? VOZ[e.timbre] : null; };
+  function note(src, f, t, vel = 0.8, pan = 0){ if (!AC || !(f > 15 && f < 20000)) return; quando(t, () => MK.nota(f, { forca: Math.min(1, vel), pan, voz: vozDe(src) })); }
   const play = (src, d, t, vel, pan, durMul, base) => note(src, freq(d, base), t, vel == null ? 0.8 : vel, pan || 0);
   function hit(src, t, vel = 0.5){ if (AC) quando(t, () => MK.pulso(vel*0.6)); }
   function kick(src, t, vel = 0.8){ if (AC) quando(t, () => MK.pulso(vel)); }
@@ -347,7 +350,7 @@ function Nucleo(cfg){
     for (let d = 0; d < 7; d++){ const dd = Math.abs(((semi(d) % 12) + 12) % 12 - alvo); if (dd < bd){ bd = dd; g = d; } }
     if (g !== ultimoDrone){ ultimoDrone = g; MK.acorde(g); }
   }
-  // voz contínua da obra (oscilador sustentado) dentro do canal "Obra" do motor
+  // voz contínua da obra (oscilador sustentado) dentro do canal "Vozes" do motor
   function voz(src, type = 'sine'){
     if (!AC) return null;
     const o = AC.createOscillator(); o.type = type; const g = AC.createGain(); g.gain.value = 0;
@@ -358,7 +361,7 @@ function Nucleo(cfg){
     o.start(); let ultF = 0;
     return {
       set(f, gain, pan = 0, tc = 0.05, cut){ const t = AC.currentTime; if (f > 0) o.frequency.setTargetAtTime(f, t, tc); g.gain.setTargetAtTime(gain*0.35, t, tc);
-        if (f > 0 && gain > 0.01 && (!ultF || Math.abs(12*Math.log2(f/ultF)) >= 1)){ ultF = f; MK.memorizar(f, Math.min(1, gain*6)); }   // a altura da voz alimenta os arpejos
+        if (f > 0 && gain > 0.01 && (!ultF || Math.abs(12*Math.log2(f/ultF)) >= 1)){ ultF = f; MK.memorizar(f, Math.min(1, gain*6)); }   // a altura da voz entra na memória da paisagem
         if (pn) pn.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, tc); if (cut) lp.frequency.setTargetAtTime(Math.min(cut, 3000), t, tc); },
       stop(){ const t = AC.currentTime; g.gain.setTargetAtTime(0, t, 0.1); o.stop(t + 1); }
     };

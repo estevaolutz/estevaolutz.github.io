@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><script src="../lib/projecao.js"></script><script src="../lib/gravacao.js"></script><script src="../lib/motor-knick.js"></script>
+<head><script src="../lib/projecao.js"></script><script src="../lib/gravacao.js"></script><script src="../lib/motor-natureza.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Harmonia das Esferas</title>
@@ -400,15 +400,18 @@ function chordName(ms){
   return `${NOTE_PT[r]}${q} <span class="k">(${ms.map(m=>NOTE_PT[((m%12)+12)%12]).join(' · ')})</span>`;
 }
 
-/* ===================== ÁUDIO: Motor Knick (lib/motor-knick.js) ===================== */
-// Os planetas, luas, conjunções, cinturão e cometa não têm mais som próprio: viram acontecimentos do motor
-// (notas de vidro no pulso dos arpejos, troca de acorde, energia). A escuta espacial continua valendo.
-const MK=MotorKnick({});
+/* ===================== ÁUDIO: Motor Natureza (lib/motor-natureza.js) ===================== */
+// Cada corpo celeste é um objeto que vibra, em tempo livre: planetas rochosos soam madeira, gasosos sino,
+// gelados cristal; luas são gotas, conjunções são sopros, o cinturão estala e o Halley é uma escala de cristal.
+// As frequências vão exatas (inclusive na afinação de Kepler) e o Sol é o bordão: a fundamental de cada
+// órbita que passa pela agulha. A escuta espacial continua valendo.
+const MK=MotorNatureza({obra:'harmonia-das-esferas',imagem:false});   // imagem: false — ler o WebGL a cada quadro trava a GPU
+const VOZ_TIPO={rocha:'madeira',gas:'sino',gelo:'cristal',luas:'gota',cometa:'cristal'};
 let AC=null;const AU={};
 const LAYERS={planetas:'vPlanetas',orbitas:'vOrbitas',luas:'vLuas',conj:'vConj',cint:'vCint',sol:'vSol',cometa:'vCometa'};
 function initAudio(){
   MK.iniciar();AC=MK.AC;
-  AU.an=MK.analisador;AU.buf=new Float32Array(AU.an.fftSize);
+  AU.an=MK.analisador;if(H.root!=null)MK.bordao(mtof(H.root-12));AU.buf=new Float32Array(AU.an.fftSize);
   AU.layers={};for(const L in LAYERS)AU.layers[L]=L;   // só o nome da camada: as funções abaixo usam para decidir o que fazer
   applyAudioParams();
 }
@@ -416,17 +419,17 @@ function applyAudioParams(){if(!AC)return;if(S.muted)AC.suspend();else AC.resume
 const padBase=()=>0;
 function applyPadFreqs(){}
 // cada planeta (de Marte para fora) traz o acorde do seu grau quando passa pela agulha
-function padTrigger(b){if(!AC)return;if(b.idx>=3&&b.deg!=null)MK.acorde(b.deg);}
+function padTrigger(b){if(!AC)return;if(b.idx>=3&&b.padF&&b.padF[0])MK.bordao(b.padF[0]);}
 const emMK=(when,fn)=>{if(when>0.02)setTimeout(fn,when*1000);else fn();};
 function fm(f,vel,pan,tb,dest,when=0){
   if(!AC||!(vel>0.004))return;
   const forca=clamp(dest==='luas'?vel*2.5:dest==='cometa'?vel*4:vel*2.6,0,1);
-  emMK(when,()=>MK.nota(f,{forca,pan:clamp(pan,-1,1)}));
+  emMK(when,()=>MK.nota(f,{forca,pan:clamp(pan,-1,1),voz:VOZ_TIPO[tb]||VOZ_TIPO[dest]||'sino',exata:true}));
 }
 function sine(f,vel,pan,dest,att,dur,when=0){
   if(!AC||!(vel>0.003))return;
   if(dest==='cint'){emMK(when,()=>MK.pulso(clamp(vel*6,0,.5)));return;}
-  emMK(when,()=>MK.nota(f,{forca:clamp(vel*7,0,1),pan:clamp(pan,-1,1)}));
+  emMK(when,()=>MK.nota(f,{forca:clamp(vel*7,0,1),pan:clamp(pan,-1,1),voz:'sopro',exata:true}));
 }
 const projV=new THREE.Vector3();
 function spatial(pos,kind){
@@ -484,7 +487,7 @@ function updateInfo(){
 /* ===================== PAINEL ===================== */
 const UI=[
  ['Som',[
-  ['knick'],
+  ['motor'],
   ['chk','spatial','Escuta espacial — perto soa mais; aproxime-se de um planeta para ouvir suas luas']]],
  ['Harmonia',[
   ['sel','chord','Acorde de cada órbita',Object.keys(CHORDS)],
@@ -510,7 +513,7 @@ function buildPanel(){
       else if(type==='sel'){row.innerHTML=`<label>${label}</label><select>${it[3].map(o=>Array.isArray(o)?`<option value="${o[0]}">${o[1]}</option>`:`<option>${o}</option>`).join('')}</select>`;const sel=row.querySelector('select');sel.value=S[key];sel.onchange=()=>{S[key]=isNaN(+sel.value)?sel.value:+sel.value;onChange(key);};}
       else if(type==='btns'){row.className='btns';row.innerHTML=`<button id="bPause">${S.paused?'▶ continuar':'❚❚ pausar'}</button><button id="bReset">restaurar padrões</button>`;
         row.querySelector('#bPause').onclick=togglePause;row.querySelector('#bReset').onclick=()=>{const keep={paused:S.paused};S={...DEF,...keep};save();buildPanel();['bloom','hue','scale','needles','trails','frame','master','timeMode'].forEach(onChange);};}
-      else if(type==='knick'){row.className='';MK.painel(row,{titulo:false});}
+      else if(type==='motor'){row.className='';MK.painel(row,{titulo:false});}
       else if(type==='cam'){row.className='btns';row.id='camBtns';const list=[['Sol',()=>focusOn(sunTarget)],...bodies.map(b=>[b.d.name,()=>focusOn(planetTarget(b))]),['Halley',()=>focusOn(cometTarget)]];
         list.forEach(([n,f])=>{const bt=document.createElement('button');bt.textContent=n;bt.dataset.n=n==='Halley'?'Halley':n;bt.onclick=f;row.appendChild(bt);});}
       det.appendChild(row);}
@@ -608,7 +611,7 @@ function frame(){
   // câmera
   tourStep(dt);updateCamera(dt);controls.update();
   // áudio espacial dos acordes
-  // (os pads de órbita com volume espacial saíram com o Motor Knick)
+  // (o bordão do Motor Natureza faz o papel dos antigos pads de órbita)
   // rótulos
   labelsEl.classList.toggle('hidden',!S.labels||uiHidden);
   if(S.labels&&!uiHidden){for(const b of bodies){placeLabel(b.label,b.world,true);for(const m of b.moons)placeLabel(m.label,m.world,S.moonLabels&&camera.position.distanceTo(m.world)<b.ext*12);}placeLabel(sunLabel,system.position,true);}

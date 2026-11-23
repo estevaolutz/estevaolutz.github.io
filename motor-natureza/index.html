@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><script src="../lib/projecao.js"></script><script src="../lib/gravacao.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Motor Natureza — audição</title>
+<meta name="theme-color" content="#000">
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#e3ebe2;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#000;z-index:5;cursor:pointer;text-align:center;padding:24px}
+#start h1{margin:0;font-weight:300;letter-spacing:.3em;text-transform:uppercase;font-size:22px}
+#start p{margin:0;color:#83998a;max-width:440px;line-height:1.5;font-size:14px}
+#start .b{margin-top:8px;border:1px solid #e3ebe2;border-radius:999px;padding:10px 26px;letter-spacing:.2em;font-size:12px;text-transform:uppercase}
+#start.hide{display:none}
+#dot{position:fixed;right:16px;top:16px;width:14px;height:14px;border-radius:50%;background:#e3ebe2;opacity:.35;z-index:4;cursor:pointer}
+#dot:hover{opacity:.8}
+#panel{position:fixed;right:12px;top:40px;width:300px;max-height:calc(100% - 56px);overflow:auto;background:rgba(10,16,12,.92);border:1px solid #233026;border-radius:14px;padding:14px 16px;z-index:4;display:none;backdrop-filter:blur(8px)}
+#panel.on{display:block}
+#teste{margin-top:12px;border-top:1px solid #233026;padding-top:10px;font-size:12px;color:#93ad94;line-height:1.45}
+#teste label{display:flex;gap:6px;align-items:center;color:#cbd9cb;font-size:13px;margin-bottom:6px}
+#hud{position:fixed;left:16px;bottom:14px;font-size:12px;color:#5f7363;letter-spacing:.08em;z-index:3;pointer-events:none}
+#hud b{color:#a6d8a0;font-weight:500}
+@media (max-width:520px){#panel{left:10px;right:10px;width:auto}}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="start"><h1>Motor Natureza</h1>
+<p>O motor de som das obras da aba Natureza: tempo livre, sem pulso; madeira, gotas, sinos, cristal e sopro em afinação natural, um bordão que respira e a paisagem (vento, água, chuva, grilos, pássaros) reagindo à obra. Toque na tela: altura = nota, lado = posição no estéreo.</p>
+<span class="b">Ouvir</span></div>
+<div id="dot" title="Controles (M)"></div>
+<div id="panel">
+  <div id="som"></div>
+  <div id="teste">
+    <label><input type="checkbox" id="simula" checked> Obra de teste tocando sozinha</label>
+    Simula uma obra mandando acontecimentos em rajadas e silêncios. Teclas 1 a 5 trocam o ambiente.
+  </div>
+</div>
+<div id="hud"></div>
+<script src="../lib/motor-natureza.js"></script>
+<script>
+const M = MotorNatureza({ painel: '#som', obra: false, imagem: false });
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let W, H, DPR;
+function rs(){ DPR = Math.min(devicePixelRatio||1, 2); W = innerWidth; H = innerHeight; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', rs); rs();
+// visual: cada nota é uma gota que abre anéis na água; a cor é a voz
+const COR = { madeira: [214,170,110], gota: [120,200,255], sino: [240,215,140], cristal: [220,240,255], sopro: [170,230,190], kalimba: [255,190,150], corda: [200,180,255] };
+const ondas = []; let energia = 0;
+M.on('nota', n => {
+  const y = H*0.85 - (Math.log2(n.freq/110)/5)*H*0.7;
+  ondas.push({ x: W/2 + (n.pan||0)*W*0.34 + (Math.random()-0.5)*40, y, r: 2, a: 0.35 + 0.6*n.forca, c: COR[n.voz] || COR.cristal, mem: n.camada === 'memoria' });
+});
+M.on('passo', p => { energia = p.energia; });
+const hud = document.getElementById('hud');
+function frame(){
+  ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = ondas.length-1; i >= 0; i--){
+    const o = ondas[i], [R,G,B] = o.c; ctx.lineWidth = o.mem ? 0.8 : 1.4;
+    for (let k = 0; k < 3; k++){ const rr = o.r - k*14; if (rr <= 0) continue; ctx.strokeStyle = `rgba(${R},${G},${B},${o.a*(1-k*0.3)})`; ctx.beginPath(); ctx.ellipse(o.x, o.y, rr, rr*0.42, 0, 0, Math.PI*2); ctx.stroke(); }
+    o.r += 0.9; o.a *= 0.982; if (o.a < 0.01) ondas.splice(i, 1);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  if (M.rodando) hud.innerHTML = `bordão <b>${M.nomeAcorde()}</b> · ${M.CENAS[M.S.cena] ? M.CENAS[M.S.cena].nome : ''} · vida ${Math.round(energia*100)}`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+cv.addEventListener('pointerdown', e => {
+  if (!M.rodando) return;
+  M.evento(Math.round((1 - e.clientY/H) * 12) - 2, { forca: 0.9, pan: (e.clientX/W)*2 - 1 });
+});
+// obra de teste: rajadas e silêncios, passeando pela escala
+let rajada = 0, passeio = 4, simT = 0;
+setInterval(() => {
+  if (!M.rodando || !document.getElementById('simula').checked) return;
+  simT++;
+  if (rajada <= 0 && Math.random() < 0.03) rajada = 6 + Math.random()*24;
+  if (rajada > 0){ rajada--; if (Math.random() < 0.4){ passeio += Math.round((Math.random()-0.5)*3); passeio = Math.max(-2, Math.min(11, passeio)); M.evento(passeio, { forca: 0.35 + Math.random()*0.6, pan: (Math.random()-0.5)*1.6 }); } }
+  if (Math.random() < 0.04) M.pulso(0.4 + Math.random()*0.5);
+  if (simT % 200 === 0 && Math.random() < 0.4) M.acorde([0,3,1,4][Math.floor(Math.random()*4)]);
+}, 150);
+const start = document.getElementById('start');
+start.addEventListener('pointerdown', () => { M.iniciar(); start.classList.add('hide'); });
+document.getElementById('dot').addEventListener('click', () => document.getElementById('panel').classList.toggle('on'));
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'm') document.getElementById('panel').classList.toggle('on');
+  else if (k === ' ' && !M.rodando){ e.preventDefault(); M.iniciar(); start.classList.add('hide'); }
+  else if (/^[1-5]$/.test(k)){ const c = Object.keys(MotorNatureza.CENAS)[+k-1]; const s = document.getElementById('mnCena'); s.value = c; s.dispatchEvent(new Event('change')); }
+});
+</script>
+</body>
+</html>

@@ -24,10 +24,12 @@
    a cada quadro novo da câmera, menos atraso na suavização e partículas mais ágeis).
    v5: a música nasce do movimento — o Motor Knick em modo reativo não toca sozinho: a energia vem do movimento do corpo
    e da velocidade das mãos (parado, silêncio); mover a mão toca notas (altura da mão = nota, lado = estéreo, velocidade =
-   força) e os arpejos repetem essas notas no ritmo em que caíram; fechar a mão escolhe o acorde pela altura do punho. */
+   força) e os arpejos repetem essas notas no ritmo em que caíram; fechar a mão escolhe o acorde pela altura do punho.
+   v6: as mãos também tocam os efeitos do som — abrir/fechar a mão abre/fecha o filtro, a velocidade das mãos
+   satura o drive e o afastamento entre as duas mãos (ou, com uma só, a proximidade da câmera) aumenta o delay. */
 const O = ObraBase({
   titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa', toque: false,
-  texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. A música nasce do seu movimento: parado, silêncio; mova as mãos para tocar notas (mais alto, mais agudo). Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho e escolher o acorde, e abra para devolver. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
+  texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. A música nasce do seu movimento: parado, silêncio; mova as mãos para tocar notas (mais alto, mais agudo). Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho e escolher o acorde, e abra para devolver. As mãos também mexem no som: mão fechada abafa o filtro e aberta abre; gestos rápidos saturam o drive; afastar uma mão da outra (ou aproximar a mão da câmera) espalha o delay. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
   controles: [
     ['Corpo'],
     ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
@@ -68,14 +70,70 @@ const O = ObraBase({
     ['MusSens', 'Sensibilidade ao movimento', 1, 0.2, 3, 0.01],
     ['MusNotas', 'Notas pelas mãos', 1, 0, 2, 0.01],
     ['MusAcorde', 'Mão fechada escolhe o acorde', 1, 0, 1, 1],
+    ['Efeitos pelas mãos'],
+    ['FxFiltro', 'Filtro (abrir/fechar a mão)', 1, 0, 1, 0.01],
+    ['FxRes', 'Ressonância do filtro', 0.35, 0, 1, 0.01],
+    ['FxDrive', 'Drive (velocidade das mãos)', 0.8, 0, 1.5, 0.01],
+    ['FxDelay', 'Delay (afastar as mãos)', 0.8, 0, 1, 0.01],
     ['Dados'],
     ['Hud', 'Dados na tela', 0.75, 0, 1, 0.01],
     ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
     ['Rastro', 'Rastro', 0.4, 0, 0.95, 0.01],
   ],
   aoIniciar: () => iniciarCamera(),
+  insercao: (AC) => montarFX(AC),
 });
 const { gl } = O, HUD = ObraBase.HUD, clamp = O.clamp;
+
+// ---------------- efeitos do som tocados pelas mãos: filtro → drive → delay (entram no Motor Knick antes do limitador) ----------------
+const FX = { no: null, filtro: 1, drive: 0, delay: 0, hz: 18000 };
+function montarFX(AC) {
+  const ent = AC.createGain(), sai = AC.createGain();
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 18000; lp.Q.value = 0.7;
+  // drive: pré-ganho → saturação (tanh) → compensação, misturado com o som limpo
+  const pre = AC.createGain(), sh = AC.createWaveShaper(), pos = AC.createGain(), seco = AC.createGain(), sujo = AC.createGain();
+  const n = 2048, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * 2.2) / Math.tanh(2.2); }
+  sh.curve = c; sh.oversample = '4x'; seco.gain.value = 1; sujo.gain.value = 0;
+  const mix = AC.createGain();
+  ent.connect(lp); lp.connect(seco); seco.connect(mix); lp.connect(pre); pre.connect(sh); sh.connect(pos); pos.connect(sujo); sujo.connect(mix);
+  // delay pingue-pongue no andamento, com realimentação escurecendo a cada volta
+  const envio = AC.createGain(); envio.gain.value = 0;
+  const dL = AC.createDelay(2), dR = AC.createDelay(2), fbL = AC.createGain(), fbR = AC.createGain(), cor = AC.createBiquadFilter();
+  cor.type = 'lowpass'; cor.frequency.value = 2800; fbL.gain.value = fbR.gain.value = 0.3;
+  const mg = AC.createChannelMerger(2), ret = AC.createGain(); ret.gain.value = 0.9;
+  mix.connect(sai); mix.connect(envio); envio.connect(cor); cor.connect(dL); dL.connect(fbL); fbL.connect(dR); dR.connect(fbR); fbR.connect(cor);
+  dL.connect(mg, 0, 0); dR.connect(mg, 0, 1); mg.connect(ret); ret.connect(sai);
+  FX.no = { AC, lp, pre, pos, seco, sujo, envio, dL, dR, fbL, fbR };
+  return { entrada: ent, saida: sai };
+}
+function aplicarFX(dt, mm, asp) {
+  const P = O.P;
+  // filtro: abertura média das mãos (sem mãos = aberto)
+  const ab = mm.length ? mm.reduce((s, m) => s + m.ab, 0) / mm.length : 1;
+  FX.filtro += (ab - FX.filtro) * Math.min(1, dt * 10);
+  // drive: velocidade da mão mais rápida (sobe rápido, desce devagar)
+  let vel = 0; for (const m of mm) vel = Math.max(vel, m.ref === mouse ? (m.ref.vel || 0) : (m.ref.vista ? m.ref.vel || 0 : 0));
+  const dAlvo = mm.length ? clamp((vel - 0.12) / 1.1, 0, 1) : 0;
+  FX.drive += (dAlvo - FX.drive) * Math.min(1, dt * (dAlvo > FX.drive ? 12 : 1.6));
+  // delay: afastamento entre as duas mãos; com uma só, a proximidade da câmera (palma maior)
+  let lAlvo = 0;
+  if (mm.length >= 2) lAlvo = sst(0.15, 0.75, Math.hypot((mm[0].x - mm[1].x) * asp, mm[0].y - mm[1].y));
+  else if (mm.length === 1) lAlvo = sst(0.09, 0.24, mm[0].ref.palma || 0);
+  FX.delay += (lAlvo - FX.delay) * Math.min(1, dt * (lAlvo > FX.delay ? 5 : 1.2));
+  const F = FX.no; if (!F) return;
+  const t = F.AC.currentTime, k = 0.04;
+  const f = P.FxFiltro, fe = Math.pow(FX.filtro, 0.9);
+  FX.hz = 18000 * Math.pow(160 / 18000, f * (1 - fe));
+  F.lp.frequency.setTargetAtTime(FX.hz, t, k);
+  F.lp.Q.setTargetAtTime(0.7 + P.FxRes * 11 * f * (1 - fe * 0.6), t, k);
+  const d = clamp(FX.drive * P.FxDrive, 0, 1.5);
+  F.pre.gain.setTargetAtTime(1 + d * 14, t, k); F.pos.gain.setTargetAtTime(1 / (1 + d * 2.2), t, k);
+  F.sujo.gain.setTargetAtTime(Math.min(1, d * 1.2), t, k); F.seco.gain.setTargetAtTime(1 - Math.min(0.75, d * 0.6), t, k);
+  const l = FX.delay * P.FxDelay, bpm = (O.M && O.M.S && O.M.S.bpm) || 90, b = 60 / bpm;
+  F.dL.delayTime.setTargetAtTime(Math.min(1.9, b * 0.75), t, 0.2); F.dR.delayTime.setTargetAtTime(Math.min(1.9, b), t, 0.2);
+  F.envio.gain.setTargetAtTime(l * 0.85, t, 0.06);
+  const fb = 0.15 + l * 0.6; F.fbL.gain.setTargetAtTime(fb, t, 0.1); F.fbR.gain.setTargetAtTime(fb, t, 0.1);
+}
 
 // ---------------- partículas (x, y em 0–1 da tela; z = profundidade, + perto de quem olha) ----------------
 const N = matchMedia('(pointer:coarse)').matches ? 24000 : 42000;
@@ -650,6 +708,7 @@ O.quadro((t, dt) => {
   const alvoE = corpoAgora || mm.length ? clamp(Math.max(eCorpo, eMao) * 0.85 + Math.min(eCorpo, eMao) * 0.4 + sugaMax * 0.2, 0, 1) : 0;
   energiaMus += (alvoE - energiaMus) * Math.min(1, dt * (alvoE > energiaMus ? 8 : 1.2));
   if (O.M) { O.M.reativo = P.MusMov; O.M.energia(energiaMus); }
+  aplicarFX(dt, mm, asp);
   // caixa do rosto (coordenadas do vídeo), ampliada para pegar testa, cabelo e queixo; a última vista vale se a mão cobrir o rosto
   const ro = rosto.ok ? { cx: (rosto.u0 + rosto.u1) / 2, cy: (rosto.v0 + rosto.v1) / 2 - (rosto.v1 - rosto.v0) * 0.1, hx: (rosto.u1 - rosto.u0) * 0.78, hy: (rosto.v1 - rosto.v0) * 0.9 } : null;
 
@@ -810,6 +869,7 @@ O.quadro((t, dt) => {
   HUD.texto(hx, `${A.db.toFixed(1)} dBFS   ${A.hz ? A.hz.toFixed(1) : '—'} Hz  ${HUD.nota(A.hz)}`, 24, H - 22, ha * 0.7);
   HUD.texto(hx, 'CORPO DE PARTÍCULAS', 24, 34, ha * 0.9);
   if (O.fonte === 'motor') HUD.texto(hx, `MOVIMENTO ${(energiaMus * 100) | 0}% · CORPO ${(eCorpo * 100) | 0}% · MÃOS ${(eMao * 100) | 0}%`, 24, 62, ha * 0.5);
+  if (O.fonte === 'motor') HUD.texto(hx, `FILTRO ${FX.hz >= 1000 ? (FX.hz / 1000).toFixed(1) + ' kHz' : (FX.hz | 0) + ' Hz'} · DRIVE ${(FX.drive * P.FxDrive * 100) | 0}% · DELAY ${(FX.delay * P.FxDelay * 100) | 0}%`, 24, 76, ha * 0.5);
   HUD.texto(hx, camOn ? (seg ? 'RASTREAMENTO ATIVO' : semRastreio ? 'SEM RASTREAMENTO · MOUSE = MÃO' : 'CARREGANDO RASTREAMENTO') : 'SEM CÂMERA · MOUSE = MÃO', 24, 48, ha * 0.5);
 });
 </script>

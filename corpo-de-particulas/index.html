@@ -28,7 +28,8 @@
    v6: as mãos também tocam os efeitos do som — abrir/fechar a mão abre/fecha o filtro, a velocidade das mãos
    satura o drive e o afastamento entre as duas mãos (ou, com uma só, a proximidade da câmera) aumenta o delay.
    v7: pinças mudam a imagem — polegar com o dedo 2 (indicador) gira a matiz, com o 3 (médio) a saturação,
-   com o 4 (anelar) o brilho e com o 5 (mínimo) o rastro; pinçar e subir/descer a mão ajusta, soltar fixa o valor. */
+   com o 4 (anelar) o brilho e com o 5 (mínimo) o rastro; pinçar e subir/descer a mão ajusta, soltar fixa o valor.
+   v7.1: a cor e o brilho das pinças valem para tudo (corpo, mãos e rosto) — a imagem é cortada no branco antes de colorir. */
 const O = ObraBase({
   titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa', toque: false,
   texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. A música nasce do seu movimento: parado, silêncio; mova as mãos para tocar notas (mais alto, mais agudo). Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho e escolher o acorde, e abra para devolver. As mãos também mexem no som: mão fechada abafa o filtro e aberta abre; gestos rápidos saturam o drive; afastar uma mão da outra (ou aproximar a mão da câmera) espalha o delay. Pinças mudam a imagem: junte o polegar a um dedo e suba ou desça a mão — indicador gira a cor, médio muda a saturação, anelar o brilho, mínimo o rastro; solte para fixar (tecla C volta ao original). O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
@@ -413,11 +414,13 @@ float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); 
 void main(){
   vec3 c = texture(uA, vU).rgb, b = texture(uBl, vU).rgb;
   c += b * uGlow * 1.6;
-  c *= uExp;
   if (uHdr > .5) c = 1. - exp(-c * 1.6);
-  // pinças: matiz gira as cores existentes; saturação tinge a luz (branca) com a cor da matiz
+  // pinças: corta antes no branco (o corpo e as mãos, densos, passam de 1 e ficariam brancos, imunes à cor e ao brilho)
+  c = min(c, vec3(1.));
+  // matiz gira as cores existentes; saturação tinge a luz (branca) com a cor da matiz; brilho multiplica tudo
   vec3 tom = hsv(uMatiz + .62); float L = dot(c, vec3(.299,.587,.114));
-  c = mix(giraMatiz(c, uMatiz * 6.2831853), L * tom / max(dot(tom, vec3(.299,.587,.114)), .25) * .9, uSat);
+  c = mix(clamp(giraMatiz(c, uMatiz * 6.2831853), 0., 1.), tom * min(L * 1.15, 1.), uSat);
+  c *= uExp;
   float g = h(floor(vU*uRes) + fract(uT*7.31)*91.7) - .5;
   c *= 1. + g * uGrao * .9;                       // grão nas partículas
   c += g * uGrao * .018 + uGrao * .006;           // grão fino no escuro

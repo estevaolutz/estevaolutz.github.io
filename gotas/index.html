@@ -224,6 +224,7 @@
 </div></div>
 <div id="topo" class="app-ui">
   <button class="ic" id="tSom" type="button" aria-label="Ligar ou desligar o som" hidden>🔊</button>
+  <button class="ic" id="tEspelho" type="button" aria-label="Espelho (mancha de Rorschach)" title="Espelho: mancha de Rorschach (tecla R)">◫</button>
   <button class="ic" id="tChuva" type="button" aria-label="Chuva automática">☂︎</button>
   <button class="ic" id="tFonte" type="button" aria-label="Trocar a entrada">⇄</button>
   <button class="ic" id="tAjustes" type="button" aria-label="Todos os ajustes">⚙︎</button>
@@ -428,6 +429,7 @@ const IPAD = (() => {
           <option value="papel" selected>Papel de aquarela úmido</option>
           <option value="agua">Água (ondas e óleo)</option>
         </select>
+        <button id="mirrorBtn" type="button" class="toggle" style="--c:#e5e7eb" aria-pressed="false" title="Mancha de Rorschach: a folha fica dobrada ao meio e tudo o que cai de um lado aparece espelhado do outro (tecla R)">ESPELHO: OFF</button>
         <div class="knob-wrap" id="paperWetWrap"><span class="knob-title">Umidade</span><div class="knob" data-param="paperWet" data-value="0.55" data-color="#e5e7eb" aria-label="Quanto o papel está molhado: mais molhado, as manchas correm mais longe e se misturam mais"></div><span class="knob-val" id="paperWetVal"></span></div>
       </div>
       <div class="row" style="align-items:center">
@@ -986,6 +988,7 @@ const IPAD = (() => {
     noite: { ground: [3, 5, 10], mode: 'water', ink: 0.018, ring: 0.95, fade: 0.02, grain: 0, inks: null }
   };
   let basePal = PALETTES.aquarela, pal = basePal, surfOverride = null, surfLum = 1;
+  let espelho = false;      // Rorschach: tudo o que cai na direita vai para a esquerda, e a folha mostra a esquerda dobrada sobre a direita
   let superficie = 'papel';   // 'papel' = papel de aquarela úmido · 'agua' = água com ondas e óleo
 
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
@@ -1224,7 +1227,9 @@ const IPAD = (() => {
   function spawnDrop(x, y, size) {
     const v = rollVariation();
     x = clamp(x + v.jx, 0, W); y = clamp(y + v.jy, 0, H);
-    const note = playDrop(x, y, size, v);
+    const xSom = x;   // o som continua seguindo onde a gota caiu de fato
+    if (espelho && x > W / 2) x = W - x;
+    const note = playDrop(xSom, y, size, v);
     const idx = note ? note.idx : clamp(Math.floor((x / W) * 8), 0, 7);
     const rgb = inkColor(idx, y, v.hue);
     const mul = map.radiusMul(params.dropRadius) * v.rad;
@@ -1235,7 +1240,9 @@ const IPAD = (() => {
     if (superficie === 'papel' && PAPEL) {   // papel úmido: a gota molha uma poça irregular e deposita o pigmento, que corre com a água
       const rad = map.radiusMul(params.dropRadius) * v.rad, R = (2 + size * 0.42) * rad * 4.2 * map.stain(params.stainSize) * (0.8 + Math.random() * 0.5);
       const ink = 1.6 * map.stain(params.stainInt) * v.strength;
-      PAPEL.drop(x, y, R, (0.9 + size * 0.02) * v.strength, pigOf(rgb, true).map((a) => a * ink));
+      const pg = pigOf(rgb, true).map((a) => a * ink), wa = (0.9 + size * 0.02) * v.strength;
+      PAPEL.drop(x, y, R, wa, pg);
+      if (espelho) PAPEL.drop(W - x, y, R, wa, pg);   // a outra metade da folha também recebe a gota: a tinta que atravessa a dobra volta espelhada
       return;
     }
     if (AGUA) {   // água simulada: a gota entra como impacto na onda, empurrão na correnteza/óleo e tinta
@@ -1243,6 +1250,7 @@ const IPAD = (() => {
       const ink = (paper ? 0.95 : 0.7) * map.stain(params.stainInt) * v.strength, dyeR = 3.2 * map.stain(params.stainSize) * (0.8 + Math.random() * 0.5);
       const wc = waveOf(rgb, paper);
       AGUA.drop(x, y, R, (0.55 + size * 0.05) * v.strength, pigOf(rgb, paper), ink, dyeR, 0.1 + size * 0.009, 0.85, wc);
+      if (espelho) AGUA.drop(W - x, y, R, (0.55 + size * 0.05) * v.strength, pigOf(rgb, paper), ink, dyeR, 0.1 + size * 0.009, 0.85, wc);
       if (size > 6 && Math.random() < 0.65) {   // gota de retorno (jato de Worthington): cai de novo perto, menor, um instante depois
         const a = Math.random() * 6.283, d = Math.random() * R * 0.8;
         setTimeout(() => AGUA.drop(x + Math.cos(a) * d, y + Math.sin(a) * d, R * 0.45, 0.3 * v.strength, pigOf(rgb, paper), ink * 0.25, dyeR * 0.6, 0.02, 0.4, wc), 160 + Math.random() * 140);
@@ -1443,13 +1451,14 @@ void main(){
   }
   o = c;
 }`,
-      show: HEAD + `uniform sampler2D Wv, F, D, CW; uniform vec3 ground; uniform float paper, oilAmt, oilIri, refr, shade, spec, wcol;
+      show: HEAD + `uniform sampler2D Wv, F, D, CW; uniform vec3 ground; uniform float mir, paper, oilAmt, oilIri, refr, shade, spec, wcol;
 void main(){
-  float hl = texture(Wv, uv - vec2(px.x, 0.)).r, hr = texture(Wv, uv + vec2(px.x, 0.)).r;
-  float hd = texture(Wv, uv - vec2(0., px.y)).r, hu = texture(Wv, uv + vec2(0., px.y)).r;
+  vec2 mu = mir > .5 ? vec2(.5 - abs(uv.x - .5), uv.y) : uv;   // espelho (Rorschach): a metade esquerda dobrada sobre a direita
+  float hl = texture(Wv, mu - vec2(px.x, 0.)).r, hr = texture(Wv, mu + vec2(px.x, 0.)).r;
+  float hd = texture(Wv, mu - vec2(0., px.y)).r, hu = texture(Wv, mu + vec2(0., px.y)).r;
   vec2 g = vec2(hr - hl, hu - hd);
   vec3 n = normalize(vec3(-g * 7., 1.));
-  vec2 ruv = uv + g * refr;
+  vec2 ruv = mu + g * refr;
   vec3 col = ground;
   // óleo: película fina, a cor vem da espessura (interferência) e muda com a inclinação da onda
   float oil = texture(F, ruv).b;
@@ -1470,10 +1479,10 @@ void main(){
   vec3 dy = texture(D, ruv).rgb;
   if (paper > .5) col *= exp(-dy); else col = col + (1. - exp(-dy)) * (1. - col * .6);
   // cor das ondas: inclinação e crista de cada canal da onda colorida (anéis da cor da gota, misturados onde se cruzam)
-  vec3 cl = texture(CW, uv - vec2(px.x, 0.)).rgb, cr = texture(CW, uv + vec2(px.x, 0.)).rgb;
-  vec3 cd = texture(CW, uv - vec2(0., px.y)).rgb, cu = texture(CW, uv + vec2(0., px.y)).rgb;
+  vec3 cl = texture(CW, mu - vec2(px.x, 0.)).rgb, cr = texture(CW, mu + vec2(px.x, 0.)).rgb;
+  vec3 cd = texture(CW, mu - vec2(0., px.y)).rgb, cu = texture(CW, mu + vec2(0., px.y)).rgb;
   vec3 gx = cr - cl, gy = cu - cd;
-  vec3 ring = sqrt(gx * gx + gy * gy) * 5. + abs(texture(CW, uv).rgb) * .45;
+  vec3 ring = sqrt(gx * gx + gy * gy) * 5. + abs(texture(CW, mu).rgb) * .45;
   if (paper > .5) col *= exp(-ring * wcol * 1.15);
   else col = col + (1. - exp(-ring * wcol * 2.2)) * (1. - col * .5);
   // luz nas ondas
@@ -1556,7 +1565,7 @@ void main(){
       if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
       const U = use('show'); bindT(U, 'Wv', 0, WV.r.t); bindT(U, 'F', 1, FL.r.t); bindT(U, 'D', 2, DY.r.t); bindT(U, 'CW', 3, CA.r.t); if (U.wcol) gl.uniform1f(U.wcol, opt.wcol == null ? 1 : opt.wcol);
       gl.uniform3f(U.ground, opt.ground[0] / 255, opt.ground[1] / 255, opt.ground[2] / 255); gl.uniform1f(U.paper, opt.paper ? 1 : 0);
-      gl.uniform1f(U.oilAmt, opt.oilAmt); gl.uniform1f(U.oilIri, opt.oilIri); gl.uniform1f(U.refr, opt.refr); gl.uniform1f(U.shade, opt.shade); gl.uniform1f(U.spec, opt.spec);
+      if (U.mir) gl.uniform1f(U.mir, espelho ? 1 : 0); gl.uniform1f(U.oilAmt, opt.oilAmt); gl.uniform1f(U.oilIri, opt.oilIri); gl.uniform1f(U.refr, opt.refr); gl.uniform1f(U.shade, opt.shade); gl.uniform1f(U.spec, opt.spec);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       return glc;
     }
@@ -1677,11 +1686,12 @@ void main(){
   }
   o = c;
 }`,
-      show: HEAD + `uniform sampler2D S, D, Wt, Fb; uniform vec3 ground; uniform float dens, gran, base;
+      show: HEAD + `uniform sampler2D S, D, Wt, Fb; uniform vec3 ground; uniform float mir, dens, gran, base;
 void main(){
-  vec4 fb = texture(Fb, uv);
-  float w = texture(Wt, uv).r;
-  vec3 s = texture(S, uv).rgb, d = texture(D, uv).rgb;
+  vec2 mu = mir > .5 ? vec2(.5 - abs(uv.x - .5), uv.y) : uv;
+  vec4 fb = texture(Fb, mu);
+  float w = texture(Wt, mu).r;
+  vec3 s = texture(S, mu).rgb, d = texture(D, mu).rgb;
   // granulação: o pigmento assentado pesa mais nos vales do grão do papel
   vec3 A = d * mix(1., .45 + 1.25 * fb.g, gran) + s * .8;
   vec3 paper = ground * (1. - .07 * (fb.g - .5) - .035 * (fb.r - .7));
@@ -1689,10 +1699,12 @@ void main(){
   // papel molhado: um pouco mais escuro e com brilho leve onde a água ainda está por cima
   float wet = smoothstep(base + .05, base + .7, w);
   col *= 1. - .07 * wet;
-  float wl = texture(Wt, uv - vec2(px.x, 0.)).r, wr = texture(Wt, uv + vec2(px.x, 0.)).r;
-  float wd = texture(Wt, uv - vec2(0., px.y)).r, wu = texture(Wt, uv + vec2(0., px.y)).r;
+  float wl = texture(Wt, mu - vec2(px.x, 0.)).r, wr = texture(Wt, mu + vec2(px.x, 0.)).r;
+  float wd = texture(Wt, mu - vec2(0., px.y)).r, wu = texture(Wt, mu + vec2(0., px.y)).r;
   vec3 n = normalize(vec3(-(wr - wl) * 6., -(wu - wd) * 6., 1.));
   col += pow(max(dot(n, normalize(vec3(-.3, .4, 1.))), 0.), 160.) * .12 * wet;
+  // vinco da dobra no meio da folha
+  col *= 1. - mir * (.05 * exp(-pow((uv.x - .5) * asp * 260., 2.)) - .025 * exp(-pow((uv.x - .5) * asp * 260. - 1.6, 2.)));
   o = vec4(clamp(col, 0., 1.), 1.);
 }`
     };
@@ -1772,7 +1784,7 @@ void main(){
       if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
       const U = use('show'); bindT(U, 'S', 0, SP.r.t); bindT(U, 'D', 1, DP.r.t); bindT(U, 'Wt', 2, WT.r.t); bindT(U, 'Fb', 3, FB.t);
       gl.uniform3f(U.ground, opt.ground[0] / 255, opt.ground[1] / 255, opt.ground[2] / 255);
-      gl.uniform1f(U.dens, opt.dens); gl.uniform1f(U.gran, opt.gran); gl.uniform1f(U.base, opt.base);
+      if (U.mir) gl.uniform1f(U.mir, espelho ? 1 : 0); gl.uniform1f(U.dens, opt.dens); gl.uniform1f(U.gran, opt.gran); gl.uniform1f(U.base, opt.base);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       return glc;
     }
@@ -1964,6 +1976,16 @@ void main(){
     document.getElementById('paperWetWrap').hidden = !papel;
     if (PAPEL) PAPEL.lavar(); if (AGUA) AGUA.lavar();
   }
+  const mirrorBtn = document.getElementById('mirrorBtn');
+  mirrorBtn.addEventListener('click', () => {
+    espelho = !espelho;
+    mirrorBtn.classList.toggle('active', espelho); mirrorBtn.setAttribute('aria-pressed', espelho);
+    mirrorBtn.textContent = espelho ? 'ESPELHO: ON' : 'ESPELHO: OFF';
+    const ic = document.getElementById('tEspelho'); if (ic) ic.classList.toggle('on', espelho);
+    if (PAPEL) PAPEL.lavar(); if (AGUA) AGUA.lavar();   // folha nova ao dobrar e ao desdobrar
+  });
+  document.getElementById('tEspelho').addEventListener('click', () => mirrorBtn.click());
+  addEventListener('keydown', (e) => { if ((e.key === 'r' || e.key === 'R') && !e.metaKey && !e.ctrlKey && !/INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ''))) mirrorBtn.click(); });
   document.getElementById('surfMode').addEventListener('change', (e) => setSuperficie(e.target.value));
   setSuperficie(document.getElementById('surfMode').value);
   document.getElementById('rainDensity').addEventListener('change', (e) => {
@@ -2479,7 +2501,7 @@ void main(){
   const ESTADO_EMBUTIDO = null;
   const STATE_KEY = 'gotas_estado_v1';
   const SEL_IDS = ['surfMode', 'delayStyle', 'delaySync', 'paletteSelect', 'scaleSelect', 'timbreSelect', 'rainDensity', 'harmonySelect', 'inMapX', 'inMapY', 'hMode', 'jMode', 'jImg'];
-  const TOG_IDS = ['toggleDelay', 'toggleReverb', 'toggleDrive', 'toggleBitCrush', 'rainBtn', 'inkMonoBtn', 'hMirror'];
+  const TOG_IDS = ['toggleDelay', 'toggleReverb', 'toggleDrive', 'toggleBitCrush', 'rainBtn', 'inkMonoBtn', 'hMirror', 'mirrorBtn'];
   const byId = (id) => document.getElementById(id);
   const hex2 = (a) => '#' + a.map((v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');
   function collectState() {

@@ -21,10 +21,13 @@
    e os ataques desprendem pedaços que voam em direção a quem olha. Sem ninguém na frente, as partículas flutuam soltas em 3D.
    v4: as mãos ganham partículas próprias (esqueleto e palma da mão rastreada, com profundidade); fechar a mão suga todas
    as partículas do rosto para dentro do punho, num redemoinho, e abrir devolve; rastreamento mais rápido (mãos e corpo
-   a cada quadro novo da câmera, menos atraso na suavização e partículas mais ágeis). */
+   a cada quadro novo da câmera, menos atraso na suavização e partículas mais ágeis).
+   v5: a música nasce do movimento — o Motor Knick em modo reativo não toca sozinho: a energia vem do movimento do corpo
+   e da velocidade das mãos (parado, silêncio); mover a mão toca notas (altura da mão = nota, lado = estéreo, velocidade =
+   força) e os arpejos repetem essas notas no ritmo em que caíram; fechar a mão escolhe o acorde pela altura do punho. */
 const O = ObraBase({
   titulo: 'Corpo de Partículas', chave: 'corpo-de-particulas', cena: 'nevoa', toque: false,
-  texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho, e abra para devolver. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
+  texto: 'Fique diante da câmera: seu corpo e suas mãos viram partículas de luz, com volume, relevo e sombra. A música nasce do seu movimento: parado, silêncio; mova as mãos para tocar notas (mais alto, mais agudo). Abra a mão para espalhar; feche a mão para sugar o rosto para dentro do punho e escolher o acorde, e abra para devolver. O som faz o corpo respirar e se desfazer. Sem ninguém na frente, as partículas flutuam soltas. A câmera nunca aparece na imagem.',
   controles: [
     ['Corpo'],
     ['Sensib', 'Sensibilidade', 1, 0.2, 3, 0.05],
@@ -60,6 +63,11 @@ const O = ObraBase({
     ['MaoEsp', 'Espessura dos dedos', 1, 0.3, 2.5, 0.01],
     ['Suga', 'Mão fechada suga o rosto', 1, 0, 1, 0.01],
     ['SugaVel', 'Velocidade da sucção', 1, 0.2, 3, 0.01],
+    ['Música do movimento'],
+    ['MusMov', 'Música só com movimento', 1, 0, 1, 0.01],
+    ['MusSens', 'Sensibilidade ao movimento', 1, 0.2, 3, 0.01],
+    ['MusNotas', 'Notas pelas mãos', 1, 0, 2, 0.01],
+    ['MusAcorde', 'Mão fechada escolhe o acorde', 1, 0, 1, 1],
     ['Dados'],
     ['Hud', 'Dados na tela', 0.75, 0, 1, 0.01],
     ['Acento', 'Acento azul', 0.8, 0, 1, 0.01],
@@ -201,6 +209,7 @@ const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15';
 const SEG = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
 const MAO = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const ROSTO = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+let movCorpoBruto = 0, movCorpo = 0, energiaMus = 0;
 let seg = null, det = null, face = null, tsAnt = -1, alterna = 0, semRastreio = false, quadroNovo = true, temRVFC = false, ultVid = -1;
 async function iniciarCamera() {
   try {
@@ -226,12 +235,14 @@ addEventListener('camera-trocada', () => { if (video.srcObject) video.play().cat
 function segmentar(ts) {
   seg.segmentForVideo(video, ts, (r) => {
     const cm = r && r.confidenceMasks && r.confidenceMasks[0]; if (!cm) return;
-    const f = cm.getAsFloat32Array(), w = cm.width, h = cm.height, kM = 0.5 + 0.45 * O.P.Agil; let soma = 0;
+    const f = cm.getAsFloat32Array(), w = cm.width, h = cm.height, kM = 0.5 + 0.45 * O.P.Agil; let soma = 0, dif = 0;
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
       const v = f[Math.floor(y / MH * h) * w + Math.floor(x / MW * w)], i = y * MW + x;
-      mascara[i] += (v - mascara[i]) * kM; soma += mascara[i];
+      const dm = (v - mascara[i]) * kM; dif += Math.abs(dm);
+      mascara[i] += dm; soma += mascara[i];
     }
     temPessoa = soma / NG;
+    movCorpoBruto = soma > 50 ? dif / soma : 0;   // quanto da silhueta mudou neste quadro
     if (temPessoa > 0.02) { ultPessoa = performance.now() / 1000; analisarGrades(ultPessoa); }
   });
 }
@@ -261,6 +272,9 @@ function rastrearMaos(ts) {
     const q = m.pts, asp = O.W / O.H, d = (a, b) => Math.hypot((q[a][0] - q[b][0]) * asp, q[a][1] - q[b][1]);
     const palma = Math.max(1e-3, d(0, 9)), pontas = PONTAS.slice(1).reduce((s, t) => s + d(t, 0), 0) / 4 / palma;
     m.palma = palma;
+    const agora = performance.now() / 1000;
+    if (m.tv) { const dtv = Math.max(0.008, agora - m.tv), v = Math.hypot((q[9][0] - m.vx0) * asp, q[9][1] - m.vy0) / dtv; m.vel = (m.vel || 0) + (v - (m.vel || 0)) * 0.5; }
+    m.tv = agora; m.vx0 = q[9][0]; m.vy0 = q[9][1];
     m.ab += (clamp((pontas - 1.05) / 0.85, 0, 1) - m.ab) * (0.4 + 0.4 * O.P.Agil);
     m.cx = q[9][0]; m.cy = q[9][1];
   }
@@ -269,9 +283,14 @@ function rastrearMaos(ts) {
 // mouse/dedo como mão quando não há rastreamento: mover = mão aberta, apertar = mão fechada
 const mouse = { x: 0.5, y: 0.5, ab: 0, ativo: 0, abAnt: 0, palma: 0.07 };
 // duas "vagas" de mão que guardam posição e sucção, para o rosto voltar suave quando a mão some
+const ACORDES = [0, 5, 3, 6, 4, 2];   // de baixo para cima: altura do punho fechado → grau do acorde
 const VAGA = [0, 1].map(() => ({ ref: null, x: 0.5, y: 0.5, ab: 1, on: 0, vis: 0, suga: 0, fecha: 0, palma: 0.1 }));
 const sst = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }, fr = (x) => x - Math.floor(x);
-addEventListener('pointermove', (e) => { mouse.x = e.clientX / O.W; mouse.y = e.clientY / O.H; mouse.ativo = 1.5; if (mouse.ab < 0.5) mouse.ab = 1; });
+addEventListener('pointermove', (e) => {
+  const nx = e.clientX / O.W, ny = e.clientY / O.H, agora = performance.now() / 1000, dtv = Math.max(0.008, agora - (mouse.tv || agora - 0.016));
+  mouse.vel = (mouse.vel || 0) * 0.5 + 0.5 * Math.hypot((nx - mouse.x) * O.W / O.H, ny - mouse.y) / dtv; mouse.tv = agora;
+  mouse.x = nx; mouse.y = ny; mouse.ativo = 1.5; if (mouse.ab < 0.5) mouse.ab = 1;
+});
 addEventListener('pointerdown', (e) => { if (e.target.closest('#ob-panel,#ob-dot,#ob-start')) return; mouse.ab = 0; mouse.ativo = 3; });
 addEventListener('pointerup', () => { mouse.ab = 1; });
 
@@ -584,7 +603,7 @@ O.quadro((t, dt) => {
 
   // forças das mãos (uma mão perdida por poucos quadros continua valendo, sem piscar)
   const mm = MAOS.filter((m) => m.perdida <= 3).map((m) => ({ x: m.cx, y: m.cy, ab: m.ab, ref: m }));
-  mouse.ativo = Math.max(0, mouse.ativo - dt);
+  mouse.ativo = Math.max(0, mouse.ativo - dt); mouse.vel = (mouse.vel || 0) * Math.exp(-dt * 6);
   if (!mm.length && mouse.ativo > 0) mm.push({ x: mouse.x, y: mouse.y, ab: mouse.ab, ref: mouse });
   for (const m of mm) {
     const r = m.ref;
@@ -597,7 +616,11 @@ O.quadro((t, dt) => {
   for (const m of mm) if (!VAGA.some((v) => v.ref === m.ref)) { const v = VAGA.find((q) => !q.ref); if (v) { v.ref = m.ref; v.fecha = 0; } }
   for (const v of VAGA) {
     const m = mm.find((q) => q.ref === v.ref);
-    if (m) { v.x = m.x; v.y = m.y; v.ab = m.ab; v.on = 1; v.palma = m.ref.palma || 0.08; if (m.ab < 0.35) v.fecha = 1; else if (m.ab > 0.55) v.fecha = 0; }
+    if (m) {
+      v.x = m.x; v.y = m.y; v.ab = m.ab; v.on = 1; v.palma = m.ref.palma || 0.08;
+      if (m.ab < 0.35) { if (!v.fecha && P.MusAcorde && O.fonte === 'motor' && O.M.rodando) O.M.acorde(ACORDES[clamp(Math.floor((1 - m.y) * ACORDES.length), 0, ACORDES.length - 1)]); v.fecha = 1; }
+      else if (m.ab > 0.55) v.fecha = 0;
+    }
     else { v.on = 0; v.fecha = 0; }
     const alvoS = v.fecha, taxa = (alvoS > v.suga ? 1.3 : 2.4) * P.SugaVel;
     v.suga += (alvoS - v.suga) * (1 - Math.exp(-dt * taxa));
@@ -605,6 +628,28 @@ O.quadro((t, dt) => {
   }
   const SG = VAGA.map((v) => ({ x: v.x, y: v.y, g: v.suga * P.Suga, r: Math.max(0.03, v.palma * 0.6) }));
   const sugaMax = Math.max(SG[0].g, SG[1].g);
+  // ---- música do movimento: energia (corpo + mãos) e notas tocadas pelo caminho das mãos ----
+  const corpoAgora = temCorpo(), ms = P.MusSens;
+  movCorpo += ((corpoAgora ? movCorpoBruto : 0) - movCorpo) * Math.min(1, dt * 10);
+  let velMao = 0;
+  for (const m of mm) {
+    const r = m.ref, vel = r === mouse ? (r.vel || 0) : (r.vista ? r.vel || 0 : 0);
+    velMao = Math.max(velMao, vel);
+    if (r.ux == null) { r.ux = m.x; r.uy = m.y; r.cam = 0; r.tn = 0; }
+    r.cam += Math.hypot((m.x - r.ux) * asp, m.y - r.uy); r.ux = m.x; r.uy = m.y;
+    const passoN = 0.09 / Math.max(0.05, P.MusNotas * ms);
+    if (P.MusNotas > 0 && r.cam > passoN && t - r.tn > 0.07) {
+      r.cam = 0; r.tn = t;
+      if (O.fonte === 'motor' && O.M.rodando && vel > 0.06) {
+        const forca = clamp(0.3 + vel * 0.5 * ms, 0.3, 1);
+        O.M.evento(Math.round((1 - m.y) * 14) - 3, { forca, pan: clamp(m.x * 2 - 1, -1, 1) });
+      }
+    }
+  }
+  const eCorpo = clamp((movCorpo - 0.006) / 0.07 * ms, 0, 1), eMao = clamp((velMao - 0.06) / 0.9 * ms, 0, 1);
+  const alvoE = corpoAgora || mm.length ? clamp(Math.max(eCorpo, eMao) * 0.85 + Math.min(eCorpo, eMao) * 0.4 + sugaMax * 0.2, 0, 1) : 0;
+  energiaMus += (alvoE - energiaMus) * Math.min(1, dt * (alvoE > energiaMus ? 8 : 1.2));
+  if (O.M) { O.M.reativo = P.MusMov; O.M.energia(energiaMus); }
   // caixa do rosto (coordenadas do vídeo), ampliada para pegar testa, cabelo e queixo; a última vista vale se a mão cobrir o rosto
   const ro = rosto.ok ? { cx: (rosto.u0 + rosto.u1) / 2, cy: (rosto.v0 + rosto.v1) / 2 - (rosto.v1 - rosto.v0) * 0.1, hx: (rosto.u1 - rosto.u0) * 0.78, hy: (rosto.v1 - rosto.v0) * 0.9 } : null;
 
@@ -764,6 +809,7 @@ O.quadro((t, dt) => {
   HUD.faixa(hx, A, 24, H - 80, fw, 40, ha * 0.8);
   HUD.texto(hx, `${A.db.toFixed(1)} dBFS   ${A.hz ? A.hz.toFixed(1) : '—'} Hz  ${HUD.nota(A.hz)}`, 24, H - 22, ha * 0.7);
   HUD.texto(hx, 'CORPO DE PARTÍCULAS', 24, 34, ha * 0.9);
+  if (O.fonte === 'motor') HUD.texto(hx, `MOVIMENTO ${(energiaMus * 100) | 0}% · CORPO ${(eCorpo * 100) | 0}% · MÃOS ${(eMao * 100) | 0}%`, 24, 62, ha * 0.5);
   HUD.texto(hx, camOn ? (seg ? 'RASTREAMENTO ATIVO' : semRastreio ? 'SEM RASTREAMENTO · MOUSE = MÃO' : 'CARREGANDO RASTREAMENTO') : 'SEM CÂMERA · MOUSE = MÃO', 24, 48, ha * 0.5);
 });
 </script>

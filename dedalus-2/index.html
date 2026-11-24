@@ -68,7 +68,7 @@ video{display:none}
     <span class="grp"><b style="color:#fb7185">BAIXO PROPHET</b>
       <label>Timbre <select id="bxTimbre"><option value="0">1 · Serra clássica</option><option value="1">2 · Pulso redondo</option><option value="2">3 · Sync (poly-mod)</option></select></label>
       <label>Volume <input id="bxVol" type="range" min="0" max="1" step=".01" value=".8"></label>
-      <label title="Corte do filtro com a mão direita toda ABERTA (fechada = 4 oitavas abaixo)">Cutoff <input id="bxCut" type="range" min="200" max="12000" step="10" value="3200"></label>
+      <label title="Corte do filtro com a mão direita toda para a DIREITA (perto do corpo = 4 oitavas abaixo)">Cutoff <input id="bxCut" type="range" min="200" max="12000" step="10" value="3200"></label>
       <label>Resson. <input id="bxRes" type="range" min="0" max="1" step=".01" value=".25"></label>
       <label title="Quanto o envelope do filtro abre o corte (em oitavas)">Env→filtro <input id="bxEnv" type="range" min="0" max="5" step=".05" value="2.5"></label>
     </span>
@@ -466,7 +466,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['eco', 'glide', 'dobro', 'rajada'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ_EFEITO = { 1: ['eco', 'glide', 'dobro', 'wah'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -554,7 +554,7 @@ function chordName(d) {
 /* ================= MOTOR DE SOM — BAIXO PROPHET (mão direita) =================
    Voz no estilo Prophet-5: osc A (serra ↔ pulso estreito, pela mão "para fora") + osc B (levemente desafinado) + sub-oscilador,
    filtro passa-baixa de 4 polos (2 biquads em série) com ressonância, envelope de FILTRO e de AMPLITUDE (ADSR).
-   Mão direita: altura = acorde · fora = forma de onda do osc A · perto = volume · abrir/fechar = corte do filtro (ao vivo,
+   Mão direita: altura = acorde · para a direita = corte do filtro · perto = volume · abrir/fechar = forma de onda do osc A (ao vivo,
    inclusive nas notas que estão soando) · pinças = cor do acorde (7ª, sus4, 9ª, maior↔menor). Mão fora da tela = silêncio. */
 const TIMBRES = [
   { n: 'Serra clássica',  a: 'saw',   b: 'saw',    bDet: 7,  bOct: 0,  bMix: .7, sub: .45, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3], cut: 3200, sync: 0 },
@@ -562,7 +562,7 @@ const TIMBRES = [
   { n: 'Sync (poly-mod)', a: 'saw',   b: 'square', bDet: 0,  bOct: -1, bMix: .45, sub: .25, res: .45, env: 3.2, amp: [.003, .25, .6, .2], flt: [.003, .22, .2, .25], cut: 2400, sync: 1 }
 ];
 const BX = { timbre: 0, vol: .8, cut: 3200, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3] };
-let ac = null, bxDly = null, bxDlySend = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
+let ac = null, bxLfo = null, bxLfoG = null, bxDly = null, bxDlySend = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
 const pulseCache = {};
 function pulseWave(w) {   // onda de pulso com largura w (0,5 = quadrada) por série de Fourier
   const k = Math.round(w * 100); if (pulseCache[k]) return pulseCache[k];
@@ -583,7 +583,9 @@ function initSom() {
   fb.gain.value = .5; lp.type = 'lowpass'; lp.frequency.value = 2200; hp.type = 'highpass'; hp.frequency.value = 90; ret.gain.value = .85;
   bxOut.connect(bxDlySend); bxDlySend.connect(bxDly); bxDly.connect(lp); lp.connect(hp); hp.connect(fb); fb.connect(bxDly); hp.connect(ret); ret.connect(lim);
   const cs = v => { const c = ac.createConstantSource(); c.offset.value = v; c.start(); return c; };
-  bxCutCS = cs(0);        // corte ao vivo pela abertura da mão (em cents, somado ao detune do filtro de cada voz)
+  bxCutCS = cs(0);        // corte ao vivo pela mão para a direita (em cents, somado ao detune do filtro de cada voz)
+  // wah rítmico (pinça do mínimo): LFO triangular em colcheias, somado ao corte do filtro
+  bxLfo = ac.createOscillator(); bxLfo.type = 'triangle'; bxLfoG = ac.createGain(); bxLfoG.gain.value = 0; bxLfo.connect(bxLfoG); bxLfoG.connect(bxCutCS.offset); bxLfo.start();
   bxForaCS = cs(0); bxForaInv = cs(1);   // mistura serra/pulso do osc A pela mão "para fora"
 }
 function aplicaTimbre(i, mexeControles = true) {
@@ -641,10 +643,8 @@ function acordeDaMao() {
    indicador = ECO rítmico (delay em colcheia pontuada; as repetições continuam soando depois de soltar)
    médio     = GLIDE (portamento: cada nota desliza da anterior, notas ligadas)
    anelar    = DOBRO da velocidade do arpejo
-   mínimo    = RAJADA: figura rápida em fusas sobre o acorde (R 3 5 8 5 3 …) */
-const PZ_BX = { ECO: 0, GLIDE: 1, DOBRO: 2, RAJADA: 3 };
-const RAJADA = [0, 1, 2, 4, 2, 1];   // degraus da escada do acorde: tônica, 3ª, 5ª, oitava, 5ª, 3ª
-let rajIdx = 0;
+   mínimo    = WAH rítmico: o filtro abre e fecha sozinho em colcheias, sincronizado ao BPM */
+const PZ_BX = { ECO: 0, GLIDE: 1, DOBRO: 2, WAH: 3 };
 let arpIdx = 0;
 function arpNext() {
   const per = MUS.sev ? [0, 1, 2, 3] : [0, 1, 2], L = [];
@@ -670,11 +670,6 @@ function tocaPasso(st, t, s16) {
   const m1 = CTRL.maos[1], pos = st % 16, P = m1.pinca;
   if (!m1.ativa) { arpIdx = 0; ultMidi = null; return; }
   { const novo = acordeDaMao(); if (novo !== curDeg) { arpIdx = 0; curDeg = novo; } }
-  if (P === PZ_BX.RAJADA) {   // rajada: duas notas por semicolcheia (fusas), em figura de vaivém sobre o acorde
-    for (let h = 0; h < 2; h++) { const m = degMidi(ladderDeg(curDeg, RAJADA[rajIdx++ % RAJADA.length]), 33); notaBaixo(t + h * s16 / 2, m, s16 / 2 * .7, h ? .7 : .85); ultMidi = m; }
-    eventos.push({ t, g: 1 }); return;
-  }
-  rajIdx = 0;
   const rate = P === PZ_BX.DOBRO ? Math.max(1, MUS.rate / 2) : MUS.rate;
   if (pos % rate) return;
   const m = degMidi(ladderDeg(curDeg, arpNext()), 33);
@@ -687,8 +682,10 @@ function somAoVivo() {
   if (!ac) return;
   const m1 = CTRL.maos[1], c = ac.currentTime;
   bxOut.gain.setTargetAtTime(somOn && m1.ativa ? BX.vol * (.08 + .92 * m1.perto) : 0, c, m1.ativa ? .05 : .02);
-  bxCutCS.offset.setTargetAtTime(-4800 * (1 - m1.aberta), c, .04);   // fechada = 4 oitavas abaixo do Cutoff
-  bxForaCS.offset.setTargetAtTime(m1.fora, c, .04); bxForaInv.offset.setTargetAtTime(1 - m1.fora, c, .04);
+  bxCutCS.offset.setTargetAtTime(-4800 * (1 - m1.fora), c, .04);   // mão para a DIREITA abre o filtro (dentro = 4 oitavas abaixo do Cutoff)
+  bxForaCS.offset.setTargetAtTime(m1.aberta, c, .04); bxForaInv.offset.setTargetAtTime(1 - m1.aberta, c, .04);   // abrir a mão: serra → pulso estreito
+  const wah = m1.ativa && m1.pinca === PZ_BX.WAH;
+  bxLfo.frequency.setTargetAtTime(MUS.bpm / 60 * 2, c, .05); bxLfoG.gain.setTargetAtTime(wah ? 1500 : 0, c, .06);
   bxDly.delayTime.setTargetAtTime(60 / MUS.bpm * .75, c, .05);   // colcheia pontuada
   bxDlySend.gain.setTargetAtTime(m1.ativa && m1.pinca === PZ_BX.ECO ? .6 : 0, c, .06);
 }
@@ -790,7 +787,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v5 (baixo Prophet)  ·  subir = nota/acorde · para fora = onda · perto = volume · abrir/fechar = filtro  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v6 (baixo Prophet)  ·  mão direita: subir = acorde · para a direita = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();

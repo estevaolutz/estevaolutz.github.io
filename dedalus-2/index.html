@@ -67,6 +67,7 @@ video{display:none}
     <button id="bSom" title="Liga/desliga o som (tecla S)">Ligar som</button>
     <span class="grp"><b style="color:#fb7185">BAIXO PROPHET</b>
       <label>Timbre <select id="bxTimbre"><option value="0">1 · Serra clássica</option><option value="1">2 · Pulso redondo</option><option value="2">3 · Sync (poly-mod)</option></select></label>
+      <label title="Registro do baixo">Oitava <select id="bxOit"><option value="-2">−2</option><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option><option value="2">+2</option></select></label>
       <label>Volume <input id="bxVol" type="range" min="0" max="1" step=".01" value=".8"></label>
       <label title="Corte do filtro com a mão direita toda para a DIREITA (perto do corpo = 4 oitavas abaixo)">Cutoff <input id="bxCut" type="range" min="200" max="12000" step="10" value="3200"></label>
       <label>Resson. <input id="bxRes" type="range" min="0" max="1" step=".01" value=".25"></label>
@@ -466,7 +467,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['eco', 'glide', 'dobro', 'wah'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ_EFEITO = { 1: ['oitava ↑', 'glide', 'dobro', 'wah'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -538,7 +539,7 @@ const SCALES = {
   mixolydian: [0,2,4,5,7,9,10], phrygian: [0,1,3,5,7,8,10], pentMinor: [0,3,5,7,10], harmonicMinor: [0,2,3,5,7,8,11]
 };
 const NOTES = ['Dó','Dó#','Ré','Ré#','Mi','Fá','Fá#','Sol','Sol#','Lá','Lá#','Si'];
-const MUS = { root: 2, scale: 'dorian', bpm: 90, pat: 'up', rate: 2, oct: 2, gate: .8, sev: 1 };
+const MUS = { root: 2, scale: 'dorian', bpm: 90, pat: 'up', rate: 2, oct: 2, gate: .8, sev: 1, bxOit: 0 };
 const sc = () => SCALES[MUS.scale];
 const mtof = m => 440 * 2 ** ((m - 69) / 12);
 const chordOffs = () => (sc().length === 7 ? [0, 2, 4, 6] : [0, 1, 2, 3]);
@@ -640,11 +641,12 @@ function acordeDaMao() {
   return chordSel;
 }
 /* PINÇAS DA MÃO DIREITA (valem enquanto segura):
-   indicador = ECO rítmico (delay em colcheia pontuada; as repetições continuam soando depois de soltar)
+   indicador = OITAVA ACIMA (o arpejo sobe uma oitava enquanto segura)
    médio     = GLIDE (portamento: cada nota desliza da anterior, notas ligadas)
    anelar    = DOBRO da velocidade do arpejo
    mínimo    = WAH rítmico: o filtro abre e fecha sozinho em colcheias, sincronizado ao BPM */
-const PZ_BX = { ECO: 0, GLIDE: 1, DOBRO: 2, WAH: 3 };
+const PZ_BX = { OITAVA: 0, GLIDE: 1, DOBRO: 2, WAH: 3 };
+const baseBaixo = P => 33 + 12 * (MUS.bxOit + (P === PZ_BX.OITAVA ? 1 : 0));
 let arpIdx = 0;
 function arpNext() {
   const per = MUS.sev ? [0, 1, 2, 3] : [0, 1, 2], L = [];
@@ -672,7 +674,7 @@ function tocaPasso(st, t, s16) {
   { const novo = acordeDaMao(); if (novo !== curDeg) { arpIdx = 0; curDeg = novo; } }
   const rate = P === PZ_BX.DOBRO ? Math.max(1, MUS.rate / 2) : MUS.rate;
   if (pos % rate) return;
-  const m = degMidi(ladderDeg(curDeg, arpNext()), 33);
+  const m = degMidi(ladderDeg(curDeg, arpNext()), baseBaixo(P));
   const glide = P === PZ_BX.GLIDE;
   notaBaixo(t, m, s16 * rate * (glide ? Math.max(1.05, MUS.gate) : MUS.gate), pos % 4 === 0 ? 1 : .85, glide && ultMidi !== null ? ultMidi : null);
   ultMidi = m; eventos.push({ t, g: 1 });
@@ -687,7 +689,6 @@ function somAoVivo() {
   const wah = m1.ativa && m1.pinca === PZ_BX.WAH;
   bxLfo.frequency.setTargetAtTime(MUS.bpm / 60 * 2, c, .05); bxLfoG.gain.setTargetAtTime(wah ? 1500 : 0, c, .06);
   bxDly.delayTime.setTargetAtTime(60 / MUS.bpm * .75, c, .05);   // colcheia pontuada
-  bxDlySend.gain.setTargetAtTime(m1.ativa && m1.pinca === PZ_BX.ECO ? .6 : 0, c, .06);
 }
 
 /* ================= IMAGEM: câmera, mãos, pinças, leituras ================= */
@@ -787,7 +788,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v6 (baixo Prophet)  ·  mão direita: subir = acorde · para a direita = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v7 (baixo Prophet)  ·  mão direita: subir = acorde · para a direita = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();
@@ -847,7 +848,7 @@ function syncPainelBaixo() { Object.entries(BX_IDS).forEach(([id, [k, i]]) => { 
 Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).oninput = e => { const v = +e.target.value; if (i === undefined) BX[k] = v; else BX[k][i] = v; salvaSom(); }; });
 $('bxTimbre').onchange = e => aplicaTimbre(+e.target.value);
 $('sRoot').innerHTML = NOTES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
-const MUS_IDS = { sRoot: 'root', sScale: 'scale', sBpm: 'bpm', arpPat: 'pat', arpRate: 'rate', arpOct: 'oct', arpGate: 'gate' };
+const MUS_IDS = { bxOit: 'bxOit', sRoot: 'root', sScale: 'scale', sBpm: 'bpm', arpPat: 'pat', arpRate: 'rate', arpOct: 'oct', arpGate: 'gate' };
 $('arpSev').onchange = e => { MUS.sev = e.target.checked ? 1 : 0; salvaSom(); };
 Object.entries(MUS_IDS).forEach(([id, k]) => { const el = $(id); el.oninput = el.onchange = () => { MUS[k] = (k === 'scale' || k === 'pat') ? el.value : +el.value; if (k === 'bpm') $('vBpm').textContent = MUS.bpm; salvaSom(); }; });
 function salvaSom() { try { localStorage.setItem('dedalus2_som', JSON.stringify({ BX, MUS })); } catch (e) {} }

@@ -257,7 +257,7 @@ function r3Init(){
   r.setClearColor(0x000000,0);r.autoClear=false;
   r.setPixelRatio(r3PR());r.setSize(VW,VH);
   r.shadowMap.enabled=true;r.shadowMap.autoUpdate=false;r.shadowMap.type=settings.gfx==='leve'?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
-  r.outputEncoding=THREE.sRGBEncoding;r.toneMapping=THREE.ACESFilmicToneMapping;r.toneMappingExposure=1.1;
+  r.outputEncoding=THREE.sRGBEncoding;r.toneMapping=THREE.ACESFilmicToneMapping;r.toneMappingExposure=1.0;
   R3.r=r;R3.cam=new THREE.OrthographicCamera(-5,5,5,-5,0.1,400);
   R3.glow=glowTex();
   const T={};
@@ -267,8 +267,11 @@ function r3Init(){
   T.cone=new THREE.ConeGeometry(1,1,6,1);T.cone.translate(0,0.5,0);
   T.ball=new THREE.SphereGeometry(1,14,10);
   T.trunk=new THREE.CylinderGeometry(0.6,1,1,6);T.trunk.translate(0,0.5,0);
-  R3.T=T;R3.vegMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.9,flatShading:true});
+  R3.T=T;R3.vegMat=addCutout(new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.9,flatShading:true}));
 }
+R3.cutU={uCut:{value:new THREE.Vector3(-9999,-9999,1)},uCutZ:{value:0}};
+function addCutout(mat){mat.onBeforeCompile=sh=>{sh.uniforms.uCut=R3.cutU.uCut;sh.uniforms.uCutZ=R3.cutU.uCutZ;
+  sh.fragmentShader='uniform vec3 uCut;\nuniform float uCutZ;\n'+sh.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{float cd=distance(gl_FragCoord.xy,uCut.xy)/uCut.z;if(cd<1.0&&gl_FragCoord.z<uCutZ){float n=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));if(cd<0.6||n>(cd-0.6)/0.4)discard;}}');};mat.needsUpdate=true;return mat;}
 function r3PR(){return settings.gfx==='leve'?Math.min(1,window.devicePixelRatio||1):Math.min(window.devicePixelRatio||1,R3.prCap||2);}
 function r3Quality(){if(!R3.r)return;R3.r.setPixelRatio(r3PR());R3.r.shadowMap.type=settings.gfx==='leve'?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
   if(R3.sun){const sz=settings.gfx==='leve'?1024:2048;if(R3.sun.shadow.mapSize.x!==sz){R3.sun.shadow.mapSize.set(sz,sz);if(R3.sun.shadow.map){R3.sun.shadow.map.dispose();R3.sun.shadow.map=null;}}}
@@ -342,7 +345,7 @@ function buildScene(lv){
   const box=R3.T.box.clone();const cols=[];const pos=box.attributes.position,nor=box.attributes.normal;const top0=lin(K.top0),top1=lin(K.top1),s0=lin(K.side0),s1=lin(K.side1);
   for(let i=0;i<pos.count;i++){const y=pos.getY(i),x=pos.getX(i),z=pos.getZ(i);let c;if(nor.getY(i)>0.5){c=top0.clone().lerp(top1,(x+z+1)/2);}else c=s1.clone().lerp(s0,y+0.5);cols.push(c.r,c.g,c.b);}
   box.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));box.userData={};
-  const wallMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.88});
+  const wallMat=addCutout(new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.88}));
   const walls=new THREE.InstancedMesh(box,wallMat,segs.length);const m4=new THREE.Matrix4(),q=new THREE.Quaternion(),v=new THREE.Vector3(),sc=new THREE.Vector3();
   segs.forEach((s,i)=>{const hor=s[1]===s[3];const cx=(s[0]+s[2])/2,cz=(s[1]+s[3])/2;v.set(cx,WALL_H/2,cz);sc.set(hor?1+WALL_T:WALL_T,WALL_H,hor?WALL_T:1+WALL_T);m4.compose(v,q,sc);walls.setMatrixAt(i,m4);});
   walls.castShadow=true;walls.receiveShadow=true;S.add(walls);
@@ -357,10 +360,10 @@ function buildScene(lv){
   deg.forEach((d,k)=>{const[x,z]=k.split(',').map(Number);const border=x===0||z===0||x===L.W||z===L.H;const p=border?0.16:(d>=3?0.1:0.05);if(rnd()>p)return;
     const s=0.8+rnd()*0.5;trunks.push([x,z,s]);if(rnd()<K.coneRatio)cones.push([x,z,s]);else balls.push([x,z,s]);});
   const inst=(geo,list,fn,mat)=>{const im=new THREE.InstancedMesh(geo,mat||R3.vegMat,list.length);const col=new THREE.Color();list.forEach((e,i)=>{fn(e,m4);im.setMatrixAt(i,m4);col.set(lin(K.trees[Math.floor(rnd()*K.trees.length)]));im.setColorAt(i,col);});im.castShadow=true;im.receiveShadow=true;S.add(im);return im;};
-  const trunkM=new THREE.MeshStandardMaterial({color:lin(K.trunk),roughness:0.9,flatShading:true});
+  const trunkM=addCutout(new THREE.MeshStandardMaterial({color:lin(K.trunk),roughness:0.9,flatShading:true}));
   if(trunks.length){const im=new THREE.InstancedMesh(R3.T.trunk,trunkM,trunks.length);trunks.forEach(([x,z,s],i)=>{m4.compose(v.set(x,WALL_H,z),q.identity(),sc.set(0.04*s,0.3*s,0.04*s));im.setMatrixAt(i,m4);});im.castShadow=true;S.add(im);}
   if(cones.length)inst(R3.T.cone,cones,([x,z,s],m)=>m.compose(v.set(x,WALL_H+0.18*s,z),q.setFromEuler(new THREE.Euler(0,rnd()*3,0)),sc.set(0.24*s,0.78*s,0.24*s)));
-  if(balls.length)inst(R3.T.ball,balls,([x,z,s],m)=>m.compose(v.set(x,WALL_H+0.42*s,z),q.identity(),sc.set(0.25*s,0.25*s,0.25*s)),new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.85}));
+  if(balls.length)inst(R3.T.ball,balls,([x,z,s],m)=>m.compose(v.set(x,WALL_H+0.42*s,z),q.identity(),sc.set(0.25*s,0.25*s,0.25*s)),addCutout(new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.85})));
   // largada: pedra-marco
   {const sx=L.start%L.W+.5,sz=((L.start/L.W)|0)+.5;const m=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.2,0.08,6),stdMat('#8a867a',{flatShading:true}));m.position.set(sx,0.04,sz);m.receiveShadow=true;S.add(m);}
   buildSecrets(lv);buildBarriers(lv);buildItems(lv);buildPortals(lv);buildExit(lv);
@@ -372,7 +375,7 @@ function buildScene(lv){
   R3.fx=[];R3.camState=null;
 }
 function buildSecrets(lv){const K=lv.cfg.look;lv.L.secrets.forEach(s=>{const W=lv.L.W,ax=s.a%W,ay=(s.a/W)|0;const hor=s.d===2;const cx=hor?ax+0.5:ax+1,cz=hor?ay+1:ay+0.5;
-  const g=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:lin(K.secret),roughness:0.95});const m=new THREE.Mesh(R3.T.box,mat);m.userData.sharedGeo=1;m.scale.set(hor?1+WALL_T:WALL_T,WALL_H*0.96,hor?WALL_T:1+WALL_T);m.position.set(cx,WALL_H*0.48,cz);m.castShadow=true;m.receiveShadow=true;g.add(m);
+  const g=new THREE.Group();const mat=addCutout(new THREE.MeshStandardMaterial({color:lin(K.secret),roughness:0.95}));const m=new THREE.Mesh(R3.T.box,mat);m.userData.sharedGeo=1;m.scale.set(hor?1+WALL_T:WALL_T,WALL_H*0.96,hor?WALL_T:1+WALL_T);m.position.set(cx,WALL_H*0.48,cz);m.castShadow=true;m.receiveShadow=true;g.add(m);
   const fm=new THREE.MeshStandardMaterial({color:lin(K.flower),emissive:lin(K.flower),emissiveIntensity:0.25});
   for(let i=0;i<4;i++){const f=new THREE.Mesh(new THREE.SphereGeometry(0.03,6,4),fm);const t=(i+0.5)/4-0.5;f.position.set(cx+(hor?t:WALL_T*0.52),WALL_H*(0.35+(i%2)*0.3),cz+(hor?WALL_T*0.52:t));g.add(f);}
   R3.scene.add(g);s.obj=g;});}
@@ -401,7 +404,7 @@ function buildHero(lv){const K=lv.cfg.look;const g=new THREE.Group(),body=new TH
   const blob=new THREE.Mesh(new THREE.CircleGeometry(0.2,20),new THREE.MeshBasicMaterial({map:R3.glow,color:0x000000,transparent:true,opacity:0.55,depthWrite:false}));blob.rotation.x=-Math.PI/2;blob.position.y=0.006;g.add(blob);
   // camadas: 1 = exploradora, 2 = silhueta que aparece atrás das paredes
   const ghostMat=new THREE.MeshBasicMaterial({color:lin('#f6ead0'),transparent:true,opacity:0.5,depthWrite:false,depthFunc:THREE.GreaterDepth});
-  parts.forEach(m=>{m.layers.set(1);if(m===glass)return;const gm=new THREE.Mesh(m.geometry,ghostMat);gm.userData.sharedGeo=1;gm.layers.set(2);m.add(gm);});
+  parts.forEach(m=>{m.layers.set(1);});
   lg.layers.set(1);
   g.scale.setScalar(0.78);
   return{g,body,legs,arms,head,lan,pl,lg,yaw:0,phase:0};}
@@ -421,12 +424,12 @@ function camGoal(){const lv=game.level,L=lv.L,p=lv.player,v=settings.view;
   if(v==='map')return{tx:L.W/2+R3.pan.x,tz:L.H/2+R3.pan.z,w:fitWidth(-0.3,-0.3,L.W+0.3,L.H+0.3)/R3.zoom};
   if(v==='pages'){const q=(p.x+0.5>=L.W/2?1:0)+(p.y+0.5>=L.H/2?2:0),hw=L.W/2,hh=L.H/2,x0=q&1?hw:0,z0=q&2?hh:0;return{tx:x0+hw/2+R3.pan.x,tz:z0+hh/2+R3.pan.z,w:fitWidth(x0,z0,x0+hw,z0+hh)/R3.zoom};}
   if(p.moving&&!R3.touching)R3.pan.multiplyScalar(0.9);
-  return{tx:p.x+.5+R3.pan.x,tz:p.y+.5+R3.pan.z,w:9.5/R3.zoom};}
+  return{tx:p.x+.5+R3.pan.x,tz:p.y+.5+R3.pan.z,w:15/R3.zoom};}
 function screenDir(wx,wz){const v=new THREE.Vector3(wx,0,wz).applyQuaternion(R3.cam.quaternion.clone().invert());return[v.x,-v.y];}
 function r3DirFromScreen(dx,dy){let best=0,bd=-1e9;for(let d=0;d<4;d++){const[sx,sy]=screenDir(DIRS[d].dx,DIRS[d].dy);const l=Math.hypot(sx,sy);const dot=(dx*sx+dy*sy)/l;if(dot>bd){bd=dot;best=d;}}return best;}
 
 // ---------- quadro a quadro ----------
-const perf={n:0,acc:0};
+const perf={n:0,acc:0};const r3Size=new THREE.Vector2();
 function r3Update(dt){
   perf.acc+=dt;perf.n++;if(perf.acc>2.5){const avg=perf.acc/perf.n;perf.acc=0;perf.n=0;if(avg>0.04&&settings.gfx!=='leve'){if((R3.prCap||2)>1.05){R3.prCap=1;r3Resize();}else{settings.gfx='leve';store.set('settings2',settings);r3Quality();updateHUD();}}}
   const lv=game.level,L=lv.L,p=lv.player,H=R3.hero,K=lv.cfg.look,cam=R3.cam;
@@ -468,8 +471,10 @@ function r3Update(dt){
   R3.fx=R3.fx.filter(f=>{f.life-=dt;f.vy-=9*dt;f.m.position.x+=f.vx*dt;f.m.position.y+=f.vy*dt;f.m.position.z+=f.vz*dt;
     if(f.m.position.y<(f.s||0.02)){f.m.position.y=f.s||0.02;f.vy*=-0.25;f.vx*=0.6;f.vz*=0.6;}if(f.spin){f.m.rotation.x+=f.spin*dt;f.m.rotation.z+=f.spin*dt;}
     if(f.life<=0&&!f.rest){R3.scene.remove(f.m);return false;}if(f.life<=0)return false;return true;});
+  {const v=new THREE.Vector3(px,0.4,pz).project(cam);const sz=r3Size;r3Size.set(0,0);R3.r.getDrawingBufferSize(r3Size);
+   const pxPerWorld=r3Size.x/C.w;R3.cutU.uCut.value.set((v.x+1)/2*r3Size.x,(v.y+1)/2*r3Size.y,Math.max(30,1.05*pxPerWorld));R3.cutU.uCutZ.value=v.z*0.5+0.5-0.002;}
   // três passadas: cenário, silhueta atrás das paredes, exploradora
-  const r=R3.r;r.clear();cam.layers.set(0);r.shadowMap.needsUpdate=true;r.render(R3.scene,cam);cam.layers.set(2);r.render(R3.scene,cam);cam.layers.set(1);r.render(R3.scene,cam);
+  const r=R3.r;r.clear();cam.layers.set(0);r.shadowMap.needsUpdate=true;r.render(R3.scene,cam);cam.layers.set(1);r.render(R3.scene,cam);
 }
 
 // ---------- obstáculos ----------
@@ -548,13 +553,13 @@ const ICONS={
  shovel:'<svg viewBox="0 0 24 24"><path d="M5 4h6M8 4v10" stroke="#8a6a44" stroke-width="2.4" stroke-linecap="round"/><path d="M5 13h6l-.5 6c-1.5 2-3.5 2-5 0z" fill="#b9c0c6" stroke="#4b5258" stroke-width="1"/></svg>',
  key:c=>'<svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4" fill="none" stroke="'+c+'" stroke-width="2.4"/><path d="M11 12h10M17 12v4M20 12v3" stroke="'+c+'" stroke-width="2.4"/></svg>'};
 const LEVELS=[
- {name:'Clareira do Amanhecer',look:{bg0:'#f7c690',bg1:'#6e5a7e',celestial:'#ffe6b8',moon:0,silhouette:'#5a6a58',haze:'#e9b88e',shaft:'#fff0c0',shaftA:0.22,hemiSky:'#ffe2c0',hemiGround:'#5a4a4a',hemiI:0.65,sun:'#ffd6a0',sunI:1.9,sunDir:[-0.75,0.55,-0.1],ground:'#cdb98c',groundVar:'#b89f72',path:'#ead9ae',earth0:'#a8865e',earth1:'#3a2c34',top0:'#c2d996',top1:'#86a86e',side0:'#86a46c',side1:'#4a6648',trees:['#8fb07a','#7aa068','#a8c088'],trunk:'#5a3e2a',coneRatio:0.5,secret:'#93b37a',flower:'#fff2d8',particles:34,part:['#fff4c0','#ffe0a0'],ff:0,lantern:0.35,lanternDist:2.5,bark:'#5a3e2a',bushes:['#86a46c','#7a9a62'],rock:'#9a948a'},time:'Amanhecer',w:24,h:34,barriers:['key','tree'],portals:0,secrets:2,branchy:.15,minItemDepth:4,minPath:.2,secretMin:16,seed:101,fog:0,
+ {name:'Clareira do Amanhecer',look:{bg0:'#f7c690',bg1:'#6e5a7e',celestial:'#ffe6b8',moon:0,silhouette:'#5a6a58',haze:'#e9b88e',shaft:'#fff0c0',shaftA:0.22,hemiSky:'#ffe2c0',hemiGround:'#5a4a4a',hemiI:0.65,sun:'#ffd6a0',sunI:1.9,sunDir:[-0.75,0.55,-0.1],ground:'#a8946a',groundVar:'#8e7a56',path:'#bba680',earth0:'#a8865e',earth1:'#3a2c34',top0:'#c2d996',top1:'#86a86e',side0:'#86a46c',side1:'#4a6648',trees:['#8fb07a','#7aa068','#a8c088'],trunk:'#5a3e2a',coneRatio:0.5,secret:'#93b37a',flower:'#fff2d8',particles:34,part:['#fff4c0','#ffe0a0'],ff:0,lantern:0.35,lanternDist:2.5,bark:'#5a3e2a',bushes:['#86a46c','#7a9a62'],rock:'#9a948a'},time:'Amanhecer',w:24,h:34,barriers:['key','tree'],portals:0,secrets:2,branchy:.15,minItemDepth:4,minPath:.2,secretMin:16,seed:101,fog:0,
   pal:{bg:'#0b100b',floor:'#4b4736',speck:['#5c5642','#393627','#55603a','#6d6449'],c0:'#111a12',c1:'#24361f',c2:'#3d5230',c3:'#6a7a45',secret:'#4d5a32',flower:'#c9b994'},
   tint:'rgba(255,200,140,0.07)',amb:{birds:1.3,crickets:0,owl:0,wind:.10,pad:[220,277.18,329.63,440]}},
- {name:'Bosque das Samambaias',look:{bg0:'#d6ecf0',bg1:'#6a8e96',celestial:'#fffaf0',moon:0,silhouette:'#4a6e62',haze:'#c4dede',shaft:'#ffffff',shaftA:0.25,hemiSky:'#eaf6ff',hemiGround:'#4a5a4a',hemiI:0.6,sun:'#fff6e4',sunI:1.6,sunDir:[-0.4,0.85,-0.3],ground:'#a9a47c',groundVar:'#8e8a66',path:'#cfc6a0',earth0:'#94785a',earth1:'#2e3034',top0:'#8cc072',top1:'#5a8e50',side0:'#5a8a54',side1:'#2a4a36',trees:['#6fae6a','#4e8e58','#88c07a'],trunk:'#4e3a2a',coneRatio:0.6,secret:'#80b46c',flower:'#ffffff',particles:26,part:['#ffffff','#f4ffd8'],ff:0,lantern:0.3,lanternDist:2.5,bark:'#4e3a2a',bushes:['#6e9e64','#5e8e58'],rock:'#8e8c84'},time:'Manhã',w:26,h:37,barriers:['tree','key','rock'],portals:1,secrets:3,branchy:.18,minItemDepth:5,minPath:.2,secretMin:18,seed:202,fog:0,
+ {name:'Bosque das Samambaias',look:{bg0:'#d6ecf0',bg1:'#6a8e96',celestial:'#fffaf0',moon:0,silhouette:'#4a6e62',haze:'#c4dede',shaft:'#ffffff',shaftA:0.25,hemiSky:'#eaf6ff',hemiGround:'#4a5a4a',hemiI:0.6,sun:'#fff6e4',sunI:1.6,sunDir:[-0.4,0.85,-0.3],ground:'#8e8a66',groundVar:'#76724f',path:'#a69d78',earth0:'#94785a',earth1:'#2e3034',top0:'#8cc072',top1:'#5a8e50',side0:'#5a8a54',side1:'#2a4a36',trees:['#6fae6a','#4e8e58','#88c07a'],trunk:'#4e3a2a',coneRatio:0.6,secret:'#80b46c',flower:'#ffffff',particles:26,part:['#ffffff','#f4ffd8'],ff:0,lantern:0.3,lanternDist:2.5,bark:'#4e3a2a',bushes:['#6e9e64','#5e8e58'],rock:'#8e8c84'},time:'Manhã',w:26,h:37,barriers:['tree','key','rock'],portals:1,secrets:3,branchy:.18,minItemDepth:5,minPath:.2,secretMin:18,seed:202,fog:0,
   pal:{bg:'#090f0c',floor:'#424533',speck:['#515442','#30331f','#4a5d3a','#5e6047'],c0:'#0e1a14',c1:'#1f3527',c2:'#355038',c3:'#5e7a4f',secret:'#455a3c',flower:'#d6d2a8'},
   tint:null,amb:{birds:1.0,crickets:0,owl:0,wind:.12,pad:[196,246.94,293.66,392]}},
- {name:'Vale dos Cogumelos',look:{bg0:'#f2a462',bg1:'#7a3e52',celestial:'#ffd39a',moon:0,silhouette:'#6a4a40',haze:'#e89a6e',shaft:'#ffd8a0',shaftA:0.24,hemiSky:'#ffd0a0',hemiGround:'#4a3030',hemiI:0.6,sun:'#ffb06a',sunI:1.7,sunDir:[0.15,0.45,-0.85],ground:'#c99e6e',groundVar:'#a87a52',path:'#e9c898',earth0:'#9a6a48',earth1:'#2e1e26',top0:'#a8b06a',top1:'#727a44',side0:'#6e7446',side1:'#363a26',trees:['#c87a3a','#a85a2a','#7a8a40','#d89a4a'],trunk:'#4a3020',coneRatio:0.35,secret:'#b0a868',flower:'#ffe2c8',particles:30,part:['#ffe0a0','#ffc880'],ff:0,lantern:0.45,lanternDist:2.8,bark:'#4a3020',bushes:['#8e8250','#7a7046'],rock:'#9a8a78'},time:'Tarde',w:28,h:40,barriers:['key','rock','tree','key','fence'],portals:2,secrets:3,branchy:.2,minItemDepth:6,minPath:.2,secretMin:20,seed:303,fog:0,mush:1,
+ {name:'Vale dos Cogumelos',look:{bg0:'#f2a462',bg1:'#7a3e52',celestial:'#ffd39a',moon:0,silhouette:'#6a4a40',haze:'#e89a6e',shaft:'#ffd8a0',shaftA:0.24,hemiSky:'#ffd0a0',hemiGround:'#4a3030',hemiI:0.6,sun:'#ffb06a',sunI:1.7,sunDir:[0.15,0.45,-0.85],ground:'#a88158',groundVar:'#8a6442',path:'#bf9a6e',earth0:'#9a6a48',earth1:'#2e1e26',top0:'#a8b06a',top1:'#727a44',side0:'#6e7446',side1:'#363a26',trees:['#c87a3a','#a85a2a','#7a8a40','#d89a4a'],trunk:'#4a3020',coneRatio:0.35,secret:'#b0a868',flower:'#ffe2c8',particles:30,part:['#ffe0a0','#ffc880'],ff:0,lantern:0.45,lanternDist:2.8,bark:'#4a3020',bushes:['#8e8250','#7a7046'],rock:'#9a8a78'},time:'Tarde',w:28,h:40,barriers:['key','rock','tree','key','fence'],portals:2,secrets:3,branchy:.2,minItemDepth:6,minPath:.2,secretMin:20,seed:303,fog:0,mush:1,
   pal:{bg:'#110f0a',floor:'#4c4130',speck:['#5d503b','#372e20','#5a5934','#6e4b38'],c0:'#17170e',c1:'#2f321e',c2:'#4c4c2b',c3:'#7a7342',secret:'#5a5531',flower:'#c9a38a'},
   tint:'rgba(255,140,50,0.10)',amb:{birds:.5,crickets:.2,owl:0,wind:.14,pad:[174.61,220,261.63,349.23]}},
  {name:'Mata do Crepúsculo',look:{bg0:'#6a4a72',bg1:'#1a1630',celestial:'#ffb89a',moon:0,silhouette:'#2e2840',haze:'#4a3a5a',shaft:'#e8c0ff',shaftA:0.16,hemiSky:'#9a8ac0',hemiGround:'#201a24',hemiI:0.72,sun:'#e8a0b0',sunI:1.1,sunDir:[0.7,0.3,-0.6],ground:'#4e4858',groundVar:'#3a3444',path:'#6e6478',earth0:'#3e3448',earth1:'#0e0a16',top0:'#8ab49a',top1:'#557a66',side0:'#4a6a5e',side1:'#203034',trees:['#5e7e6e','#4a6a5e','#6a8a7a'],trunk:'#2e2420',coneRatio:0.6,secret:'#6a8a7a',flower:'#e8d8ff',particles:30,part:['#d8ff8a','#ffe0a0'],ff:1,lantern:1.4,lanternDist:4.5,bark:'#3a2e24',bushes:['#46605a','#3e5650'],rock:'#7a7480'},time:'Crepúsculo',w:30,h:42,barriers:['tree','key','rock','key','fence','tree'],portals:2,secrets:4,branchy:.2,minItemDepth:6,minPath:.2,secretMin:20,seed:404,fog:5.5,fogA:[.86,.62],

@@ -94,6 +94,10 @@ h2{font:700 26px/1.1 "Cormorant SC",serif;margin:0 0 12px;color:#e8dcb6}
   <div class="seg"><button data-view="follow">Seguir</button><button data-view="pages">Páginas</button><button data-view="map">Mapa</button></div>
   <div class="lab">Gráficos</div>
   <div class="seg"><button data-gfx="alta">Alta</button><button data-gfx="leve">Leve (celular mais simples)</button></div>
+  <div class="lab">Velocidade</div>
+  <div class="seg"><button data-spd="2.5">Lenta</button><button data-spd="3.3">Calma</button><button data-spd="4.3">Normal</button><button data-spd="6">Rápida</button><button data-spd="8">Turbo</button></div>
+  <div class="lab">Tocar para ir</div>
+  <div class="seg"><button data-tap="1">Ligado</button><button data-tap="0">Desligado</button></div>
   <div class="lab">Música</div>
   <div class="seg"><button id="musT">Ligada</button></div>
   <div class="lab">Controle na tela</div>
@@ -105,7 +109,7 @@ h2{font:700 26px/1.1 "Cormorant SC",serif;margin:0 0 12px;color:#e8dcb6}
 <div class="scr" id="help"><div class="card help">
   <h2>Como jogar</h2>
   <p>Leve a exploradora da <b>pedra de largada</b>, no canto de cima, até o <b>arco de pedra iluminado</b> da saída. Cada labirinto é uma folha A4 dividida em <b>quatro páginas</b>, e o caminho atravessa todas elas.</p>
-  <p><b>Andar:</b> ela só se move enquanto você segura. Encoste o dedo em qualquer ponto da tela e arraste na direção, e segure enquanto quiser andar. No menu de pausa dá para trocar por um joystick fixo de polegar. No computador, ande com as setas ou WASD (o mouse serve para mover o mapa) (as setas seguem a tela, mesmo com o mapa girado). A tecla M mostra o mapa.</p>
+  <p><b>Andar:</b> ela só se move enquanto você segura. Encoste o dedo em qualquer ponto da tela e arraste na direção, e segure enquanto quiser andar: ela faz sozinha as curvas dos corredores e dá meia-volta na hora. Ou <b>toque num ponto do caminho</b> (no computador, clique) e ela vai até lá pelo caminho mais curto. No menu de pausa dá para trocar por um joystick fixo e escolher a velocidade, de Lenta a Turbo. No computador, ande com as setas ou WASD (o mouse serve para mover o mapa) (as setas seguem a tela, mesmo com o mapa girado). A tecla M mostra o mapa.</p>
   <p><b>Joystick:</b> no menu de pausa, em Controle na tela, escolha Joystick fixo. Também funciona um controle físico (Bluetooth ou USB): alavanca ou cruz para andar, LB e RB giram enquanto apertados, gatilhos dão zoom, Y troca a visão, B abre o mapa, Start pausa.</p>
   <p><b>Tela cheia:</b> o botão de cantos no canto inferior direito (ou no menu de pausa). No Android, o menu do Chrome › Adicionar à tela inicial instala o jogo como app, que já abre em tela cheia.</p>
   <p><b>Zoom:</b> afaste ou aproxime dois dedos; o zoom acontece no ponto entre eles. Toque na bússola para voltar a câmera à exploradora.</p>
@@ -372,7 +376,7 @@ function buildScene(lv){
   R3.sprites=[];const np=K.particles;
   for(let i=0;i<np;i++){const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:R3.glow,color:lin(K.part[i%K.part.length]),transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,opacity:0}));
     sp.scale.setScalar(K.ff?0.3:0.12);sp.position.set(rnd()*L.W,0.2+rnd()*1.4,rnd()*L.H);sp.userData={ff:K.ff,ph:rnd()*6.28,vx:0,vz:0,vy:0};S.add(sp);R3.sprites.push(sp);}
-  R3.fx=[];R3.camState=null;
+  R3.fx=[];R3.camState=null;R3.marker=null;
 }
 function buildSecrets(lv){const K=lv.cfg.look;lv.L.secrets.forEach(s=>{const W=lv.L.W,ax=s.a%W,ay=(s.a/W)|0;const hor=s.d===2;const cx=hor?ax+0.5:ax+1,cz=hor?ay+1:ay+0.5;
   const g=new THREE.Group();const mat=addCutout(new THREE.MeshStandardMaterial({color:lin(K.secret),roughness:0.95}));const m=new THREE.Mesh(R3.T.box,mat);m.userData.sharedGeo=1;m.scale.set(hor?1+WALL_T:WALL_T,WALL_H*0.96,hor?WALL_T:1+WALL_T);m.position.set(cx,WALL_H*0.48,cz);m.castShadow=true;m.receiveShadow=true;g.add(m);
@@ -425,6 +429,10 @@ function camGoal(){const lv=game.level,L=lv.L,p=lv.player,v=settings.view;
   if(v==='pages'){const q=(p.x+0.5>=L.W/2?1:0)+(p.y+0.5>=L.H/2?2:0),hw=L.W/2,hh=L.H/2,x0=q&1?hw:0,z0=q&2?hh:0;return{tx:x0+hw/2+R3.pan.x,tz:z0+hh/2+R3.pan.z,w:fitWidth(x0,z0,x0+hw,z0+hh)/R3.zoom};}
   if(p.moving&&!R3.touching)R3.pan.multiplyScalar(0.9);
   return{tx:p.x+.5+R3.pan.x,tz:p.y+.5+R3.pan.z,w:15/R3.zoom};}
+const RAY=new THREE.Raycaster(),GPLANE=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+function r3PickCell(sx,sy){const L=game.level.L;RAY.setFromCamera(new THREE.Vector2(sx/VW*2-1,-(sy/VH*2-1)),R3.cam);const hit=new THREE.Vector3();if(!RAY.ray.intersectPlane(GPLANE,hit))return-1;const x=Math.floor(hit.x),z=Math.floor(hit.z);if(x<0||z<0||x>=L.W||z>=L.H)return-1;return z*L.W+x;}
+function r3Marker(c,bad){const L=game.level.L;if(!R3.marker){R3.marker=new THREE.Mesh(new THREE.RingGeometry(0.22,0.32,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false}));R3.marker.rotation.x=-Math.PI/2;}
+  if(R3.marker.parent!==R3.scene)R3.scene.add(R3.marker);R3.marker.position.set(c%L.W+0.5,0.02,((c/L.W)|0)+0.5);R3.marker.material.color.set(bad?0xff6a5a:0xffe2a0);R3.marker.userData.t=0.9;}
 function screenDir(wx,wz){const v=new THREE.Vector3(wx,0,wz).applyQuaternion(R3.cam.quaternion.clone().invert());return[v.x,-v.y];}
 function r3DirFromScreen(dx,dy){let best=0,bd=-1e9;for(let d=0;d<4;d++){const[sx,sy]=screenDir(DIRS[d].dx,DIRS[d].dy);const l=Math.hypot(sx,sy);const dot=(dx*sx+dy*sy)/l;if(dot>bd){bd=dot;best=d;}}return best;}
 
@@ -463,6 +471,7 @@ function r3Update(dt){
   L.items.forEach((it,i)=>{if(!it.obj)return;if(it.taken){it.anim+=dt*2.5;it.obj.position.y=it.anim*0.6;it.obj.scale.setScalar(Math.max(0.001,1-it.anim));if(it.anim>=1){it.obj.parent&&it.obj.parent.remove(it.obj);it.obj=null;}return;}
     it.inner.rotation.y=clock*1.2+i;it.inner.position.y=0.32+Math.sin(clock*2+i)*0.04;});
   (R3.portals||[]).forEach(P=>{const t=clock+P.k;P.pool.material.opacity=0.55+0.25*Math.sin(t*2.2);P.gl.material.opacity=0.5+0.2*Math.sin(t*1.7);P.motes.forEach(m=>{m.userData.y=(m.userData.y+dt*0.35)%1;const u=m.userData;m.position.set(Math.cos(u.a+t)*u.r,0.05+u.y*0.8,Math.sin(u.a+t)*u.r);m.material.opacity=Math.sin(u.y*Math.PI)*0.9;});});
+  if(R3.marker&&R3.marker.userData.t>0){const t=R3.marker.userData.t-=dt;R3.marker.material.opacity=Math.max(0,Math.min(1,t*1.6));R3.marker.scale.setScalar(1+(0.9-t)*0.6);}
   if(R3.exit)R3.exit.gl.material.opacity=0.6+0.2*Math.sin(clock*1.6);
   R3.sprites.forEach(sp=>{const u=sp.userData;u.ph+=dt*(u.ff?2.2:0.6);u.vx+=(Math.random()-.5)*dt*(u.ff?1.5:0.3);u.vz+=(Math.random()-.5)*dt*(u.ff?1.5:0.3);u.vy+=(Math.random()-.5)*dt*(u.ff?0.8:0.2);u.vx*=0.98;u.vz*=0.98;u.vy*=0.97;
     sp.position.x+=u.vx*dt;sp.position.z+=u.vz*dt;sp.position.y=Math.min(1.8,Math.max(0.15,sp.position.y+u.vy*dt));
@@ -573,7 +582,7 @@ const LEVELS=[
 // ---------- estado salvo ----------
 const store={get(k,d){try{const v=localStorage.getItem('labirintos_'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('labirintos_'+k,JSON.stringify(v));}catch(e){}}};
 let progress=store.get('progress2',{unlocked:1,best:{}});
-let settings=Object.assign({view:'follow',sound:true,music:true,dpad:true,gfx:'alta'},store.get('settings2',{}));if(!settings.ctl||settings.ctl==='setas')settings.ctl='nenhum';settings.dpad=settings.ctl==='joystick';
+let settings=Object.assign({view:'follow',sound:true,music:true,dpad:true,gfx:'alta',speed:4.3,tap:true},store.get('settings2',{}));if(!settings.ctl||settings.ctl==='setas')settings.ctl='nenhum';settings.dpad=settings.ctl==='joystick';
 
 // ---------- áudio (sintetizado) ----------
 const AU={ctx:null,ambNodes:[],timers:[]};
@@ -722,7 +731,7 @@ function loadLevel(idx,randomSeed){
   const sx=L.start%L.W,sy=(L.start/L.W)|0;
   lv.player={cell:L.start,x:sx,y:sy,from:L.start,to:L.start,t:1,moving:false,dir:2,portalLock:-1,tele:0,teleTo:-1,walk:0,bumpT:0};
   lv.inv={keys:[],tools:new Set()};lv.steps=0;lv.time=0;lv.started=false;lv.won=false;
-      game.level=lv;game.hold=null;game.queued=null;game.lastQ=-1;
+      game.level=lv;game.hold=null;game.queued=null;game.route=null;game.lastQ=-1;
   reveal(lv,L.start);buildScene(lv);
   $('lvname').textContent=(idx+1)+' · '+cfg.name+(lv.random?' (variação)':'');
   updateHUD();startAmbience(cfg);
@@ -754,8 +763,21 @@ function tryMove(d){
   if(e.k==='secret'&&!e.s.revealed){e.s.revealed=true;SFX.secret();toast('Uma passagem escondida na mata.');const [ax,ay]=cellXY(e.s.a),[bx,by]=cellXY(e.s.b);chips((ax+bx)/2+0.5,0.3,(ay+by)/2+0.5,lv.cfg.look.bushes[1],14);}
   game.bumped=-1;lv.started=true;p.from=p.cell;p.to=e.n;p.t=0;p.moving=true;return true;
 }
+function passable(c,d){const e=edgeInfo(c,d);return e.k==='open'||(e.k==='secret'&&e.s.revealed)||e.k==='barrier';}
+function decide(){const lv=game.level,p=lv.player;
+  if(game.route&&game.route.length){const nx=game.route[0];const d=[0,1,2,3].find(k=>neighbor(p.cell,k)===nx);if(d==null){game.route=null;return;}
+    const e=edgeInfo(p.cell,d);if(!tryMove(d)){if(!(e.k==='barrier'&&e.b.open))game.route=null;}return;}
+  let d=game.hold!=null?game.hold:game.queued;game.queued=null;if(d==null)return;
+  const e=edgeInfo(p.cell,d);
+  if(e.k==='wall'&&lv.started&&d!==(p.dir+2)%4){const back=(p.dir+2)%4;const opts=[0,1,2,3].filter(k=>k!==back&&passable(p.cell,k));if(opts.length===1&&opts[0]!==(d+2)%4){tryMove(opts[0]);return;}}
+  tryMove(d);}
+function tapTo(sx,sy){const lv=game.level;if(!lv||lv.won||!settings.tap)return;const c=r3PickCell(sx,sy);if(c<0)return;const p=lv.player,src=p.moving?p.to:p.cell;if(c===src)return;
+  const par=new Int32Array(lv.N).fill(-2),q=[src];par[src]=-1;
+  for(let i=0;i<q.length;i++){const u=q[i];if(u===c)break;if(u!==src&&lv.portalOf.has(u))continue;for(let d=0;d<4;d++){const n=neighbor(u,d);if(n<0||par[n]!==-2)continue;const e=edgeInfo(u,d);
+    let ok=e.k==='open'||(e.k==='secret'&&e.s.revealed);if(e.k==='barrier'){const b=e.b;ok=b.type==='key'?lv.inv.keys.includes(b.item):lv.inv.tools.has(BARRIER_ITEM[b.type]);}if(ok){par[n]=u;q.push(n);}}}
+  if(par[c]===-2){r3Marker(c,true);return;}const path=[];for(let u=c;u!==src;u=par[u])path.push(u);path.reverse();game.route=path;game.hold=null;r3Marker(c,false);audioInit();}
 function arrive(){
-  const lv=game.level,p=lv.player,L=lv.L;p.cell=p.to;p.moving=false;lv.steps++;SFX.step();reveal(lv,p.cell);
+  const lv=game.level,p=lv.player,L=lv.L;p.cell=p.to;p.moving=false;lv.steps++;if(game.route&&game.route[0]===p.cell)game.route.shift();SFX.step();reveal(lv,p.cell);
   if(p.portalLock>=0&&p.cell!==p.portalLock)p.portalLock=-1;
   const it=lv.itemAt.get(p.cell);
   if(it&&!it.taken){it.taken=true;const[x,y]=cellXY(p.cell);
@@ -764,7 +786,7 @@ function arrive(){
     updateHUD();}
   if(p.cell===L.exit){win();return;}
   const po=lv.portalOf.get(p.cell);
-  if(po&&p.portalLock!==p.cell){p.tele=0.0001;p.teleTo=po.to;SFX.portal();}
+  if(po&&p.portalLock!==p.cell){game.route=null;p.tele=0.0001;p.teleTo=po.to;SFX.portal();}
 }
 function win(){const lv=game.level;lv.won=true;game.hold=null;SFX.win();
   const key='L'+lv.idx;
@@ -784,9 +806,10 @@ function update(dt){
   const lv=game.level,p=lv.player;
   if(lv.started&&!lv.won)lv.time+=dt;
   if(p.tele>0){p.tele+=dt;if(p.tele>0.35&&p.teleTo>=0){p.cell=p.teleTo;p.portalLock=p.teleTo;const[x,y]=cellXY(p.cell);p.x=x;p.y=y;p.teleTo=-1;reveal(lv,p.cell);}if(p.tele>0.7)p.tele=0;}
-  if(p.moving){p.walk=(p.walk+dt*6)%4;p.t+=dt*4.3;const[fx,fy]=cellXY(p.from),[tx,ty]=cellXY(p.to);const k=Math.min(1,p.t);p.x=fx+(tx-fx)*k;p.y=fy+(ty-fy)*k;if(p.t>=1)arrive();}
+  if(p.moving){const hh=game.hold;if(hh!=null&&hh===(p.dir+2)%4&&!game.route&&p.t<0.95){const f=p.from;p.from=p.to;p.to=f;p.t=1-p.t;p.dir=hh;}
+    const sp=settings.speed||4.3;p.walk=(p.walk+dt*sp*1.4)%4;p.t+=dt*sp;const[fx,fy]=cellXY(p.from),[tx,ty]=cellXY(p.to);const k=Math.min(1,p.t);p.x=fx+(tx-fx)*k;p.y=fy+(ty-fy)*k;if(p.t>=1)arrive();}
   if(p.bumpT>0)p.bumpT-=dt;
-  if(!p.moving&&p.tele===0&&!lv.won&&p.bumpT<=0){let d=game.hold!=null?game.hold:game.queued;game.queued=null;if(d!=null)tryMove(d);}
+  if(!p.moving&&p.tele===0&&!lv.won&&p.bumpT<=0)decide();
   lv.L.barriers.forEach(b=>{if(b.open&&b.anim<1)b.anim=Math.min(1,b.anim+dt*(b.type==='key'?1.2:0.9));});
   const q=(p.x+0.5>=lv.L.W/2?1:0)+(p.y+0.5>=lv.L.H/2?2:0);if(q!==game.lastQ){game.lastQ=q;document.querySelectorAll('#pages i').forEach((e,i)=>e.classList.toggle('on',i===q));$('pageLbl').textContent=(q+1)+'/4';}
   const tt=fmtT(lv.time);if($('time').textContent!==tt)$('time').textContent=tt;
@@ -799,7 +822,7 @@ function updateHUD(){const lv=game.level;if(!lv)return;let h='';
   $('inv').innerHTML=h||'<span class="muted">mochila vazia</span>';
   document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('on',b.dataset.view===settings.view));
   $('viewLbl').textContent={follow:'Seguir',pages:'Páginas',map:'Mapa'}[settings.view];
-  $('sndBtn').classList.toggle('off',!settings.sound);document.querySelectorAll('[data-ctl]').forEach(b=>b.classList.toggle('on',b.dataset.ctl===settings.ctl));settings.dpad=settings.ctl==='joystick';$('fjoy').style.display=settings.ctl==='joystick'?'':'none';$('musT').textContent=settings.music?'Ligada':'Desligada';document.querySelectorAll('[data-gfx]').forEach(b=>b.classList.toggle('on',b.dataset.gfx===settings.gfx));
+  $('sndBtn').classList.toggle('off',!settings.sound);document.querySelectorAll('[data-ctl]').forEach(b=>b.classList.toggle('on',b.dataset.ctl===settings.ctl));document.querySelectorAll('[data-spd]').forEach(b=>b.classList.toggle('on',+b.dataset.spd===settings.speed));document.querySelectorAll('[data-tap]').forEach(b=>b.classList.toggle('on',(b.dataset.tap==='1')===settings.tap));settings.dpad=settings.ctl==='joystick';$('fjoy').style.display=settings.ctl==='joystick'?'':'none';$('musT').textContent=settings.music?'Ligada':'Desligada';document.querySelectorAll('[data-gfx]').forEach(b=>b.classList.toggle('on',b.dataset.gfx===settings.gfx));
   $('dpad').style.display='none';
 }
 function setView(v){R3.zoom=1;R3.pan.set(0,0,0);settings.view=v;store.set('settings2',settings);updateHUD();toast({follow:'Visão: seguir a exploradora',pages:'Visão: uma página por vez',map:'Visão: a folha inteira'}[v],1200);}
@@ -816,7 +839,7 @@ function renderMenu(){const box=$('levels');box.innerHTML='';LEVELS.forEach((c,i
 // ---------- controles: só anda enquanto segura ----------
 const KEYMAP={ArrowUp:0,KeyW:0,ArrowRight:1,KeyD:1,ArrowDown:2,KeyS:2,ArrowLeft:3,KeyA:3};
 const held=[];
-addEventListener('keydown',e=>{if(!game.level||game.paused)return;let d=KEYMAP[e.code];if(d!=null){e.preventDefault();if(e.repeat)return;d=r3DirFromScreen(...[[0.3,-1],[1,0.3],[-0.3,1],[-1,-0.3]][d]);held.push(d);game.hold=d;game.queued=d;}
+addEventListener('keydown',e=>{if(!game.level||game.paused)return;let d=KEYMAP[e.code];if(d!=null){e.preventDefault();if(e.repeat)return;d=r3DirFromScreen(...[[0.3,-1],[1,0.3],[-0.3,1],[-1,-0.3]][d]);held.push(d);game.hold=d;game.queued=d;game.route=null;}
   if(e.code==='KeyQ')R3.spin=-1;if(e.code==='KeyE')R3.spin=1;
   if(e.code==='KeyM')setView(settings.view==='map'?'follow':'map');});
 addEventListener('keyup',e=>{if(e.code==='KeyQ'||e.code==='KeyE')R3.spin=0;const d=KEYMAP[e.code];if(d==null)return;held.length=0;game.hold=null;});
@@ -829,13 +852,13 @@ function zoomAt(z1,mx,my){const z0=R3.zoom;z1=Math.max(0.2,Math.min(4,z1));if(R3
 cv.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});if(ptrs.size===2){const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y)};R3.touching=true;js=null;game.hold=null;joy.classList.remove('on');return;}});
 cv.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pinch&&ptrs.size===2){const[a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch.d>10)zoomAt(R3.zoom*d/pinch.d,(a.x+b.x)/2,(a.y+b.y)/2);pinch.d=d;}});
 const pend=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2){pinch=null;R3.touching=false;}};cv.addEventListener('pointerup',pend);cv.addEventListener('pointercancel',pend);
-cv.addEventListener('pointerdown',e=>{audioInit();if(game.paused||ptrs.size>1||e.pointerType==='mouse')return;js={x0:e.clientX,y0:e.clientY,id:e.pointerId};try{cv.setPointerCapture(e.pointerId);}catch(_){}
+cv.addEventListener('pointerdown',e=>{audioInit();if(game.paused||ptrs.size>1||e.pointerType==='mouse')return;js={x0:e.clientX,y0:e.clientY,sx:e.clientX,sy:e.clientY,t:performance.now(),moved:false,id:e.pointerId};try{cv.setPointerCapture(e.pointerId);}catch(_){}
   joy.style.left=e.clientX+'px';joy.style.top=e.clientY+'px';knob.style.transform='translate(-50%,-50%)';joy.classList.add('on');});
 cv.addEventListener('pointermove',e=>{if(!js||e.pointerId!==js.id||pinch)return;let dx=e.clientX-js.x0,dy=e.clientY-js.y0;const dist=Math.hypot(dx,dy),max=44;
   if(dist>max){js.x0+= dx*(1-max/dist);js.y0+=dy*(1-max/dist);dx=e.clientX-js.x0;dy=e.clientY-js.y0;joy.style.left=js.x0+'px';joy.style.top=js.y0+'px';}
   knob.style.transform='translate(calc(-50% + '+dx+'px),calc(-50% + '+dy+'px))';
-  if(Math.hypot(dx,dy)>14){const d=r3DirFromScreen(dx,dy);if(game.hold!==d){game.hold=d;game.queued=d;game.bumped=-1;}}else game.hold=null;});
-const jend=e=>{if(!js||(e&&e.pointerId!==js.id))return;js=null;game.hold=null;joy.classList.remove('on');};
+  if(Math.hypot(dx,dy)>14){const d=r3DirFromScreen(dx,dy);if(game.hold!==d){game.hold=d;game.queued=d;game.bumped=-1;game.route=null;}if(!js.moved&&Math.hypot(e.clientX-js.sx,e.clientY-js.sy)>12)js.moved=true;}else game.hold=null;});
+const jend=e=>{if(!js||(e&&e.pointerId!==js.id))return;if(e&&e.type==='pointerup'&&!js.moved&&!pinch&&performance.now()-js.t<350&&Math.hypot(e.clientX-js.sx,e.clientY-js.sy)<12)tapTo(e.clientX,e.clientY);js=null;game.hold=null;joy.classList.remove('on');};
 cv.addEventListener('pointerup',jend);cv.addEventListener('pointercancel',jend);
 document.querySelectorAll('#dpad button').forEach(b=>{const d=+b.dataset.d;
   b.addEventListener('pointerdown',e=>{e.preventDefault();audioInit();game.hold=d;game.queued=d;try{b.setPointerCapture(e.pointerId);}catch(_){}});
@@ -852,7 +875,7 @@ document.addEventListener('fullscreenchange',()=>{fsUI();setTimeout(resize,150);
  dl.addEventListener('pointermove',e=>{if(!dd)return;const dx=e.clientX-dd.x;if(Math.abs(dx)>5)dd.moved=true;if(dd.moved)R3.yawT=dd.y0-dx*0.012;});
  const de=()=>{if(dd&&!dd.moved&&performance.now()-dd.t<400)R3.yawT+=Math.PI/4;dd=null;};dl.addEventListener('pointerup',de);dl.addEventListener('pointercancel',()=>dd=null);dl.addEventListener('contextmenu',e=>e.preventDefault());}
 // arrastar com o botão direito do mouse gira
-{let pd=null;cv.addEventListener('mousedown',e=>{if(e.button===0||e.button===1){e.preventDefault();pd={x:e.clientX,y:e.clientY};R3.touching=true;cv.style.cursor='grabbing';}});addEventListener('mousemove',e=>{if(pd){r3Pan(e.clientX-pd.x,e.clientY-pd.y);pd.x=e.clientX;pd.y=e.clientY;}});addEventListener('mouseup',()=>{if(pd){pd=null;R3.touching=false;cv.style.cursor='grab';}});cv.style.cursor='grab';}
+{let pd=null;cv.addEventListener('mousedown',e=>{if(e.button===0||e.button===1){e.preventDefault();audioInit();pd={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,t:performance.now(),b:e.button};R3.touching=true;cv.style.cursor='grabbing';}});addEventListener('mousemove',e=>{if(pd){r3Pan(e.clientX-pd.x,e.clientY-pd.y);pd.x=e.clientX;pd.y=e.clientY;}});addEventListener('mouseup',e=>{if(pd){if(pd.b===0&&!game.paused&&performance.now()-pd.t<400&&Math.hypot(e.clientX-pd.sx,e.clientY-pd.sy)<5)tapTo(e.clientX,e.clientY);pd=null;R3.touching=false;cv.style.cursor='grab';}});cv.style.cursor='grab';}
 {let rd=null;cv.addEventListener('contextmenu',e=>e.preventDefault());cv.addEventListener('mousedown',e=>{if(e.button===2)rd={x:e.clientX,y0:R3.yawT};});addEventListener('mousemove',e=>{if(rd)R3.yawT=rd.y0-(e.clientX-rd.x)*0.008;});addEventListener('mouseup',()=>rd=null);}
 $('viewBtn').onclick=()=>setView({follow:'pages',pages:'map',map:'follow'}[settings.view]);
 $('pages').onclick=()=>setView(settings.view==='map'?'follow':'map');
@@ -864,6 +887,8 @@ $('variant').onclick=()=>{loadLevel(game.level.idx,true);show(null);toast('Um no
 $('toMenu').onclick=()=>show('menu');
 document.querySelectorAll('[data-gfx]').forEach(b=>b.onclick=()=>{settings.gfx=b.dataset.gfx;R3.prCap=null;store.set('settings2',settings);r3Quality();updateHUD();});
 $('musT').onclick=()=>{audioInit();setMusic(!settings.music);updateHUD();};
+document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{settings.speed=+b.dataset.spd;store.set('settings2',settings);updateHUD();});
+document.querySelectorAll('[data-tap]').forEach(b=>b.onclick=()=>{settings.tap=b.dataset.tap==='1';store.set('settings2',settings);updateHUD();});
 document.querySelectorAll('[data-ctl]').forEach(b=>b.onclick=()=>{settings.ctl=b.dataset.ctl;store.set('settings2',settings);updateHUD();});
 // joystick fixo na tela
 {const fj=$('fjoy'),fk=$('fknob');let fid=null;const R=46;

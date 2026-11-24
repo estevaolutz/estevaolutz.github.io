@@ -482,7 +482,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'bitcrusher'], 2: ['vibrato', 'delay longo', 'gate', 'bitcrusher'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'dobro + modo'], 2: ['vibrato', 'delay longo', 'gate', 'bitcrusher'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -668,9 +668,9 @@ function acordeDaMao() {
   return chordSel;
 }
 /* PINÇAS DA MÃO DIREITA (valem enquanto segura):
-   indicador = OITAVA ACIMA + ECO · médio = ECO · anelar = GLIDE (portamento, notas ligadas) · mínimo = BITCRUSHER (8 bits, taxa ÷ 10)
+   indicador = OITAVA ACIMA + ECO · médio = ECO · anelar = GLIDE (portamento, notas ligadas) · mínimo = DOBRO da velocidade + outro MODO de arpejo (sobe e desce ↔ subindo)
    ECO = delay em colcheia pontuada no BPM (as repetições continuam soando depois de soltar) */
-const PZ_FX = { 0: { oit: 1, eco: 1 }, 1: { eco: 1 }, 2: { glide: 1 }, 3: { crush: 1 } };
+const PZ_FX = { 0: { oit: 1, eco: 1 }, 1: { eco: 1 }, 2: { glide: 1 }, 3: { dobro: 1 } };
 const pzFx = P => PZ_FX[P] || {};
 const baseBaixo = P => 33 + 12 * (MUS.bxOit + (pzFx(P).oit ? 1 : 0));
 let arpIdx = 0;
@@ -678,8 +678,9 @@ function arpNext() {
   const per = MUS.sev ? [0, 1, 2, 3] : [0, 1, 2], L = [];
   for (let o = 0; o < MUS.oct; o++) per.forEach(t => L.push(o * 4 + t));
   L.push(MUS.oct * 4);
-  if (MUS.pat === 'random') return L[Math.floor(Math.random() * L.length)];
-  const seq = MUS.pat === 'down' ? L.slice().reverse() : MUS.pat === 'updown' ? L.concat(L.slice(1, -1).reverse()) : L;
+  const pat = pzFx(CTRL.maos[1].pinca).dobro ? (MUS.pat === 'updown' ? 'up' : 'updown') : MUS.pat;   // pinça 4: troca o modo do arpejo
+  if (pat === 'random') return L[Math.floor(Math.random() * L.length)];
+  const seq = pat === 'down' ? L.slice().reverse() : pat === 'updown' ? L.concat(L.slice(1, -1).reverse()) : L;
   return seq[arpIdx++ % seq.length];
 }
 /* ---------- relógio com antecipação ---------- */
@@ -700,7 +701,7 @@ function tocaPasso(st, t, s16) {
   if (pos % 4 === 0) tempoT = t;
   if (!m1.ativa) { arpIdx = 0; ultMidi = null; return; }
   { const novo = acordeDaMao(); if (novo !== curDeg) { arpIdx = 0; curDeg = novo; } }
-  const rate = MUS.rate;
+  const rate = pzFx(P).dobro ? Math.max(1, MUS.rate / 2) : MUS.rate;   // pinça 4: dobro da velocidade
   if (pos % rate) return;
   const m = degMidi(ladderDeg(curDeg, arpNext()), baseBaixo(P));
   const glide = !!pzFx(P).glide;
@@ -893,7 +894,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v14 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v15 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();

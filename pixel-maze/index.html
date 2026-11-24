@@ -108,7 +108,7 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
   <p><b>Rastro:</b> o chão por onde você passou fica levemente tingido, e nos níveis escuros os lugares já vistos continuam à meia-luz.</p>
   <p><b>Velocidade:</b> no menu de pausa (botão de duas barras, no alto) dá para escolher entre Lenta, Calma, Normal, Rápida e Turbo.</p>
   <p><b>Tela grande:</b> no computador ou no iPad, escolha <b>Câmera → Mapa inteiro</b> na pausa e o labirinto todo ocupa a tela. Com a tela deitada, a folha também deita.</p>
-  <p><b>Andares:</b> o nível 1 é plano, o 2 tem dois andares, o 3 tem três, e assim por diante. Os andares são ligados por vários <b>portais de andar</b>, quadrados de luz com setas e o número do andar de destino. O caminho até a saída sobe e desce várias vezes, e cada forma costuma estar num andar diferente do portão que ela abre. A primeira forma fica perto; cada forma seguinte fica mais longe e pede mais escadas.</p>
+  <p><b>Andares:</b> o nível 1 é plano, o 2 tem dois andares, o 3 tem três, e assim por diante. Entre cada andar e o seguinte há <b>uma única escada</b>, um quadrado de luz com setas e o número do andar de destino: ela sobe e desce no mesmo ponto do mapa. Cada andar tem sua cor de escada. As formas costumam estar num andar diferente do portão que elas abrem, então é preciso subir e descer pela mesma escada.</p>
   <p><b>Mapa 3D:</b> o botão de quatro quadrados, no alto, abre o mapa tridimensional com todos os andares empilhados (tecla M). Arraste para girar e use a pinça ou a roda do mouse para aproximar.</p>
   <button class="btn pri" id="helpClose">Entendi</button>
 </div></div>
@@ -159,56 +159,24 @@ function tryGen(cfg,seed){
   const used=new Set([start,exit]);const links=[];
   const addLink=(x,y)=>{const a=fl(x)<fl(y)?x:y,b=a===x?y:x;holeOf[a]=b;holeOf[b]=a;used.add(a);used.add(b);links.push({a,b,f:fl(a)});};
   const deadEnds=(pred)=>{const r=[];for(let c=0;c<N;c++)if(!used.has(c)&&holeOf[c]<0&&deg(c)===1&&pred(c))r.push(c);return r;};
-  // escada entre dois conjuntos de becos em andares vizinhos
-  const stairBetween=(A,Bs)=>{const pairs=[];for(let t=0;t<60;t++){const x=A[ri(A.length)],y=Bs[ri(Bs.length)];if(Math.abs(fl(x)-fl(y))===1)pairs.push([x,y]);if(pairs.length>=6)break;}
-    if(!pairs.length){for(const x of A){const y=Bs.find(y=>Math.abs(fl(x)-fl(y))===1);if(y!=null){pairs.push([x,y]);break;}}}
-    if(!pairs.length)return false;const[x,y]=pairs[ri(pairs.length)];addLink(x,y);return true;};
   if(F>1){
-    // 1) roteiro de andares do caminho principal: começa no andar da entrada, termina no da saída, passa por todos e sobe E desce
-    const M0=Math.abs(fe-fs)+2*Math.ceil((cfg.pathStairs||F)/2)+(F-1);let route=null;
-    for(let t=0;t<400&&!route;t++){const M=M0+((M0-Math.abs(fe-fs))%2);const r=[fs];
-      for(let i=0;i<M;i++){const cur=r[r.length-1],left=M-i-1,opts=[cur-1,cur+1].filter(f=>f>=0&&f<F&&Math.abs(f-fe)<=left);if(!opts.length)break;r.push(opts[ri(opts.length)]);}
-      if(r.length!==M+1||r[M]!==fe)continue;let up=0,dn=0;for(let i=1;i<r.length;i++)r[i]>r[i-1]?up++:dn++;
-      if(new Set(r).size<F||!up||!dn)continue;route=r;}
-    if(!route)return null;
-    // 2) divide cada andar em tantos trechos quantas vezes o roteiro passa por ele
-    const comp=new Int32Array(N).fill(-1);
-    const label=(f)=>{let k=0;for(let c=f*WH;c<(f+1)*WH;c++)comp[c]=-1;const ids=[];for(let c=f*WH;c<(f+1)*WH;c++){if(comp[c]>=0)continue;const id=f*100+k++;ids.push(id);comp[c]=id;const q=[c];for(let i=0;i<q.length;i++)for(const n of gridNb(q[i]))if(comp[n]<0){comp[n]=id;q.push(n);}}return ids;};
-    for(let f=0;f<F;f++){const need=route.filter(x=>x===f).length;let ids=label(f);
-      for(let g=0;g<200&&ids.length<need;g++){const sizes={};for(let c=f*WH;c<(f+1)*WH;c++)sizes[comp[c]]=(sizes[comp[c]]||0)+1;
-        const big=ids.reduce((x,y)=>sizes[x]>=sizes[y]?x:y);const cells=[];for(let c=f*WH;c<(f+1)*WH;c++)if(comp[c]===big)cells.push(c);
-        const a=cells[ri(cells.length)],nbs=gridNb(a);if(!nbs.length)continue;const b=nbs[ri(nbs.length)];cut(a,b);
-        const q=[a],seen=new Set([a]);for(let i=0;i<q.length;i++)for(const n of gridNb(q[i]))if(!seen.has(n)){seen.add(n);q.push(n);}
-        const sA=q.length,sB=sizes[big]-sA;if(Math.min(sA,sB)<sizes[big]*0.3||(seen.has(start)&&seen.has(exit))){const ax=a%W,ay=(a/W)|0;for(let d=0;d<4;d++)if((ay+DIRS[d].dy)*W+ax+DIRS[d].dx===b){open[a]|=DIRS[d].b;open[b]|=DIRS[d].o;}continue;}
-        ids=label(f);}
-      if(ids.length<need)return null;}
-    // atribui um trecho a cada passagem do roteiro (o da entrada primeiro, o da saída por último)
-    const pool={};for(let f=0;f<F;f++){const ids=[...new Set(Array.from({length:WH},(_,i)=>comp[f*WH+i]))];for(let i=ids.length-1;i>0;i--){const j=ri(i+1);[ids[i],ids[j]]=[ids[j],ids[i]];}pool[f]=ids;}
-    const take=(f,must)=>{const P=pool[f];let i=must!=null?P.indexOf(must):P.findIndex(id=>id!==comp[start]&&id!==comp[exit]);if(i<0)i=0;return P.splice(i,1)[0];};
-    const pieces=route.map((f,i)=>i===0?take(f,comp[start]):i===route.length-1?take(f,comp[exit]):null);
-    for(let i=1;i<route.length-1;i++){const f=route[i];const P=pool[f];let k=P.findIndex(id=>id!==comp[exit]);if(k<0)return null;pieces[i]=P.splice(k,1)[0];}
-    if(pieces.some(x=>x==null)||new Set(pieces).size!==pieces.length)return null;
-    // sobras de trecho (se um andar foi dividido a mais) viram galhos ligados por escada mais adiante
-    // 3) liga os trechos em ordem por escadas, entrando e saindo de cada trecho por pontas distantes
-    const inPiece=(id)=>{const r=[];for(let c=0;c<N;c++)if(comp[c]===id)r.push(c);return r;};
-    const distIn=(src,id)=>{const d=new Map([[src,0]]),q=[src];for(let i=0;i<q.length;i++)for(const n of gridNb(q[i]))if(!d.has(n)&&comp[n]===id){d.set(n,d.get(q[i])+1);q.push(n);}return d;};
-    let entry=start;
-    for(let i=0;i<pieces.length-1;i++){const id=pieces[i],d=distIn(entry,id);
-      let outs=inPiece(id).filter(c=>!used.has(c)&&holeOf[c]<0&&deg(c)===1&&d.has(c));if(!outs.length)return null;outs.sort((x,y)=>d.get(y)-d.get(x));
-      const o=outs[ri(Math.max(1,Math.ceil(outs.length*0.3)))];
-      const nid=pieces[i+1];let ins=inPiece(nid).filter(c=>!used.has(c)&&holeOf[c]<0&&deg(c)===1);if(!ins.length)return null;
-      if(i+1===pieces.length-1){const de=distIn(exit,nid);ins=ins.filter(c=>de.has(c));ins.sort((x,y)=>de.get(y)-de.get(x));ins=ins.slice(0,Math.max(1,Math.ceil(ins.length*0.4)));}
-      const inn=ins[ri(ins.length)];addLink(o,inn);entry=inn;}
-    // trechos que sobraram: ligados por escada a um andar vizinho já conectado
-    for(let f=0;f<F;f++)for(const id of pool[f]){const D=bfs(start).dist;const A=deadEnds(c=>D[c]>=0&&Math.abs(fl(c)-f)===1),Bs=deadEnds(c=>comp[c]===id);if(!A.length||!Bs.length)return null;addLink(A[ri(A.length)],Bs[ri(Bs.length)]);}
-    // 4) escadas laterais: um galho do caminho passa a ser alcançado só por outro andar
-    for(let k=0;k<(cfg.sideStairs||0);k++){let done=false;
-      for(let t=0;t<60&&!done;t++){const{par}=bfs(start),path=pathTo(par,exit),onP=new Uint8Array(N);path.forEach(c=>onP[c]=1);
-        const a=path[ri(path.length)];const nbs=gridNb(a).filter(n=>!onP[n]);if(!nbs.length)continue;const b=nbs[ri(nbs.length)];
-        cut(a,b);const D=bfs(start).dist;let sz=0;for(let c=0;c<N;c++)if(D[c]<0)sz++;
-        if(sz>=Math.max(10,WH*0.05)&&sz<=WH*0.45){const A=deadEnds(c=>D[c]>=0&&Math.abs(fl(c)-fl(b))===1),Bs=deadEnds(c=>D[c]<0);if(A.length&&Bs.length){addLink(A[ri(A.length)],Bs[ri(Bs.length)]);done=true;break;}}
-        const ax=a%W,ay=(a/W)|0;for(let d=0;d<4;d++)if((ay+DIRS[d].dy)*W+ax+DIRS[d].dx===b){open[a]|=DIRS[d].b;open[b]|=DIRS[d].o;}}
-      if(!done)return null;}}
+    // UMA escada entre cada par de andares vizinhos (andar 1↔2, 2↔3, ...), nunca duas para o mesmo andar.
+    // A escada sobe e desce no mesmo ponto (x,y) dos dois andares, e fica longe da chegada da escada de baixo,
+    // da entrada e da saída, para o caminho atravessar bem cada andar.
+    const distF=src=>{const d=new Int32Array(N).fill(-1),q=[src];d[src]=0;for(let i=0;i<q.length;i++)for(const n of gridNb(q[i]))if(d[n]<0){d[n]=d[q[i]]+1;q.push(n);}return d;};
+    const free=c=>!used.has(c)&&holeOf[c]<0&&deg(c)===1;
+    const anchors=f=>{const r=[];if(f===fs)r.push(start);if(f===fe)r.push(exit);links.forEach(k=>{if(fl(k.a)===f)r.push(k.a);if(fl(k.b)===f)r.push(k.b);});return r;};
+    const near=(f,c)=>{const A=anchors(f);if(!A.length)return WH;let m=1e9;for(const a of A){const d=distF(a)[c];if(d>=0&&d<m)m=d;}return m;};
+    for(let f=0;f<F-1;f++){
+      const Df=anchors(f).map(distF),Dg=anchors(f+1).map(distF);
+      const sc=(c,D)=>D.length?Math.min(...D.map(d=>d[c])):WH*0.5;
+      let cand=[];for(let p=0;p<WH;p++){const lo=f*WH+p,hi=lo+WH;if(free(lo)&&free(hi))cand.push([lo,hi,Math.min(sc(lo,Df),sc(hi,Dg))]);}
+      if(!cand.length){const L1=[],L2=[];for(let p=0;p<WH;p++){const lo=f*WH+p,hi=lo+WH;if(free(lo))L1.push([lo,sc(lo,Df)]);if(free(hi))L2.push([hi,sc(hi,Dg)]);}
+        if(!L1.length||!L2.length)return null;L1.sort((x,y)=>y[1]-x[1]);L2.sort((x,y)=>y[1]-x[1]);
+        cand=[[L1[ri(Math.max(1,Math.ceil(L1.length*0.25)))][0],L2[ri(Math.max(1,Math.ceil(L2.length*0.25)))][0],0]];}
+      else{cand.sort((x,y)=>y[2]-x[2]);cand=cand.slice(0,Math.max(1,Math.ceil(cand.length*0.25)));}
+      const[lo,hi]=cand[ri(cand.length)];addLink(lo,hi);}
+    if(links.length!==F-1)return null;}
   let{dist,par}=bfs(start);
   {if(dist[exit]<0)return null;const pth=pathTo(par,exit);
     if(F===1){if(new Set(pth.map(quad)).size<4||dist[exit]<N*cfg.minPath)return null;}}
@@ -313,16 +281,16 @@ const LEVELS=[
  {name:'Névoa',sub:'1 andar · 1 par de buracos · 2 portões',w:24,h:34,floors:1,gates:['circle','triangle'],holes:1,branchy:.15,minItemDepth:3,minPath:.2,seed:111,
   pal:{bg:'#111319',floor:'#1b1e28',floor2:'#222634',wall:'#7486b8',side:'#3b4568',trail:'#7cc8ff',hero:'#bfe2ff',night:'#07080c'},amb:1,mem:0,
   mus:{root:57,scale:[0,2,4,7,9],chords:[[0,4,7],[9,0,4],[5,9,0],[7,11,2]]}},
- {name:'Jade',sub:'2 andares · escadas · 3 portões',w:22,h:31,floors:2,pathStairs:2,sideStairs:2,gates:['square','circle','triangle'],holes:1,branchy:.18,minItemDepth:4,minPath:.2,seed:222,
+ {name:'Jade',sub:'2 andares · escadas · 3 portões',w:22,h:31,floors:2,gates:['square','circle','triangle'],holes:1,branchy:.18,minItemDepth:4,minPath:.2,seed:222,
   pal:{bg:'#0b1412',floor:'#13201c',floor2:'#182823',wall:'#3fae8a',side:'#1f5a48',trail:'#6fe3b4',hero:'#c8ffe6',night:'#030807'},amb:.8,mem:.12,
   mus:{root:55,scale:[0,2,3,7,10],chords:[[0,3,7],[8,0,3],[3,7,10],[10,2,5]]}},
- {name:'Terracota',sub:'3 andares · escadas · 4 portões',w:21,h:30,floors:3,pathStairs:3,sideStairs:3,gates:['triangle','hex','circle','square'],holes:2,branchy:.2,minItemDepth:5,minPath:.2,seed:333,
+ {name:'Terracota',sub:'3 andares · escadas · 4 portões',w:21,h:30,floors:3,gates:['triangle','hex','circle','square'],holes:2,branchy:.2,minItemDepth:5,minPath:.2,seed:333,
   pal:{bg:'#18110f',floor:'#241a16',floor2:'#2c201b',wall:'#d27a52',side:'#73402b',trail:'#ffae7a',hero:'#ffe2c8',night:'#080403'},amb:.6,mem:.18,
   mus:{root:53,scale:[0,2,4,5,7,9],chords:[[0,4,7],[2,5,9],[4,7,11],[5,9,0]]}},
- {name:'Índigo',sub:'4 andares · escadas · 5 portões',w:20,h:28,floors:4,pathStairs:4,sideStairs:4,gates:['moon','circle','hex','triangle','square'],holes:2,branchy:.2,minItemDepth:6,minPath:.2,seed:444,
+ {name:'Índigo',sub:'4 andares · escadas · 5 portões',w:20,h:28,floors:4,gates:['moon','circle','hex','triangle','square'],holes:2,branchy:.2,minItemDepth:6,minPath:.2,seed:444,
   pal:{bg:'#0c0d1c',floor:'#15172d',floor2:'#1b1e3a',wall:'#6a66e0',side:'#33317a',trail:'#a99bff',hero:'#dcd8ff',night:'#04040b'},amb:.36,mem:.24,
   mus:{root:50,scale:[0,3,5,7,10],chords:[[0,3,7],[5,8,0],[3,7,10],[7,10,2]]}},
- {name:'Abismo',sub:'5 andares · escadas · 5 portões',w:19,h:27,floors:5,pathStairs:5,sideStairs:5,gates:['square','moon','triangle','hex','circle'],holes:3,branchy:.22,minItemDepth:6,minPath:.2,seed:555,
+ {name:'Abismo',sub:'5 andares · escadas · 5 portões',w:19,h:27,floors:5,gates:['square','moon','triangle','hex','circle'],holes:3,branchy:.22,minItemDepth:6,minPath:.2,seed:555,
   pal:{bg:'#05080b',floor:'#0c1317',floor2:'#10191e',wall:'#2a92a3',side:'#144850',trail:'#66e0ff',hero:'#cdf6ff',night:'#010203'},amb:.14,mem:.26,
   mus:{root:48,scale:[0,2,3,7,8],chords:[[0,3,7],[8,0,3],[5,8,0],[7,11,2]]}}
 ];

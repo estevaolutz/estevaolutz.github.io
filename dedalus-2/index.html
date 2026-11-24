@@ -482,7 +482,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'dobro + modo'], 2: ['vibrato', 'delay longo', 'gate', 'bitcrusher'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'dobro + modo'], 2: ['vibrato + gate', 'delay + gate', 'gate', 'gate ×2'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -727,7 +727,7 @@ function somAoVivo() {
    Voz única e contínua (monofônica): seno + triângulo (mistura pela abertura da mão), vibrato suave, filtro passa-baixa e reverb.
    Notas soltas: a altura da mão escolhe a nota (2 oitavas da MESMA escala do baixo); cada troca de nota reataca o envelope
    com um glide curto; mão parada sustenta; mão fora da tela solta a nota (release).
-   Espelhado da mão direita: para a ESQUERDA = abre o filtro · perto = volume · abrir/fechar = forma de onda (seno → triângulo). */
+   Espelhado da mão direita: para a ESQUERDA = abre o filtro · perto = volume · abrir = seno limpo com vibrato · fechar = triângulo sem vibrato. */
 const LD = { oit: 0, vol: .7, cut: 5000, glide: .05, vib: 12, vibR: 5.2, rev: .4, adsr: [.06, .4, .8, .6] };
 const LEAD_HIST = .2;
 let ld = null, ldDeg = null, ldSoando = false;
@@ -765,22 +765,25 @@ function leadAoVivo() {
   const m = CTRL.maos[2], c = ac.currentTime, [A, D, Sus, R] = LD.adsr, on = somOn && m.ativa;
   ld.vol.gain.setTargetAtTime(on ? LD.vol * (.06 + .94 * m.perto) : 0, c, .05);
   ld.cut.offset.setTargetAtTime(-4800 * (1 - m.fora), c, .04);          // para a ESQUERDA abre o filtro
-  ld.mixT.offset.setTargetAtTime(m.aberta, c, .05); ld.mixS.offset.setTargetAtTime(1 - m.aberta, c, .05);   // aberta = triângulo
+  ld.mixS.offset.setTargetAtTime(m.aberta, c, .05); ld.mixT.offset.setTargetAtTime(1 - m.aberta, c, .05);   // ABERTA = seno limpo (com vibrato) · fechada = triângulo
   ld.lp.frequency.setTargetAtTime(LD.cut, c, .05);
   const P = on ? m.pinca : -1;
-  // 1 · VIBRATO: forte e um pouco mais rápido enquanto segura
-  ld.lfo.frequency.setTargetAtTime(P === 0 ? Math.max(6, LD.vibR) : LD.vibR, c, .1); ld.lfoG.gain.setTargetAtTime(P === 0 ? Math.max(38, LD.vib) : LD.vib, c, P === 0 ? .12 : .2);
+  // PINÇAS DA MÃO ESQUERDA: 1 vibrato forte + gate · 2 delay longo + gate · 3 gate · 4 gate no dobro da figura (fusas)
+  const vibForte = P === 0, delay = P === 1, gateDiv = P === 3 ? 8 : (P >= 0 ? 4 : 0);   // subdivisões por tempo (0 = sem gate)
+  // vibrato: a mão ABERTA traz o vibrato do painel; a pinça 1 força um vibrato forte
+  ld.lfo.frequency.setTargetAtTime(vibForte ? Math.max(6, LD.vibR) : LD.vibR, c, .1);
+  ld.lfoG.gain.setTargetAtTime(vibForte ? Math.max(38, LD.vib) : LD.vib * m.aberta, c, .12);
   ld.rs.gain.setTargetAtTime(LD.rev, c, .1);
-  // 2 · DELAY LONGO
-  ld.dl.delayTime.setTargetAtTime(60 / MUS.bpm * 2, c, .05); ld.dSend.gain.setTargetAtTime(P === 1 ? .7 : 0, c, .06);
-  // 3 · GATE RÍTMICO em semicolcheias, começando cravado na grade do BPM
-  if (P === 2 && !ld.gOsc) {
-    const s16 = 60 / MUS.bpm / 4; let T = tempoT || c; while (T < c + .02) T += s16;
-    const o = ac.createOscillator(), og = ac.createGain(); o.type = 'square'; o.frequency.value = MUS.bpm / 60 * 4; og.gain.value = .5; o.connect(og); og.connect(ld.gSmooth); o.start(T);
-    ld.gConst.offset.setValueAtTime(.5, T); ld.gOsc = o;
-  } else if (P !== 2 && ld.gOsc) { try { ld.gOsc.stop(c); } catch (e) {} ld.gOsc = null; ld.gConst.offset.cancelScheduledValues(c); ld.gConst.offset.setValueAtTime(1, c); }
-  // 4 · BITCRUSHER
-  ld.cWet.gain.setTargetAtTime(P === 3 ? 1 : 0, c, .015); ld.cDry.gain.setTargetAtTime(P === 3 ? 0 : 1, c, .015);
+  ld.dl.delayTime.setTargetAtTime(60 / MUS.bpm * 2, c, .05); ld.dSend.gain.setTargetAtTime(delay ? .7 : 0, c, .06);
+  // gate rítmico cravado na grade do BPM (recomeça alinhado quando muda a figura)
+  if (ld.gOsc && ld.gDiv !== gateDiv) { try { ld.gOsc.stop(c); } catch (e) {} ld.gOsc = null; ld.gConst.offset.cancelScheduledValues(c); ld.gConst.offset.setValueAtTime(1, c); }
+  if (gateDiv && !ld.gOsc) {
+    const st = 60 / MUS.bpm / gateDiv; let T = tempoT || c; while (T < c + .02) T += st;
+    const o = ac.createOscillator(), og = ac.createGain(); o.type = 'square'; o.frequency.value = MUS.bpm / 60 * gateDiv; og.gain.value = .5; o.connect(og); og.connect(ld.gSmooth); o.start(T);
+    ld.gSmooth.frequency.value = gateDiv === 8 ? 320 : 180;
+    ld.gConst.offset.setValueAtTime(.5, T); ld.gOsc = o; ld.gDiv = gateDiv;
+  }
+  ld.cWet.gain.setTargetAtTime(0, c, .015); ld.cDry.gain.setTargetAtTime(1, c, .015);   // (bitcrusher do lead desligado)
   if (!on) { if (ldSoando) { ld.env.gain.cancelScheduledValues(c); ld.env.gain.setValueAtTime(ld.env.gain.value, c); ld.env.gain.setTargetAtTime(0, c, Math.max(.01, R / 3)); ldSoando = false; } ldDeg = null; return; }
   // nota pela altura (calibrada), com histerese para não tremer na fronteira
   const lista = leadLista(), pos = Math.min(.9999, m.altura) * lista.length;
@@ -894,7 +897,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v15 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v16 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();

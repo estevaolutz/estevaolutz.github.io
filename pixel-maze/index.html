@@ -291,14 +291,13 @@ function musTension(){const lv=game.level;if(!lv)return 0;const L=lv.L;if(!lv.st
   return Math.min(1,t);}
 function droneStop(){const D=MUS.drone;if(!D||!AU.ctx)return;const t=AU.ctx.currentTime;D.out.gain.cancelScheduledValues(t);D.out.gain.setTargetAtTime(0,t,0.5);D.osc.forEach(o=>{try{o.stop(t+3);}catch(e){}});MUS.drone=null;}
 function droneStart(){droneStop();const ctx=AU.ctx,lv=game.level;if(!ctx||!lv)return;const r=lv.cfg.mus.root-24,t=ctx.currentTime;
-  const out=ctx.createGain();out.gain.setValueAtTime(0,t);out.gain.setTargetAtTime(1,t,2.5);
-  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=160;lp.Q.value=5;lp.connect(out);out.connect(AU.mus);
+  const out=ctx.createGain();out.gain.setValueAtTime(0,t);
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=400;lp.Q.value=0.7;lp.connect(out);out.connect(AU.mus);
   const osc=[],voice=(m,det,type,g)=>{const o=ctx.createOscillator();o.type=type;o.frequency.value=mtof(m);o.detune.value=det;const gg=ctx.createGain();gg.gain.value=g;o.connect(gg);gg.connect(lp);o.start(t);osc.push(o);return{o,g:gg,m};};
-  const v=[voice(r,-8,'sawtooth',0.11),voice(r,7,'sawtooth',0.11),voice(r+7,0,'triangle',0.05)];
-  const dis=voice(r+13,0,'sine',0),tri=voice(r+18,0,'triangle',0); // segunda menor e trítono entram com a tensão
+  const v=[voice(r+12,0,'sine',0.09),voice(r+24,4,'sine',0.025),voice(r+19,0,'triangle',0.02)];
+  const dis=voice(r+25,0,'sine',0),tri=voice(r+30,0,'sine',0); // segunda menor e trítono entram com a tensão
   const lfo=ctx.createOscillator();lfo.frequency.value=0.045;const lg=ctx.createGain();lg.gain.value=70;lfo.connect(lg);lg.connect(lp.frequency);lfo.start(t);osc.push(lfo);
-  const trem=ctx.createOscillator();trem.frequency.value=0.13;const tg=ctx.createGain();tg.gain.value=0.25;trem.connect(tg);tg.connect(out.gain);trem.start(t);osc.push(trem);
-  MUS.drone={out,lp,osc,v,dis,tri,r};}
+    MUS.drone={out,lp,osc,v,dis,tri,r};}
 function thump(t,f,peak){const ctx=AU.ctx,o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.setValueAtTime(f*2.2,t);o.frequency.exponentialRampToValueAtTime(f,t+0.08);
   g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(peak,t+0.008);g.gain.exponentialRampToValueAtTime(0.0001,t+0.35);o.connect(g);g.connect(AU.mus);o.start(t);o.stop(t+0.4);}
 function pad(t,m,dur,peak){const ctx=AU.ctx,o=ctx.createOscillator(),o2=ctx.createOscillator(),f=ctx.createBiquadFilter(),g=ctx.createGain();o.type='sawtooth';o2.type='sawtooth';o.frequency.value=mtof(m);o2.frequency.value=mtof(m);o2.detune.value=9;
@@ -311,9 +310,10 @@ function musTick(){const ctx=AU.ctx,lv=game.level;if(!ctx||!lv)return;
   if(lv.won){droneStop();return;}
   if(!MUS.drone)droneStart();
   const D=MUS.drone,T=musTension(),now=ctx.currentTime,mode=MODES[lv.idx%MODES.length],root=lv.cfg.mus.root;
-  D.lp.frequency.setTargetAtTime(140+T*T*900,now,0.8);D.dis.g.gain.setTargetAtTime(T>0.3?0.012+T*0.03:0,now,1.5);D.tri.g.gain.setTargetAtTime(T>0.7?0.025:0,now,1.5);
+  D.lp.frequency.setTargetAtTime(400+T*600,now,0.8);D.dis.g.gain.setTargetAtTime(T>0.4?0.006+T*0.01:0,now,2);D.tri.g.gain.setTargetAtTime(T>0.75?0.008:0,now,2);
   const bpm=56+T*52,sp=60/bpm/4;
   while(MUS.next<now+0.25){const t=MUS.next,st=MUS.step;
+    if(st%32===0){D.on=Math.random()<0.4+T*0.3;D.out.gain.setTargetAtTime(D.on?0.3+T*0.4:0,t,3);}
     if(st%64===0){const sh=SHIFTS[(st/64|0)%SHIFTS.length];if(sh!==MUS.shift){MUS.shift=sh;D.v.forEach(x=>x.o.frequency.setTargetAtTime(mtof(x.m+sh),t,1.2));}}
     const base=root+MUS.shift;
     // coração: tum-tum, mais rápido e forte com a tensão

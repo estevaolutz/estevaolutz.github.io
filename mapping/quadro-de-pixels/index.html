@@ -12,8 +12,14 @@ html,body{margin:0;height:100%;background:#000;color:var(--tx);font:14px/1.4 sys
 body.saida{overflow:hidden;cursor:crosshair}
 body.saida.limpo{cursor:none}
 #out{position:fixed;inset:0;width:100vw;height:100vh;display:block;touch-action:none}
+#pn{position:fixed;top:0;right:0;bottom:0;width:320px;background:#12151cf2;border-left:1px solid var(--ln);padding:14px;overflow-y:auto;transform:translateX(100%);transition:transform .2s;cursor:default}
+#pn.ab{transform:none}
+#pn .lin input[type=number]{width:56px}
 #dica{position:fixed;left:12px;bottom:10px;color:#8b93a3;font-size:12px;pointer-events:none}
-body.limpo #dica{display:none}
+body.limpo #pn{position:fixed;top:0;right:0;bottom:0;width:320px;background:#12151cf2;border-left:1px solid var(--ln);padding:14px;overflow-y:auto;transform:translateX(100%);transition:transform .2s;cursor:default}
+#pn.ab{transform:none}
+#pn .lin input[type=number]{width:56px}
+#dica{display:none}
 /* controle */
 #app{display:grid;grid-template-columns:1fr 340px;height:100vh}
 #esq{overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px}
@@ -149,32 +155,114 @@ function teclas(aoMudar){
   });
 }
 
+/* ---------- motor de efeitos (comum às duas janelas) ---------- */
+let px=new Uint8ClampedArray(S.cols*S.rows*3);
+let pintura=new Uint8Array(S.cols*S.rows);
+const TESTES=[['grade','Grade xadrez'],['branco','Tudo aceso'],['bordas','Só a moldura'],['varredura','Varredura'],['umporum','Um por um'],['cantos4','Cantos coloridos']];
+const EFEITOS=[['onda','Onda'],['chuva','Chuva'],['cintilar','Cintilar'],['plasma','Plasma'],['vida','Jogo da Vida'],['desenhar','Desenhar'],['camera','Câmera']];
+/* câmera */
+let video=null; const vcv=document.createElement('canvas'), vctx=vcv.getContext('2d',{willReadFrequently:true});
+async function ligarCamera(){ if(video) return; try{ const st=await navigator.mediaDevices.getUserMedia({video:true}); video=document.createElement('video'); video.srcObject=st; video.muted=true; video.playsInline=true; await video.play(); }catch(e){ alert('Não consegui abrir a câmera.'); } }
+
+/* jogo da vida */
+let vida=null, vidaT=0;
+function semearVida(){ vida=new Uint8Array(S.cols*S.rows).map(()=>Math.random()<.3?1:0); }
+
+/* ---------- efeitos: devolvem [r,g,b] 0..1 por bloco ---------- */
+function hex(h){ return [parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255]; }
+function hsv(h,s,v){ const f=n=>{const k=(n+h*6)%6;return v-v*s*Math.max(0,Math.min(k,4-k,1));}; return [f(5),f(3),f(1)]; }
+const ruido=(x,y)=>{const s=Math.sin(x*127.1+y*311.7)*43758.5453;return s-Math.floor(s);};
+let chuva=[];
+function calcular(t){
+  const C=S.cols,R=S.rows,N=C*R, cor=hex(S.cor), b=S.brilho, T=t*S.vel;
+  if(px.length!==N*3) px=new Uint8ClampedArray(N*3);
+  const set=(k,rgb,m=1)=>{px[k*3]=rgb[0]*m*b*255;px[k*3+1]=rgb[1]*m*b*255;px[k*3+2]=rgb[2]*m*b*255;};
+  px.fill(0);
+  if(S.efeito==='vida' && !vida) semearVida();
+  if(S.efeito==='vida' && t-vidaT>0.35/Math.max(.05,S.vel)){ vidaT=t; const n=new Uint8Array(N);
+    for(let r=0;r<R;r++)for(let c=0;c<C;c++){let v=0;for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){if(dr||dc)v+=vida[((r+dr+R)%R)*C+(c+dc+C)%C];}
+      const k=r*C+c; n[k]=(v===3||(v===2&&vida[k]))?1:0;}
+    vida=n; if(!vida.some(x=>x)) semearVida(); }
+  if(S.efeito==='chuva'){ if(Math.random()<0.5*S.vel) chuva.push({c:Math.floor(Math.random()*C),y:0,v:6+Math.random()*10});
+    chuva.forEach(g=>g.y+=g.v/60*S.vel); chuva=chuva.filter(g=>g.y<R+6); }
+  const umk=Math.floor(T*4)%N;
+  for(let r=0;r<R;r++) for(let c=0;c<C;c++){
+    const k=r*C+c, u=c/(C-1||1), v=r/(R-1||1);
+    switch(S.efeito){
+      case 'grade': set(k,cor,(r+c)%2?0.25:1); break;
+      case 'branco': set(k,cor); break;
+      case 'bordas': if(r===0||c===0||r===R-1||c===C-1) set(k,cor); break;
+      case 'varredura': { const fase=Math.floor(T*6)%(R+C); if(fase<R? r===fase : c===fase-R) set(k,cor); break; }
+      case 'umporum': if(k===umk) set(k,cor); break;
+      case 'cantos4': { const cs=[[0,0,[1,0,0]],[C-1,0,[0,1,0]],[C-1,R-1,[0,0,1]],[0,R-1,[1,1,0]]];
+        for(const [cc,rr,co] of cs) if(Math.abs(c-cc)<=1&&Math.abs(r-rr)<=1) set(k,co); if(r===Math.floor(R/2)&&c===Math.floor(C/2)) set(k,[1,1,1]); break; }
+      case 'onda': { const d=Math.hypot(c-C/2,(r-R/2)); set(k,cor,0.5+0.5*Math.sin(d*0.6-T*3)); break; }
+      case 'cintilar': { const f=ruido(c,r); set(k,cor,Math.pow(0.5+0.5*Math.sin(T*(1+f*3)+f*50),8)); break; }
+      case 'plasma': { const s=Math.sin(u*6+T)+Math.sin(v*5-T*1.3)+Math.sin((u+v)*4+T*.7)+Math.sin(Math.hypot(u-.5,v-.5)*10-T*2);
+        set(k,hsv((s/8+T*.05)%1+1,0.8,1)); break; }
+      case 'vida': if(vida[k]) set(k,cor); break;
+      case 'desenhar': if(pintura[k]) set(k,cor); break;
+    }
+  }
+  if(S.efeito==='chuva') chuva.forEach(g=>{ for(let i=0;i<5;i++){ const r=Math.floor(g.y)-i; if(r>=0&&r<R){ const k=r*C+g.c; const m=1-i/5; px[k*3]=Math.max(px[k*3],cor[0]*m*b*255);px[k*3+1]=Math.max(px[k*3+1],cor[1]*m*b*255);px[k*3+2]=Math.max(px[k*3+2],cor[2]*m*b*255);} } });
+  if(S.efeito==='camera' && video && video.readyState>=2){
+    vcv.width=C; vcv.height=R; vctx.save(); vctx.scale(-1,1); vctx.drawImage(video,-C,0,C,R); vctx.restore();
+    const d=vctx.getImageData(0,0,C,R).data; for(let k=0;k<N;k++){px[k*3]=d[k*4]*b;px[k*3+1]=d[k*4+1]*b;px[k*3+2]=d[k*4+2]*b;}
+  }
+}
+
+
 /* ================= JANELA DE SAÍDA (projetor) ================= */
 if(SAIDA){
   document.body.className='saida';
   document.title='Quadro de Pixels — saída';
-  document.body.innerHTML='<canvas id="out"></canvas><div id="dica">Arraste os cantos · 1–4 escolhe canto · setas ajustam (Shift = 10×) · F tela cheia · C esconde contorno · N números</div>';
+  document.body.innerHTML='<canvas id="out"></canvas><div id="dica">E abre/fecha o painel · arraste os cantos · 1–4 escolhe canto · setas ajustam (Shift = 10×) · F tela cheia · C contorno · N números</div><div id="pn"></div>';
   const cv=document.getElementById('out'), ctx=cv.getContext('2d');
-  let px=null, ultimo=0;
+  let remoto=null, ultimo=0, t0s=performance.now();
+  const pn=document.getElementById('pn');
+  function montarPainel(){
+    const bt=(l)=>l.map(([k,n])=>`<button class="b${S.efeito===k?' on':''}" data-e="${k}">${n}</button>`).join('');
+    pn.innerHTML=`<h2>Teste</h2><div class="bts">${bt(TESTES)}</div><h2>Efeitos</h2><div class="bts">${bt(EFEITOS)}</div>
+     <h2>Ajustes</h2>
+     <div class="lin"><label>Brilho</label><input type="range" data-k="brilho" min="0" max="1" step="0.01" value="${S.brilho}"></div>
+     <div class="lin"><label>Velocidade</label><input type="range" data-k="vel" min="0" max="4" step="0.05" value="${S.vel}"></div>
+     <div class="lin"><label>Fresta</label><input type="range" data-k="fresta" min="0" max="0.45" step="0.01" value="${S.fresta}"></div>
+     <div class="lin"><label>Cor</label><input type="color" data-k="cor" value="${S.cor}"></div>
+     <div class="lin"><label>Grade</label><input type="number" data-k="cols" min="1" max="200" value="${S.cols}"> × <input type="number" data-k="rows" min="1" max="200" value="${S.rows}"></div>
+     <label class="ck"><input type="checkbox" data-k="calib" ${S.calib?'checked':''}> Contorno e cantos</label>
+     <label class="ck"><input type="checkbox" data-k="numeros" ${S.numeros?'checked':''}> Numerar blocos</label>
+     <div class="bts"><button class="b" data-x="tela">Tela cheia</button><button class="b" data-x="centro">Recentralizar cantos</button><button class="b" data-x="fechar">Fechar painel (E)</button></div>`;
+  }
+  pn.addEventListener('click',ev=>{ const e=ev.target.closest('[data-e]'), x=ev.target.closest('[data-x]');
+    if(e){ S.efeito=e.dataset.e; if(S.efeito==='camera') ligarCamera(); if(S.efeito==='vida') semearVida(); mudou(); montarPainel(); }
+    if(x){ if(x.dataset.x==='tela') document.documentElement.requestFullscreen().catch(()=>{});
+      if(x.dataset.x==='centro'){ S.cantos=JSON.parse(JSON.stringify(PADRAO.cantos)); mudou(); }
+      if(x.dataset.x==='fechar') pn.classList.remove('ab'); } });
+  pn.addEventListener('input',ev=>{ const k=ev.target.dataset.k; if(!k) return; const el=ev.target;
+    S[k]= el.type==='checkbox'?el.checked : el.type==='color'?el.value : +el.value;
+    if(k==='cols'||k==='rows'){ S[k]=Math.max(1,Math.min(200,S[k]||1)); px=new Uint8ClampedArray(S.cols*S.rows*3); pintura=new Uint8Array(S.cols*S.rows); vida=null; }
+    mudou(); });
+  pn.addEventListener('pointerdown',ev=>ev.stopPropagation());
+  addEventListener('keydown',ev=>{ if(ev.target.tagName==='INPUT') return; if(ev.key==='e'||ev.key==='E'){ pn.classList.toggle('ab'); montarPainel(); } });
+  montarPainel();
   function ajustar(){ const d=devicePixelRatio||1; cv.width=innerWidth*d; cv.height=innerHeight*d; }
   addEventListener('resize',ajustar); ajustar();
   const mudou=()=>{ salvar(); canal&&canal.postMessage({tipo:'estado',S}); };
   arrastavel(cv,mudou); teclas(mudou);
   cv.addEventListener('dblclick',()=>document.documentElement.requestFullscreen().catch(()=>{}));
   if(canal) canal.onmessage=ev=>{ const m=ev.data;
-    if(m.tipo==='quadro'){ px=m.px; ultimo=performance.now(); }
-    if(m.tipo==='estado'){ S=Object.assign(S,m.S); }
+    if(m.tipo==='quadro'){ remoto=m.px; ultimo=performance.now(); }
+    if(m.tipo==='estado'){ S=Object.assign(S,m.S); if(pn.classList.contains('ab')) montarPainel(); }
   };
   canal&&canal.postMessage({tipo:'ola'});
   (function loop(){
     document.body.classList.toggle('limpo',!S.calib);
-    // sem controle aberto: mostra a grade de teste
-    const dados = (performance.now()-ultimo<1500) ? px : gradeTeste();
+    // com a janela de controle ativa usa os quadros dela; senão calcula aqui mesmo (modo espelhado / janela única)
+    let dados;
+    if(performance.now()-ultimo<500) dados=remoto; else { calcular((performance.now()-t0s)/1000); dados=px; }
     desenhar(ctx,cv.width,cv.height,dados,{raio:16*(devicePixelRatio||1),linha:2*(devicePixelRatio||1)});
     requestAnimationFrame(loop);
   })();
-  function gradeTeste(){ const a=new Uint8ClampedArray(S.cols*S.rows*3);
-    for(let r=0;r<S.rows;r++)for(let c=0;c<S.cols;c++){const v=(r+c)%2?70:200,i=(r*S.cols+c)*3;a[i]=a[i+1]=a[i+2]=v;} return a; }
 }
 
 /* ================= JANELA DE CONTROLE ================= */
@@ -190,6 +278,8 @@ document.body.innerHTML=`
  <div id="dir">
   <button class="b big" id="abrir">Abrir janela do projetor</button>
   <p class="nota">Arraste a janela para a tela do projetor e dê duplo clique (ou F) para tela cheia.</p>
+  <a class="b" href="?saida" style="display:block;text-align:center;text-decoration:none">Projetor espelhado: usar janela única</a>
+  <p class="nota">Com o Mac espelhado no projetor, use a janela única em tela cheia. A tecla E abre e fecha os controles por cima.</p>
 
   <h2>Grade do quadro</h2>
   <div class="lin"><label>Colunas</label><input type="number" id="cols" min="1" max="200"><label style="flex:0 0 48px">Linhas</label><input type="number" id="rows" min="1" max="200"></div>
@@ -221,10 +311,6 @@ document.body.innerHTML=`
 </div>`;
 
 const $=id=>document.getElementById(id);
-const TESTES=[['grade','Grade xadrez'],['branco','Tudo aceso'],['bordas','Só a moldura'],['varredura','Varredura'],['umporum','Um por um'],['cantos4','Cantos coloridos']];
-const EFEITOS=[['onda','Onda'],['chuva','Chuva'],['cintilar','Cintilar'],['plasma','Plasma'],['vida','Jogo da Vida'],['desenhar','Desenhar'],['camera','Câmera']];
-let px=new Uint8ClampedArray(S.cols*S.rows*3);
-let pintura=new Uint8Array(S.cols*S.rows);
 let passoFino=false, t0=performance.now();
 
 function botoes(alvo,lista){ $(alvo).innerHTML=lista.map(([k,n])=>`<button class="b" data-e="${k}">${n}</button>`).join(''); }
@@ -280,57 +366,6 @@ prev.addEventListener('pointermove',ev=>{ if(pintando<0)return; const k=celula(e
 prev.addEventListener('pointerup',()=>pintando=-1);
 function celula(ev){ const r=prev.getBoundingClientRect(); const c=Math.floor((ev.clientX-r.left)/r.width*S.cols), l=Math.floor((ev.clientY-r.top)/r.height*S.rows);
   return (c<0||l<0||c>=S.cols||l>=S.rows)?-1:l*S.cols+c; }
-
-/* câmera */
-let video=null; const vcv=document.createElement('canvas'), vctx=vcv.getContext('2d',{willReadFrequently:true});
-async function ligarCamera(){ if(video) return; try{ const st=await navigator.mediaDevices.getUserMedia({video:true}); video=document.createElement('video'); video.srcObject=st; video.muted=true; video.playsInline=true; await video.play(); }catch(e){ alert('Não consegui abrir a câmera.'); } }
-
-/* jogo da vida */
-let vida=null, vidaT=0;
-function semearVida(){ vida=new Uint8Array(S.cols*S.rows).map(()=>Math.random()<.3?1:0); }
-
-/* ---------- efeitos: devolvem [r,g,b] 0..1 por bloco ---------- */
-function hex(h){ return [parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255]; }
-function hsv(h,s,v){ const f=n=>{const k=(n+h*6)%6;return v-v*s*Math.max(0,Math.min(k,4-k,1));}; return [f(5),f(3),f(1)]; }
-const ruido=(x,y)=>{const s=Math.sin(x*127.1+y*311.7)*43758.5453;return s-Math.floor(s);};
-let chuva=[];
-function calcular(t){
-  const C=S.cols,R=S.rows,N=C*R, cor=hex(S.cor), b=S.brilho, T=t*S.vel;
-  if(px.length!==N*3) px=new Uint8ClampedArray(N*3);
-  const set=(k,rgb,m=1)=>{px[k*3]=rgb[0]*m*b*255;px[k*3+1]=rgb[1]*m*b*255;px[k*3+2]=rgb[2]*m*b*255;};
-  px.fill(0);
-  if(S.efeito==='vida' && !vida) semearVida();
-  if(S.efeito==='vida' && t-vidaT>0.35/Math.max(.05,S.vel)){ vidaT=t; const n=new Uint8Array(N);
-    for(let r=0;r<R;r++)for(let c=0;c<C;c++){let v=0;for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){if(dr||dc)v+=vida[((r+dr+R)%R)*C+(c+dc+C)%C];}
-      const k=r*C+c; n[k]=(v===3||(v===2&&vida[k]))?1:0;}
-    vida=n; if(!vida.some(x=>x)) semearVida(); }
-  if(S.efeito==='chuva'){ if(Math.random()<0.5*S.vel) chuva.push({c:Math.floor(Math.random()*C),y:0,v:6+Math.random()*10});
-    chuva.forEach(g=>g.y+=g.v/60*S.vel); chuva=chuva.filter(g=>g.y<R+6); }
-  const umk=Math.floor(T*4)%N;
-  for(let r=0;r<R;r++) for(let c=0;c<C;c++){
-    const k=r*C+c, u=c/(C-1||1), v=r/(R-1||1);
-    switch(S.efeito){
-      case 'grade': set(k,cor,(r+c)%2?0.25:1); break;
-      case 'branco': set(k,cor); break;
-      case 'bordas': if(r===0||c===0||r===R-1||c===C-1) set(k,cor); break;
-      case 'varredura': { const fase=Math.floor(T*6)%(R+C); if(fase<R? r===fase : c===fase-R) set(k,cor); break; }
-      case 'umporum': if(k===umk) set(k,cor); break;
-      case 'cantos4': { const cs=[[0,0,[1,0,0]],[C-1,0,[0,1,0]],[C-1,R-1,[0,0,1]],[0,R-1,[1,1,0]]];
-        for(const [cc,rr,co] of cs) if(Math.abs(c-cc)<=1&&Math.abs(r-rr)<=1) set(k,co); if(r===Math.floor(R/2)&&c===Math.floor(C/2)) set(k,[1,1,1]); break; }
-      case 'onda': { const d=Math.hypot(c-C/2,(r-R/2)); set(k,cor,0.5+0.5*Math.sin(d*0.6-T*3)); break; }
-      case 'cintilar': { const f=ruido(c,r); set(k,cor,Math.pow(0.5+0.5*Math.sin(T*(1+f*3)+f*50),8)); break; }
-      case 'plasma': { const s=Math.sin(u*6+T)+Math.sin(v*5-T*1.3)+Math.sin((u+v)*4+T*.7)+Math.sin(Math.hypot(u-.5,v-.5)*10-T*2);
-        set(k,hsv((s/8+T*.05)%1+1,0.8,1)); break; }
-      case 'vida': if(vida[k]) set(k,cor); break;
-      case 'desenhar': if(pintura[k]) set(k,cor); break;
-    }
-  }
-  if(S.efeito==='chuva') chuva.forEach(g=>{ for(let i=0;i<5;i++){ const r=Math.floor(g.y)-i; if(r>=0&&r<R){ const k=r*C+g.c; const m=1-i/5; px[k*3]=Math.max(px[k*3],cor[0]*m*b*255);px[k*3+1]=Math.max(px[k*3+1],cor[1]*m*b*255);px[k*3+2]=Math.max(px[k*3+2],cor[2]*m*b*255);} } });
-  if(S.efeito==='camera' && video && video.readyState>=2){
-    vcv.width=C; vcv.height=R; vctx.save(); vctx.scale(-1,1); vctx.drawImage(video,-C,0,C,R); vctx.restore();
-    const d=vctx.getImageData(0,0,C,R).data; for(let k=0;k<N;k++){px[k*3]=d[k*4]*b;px[k*3+1]=d[k*4+1]*b;px[k*3+2]=d[k*4+2]*b;}
-  }
-}
 
 function desenharPrev(){
   const C=S.cols,R=S.rows, lado=Math.floor(Math.min(prev.clientWidth/C, 420/R));

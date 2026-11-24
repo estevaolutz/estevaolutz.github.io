@@ -276,7 +276,7 @@ const SOM={
 const ILHAS=[
   {id:'soma',tipo:'missao',ops:['add'],nome:'Ilha da Soma',ic:'🌴',x:80,y:556},
   {id:'sub',tipo:'missao',ops:['sub'],nome:'Baía da Subtração',ic:'🐚',x:262,y:520},
-  {id:'torre1',tipo:'torre',ops:['add','sub'],nome:'Torre do Farol',ic:'🗼',x:98,y:440},
+  {id:'torre1',tipo:'torre',ops:['add','sub'],nome:'Torre do Farol',ic:'🗼',svg:'farol',meta:6,x:98,y:440},
   {id:'mul',tipo:'missao',ops:['mul'],nome:'Selva da Multiplicação',ic:'🐒',x:266,y:376},
   {id:'raio',tipo:'raio',ops:['add','sub','mul','div'],nome:'Vulcão Relâmpago',ic:'🌋',x:92,y:304},
   {id:'div',tipo:'missao',ops:['div'],nome:'Gruta da Divisão',ic:'🦇',x:264,y:244},
@@ -741,12 +741,12 @@ function rosaDosVentos(x,y){
 function introIlha(i){
   const il=ILHAS[i];
   const desc={missao:`Acerte <b>6 desafios</b> de ${il.ops.map(o=>OPS[o].nome.toLowerCase()).join(' e ')} para achar a pista.`,
-    torre:`Cada acerto empilha um bloco. Construa a torre até a <b>bandeira</b> (10 blocos)! Errar duas vezes derruba um bloco.`,
+    torre:`Cada acerto empilha um bloco. Construa a torre até a <b>bandeira</b> (${il.meta||10} blocos)! Errar duas vezes derruba um bloco.`,
     raio:`Acerte o máximo de contas que conseguir antes do tempo acabar. Precisa de pelo menos <b>8</b> para passar.<div class="ajTempo"><button class="btn cinza" id="tMenos">−10s</button><b id="tVal">${fmtTempo(tempoRaio())}</b><button class="btn cinza" id="tMais">+10s</button></div><small>⏱️ Ajuste o tempo antes de começar</small>`,
     monstro:`O monstro guarda o tesouro! <b>Ataque com multiplicação</b> e <b>defenda com divisão</b>. Você tem 3 vidas.`,
     bau:`Você chegou ao tesouro! Toque no baú para abrir.`}[il.tipo];
   const est=E.estrelas[chaveEst(i)]||0;
-  modal(`<div style="font-size:60px">${il.ic}</div><h2>${il.nome}</h2><p>${desc}</p>${est&&il.tipo!=='bau'?`<div class="estrelas" style="font-size:26px">${estrelasHTML(est)}</div>`:''}
+  modal(`<div style="font-size:60px">${icoIlha(il,96)}</div><h2>${il.nome}</h2><p>${desc}</p>${est&&il.tipo!=='bau'?`<div class="estrelas" style="font-size:26px">${estrelasHTML(est)}</div>`:''}
     <div class="botoes"><button class="btn cinza" onclick="fechaModal()">Voltar</button><button class="btn" id="btIr">${il.tipo==='bau'?'Abrir!':'Vamos lá!'}</button></div>`);
   if(il.tipo==='raio'){const at=d=>{E.tempoRaio=Math.max(TR_MIN,Math.min(TR_MAX,tempoRaio()+d));$('#tVal').textContent=fmtTempo(E.tempoRaio);salvar()};$('#tMenos').onclick=()=>at(-10);$('#tMais').onclick=()=>at(10)}
   $('#btIr').onclick=()=>{fechaModal();comecar(i)};
@@ -754,6 +754,18 @@ function introIlha(i){
 const TR_MIN=20,TR_MAX=180;
 function tempoRaio(){return E.tempoRaio||120}
 function fmtTempo(t){t=Math.max(0,t);return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')}
+/* ícone da ilha: o farol usa o mesmo desenho do mapa */
+function icoIlha(il,px){
+  if(il.svg!=='farol')return il.ic;
+  const lado=y=>9-3*(-y/38);
+  let fx='';[[0,-7],[-15,-22],[-30,-38]].forEach(([a,b])=>{fx+=`<path d="M${-lado(a)} ${a} L${-lado(b)} ${b} L${lado(b)} ${b} L${lado(a)} ${a}Z" fill="#e0493b"/>`});
+  return `<svg width="${px}" height="${px}" viewBox="-30 -64 60 68" style="vertical-align:middle;overflow:visible">
+    <defs><linearGradient id="icFeixe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe45c" stop-opacity=".8"/><stop offset="1" stop-color="#ffe45c" stop-opacity="0"/></linearGradient>
+    <radialGradient id="icBrilho"><stop offset="0" stop-color="#fff3a0" stop-opacity=".9"/><stop offset="1" stop-color="#fff3a0" stop-opacity="0"/></radialGradient></defs>
+    <g><animateTransform attributeName="transform" type="rotate" values="-35 0 -45;35 0 -45;-35 0 -45" dur="5s" repeatCount="indefinite"/><path d="M0 -45 L40 -55 L40 -35Z" fill="url(#icFeixe)"/></g>
+    <path d="M-9 0 L-6 -38 L6 -38 L9 0Z" fill="#fff" stroke="#c9b9a0" stroke-width=".8"/>${fx}<rect x="-2.5" y="-7" width="5" height="7" rx="2" fill="#4a2a10"/>
+    <rect x="-9" y="-41" width="18" height="3" fill="#3b2a17"/><rect x="-5" y="-49" width="10" height="8" fill="#ffe45c"/><circle cx="0" cy="-45" r="10" fill="url(#icBrilho)"/><path d="M-7 -49 L0 -57 L7 -49Z" fill="#c0392b"/><circle cx="0" cy="-58" r="1.5" fill="#3b2a17"/></svg>`;
+}
 function estrelasHTML(n){let s='';for(let k=1;k<=3;k++)s+=`<span class="${k<=n?'':'apagada'}">⭐</span>`;return s}
 
 /* ============ motor do jogo ============ */
@@ -762,12 +774,12 @@ let respostas=['',''],foco=0;
 function comecar(i){
   const il=ILHAS[i];
   J={i,il,tipo:il.tipo,feitos:0,erros:0,tent:0,q:null,opIdx:0,seq:0};
-  $('#jTitulo').textContent=il.ic+' '+il.nome;
+  $('#jTitulo').innerHTML=icoIlha(il,28)+' '+il.nome;
   $('#btSom').textContent=E.som?'🔊':'🔇';
   $('#cartao').style.display='';
   mostrar('tJogo');
   if(il.tipo==='missao'){J.meta=6}
-  if(il.tipo==='torre'){J.meta=10;J.blocos=[];J.caidos=0;J.errSeg=0}
+  if(il.tipo==='torre'){J.meta=il.meta||10;J.blocos=[];J.caidos=0;J.errSeg=0}
   if(il.tipo==='monstro'){J.m=MONSTROS[(E.mundo-1)%MONSTROS.length];J.hpMax=5;J.hp=5;J.vidas=3;J.fase='atk'}
   if(il.tipo==='raio'){J.pontos=0;J.tempoTotal=tempoRaio();J.tempo=J.tempoTotal}
   if(il.tipo==='bau'){telaBau();return}

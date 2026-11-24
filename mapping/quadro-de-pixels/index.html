@@ -147,16 +147,22 @@ function arrastavel(cv, aoMudar){
   });
   cv.addEventListener('pointermove',ev=>{ if(!modo) return; const [x,y]=pos(ev);
     const dx=x-ult[0], dy=y-ult[1]; ult=[x,y];
-    const lim=v=>Math.min(3,Math.max(-2,v));
+    const lim=v=>Math.min(6,Math.max(-5,v));
     (modo==='todos'?S.cantos:[S.cantos[S.sel]]).forEach(p=>{p[0]=lim(p[0]+dx);p[1]=lim(p[1]+dy);});
     aoMudar(); });
   cv.addEventListener('pointerup',()=>{modo=null;});
+}
+function escalar(fx,fy){ // estica/encolhe a grade a partir do centro
+  const cx=S.cantos.reduce((a,p)=>a+p[0],0)/4, cy=S.cantos.reduce((a,p)=>a+p[1],0)/4;
+  S.cantos.forEach(p=>{p[0]=cx+(p[0]-cx)*fx;p[1]=cy+(p[1]-cy)*fy;});
 }
 function teclas(aoMudar){
   addEventListener('keydown',ev=>{
     if(ev.target.tagName==='INPUT') return;
     if(['1','2','3','4'].includes(ev.key)){S.sel=+ev.key-1;aoMudar();return;}
     const passo=(ev.altKey?50:ev.shiftKey?10:1)/ (SAIDA?innerWidth:1920);
+    const esc={'+':[1.02,1.02],'=':[1.02,1.02],'-':[0.98,0.98],'PageUp':[1,1.02],'PageDown':[1,0.98],']':[1,1.02],'[':[1,0.98]}[ev.key];
+    if(esc){ev.preventDefault();escalar(...esc);aoMudar();return;}
     if(ev.key==='0'){S.cantos=JSON.parse(JSON.stringify(PADRAO.cantos));aoMudar();return;}
     const m={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[ev.key];
     if(m){ev.preventDefault(); const p=S.cantos[S.sel]; const ar=SAIDA?innerWidth/innerHeight:16/9;
@@ -228,7 +234,7 @@ function calcular(t){
 if(SAIDA){
   document.body.className='saida';
   document.title='Quadro de Pixels — saída';
-  document.body.innerHTML='<canvas id="out"></canvas><div id="dica">E painel · arraste perto de um canto para pegá-lo, ou em qualquer lugar para mover o canto selecionado · Shift+arrastar move tudo · 1–4 escolhe canto · setas (Shift 10×, Alt 50×) · 0 recentraliza · F tela cheia · C contorno · N números</div><div id="pn"></div>';
+  document.body.innerHTML='<canvas id="out"></canvas><div id="dica">E painel · arraste perto de um canto para pegá-lo, ou em qualquer lugar para mover o canto selecionado · Shift+arrastar move tudo · 1–4 escolhe canto · setas (Shift 10×, Alt 50×) · [ ] ou PageUp/PageDown estica na vertical · + − tamanho · 0 recentraliza · F tela cheia · C contorno · N números</div><div id="pn"></div>';
   const cv=document.getElementById('out'), ctx=cv.getContext('2d');
   let remoto=null, ultimo=0, t0s=performance.now();
   const pn=document.getElementById('pn');
@@ -243,12 +249,16 @@ if(SAIDA){
      <div class="lin"><label>Grade</label><input type="number" data-k="cols" min="1" max="200" value="${S.cols}"> × <input type="number" data-k="rows" min="1" max="200" value="${S.rows}"></div>
      <label class="ck"><input type="checkbox" data-k="calib" ${S.calib?'checked':''}> Contorno e cantos</label>
      <label class="ck"><input type="checkbox" data-k="numeros" ${S.numeros?'checked':''}> Numerar blocos</label>
+     <h2>Tamanho da grade</h2>
+     <div class="bts"><button class="b" data-x="v+">Esticar ↕</button><button class="b" data-x="v-">Encolher ↕</button><button class="b" data-x="h+">Esticar ↔</button><button class="b" data-x="h-">Encolher ↔</button><button class="b" data-x="t+">Maior</button><button class="b" data-x="t-">Menor</button></div>
      <div class="bts"><button class="b" data-x="tela">Tela cheia</button><button class="b" data-x="centro">Recentralizar cantos</button><button class="b" data-x="fechar">Fechar painel (E)</button></div>`;
   }
   pn.addEventListener('click',ev=>{ const e=ev.target.closest('[data-e]'), x=ev.target.closest('[data-x]');
     if(e){ S.efeito=e.dataset.e; if(S.efeito==='camera') ligarCamera(); if(S.efeito==='vida') semearVida(); mudou(); montarPainel(); }
     if(x){ if(x.dataset.x==='tela') document.documentElement.requestFullscreen().catch(()=>{});
       if(x.dataset.x==='centro'){ S.cantos=JSON.parse(JSON.stringify(PADRAO.cantos)); mudou(); }
+      const f={'v+':[1,1.05],'v-':[1,0.95],'h+':[1.05,1],'h-':[0.95,1],'t+':[1.05,1.05],'t-':[0.95,0.95]}[x.dataset.x];
+      if(f){ escalar(...f); mudou(); }
       if(x.dataset.x==='fechar') pn.classList.remove('ab'); } });
   pn.addEventListener('input',ev=>{ const k=ev.target.dataset.k; if(!k) return; const el=ev.target;
     S[k]= el.type==='checkbox'?el.checked : el.type==='color'?el.value : +el.value;

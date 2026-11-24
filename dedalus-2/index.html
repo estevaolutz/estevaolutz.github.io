@@ -482,7 +482,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'bitcrusher'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'bitcrusher'], 2: ['vibrato', 'delay longo', 'gate', 'bitcrusher'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -579,6 +579,7 @@ const TIMBRES = [
 ];
 const BX = { timbre: 0, vol: .8, cut: 3200, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3] };
 const cr = {};
+let crushPronto = null;
 let ldLim = null;
 let ac = null, bxLfo = null, bxLfoG = null, bxDly = null, bxDlySend = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
 const pulseCache = {};
@@ -603,7 +604,7 @@ function initSom() {
     process(ins, outs) { const i = ins[0], o = outs[0]; if (!i || !i.length) return true; const q = 2 ** 7, down = 10;
       const n0 = this.n; for (let c = 0; c < o.length; c++) { const a = i[c] || i[0], b = o[c]; let n = n0; for (let k = 0; k < b.length; k++) { if (n % down === 0) this.h[c] = Math.round(a[k] * q) / q; b[k] = this.h[c]; n++; } this.n = n; }
       return true; } });`;
-  try { ac.audioWorklet.addModule('data:text/javascript;charset=utf-8,' + encodeURIComponent(SRC)).then(() => { const w = new AudioWorkletNode(ac, 'crush', { outputChannelCount: [2] }); bxOut.connect(w); w.connect(cr.wet); }).catch(shaperFallback); } catch (e) { shaperFallback(); }
+  try { crushPronto = ac.audioWorklet.addModule('data:text/javascript;charset=utf-8,' + encodeURIComponent(SRC)); crushPronto.then(() => { const w = new AudioWorkletNode(ac, 'crush', { outputChannelCount: [2] }); bxOut.connect(w); w.connect(cr.wet); }).catch(shaperFallback); } catch (e) { shaperFallback(); }
   // eco rítmico do baixo (pinça do indicador): delay em colcheia pontuada, com repetições que escurecem
   bxDlySend = ac.createGain(); bxDlySend.gain.value = 0; bxDly = ac.createDelay(2);
   const fb = ac.createGain(), lp = ac.createBiquadFilter(), hp = ac.createBiquadFilter(), ret = ac.createGain();
@@ -737,14 +738,25 @@ function initLead() {
   lfo.frequency.value = LD.vibR; lfoG.gain.value = LD.vib; lfo.connect(lfoG); lfoG.connect(o1.detune); lfoG.connect(o2.detune);
   lp.type = 'lowpass'; lp.Q.value = .7; lp.frequency.value = LD.cut; cut.offset.value = 0; cut.connect(lp.detune);
   env.gain.value = 0; vol.gain.value = 0;
-  o1.connect(g1); o2.connect(g2); g1.connect(lp); g2.connect(lp); lp.connect(env); env.connect(vol);
+  // GATE rítmico (pinça 3): ganho que um pulso quadrado em semicolcheias abre e fecha (bordas suavizadas)
+  const gate = ac.createGain(); gate.gain.value = 0; const gConst = ac.createConstantSource(); gConst.offset.value = 1; gConst.start(); gConst.connect(gate.gain);
+  const gSmooth = ac.createBiquadFilter(); gSmooth.type = 'lowpass'; gSmooth.frequency.value = 180; gSmooth.connect(gate.gain);
+  o1.connect(g1); o2.connect(g2); g1.connect(lp); g2.connect(lp); lp.connect(env); env.connect(gate); gate.connect(vol);
+  // saída do lead: seco / BITCRUSHER (pinça 4)
+  const out = ac.createGain(), cDry = ac.createGain(), cWet = ac.createGain(); cDry.gain.value = 1; cWet.gain.value = 0;
+  vol.connect(cDry); cDry.connect(out); cWet.connect(out);
+  if (crushPronto) crushPronto.then(() => { const w = new AudioWorkletNode(ac, 'crush', { outputChannelCount: [2] }); vol.connect(w); w.connect(cWet); }).catch(() => {});
+  // DELAY LONGO (pinça 2): mínima (2 tempos) com repetições que escurecem; as repetições também vão ao reverb
+  const dSend = ac.createGain(), dl = ac.createDelay(4), dFb = ac.createGain(), dLp = ac.createBiquadFilter(), dRet = ac.createGain();
+  dSend.gain.value = 0; dFb.gain.value = .55; dLp.type = 'lowpass'; dLp.frequency.value = 3500; dRet.gain.value = .8;
+  out.connect(dSend); dSend.connect(dl); dl.connect(dLp); dLp.connect(dFb); dFb.connect(dl); dLp.connect(dRet);
   // reverb etéreo: resposta de impulso gerada (cauda ~3,5 s que escurece)
   const len = Math.floor(ac.sampleRate * 3.5), ir = ac.createBuffer(2, len, ac.sampleRate);
   for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let y = 0; for (let i = 0; i < len; i++) { const tt = i / ac.sampleRate, k = .45 * Math.exp(-tt * .9) + .04; y += ((Math.random() * 2 - 1) - y) * k; d[i] = y * Math.exp(-tt * 1.4) * Math.min(1, tt / .03); } }
   const cv = ac.createConvolver(), rs = ac.createGain(), pan = ac.createStereoPanner(); cv.buffer = ir; rs.gain.value = LD.rev; pan.pan.value = -.15;
-  vol.connect(pan); pan.connect(ldLim); vol.connect(rs); rs.connect(cv); cv.connect(ldLim);
+  out.connect(pan); pan.connect(ldLim); out.connect(rs); rs.connect(cv); cv.connect(ldLim); dRet.connect(pan); dRet.connect(rs);
   [o1, o2, lfo, cut, mixT, mixS].forEach(n => n.start());
-  ld = { o1, o2, lp, env, vol, lfo, lfoG, cut, mixT, mixS, rs };
+  ld = { o1, o2, lp, env, vol, lfo, lfoG, cut, mixT, mixS, rs, gConst, gSmooth, gOsc: null, cDry, cWet, dSend, dl };
 }
 const leadLista = () => { const n = sc().length, L = []; for (let d = 0; d <= 2 * n; d++) L.push(d); return L; };   // 2 oitavas da escala
 function leadAoVivo() {
@@ -754,7 +766,20 @@ function leadAoVivo() {
   ld.cut.offset.setTargetAtTime(-4800 * (1 - m.fora), c, .04);          // para a ESQUERDA abre o filtro
   ld.mixT.offset.setTargetAtTime(m.aberta, c, .05); ld.mixS.offset.setTargetAtTime(1 - m.aberta, c, .05);   // aberta = triângulo
   ld.lp.frequency.setTargetAtTime(LD.cut, c, .05);
-  ld.lfo.frequency.setTargetAtTime(LD.vibR, c, .1); ld.lfoG.gain.setTargetAtTime(LD.vib, c, .1); ld.rs.gain.setTargetAtTime(LD.rev, c, .1);
+  const P = on ? m.pinca : -1;
+  // 1 · VIBRATO: forte e um pouco mais rápido enquanto segura
+  ld.lfo.frequency.setTargetAtTime(P === 0 ? Math.max(6, LD.vibR) : LD.vibR, c, .1); ld.lfoG.gain.setTargetAtTime(P === 0 ? Math.max(38, LD.vib) : LD.vib, c, P === 0 ? .12 : .2);
+  ld.rs.gain.setTargetAtTime(LD.rev, c, .1);
+  // 2 · DELAY LONGO
+  ld.dl.delayTime.setTargetAtTime(60 / MUS.bpm * 2, c, .05); ld.dSend.gain.setTargetAtTime(P === 1 ? .7 : 0, c, .06);
+  // 3 · GATE RÍTMICO em semicolcheias, começando cravado na grade do BPM
+  if (P === 2 && !ld.gOsc) {
+    const s16 = 60 / MUS.bpm / 4; let T = tempoT || c; while (T < c + .02) T += s16;
+    const o = ac.createOscillator(), og = ac.createGain(); o.type = 'square'; o.frequency.value = MUS.bpm / 60 * 4; og.gain.value = .5; o.connect(og); og.connect(ld.gSmooth); o.start(T);
+    ld.gConst.offset.setValueAtTime(.5, T); ld.gOsc = o;
+  } else if (P !== 2 && ld.gOsc) { try { ld.gOsc.stop(c); } catch (e) {} ld.gOsc = null; ld.gConst.offset.cancelScheduledValues(c); ld.gConst.offset.setValueAtTime(1, c); }
+  // 4 · BITCRUSHER
+  ld.cWet.gain.setTargetAtTime(P === 3 ? 1 : 0, c, .015); ld.cDry.gain.setTargetAtTime(P === 3 ? 0 : 1, c, .015);
   if (!on) { if (ldSoando) { ld.env.gain.cancelScheduledValues(c); ld.env.gain.setValueAtTime(ld.env.gain.value, c); ld.env.gain.setTargetAtTime(0, c, Math.max(.01, R / 3)); ldSoando = false; } ldDeg = null; return; }
   // nota pela altura (calibrada), com histerese para não tremer na fronteira
   const lista = leadLista(), pos = Math.min(.9999, m.altura) * lista.length;
@@ -868,7 +893,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v13 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v14 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();

@@ -11,7 +11,7 @@
    COR: grafite por nível + um tom de parede claro; formas com seis cores fixas. TIPO: Space Grotesk. */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;min-width:0}
 html,body{margin:0;height:100%;overflow:hidden;background:#111319;color:#eceef5;font-family:"Space Grotesk",system-ui,sans-serif;touch-action:none;overscroll-behavior:none}
-#cv{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none}
+#cv{position:fixed;left:0;top:0;display:block;touch-action:none}
 #hud{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:10px;right:10px;display:flex;align-items:center;gap:10px;z-index:5;pointer-events:none}
 #hud>*{pointer-events:auto}
 .glass{background:rgba(22,24,34,.55);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);border:1px solid rgba(255,255,255,.09);box-shadow:0 8px 24px rgba(0,0,0,.25)}
@@ -28,6 +28,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#111319;color:#eceef5;
 #slots .used{opacity:.35}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 26px);transform:translate(-50%,8px);color:#fff;padding:12px 18px;border-radius:16px;font-size:15px;line-height:1.35;max-width:90vw;width:max-content;text-align:center;opacity:0;transition:.25s;pointer-events:none;z-index:8}
 #toast.show{opacity:1;transform:translate(-50%,0)}
+#toast.top{bottom:auto;top:calc(env(safe-area-inset-top) + 64px)}
 #joy{position:fixed;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;border:1.5px solid rgba(255,255,255,.22);background:rgba(255,255,255,.04);pointer-events:none;opacity:0;transition:opacity .15s;z-index:4}
 #joy.on{opacity:1}#knob{position:absolute;left:50%;top:50%;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.35);transform:translate(-50%,-50%)}
 .scr{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 14px);background:rgba(10,11,16,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
@@ -284,15 +285,17 @@ function applyAudio(){if(!AU.ctx)return;const t=AU.ctx.currentTime;AU.sfx.gain.s
 const $=id=>document.getElementById(id);
 const cv=$('cv'),ctx=cv.getContext('2d');
 const dk=document.createElement('canvas'),dkx=dk.getContext('2d'),mk=document.createElement('canvas'),mkx=mk.getContext('2d');
-let DPR=1,VW=innerWidth,VH=innerHeight,VWd=1,VHd=1,S=40,TOP=0;
+let DPR=1,VW=innerWidth,VH=innerHeight,VWd=1,VHd=1,S=40,TOP=0,BOT=0;
+function safeBottom(){const d=document.createElement('div');d.style.cssText='position:fixed;bottom:0;height:env(safe-area-inset-bottom);visibility:hidden';document.body.appendChild(d);const h=d.offsetHeight;d.remove();return h||0;}
 const game={level:null,paused:true,hold:null,keys:[],padDir:null,mapView:false,route:null};
 const cam={x:0,y:0};
 function ekey(a,b,N){return a<b?a*N+b:b*N+a;}
 
-function layout(){DPR=Math.min(window.devicePixelRatio||1,2);VW=innerWidth;VH=innerHeight;VWd=Math.round(VW*DPR);VHd=Math.round(VH*DPR);cv.width=VWd;cv.height=VHd;TOP=66*DPR;
+function viewH(){const v=window.visualViewport;return Math.round(v?Math.min(v.height,innerHeight):innerHeight);}
+function layout(){DPR=Math.min(window.devicePixelRatio||1,2);VW=innerWidth;VH=viewH();VWd=Math.round(VW*DPR);VHd=Math.round(VH*DPR);cv.width=VWd;cv.height=VHd;cv.style.width=VW+'px';cv.style.height=VH+'px';TOP=66*DPR;BOT=(safeBottom()+34)*DPR;
   dk.width=Math.ceil(VWd/4);dk.height=Math.ceil(VHd/4);
   const lv=game.level;if(!lv)return;const W=lv.L.W,H=lv.L.H;
-  const nS=game.mapView?Math.min(VWd/(W+2*MG),(VHd-TOP-20*DPR)/(H+2*MG)):VWd/(W/2+0.7);
+  const nS=game.mapView?Math.min(VWd/(W+2*MG),(VHd-TOP-BOT)/(H+2*MG)):VWd/(W/2+0.7);
   if(Math.abs(nS-S)>0.01||!lv.static){S=nS;lv.mw=(W+2*MG)*S;lv.mh=(H+2*MG)*S;buildStatic(lv);buildVisited(lv);}
   game.snap=true;}
 
@@ -320,7 +323,7 @@ function edge(c,d){const lv=game.level,L=lv.L,n=neighbor(c,d);if(n<0)return{k:'w
 function canPass(c,d){const e=edge(c,d);return e.k==='open'||(e.k==='gate'&&game.level.held.includes(e.b.shape));}
 function reveal(lv,c){const r=3,L=lv.L,x=c%L.W,y=(c/L.W)|0;for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){const nx=x+dx,ny=y+dy;if(nx>=0&&ny>=0&&nx<L.W&&ny<L.H&&dx*dx+dy*dy<=r*r)lv.seen[ny*L.W+nx]=1;}}
 function visit(lv,c){if(lv.visited[c])return;lv.visited[c]=1;paintVisited(lv,c);}
-function toast(msg,ms){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('show'),ms||2400);}
+function toast(msg,ms){const t=$('toast');let low=false;if(game.level&&S>0){const[hx,hy]=heroPx();low=(hy-cam.y)>VHd*0.55;}t.classList.toggle('top',low);t.textContent=msg;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('show'),ms||2400);}
 function nm(k){const s=SHAPES[k];return s.art+' '+s.n;}
 function dodo(k){return SHAPES[k].art==='a'?'da ':'do ';}
 function burst(x,y,col,n,sp){const lv=game.level;for(let i=0;i<n;i++){const a=Math.random()*6.283,s=(sp||3)*S*(0.3+Math.random());lv.fx.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0.5+Math.random()*0.7,col,r:(0.03+Math.random()*0.05)});}}
@@ -379,11 +382,11 @@ function update(dt){const lv=game.level,p=lv.p;if(!lv.won&&lv.started)lv.time+=d
   const[tx,ty]=camTarget(hx,hy);const k=game.snap?1:Math.min(1,dt*(p.state==='rise'?9:6));game.snap=false;cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k;
   hud(dt);}
 function camTarget(hx,hy){const lv=game.level;
-  if(game.mapView)return[(lv.mw-VWd)/2,(lv.mh-VHd)/2-TOP/2+6*DPR];
+  if(game.mapView)return[(lv.mw-VWd)/2,(lv.mh-VHd)/2-(TOP-BOT)/2];
   if(settings.cam==='quad')return[clampX(hx<lv.mw/2?-1e9:1e9,lv),clampY(hy<lv.mh/2?-1e9:1e9,lv)];
   return[clampX(hx-VWd/2,lv),clampY(hy-VHd/2-TOP*0.3,lv)];}
 function clampX(x,lv){return lv.mw<=VWd?(lv.mw-VWd)/2:Math.max(0,Math.min(lv.mw-VWd,x));}
-function clampY(y,lv){return lv.mh+TOP<=VHd?(lv.mh-VHd)/2-TOP/2:Math.max(-TOP,Math.min(lv.mh-VHd,y));}
+function clampY(y,lv){return lv.mh+TOP+BOT<=VHd?(lv.mh-VHd)/2-(TOP-BOT)/2:Math.max(-TOP,Math.min(lv.mh-VHd+BOT,y));}
 function heroPx(){const lv=game.level,p=lv.p;let x,y;
   if(p.moving){const[ax,ay]=cellPx(p.from),[bx,by]=cellPx(p.to);const t=p.t;x=ax+(bx-ax)*t;y=ay+(by-ay)*t;}else[x,y]=cellPx(p.cell);
   if(p.bump>0){const s=Math.sin(p.bump/0.18*Math.PI)*0.14*S;x+=DIRS[p.bumpDir].dx*s;y+=DIRS[p.bumpDir].dy*s;}return[x,y];}
@@ -546,7 +549,7 @@ $('toMenu').onclick=()=>{renderLevels();show('menu');};
 $('btnNext').onclick=()=>startLevel(game.level.idx+1);$('btnAgain').onclick=()=>{const lv=game.level;startLevel(lv.idx,lv.random,lv.seed);};$('btnVar').onclick=()=>startLevel(game.level.idx,true);$('btnMenu').onclick=()=>{renderLevels();show('menu');};
 $('fsBtn').onclick=()=>{const d=document.documentElement;try{if(!document.fullscreenElement)(d.requestFullscreen||d.webkitRequestFullscreen).call(d);else document.exitFullscreen();}catch(e){}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();if(AU.ctx)AU.ctx.suspend();}else if(AU.ctx)AU.ctx.resume();});
-addEventListener('resize',()=>layout());
+addEventListener('resize',()=>layout());if(window.visualViewport)visualViewport.addEventListener('resize',()=>layout());
 (function(){const hs=$('hShapes');['circle','triangle','square','diamond','moon'].forEach(k=>hs.appendChild(shapeIcon(k,16)));$('hStar').appendChild(shapeIcon('star',16));})();
 // constelação: cada labirinto vencido acende uma estrela
 function drawSky(){const c=$('sky'),d=Math.min(devicePixelRatio||1,3),w=c.clientWidth||380,h=96;c.width=w*d;c.height=h*d;const g=c.getContext('2d');g.scale(d,d);

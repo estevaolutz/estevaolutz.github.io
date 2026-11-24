@@ -482,7 +482,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['freeze', 'glide', 'eco', '8ª + eco'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'bitcrusher'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -578,7 +578,7 @@ const TIMBRES = [
   { n: 'Sync (poly-mod)', a: 'saw',   b: 'square', bDet: 0,  bOct: -1, bMix: .45, sub: .25, res: .45, env: 3.2, amp: [.003, .25, .6, .2], flt: [.003, .22, .2, .25], cut: 2400, sync: 1 }
 ];
 const BX = { timbre: 0, vol: .8, cut: 3200, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3] };
-const frz = { on: false };
+const cr = {};
 let ldLim = null;
 let ac = null, bxLfo = null, bxLfoG = null, bxDly = null, bxDlySend = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
 const pulseCache = {};
@@ -595,12 +595,15 @@ function initSom() {
   const lim = ac.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 4; lim.ratio.value = 12; lim.attack.value = .003; lim.release.value = .2;
   lim.connect(ac.destination); ldLim = lim;
   bxOut = ac.createGain(); bxOut.gain.value = 0;
-  // FREEZE (pinça do indicador): uma linha de atraso de exatamente 1 tempo guarda sempre o último tempo tocado;
-  // ao congelar (no próximo tempo), a entrada fecha e a realimentação vai a 100% → o último tempo fica em loop, no BPM.
-  frz.dry = ac.createGain(); frz.inp = ac.createGain(); frz.dl = ac.createDelay(2); frz.fb = ac.createGain(); frz.wet = ac.createGain();
-  frz.dry.gain.value = 1; frz.inp.gain.value = 1; frz.fb.gain.value = 0; frz.wet.gain.value = 0;
-  bxOut.connect(frz.dry); frz.dry.connect(lim);
-  bxOut.connect(frz.inp); frz.inp.connect(frz.dl); frz.dl.connect(frz.fb); frz.fb.connect(frz.dl); frz.dl.connect(frz.wet); frz.wet.connect(lim);
+  // BITCRUSHER (pinça do mínimo): saída seca + caminho esmagado (8 bits, taxa de amostragem ÷ 10), alternados por ganho
+  cr.dry = ac.createGain(); cr.wet = ac.createGain(); cr.dry.gain.value = 1; cr.wet.gain.value = 0;
+  bxOut.connect(cr.dry); cr.dry.connect(lim); cr.wet.connect(lim);
+  const shaperFallback = () => { const sh = ac.createWaveShaper(), N = 4096, cur = new Float32Array(N), q = 2 ** 7; for (let k = 0; k < N; k++) { const x = k / (N - 1) * 2 - 1; cur[k] = Math.round(x * q) / q; } sh.curve = cur; bxOut.connect(sh); sh.connect(cr.wet); };
+  const SRC = `registerProcessor('crush', class extends AudioWorkletProcessor { constructor() { super(); this.h = [0, 0]; this.n = 0; }
+    process(ins, outs) { const i = ins[0], o = outs[0]; if (!i || !i.length) return true; const q = 2 ** 7, down = 10;
+      const n0 = this.n; for (let c = 0; c < o.length; c++) { const a = i[c] || i[0], b = o[c]; let n = n0; for (let k = 0; k < b.length; k++) { if (n % down === 0) this.h[c] = Math.round(a[k] * q) / q; b[k] = this.h[c]; n++; } this.n = n; }
+      return true; } });`;
+  try { ac.audioWorklet.addModule('data:text/javascript;charset=utf-8,' + encodeURIComponent(SRC)).then(() => { const w = new AudioWorkletNode(ac, 'crush', { outputChannelCount: [2] }); bxOut.connect(w); w.connect(cr.wet); }).catch(shaperFallback); } catch (e) { shaperFallback(); }
   // eco rítmico do baixo (pinça do indicador): delay em colcheia pontuada, com repetições que escurecem
   bxDlySend = ac.createGain(); bxDlySend.gain.value = 0; bxDly = ac.createDelay(2);
   const fb = ac.createGain(), lp = ac.createBiquadFilter(), hp = ac.createBiquadFilter(), ret = ac.createGain();
@@ -664,12 +667,11 @@ function acordeDaMao() {
   return chordSel;
 }
 /* PINÇAS DA MÃO DIREITA (valem enquanto segura):
-   indicador = FREEZE: no próximo tempo, o último tempo tocado fica em loop (no BPM) até soltar
-   médio     = GLIDE (portamento: cada nota desliza da anterior, notas ligadas)
-   anelar    = ECO rítmico (delay em colcheia pontuada; as repetições continuam soando depois de soltar)
-   mínimo    = OITAVA + ECO juntos */
-const PZ_BX = { FREEZE: 0, GLIDE: 1, ECO: 2, OITECO: 3 };
-const baseBaixo = P => 33 + 12 * (MUS.bxOit + (P === PZ_BX.OITECO ? 1 : 0));
+   indicador = OITAVA ACIMA + ECO · médio = ECO · anelar = GLIDE (portamento, notas ligadas) · mínimo = BITCRUSHER (8 bits, taxa ÷ 10)
+   ECO = delay em colcheia pontuada no BPM (as repetições continuam soando depois de soltar) */
+const PZ_FX = { 0: { oit: 1, eco: 1 }, 1: { eco: 1 }, 2: { glide: 1 }, 3: { crush: 1 } };
+const pzFx = P => PZ_FX[P] || {};
+const baseBaixo = P => 33 + 12 * (MUS.bxOit + (pzFx(P).oit ? 1 : 0));
 let arpIdx = 0;
 function arpNext() {
   const per = MUS.sev ? [0, 1, 2, 3] : [0, 1, 2], L = [];
@@ -700,25 +702,10 @@ function tocaPasso(st, t, s16) {
   const rate = MUS.rate;
   if (pos % rate) return;
   const m = degMidi(ladderDeg(curDeg, arpNext()), baseBaixo(P));
-  const glide = P === PZ_BX.GLIDE;
+  const glide = !!pzFx(P).glide;
   notaBaixo(t, m, s16 * rate * (glide ? Math.max(1.05, MUS.gate) : MUS.gate), pos % 4 === 0 ? 1 : .85, glide && ultMidi !== null ? ultMidi : null);
   ultMidi = m; eventos.push({ t, g: 1 });
 }
-function freeze(liga) {
-  if (!ac || liga === frz.on) return;
-  frz.on = liga; const c = ac.currentTime, b = 60 / MUS.bpm;
-  if (liga) {
-    let T = tempoT; while (T < c + .02) T += b;   // começa exatamente no próximo tempo
-    frz.dl.delayTime.cancelScheduledValues(c); frz.dl.delayTime.setValueAtTime(b, c);
-    frz.inp.gain.setTargetAtTime(0, T, .002); frz.fb.gain.setTargetAtTime(1, T, .002);
-    frz.wet.gain.setTargetAtTime(1, T, .003); frz.dry.gain.setTargetAtTime(0, T, .003);
-  } else {
-    [frz.inp, frz.fb, frz.wet, frz.dry].forEach(g => g.gain.cancelScheduledValues(c));
-    frz.wet.gain.setTargetAtTime(0, c, .02); frz.fb.gain.setTargetAtTime(0, c + .08, .01);
-    frz.dry.gain.setTargetAtTime(1, c, .01); frz.inp.gain.setTargetAtTime(1, c + .08, .01);
-  }
-}
-CTRL.onPinca = (g, agora) => { if (g === 1) freeze(agora === PZ_BX.FREEZE); };
 /* ---------- controles ao vivo (a cada quadro): volume pela distância, corte pela abertura, onda pela mão "para fora" ---------- */
 function somAoVivo() {
   if (!ac) return;
@@ -726,9 +713,9 @@ function somAoVivo() {
   bxOut.gain.setTargetAtTime(somOn && m1.ativa ? BX.vol * (.08 + .92 * m1.perto) : 0, c, m1.ativa ? .05 : .02);
   bxCutCS.offset.setTargetAtTime(-4800 * (1 - m1.fora), c, .04);   // mão para a DIREITA abre o filtro (dentro = 4 oitavas abaixo do Cutoff)
   bxForaCS.offset.setTargetAtTime(m1.aberta, c, .04); bxForaInv.offset.setTargetAtTime(1 - m1.aberta, c, .04);   // abrir a mão: serra → pulso estreito
-  bxDlySend.gain.setTargetAtTime(m1.ativa && (m1.pinca === PZ_BX.ECO || m1.pinca === PZ_BX.OITECO) ? .6 : 0, c, .06);
-  if (!frz.on) frz.dl.delayTime.setTargetAtTime(60 / MUS.bpm, c, .05);   // a linha do freeze acompanha o BPM
-  if (frz.on && !(m1.ativa && m1.pinca === PZ_BX.FREEZE)) freeze(false);   // mão sumiu: solta o freeze
+  bxDlySend.gain.setTargetAtTime(m1.ativa && pzFx(m1.pinca).eco ? .6 : 0, c, .06);
+  const crush = m1.ativa && !!pzFx(m1.pinca).crush;
+  cr.wet.gain.setTargetAtTime(crush ? 1 : 0, c, .015); cr.dry.gain.setTargetAtTime(crush ? 0 : 1, c, .015);
   const wah = false;   // (wah rítmico desligado: a pinça 4 virou oitava + eco)
   bxLfo.frequency.setTargetAtTime(MUS.bpm / 60 * 2, c, .05); bxLfoG.gain.setTargetAtTime(wah ? 1500 : 0, c, .06);
   bxDly.delayTime.setTargetAtTime(60 / MUS.bpm * .75, c, .05);   // colcheia pontuada
@@ -881,7 +868,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v12 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v13 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();

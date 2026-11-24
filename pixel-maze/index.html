@@ -82,7 +82,7 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
   <div class="seg"><button data-ctrl="finger">Arrastar o dedo</button><button data-ctrl="tilt">Inclinar o celular</button></div>
   <button class="btn" id="calib">Nivelar aqui (calibrar a inclinação)</button>
   <div class="lab">Câmera</div>
-  <div class="seg"><button data-cam="follow">Seguir o pixel</button><button data-cam="quad">Uma página por vez</button></div>
+  <div class="seg"><button data-cam="follow">Seguir o pixel</button><button data-cam="quad">Uma página por vez</button><button data-cam="whole">Mapa inteiro</button></div>
   <div class="lab">Velocidade do pixel</div>
   <div class="seg"><button data-spd="3.5">Lenta</button><button data-spd="5">Calma</button><button data-spd="6.5">Normal</button><button data-spd="9">Rápida</button><button data-spd="12">Turbo</button></div>
   <div class="lab">Tocar no caminho para ir até lá</div>
@@ -105,6 +105,7 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
   <p><b>Buracos:</b> os poços com anel colorido estão ligados aos pares pela cor. O pixel cai num e sai no outro, muitas vezes em outra página.</p>
   <p><b>Rastro:</b> o chão por onde você passou fica levemente tingido, e nos níveis escuros os lugares já vistos continuam à meia-luz.</p>
   <p><b>Velocidade:</b> no menu de pausa (botão de duas barras, no alto) dá para escolher entre Lenta, Calma, Normal, Rápida e Turbo.</p>
+  <p><b>Tela grande:</b> no computador ou no iPad, escolha <b>Câmera → Mapa inteiro</b> na pausa e o labirinto todo ocupa a tela. Com a tela deitada, a folha também deita.</p>
   <p><b>Folha inteira:</b> o botão de quatro quadrados, no alto, mostra o labirinto todo (tecla M).</p>
   <button class="btn pri" id="helpClose">Entendi</button>
 </div></div>
@@ -246,6 +247,9 @@ const MG=0.5; // margem em células
 const store={get(k,d){try{const v=localStorage.getItem('pixelmaze_'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('pixelmaze_'+k,JSON.stringify(v));}catch(e){}}};
 let progress=store.get('progress',{unlocked:1,best:{}});
 let settings=Object.assign({cam:'follow',tap:true,sound:true,music:true,speed:6.5,ctrl:'finger'},store.get('settings',{}));
+// computador e iPad: na primeira visita o labirinto já abre inteiro na tela
+if(store.get('settings',{}).cam==null&&Math.min(innerWidth,innerHeight)>=700)settings.cam='whole';
+const wholeView=()=>game.mapView||settings.cam==='whole';
 const saveSettings=()=>store.set('settings',settings);
 
 // ================= áudio sintetizado =================
@@ -275,19 +279,59 @@ const SFX={
   fall(){if(!AU.ctx)return;const t=AU.ctx.currentTime;blip('sine',700,t,0.5,0.12,60);blip('square',350,t,0.4,0.025,40);},
   rise(){if(!AU.ctx)return;const t=AU.ctx.currentTime;blip('sine',160,t,0.3,0.1,1200);hiss(t,0.25,5000,0.03);},
   knock(v){if(!AU.ctx)return;const t=AU.ctx.currentTime,k=Math.min(1,v/6);blip('sine',120+k*90,t,0.07+k*0.05,0.03+k*0.09,60);if(k>0.4)hiss(t,0.04,3000,0.02*k);},
-  win(){if(!AU.ctx)return;const t=AU.ctx.currentTime;[0,4,7,12,7,12,16,19,24].forEach((s,i)=>{blip('square',mtof(67+s),t+i*0.09,0.22,0.05,0,null,true);blip('triangle',mtof(55+s),t+i*0.09,0.2,0.05);});}};
-// música: arpejo chiptune que ganha camadas a cada forma capturada
-const MUS={timer:null,step:0,next:0};
-function musLayers(){const lv=game.level;if(!lv)return 1;let n=1;if(lv.started)n=2;if(lv.held.length||lv.used.length)n=3;if(lv.held.includes('star'))n=4;return n;}
-function musTick(){const ctx=AU.ctx,lv=game.level;if(!ctx||!lv)return;const S=lv.cfg.mus,sp=60/104/4;
-  while(MUS.next<ctx.currentTime+0.25){const t=MUS.next,st=MUS.step,ch=S.chords[Math.floor(st/32)%S.chords.length],ly=musLayers(),root=S.root;
-    if(st%16===0)blip('triangle',mtof(root-12+ch[0]),t,sp*14,0.09,0,AU.musLP);
-    if(st%16===8&&ly>=2)blip('triangle',mtof(root-12+ch[2]-(ch[2]>ch[0]?12:0)+12),t,sp*7,0.06,0,AU.musLP);
-    if(st%2===0){const k=(st/2)%8,arp=[0,1,2,1,2,0,1,2];const nn=root+12+ch[arp[k]]+(k>=4&&ly>=3?12:0);if(ly>=2||k%2===0)blip('square',mtof(nn),t,sp*1.6,0.018,0,AU.musLP,true);}
-    if(ly>=3&&(st%8===4))hiss(t,0.05,7000,0.02,AU.musLP);
-    if(ly>=4&&st%4===2)blip('sine',mtof(root+24+S.scale[(st/4|0)%S.scale.length]),t,sp*3,0.025,0,AU.musLP,true);
+  win(){if(!AU.ctx)return;const t=AU.ctx.currentTime;[0,7,12,16,19,24].forEach((s,i)=>{blip('sine',mtof(55+s),t+i*0.12,2.4,0.05,0,null,true);blip('triangle',mtof(43+s),t+i*0.12,2,0.025);});hiss(t,1.2,6000,0.02);}};
+// música: tensão generativa (drone grave, pulso de coração, tique-taque, motivos esparsos e dissonantes)
+// a tensão sobe com o avanço: começar, capturar formas, pegar o losango e chegar perto da saída
+const MUS={timer:null,step:0,next:0,drone:null,deg:0,shift:0,swellAt:0};
+const MODES=[[0,1,3,5,7,8,10],[0,2,3,5,7,8,11],[0,1,3,5,6,8,10],[0,1,4,5,7,8,10],[0,1,3,4,6,8,9]]; // frígio, menor harmônica, lócrio, frígio dominante, octatônica
+const SHIFTS=[0,0,1,0,-2,0,1,-1];
+function musTension(){const lv=game.level;if(!lv)return 0;const L=lv.L;if(!lv.started)return 0;
+  let t=0.12+0.5*(lv.used.length+lv.held.filter(k=>k!=='star').length)/Math.max(1,L.gates.length);
+  if(lv.held.includes('star')){const W=L.W,ex=L.exit%W,ey=(L.exit/W)|0,cx=lv.p.cell%W,cy=(lv.p.cell/W)|0;t=0.72+0.28*Math.max(0,1-Math.hypot(ex-cx,ey-cy)/18);}
+  return Math.min(1,t);}
+function droneStop(){const D=MUS.drone;if(!D||!AU.ctx)return;const t=AU.ctx.currentTime;D.out.gain.cancelScheduledValues(t);D.out.gain.setTargetAtTime(0,t,0.5);D.osc.forEach(o=>{try{o.stop(t+3);}catch(e){}});MUS.drone=null;}
+function droneStart(){droneStop();const ctx=AU.ctx,lv=game.level;if(!ctx||!lv)return;const r=lv.cfg.mus.root-24,t=ctx.currentTime;
+  const out=ctx.createGain();out.gain.setValueAtTime(0,t);out.gain.setTargetAtTime(1,t,2.5);
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=160;lp.Q.value=5;lp.connect(out);out.connect(AU.mus);
+  const osc=[],voice=(m,det,type,g)=>{const o=ctx.createOscillator();o.type=type;o.frequency.value=mtof(m);o.detune.value=det;const gg=ctx.createGain();gg.gain.value=g;o.connect(gg);gg.connect(lp);o.start(t);osc.push(o);return{o,g:gg,m};};
+  const v=[voice(r,-8,'sawtooth',0.11),voice(r,7,'sawtooth',0.11),voice(r+7,0,'triangle',0.05)];
+  const dis=voice(r+13,0,'sine',0),tri=voice(r+18,0,'triangle',0); // segunda menor e trítono entram com a tensão
+  const lfo=ctx.createOscillator();lfo.frequency.value=0.045;const lg=ctx.createGain();lg.gain.value=70;lfo.connect(lg);lg.connect(lp.frequency);lfo.start(t);osc.push(lfo);
+  const trem=ctx.createOscillator();trem.frequency.value=0.13;const tg=ctx.createGain();tg.gain.value=0.25;trem.connect(tg);tg.connect(out.gain);trem.start(t);osc.push(trem);
+  MUS.drone={out,lp,osc,v,dis,tri,r};}
+function thump(t,f,peak){const ctx=AU.ctx,o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.setValueAtTime(f*2.2,t);o.frequency.exponentialRampToValueAtTime(f,t+0.08);
+  g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(peak,t+0.008);g.gain.exponentialRampToValueAtTime(0.0001,t+0.35);o.connect(g);g.connect(AU.mus);o.start(t);o.stop(t+0.4);}
+function pad(t,m,dur,peak){const ctx=AU.ctx,o=ctx.createOscillator(),o2=ctx.createOscillator(),f=ctx.createBiquadFilter(),g=ctx.createGain();o.type='sawtooth';o2.type='sawtooth';o.frequency.value=mtof(m);o2.frequency.value=mtof(m);o2.detune.value=9;
+  f.type='lowpass';f.Q.value=3;f.frequency.setValueAtTime(300,t);f.frequency.exponentialRampToValueAtTime(1800,t+dur*0.85);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+dur*0.9);g.gain.linearRampToValueAtTime(0.0001,t+dur);
+  o.connect(f);o2.connect(f);f.connect(g);g.connect(AU.mus);g.connect(AU.echo);o.start(t);o2.start(t);o.stop(t+dur+0.05);o2.stop(t+dur+0.05);}
+function riser(t,dur,peak){const ctx=AU.ctx,s=ctx.createBufferSource();s.buffer=AU.white;s.loop=true;const f=ctx.createBiquadFilter();f.type='bandpass';f.Q.value=6;f.frequency.setValueAtTime(180,t);f.frequency.exponentialRampToValueAtTime(3500,t+dur);
+  const g=ctx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+dur*0.95);g.gain.linearRampToValueAtTime(0.0001,t+dur);s.connect(f);f.connect(g);g.connect(AU.mus);s.start(t);s.stop(t+dur+0.05);}
+function musTick(){const ctx=AU.ctx,lv=game.level;if(!ctx||!lv)return;
+  if(lv.won){droneStop();return;}
+  if(!MUS.drone)droneStart();
+  const D=MUS.drone,T=musTension(),now=ctx.currentTime,mode=MODES[lv.idx%MODES.length],root=lv.cfg.mus.root;
+  D.lp.frequency.setTargetAtTime(140+T*T*900,now,0.8);D.dis.g.gain.setTargetAtTime(T>0.3?0.012+T*0.03:0,now,1.5);D.tri.g.gain.setTargetAtTime(T>0.7?0.025:0,now,1.5);
+  const bpm=56+T*52,sp=60/bpm/4;
+  while(MUS.next<now+0.25){const t=MUS.next,st=MUS.step;
+    if(st%64===0){const sh=SHIFTS[(st/64|0)%SHIFTS.length];if(sh!==MUS.shift){MUS.shift=sh;D.v.forEach(x=>x.o.frequency.setTargetAtTime(mtof(x.m+sh),t,1.2));}}
+    const base=root+MUS.shift;
+    // coração: tum-tum, mais rápido e forte com a tensão
+    if(lv.started){if(st%16===0)thump(t,52,0.16+T*0.12);if(st%16===3)thump(t,46,0.08+T*0.08);if(T>0.6&&st%16===8)thump(t,52,0.1);}
+    // tique-taque de relógio
+    if(lv.started&&(st%4===0||(T>0.5&&st%2===0)))hiss(t,0.025,st%8===0?5200:7600,0.012+T*0.02,AU.mus);
+    // motivos esparsos: passeio aleatório na escala, sem repetir frases
+    if(st%2===0&&Math.random()<0.07+T*0.16){MUS.deg+=[-2,-1,-1,1,1,2,3,-3][Math.floor(Math.random()*8)];MUS.deg=Math.max(-3,Math.min(9,MUS.deg));
+      const n=mode.length,o=Math.floor(MUS.deg/n),dg=((MUS.deg%n)+n)%n,m=base+12+o*12+mode[dg];
+      blip('sine',mtof(m),t,sp*(6+Math.random()*10),0.022+T*0.015,0,AU.musLP,true);
+      if(T>0.45&&Math.random()<0.4)blip('triangle',mtof(m+1),t+sp,sp*8,0.012,0,AU.musLP,true);}
+    // ostinato grave de urgência quando falta pouco
+    if(T>0.55&&[0,6,10].includes(st%16))blip('triangle',mtof(base-12+(st%32>=16?mode[1]:0)),t,sp*2.2,0.05+T*0.03,0,AU.musLP);
+    // crescendos: acorde que cresce e some, ou ruído que sobe
+    if(st%32===0&&st>=MUS.swellAt&&lv.started&&Math.random()<0.35+T*0.4){const dur=sp*(T>0.6?24:32);MUS.swellAt=st+48;
+      if(Math.random()<0.5)[0,mode[2],mode[4]+(T>0.6?-1:0)].forEach(iv=>pad(t,base+iv,dur,0.012+T*0.012));else riser(t,dur,0.02+T*0.03);}
     MUS.step++;MUS.next+=sp;}}
-function startMusic(){if(!AU.ctx)return;MUS.step=0;MUS.next=AU.ctx.currentTime+0.3;if(!MUS.timer)MUS.timer=setInterval(musTick,80);}
+function startMusic(){if(!AU.ctx)return;droneStop();MUS.step=0;MUS.deg=0;MUS.shift=0;MUS.swellAt=0;MUS.next=AU.ctx.currentTime+0.3;if(!MUS.timer)MUS.timer=setInterval(musTick,80);}
 function applyAudio(){if(!AU.ctx)return;const t=AU.ctx.currentTime;AU.sfx.gain.setTargetAtTime(settings.sound?1:0,t,0.05);AU.mus.gain.setTargetAtTime(settings.music?0.5:0,t,0.2);}
 
 
@@ -302,15 +346,17 @@ const cam={x:0,y:0};
 function ekey(a,b,N){return a<b?a*N+b:b*N+a;}
 
 function viewH(){const v=window.visualViewport;return Math.round(v?Math.min(v.height,innerHeight):innerHeight);}
-function layout(){DPR=Math.min(window.devicePixelRatio||1,2);VW=innerWidth;VH=viewH();VWd=Math.round(VW*DPR);VHd=Math.round(VH*DPR);cv.width=VWd;cv.height=VHd;cv.style.width=VW+'px';cv.style.height=VH+'px';TOP=66*DPR;BOT=(safeBottom()+34)*DPR;
+function layout(){DPR=Math.min(window.devicePixelRatio||1,2);VW=innerWidth;VH=viewH();VWd=Math.round(VW*DPR);VHd=Math.round(VH*DPR);cv.width=VWd;cv.height=VHd;cv.style.width=VW+'px';cv.style.height=VH+'px';TOP=66*DPR;BOT=(safeBottom()+(settings.cam==='whole'&&!game.mapView?12:34))*DPR;
   dk.width=Math.ceil(VWd/4);dk.height=Math.ceil(VHd/4);
   const lv=game.level;if(!lv)return;const W=lv.L.W,H=lv.L.H;
-  const nS=game.mapView?Math.min(VWd/(W+2*MG),(VHd-TOP-BOT)/(H+2*MG)):VWd/(W/2+0.7);
+  const nS=wholeView()?Math.min(VWd/(W+2*MG),(VHd-TOP-BOT)/(H+2*MG)):VWd/(W/2+0.7);
   if(Math.abs(nS-S)>0.01||!lv.static){S=nS;lv.mw=(W+2*MG)*S;lv.mh=(H+2*MG)*S;buildStatic(lv);buildVisited(lv);}
   game.snap=true;}
 
 function loadLevel(idx,randomSeed,fixedSeed){
-  const cfg=LEVELS[idx],seed=fixedSeed!=null?fixedSeed:randomSeed?Math.floor(Math.random()*1e9):cfg.seed;
+  let cfg=LEVELS[idx];const seed=fixedSeed!=null?fixedSeed:randomSeed?Math.floor(Math.random()*1e9):cfg.seed;
+  // mapa inteiro numa tela deitada (computador, iPad na horizontal): a folha A4 também deita, para ocupar a tela toda
+  if(settings.cam==='whole'&&innerWidth>innerHeight*1.1)cfg=Object.assign({},cfg,{w:cfg.h,h:cfg.w});
   const L=generateLevel(cfg,seed),N=L.W*L.H;
   const lv={idx,cfg,L,N,seed,random:!!randomSeed};
   lv.gateAt=new Map();L.gates.forEach(b=>{b.open=false;b.anim=0;lv.gateAt.set(ekey(b.a,b.b,N),b);});
@@ -395,7 +441,7 @@ function update(dt){const lv=game.level,p=lv.p;if(!lv.won&&lv.started)lv.time+=d
   const[tx,ty]=camTarget(hx,hy);const k=game.snap?1:Math.min(1,dt*(p.state==='rise'?9:6));game.snap=false;cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k;
   hud(dt);}
 function camTarget(hx,hy){const lv=game.level;
-  if(game.mapView)return[(lv.mw-VWd)/2,(lv.mh-VHd)/2-(TOP-BOT)/2];
+  if(wholeView())return[(lv.mw-VWd)/2,(lv.mh-VHd)/2-(TOP-BOT)/2];
   if(settings.cam==='quad')return[clampX(hx<lv.mw/2?-1e9:1e9,lv),clampY(hy<lv.mh/2?-1e9:1e9,lv)];
   return[clampX(hx-VWd/2,lv),clampY(hy-VHd/2-TOP*0.3,lv)];}
 function clampX(x,lv){return lv.mw<=VWd?(lv.mw-VWd)/2:Math.max(0,Math.min(lv.mw-VWd,x));}
@@ -451,7 +497,7 @@ function render(now){const lv=game.level;if(!lv)return;const P=lv.cfg.pal,p=lv.p
   g.globalCompositeOperation='source-over';
   const amb=lv.cfg.amb;if(amb<0.99)darkness(lv,ox,oy,hx,hy,hl,tt);
   // ---- coisas que brilham ----
-  if(game.mapView){g.strokeStyle='rgba(255,255,255,.18)';g.lineWidth=DPR;g.setLineDash([6*DPR,6*DPR]);g.beginPath();const mx=(W/2+MG)*S-ox,my=(L.H/2+MG)*S-oy;g.moveTo(mx,MG*S-oy-S*.2);g.lineTo(mx,(L.H+MG)*S-oy+S*.2);g.moveTo(MG*S-ox-S*.2,my);g.lineTo((W+MG)*S-ox+S*.2,my);g.stroke();g.setLineDash([]);}
+  if(wholeView()){g.strokeStyle='rgba(255,255,255,.18)';g.lineWidth=DPR;g.setLineDash([6*DPR,6*DPR]);g.beginPath();const mx=(W/2+MG)*S-ox,my=(L.H/2+MG)*S-oy;g.moveTo(mx,MG*S-oy-S*.2);g.lineTo(mx,(L.H+MG)*S-oy+S*.2);g.moveTo(MG*S-ox-S*.2,my);g.lineTo((W+MG)*S-ox+S*.2,my);g.stroke();g.setLineDash([]);}
   L.holes.forEach(h=>[h.a,h.b].forEach(c=>{const[x,y]=cellPx(c);if(vis(x,y,S))holeRing(x-ox,y-oy,h.col,tt+c);}));
   {const[x,y]=cellPx(L.exit);if(vis(x,y,S*3))exitPortal(x-ox,y-oy+S*.5,lv.held.includes('star'),tt);}
   {const[x,y]=cellPx(L.start);if(vis(x,y,S*3))entrance(x-ox,y-oy-S*.5);}
@@ -561,7 +607,11 @@ function syncSeg(){document.querySelectorAll('[data-cam]').forEach(b=>b.classLis
 document.querySelectorAll('[data-ctrl]').forEach(b=>b.onclick=()=>setCtrl(b.dataset.ctrl));
 $('calib').onclick=()=>{calibrate();toast(tiltLive()?'Pronto: esta posição agora é o plano.':'O sensor de inclinação não respondeu neste aparelho.',2200);};
 document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{settings.speed=+b.dataset.spd;saveSettings();syncSeg();});
-document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{settings.cam=b.dataset.cam;saveSettings();syncSeg();});
+document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{const was=settings.cam;settings.cam=b.dataset.cam;saveSettings();syncSeg();game.mapView=false;syncMapBtn();
+  const lv=game.level;if(!lv)return;const land=innerWidth>innerHeight*1.1,wantW=settings.cam==='whole'&&land,isW=lv.L.W>lv.L.H;
+  if(wantW!==isW&&!lv.started&&!lv.random)loadLevel(lv.idx,false,lv.seed);else layout();});
+function syncMapBtn(){$('mapBtn').style.display=settings.cam==='whole'?'none':'';}
+syncMapBtn();
 document.querySelectorAll('[data-tap]').forEach(b=>b.onclick=()=>{settings.tap=b.dataset.tap==='1';saveSettings();syncSeg();});
 document.querySelectorAll('[data-snd]').forEach(b=>b.onclick=()=>{settings.sound=b.dataset.snd==='1';saveSettings();syncSeg();applyAudio();});
 document.querySelectorAll('[data-mus]').forEach(b=>b.onclick=()=>{settings.music=b.dataset.mus==='1';saveSettings();syncSeg();applyAudio();});

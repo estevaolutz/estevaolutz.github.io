@@ -466,7 +466,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['pedal', 'glide', 'dobro', 'congela'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ_EFEITO = { 1: ['eco', 'glide', 'dobro', 'rajada'], 2: ['indicador', 'médio', 'anelar', 'mínimo'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -562,7 +562,7 @@ const TIMBRES = [
   { n: 'Sync (poly-mod)', a: 'saw',   b: 'square', bDet: 0,  bOct: -1, bMix: .45, sub: .25, res: .45, env: 3.2, amp: [.003, .25, .6, .2], flt: [.003, .22, .2, .25], cut: 2400, sync: 1 }
 ];
 const BX = { timbre: 0, vol: .8, cut: 3200, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3] };
-let ac = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
+let ac = null, bxDly = null, bxDlySend = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
 const pulseCache = {};
 function pulseWave(w) {   // onda de pulso com largura w (0,5 = quadrada) por série de Fourier
   const k = Math.round(w * 100); if (pulseCache[k]) return pulseCache[k];
@@ -577,6 +577,11 @@ function initSom() {
   const lim = ac.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 4; lim.ratio.value = 12; lim.attack.value = .003; lim.release.value = .2;
   lim.connect(ac.destination);
   bxOut = ac.createGain(); bxOut.gain.value = 0; bxOut.connect(lim);
+  // eco rítmico do baixo (pinça do indicador): delay em colcheia pontuada, com repetições que escurecem
+  bxDlySend = ac.createGain(); bxDlySend.gain.value = 0; bxDly = ac.createDelay(2);
+  const fb = ac.createGain(), lp = ac.createBiquadFilter(), hp = ac.createBiquadFilter(), ret = ac.createGain();
+  fb.gain.value = .5; lp.type = 'lowpass'; lp.frequency.value = 2200; hp.type = 'highpass'; hp.frequency.value = 90; ret.gain.value = .85;
+  bxOut.connect(bxDlySend); bxDlySend.connect(bxDly); bxDly.connect(lp); lp.connect(hp); hp.connect(fb); fb.connect(bxDly); hp.connect(ret); ret.connect(lim);
   const cs = v => { const c = ac.createConstantSource(); c.offset.value = v; c.start(); return c; };
   bxCutCS = cs(0);        // corte ao vivo pela abertura da mão (em cents, somado ao detune do filtro de cada voz)
   bxForaCS = cs(0); bxForaInv = cs(1);   // mistura serra/pulso do osc A pela mão "para fora"
@@ -633,11 +638,13 @@ function acordeDaMao() {
   return chordSel;
 }
 /* PINÇAS DA MÃO DIREITA (valem enquanto segura):
-   indicador = PEDAL na tônica (os tempos fortes tocam a tônica grave; o acorde continua mudando por cima)
+   indicador = ECO rítmico (delay em colcheia pontuada; as repetições continuam soando depois de soltar)
    médio     = GLIDE (portamento: cada nota desliza da anterior, notas ligadas)
    anelar    = DOBRO da velocidade do arpejo
-   mínimo    = CONGELA o acorde (a altura da mão para de trocar o acorde) */
-const PZ_BX = { PEDAL: 0, GLIDE: 1, DOBRO: 2, CONGELA: 3 };
+   mínimo    = RAJADA: figura rápida em fusas sobre o acorde (R 3 5 8 5 3 …) */
+const PZ_BX = { ECO: 0, GLIDE: 1, DOBRO: 2, RAJADA: 3 };
+const RAJADA = [0, 1, 2, 4, 2, 1];   // degraus da escada do acorde: tônica, 3ª, 5ª, oitava, 5ª, 3ª
+let rajIdx = 0;
 let arpIdx = 0;
 function arpNext() {
   const per = MUS.sev ? [0, 1, 2, 3] : [0, 1, 2], L = [];
@@ -662,12 +669,15 @@ let ultMidi = null;
 function tocaPasso(st, t, s16) {
   const m1 = CTRL.maos[1], pos = st % 16, P = m1.pinca;
   if (!m1.ativa) { arpIdx = 0; ultMidi = null; return; }
-  if (P !== PZ_BX.CONGELA) { const novo = acordeDaMao(); if (novo !== curDeg) { arpIdx = 0; curDeg = novo; } }   // congela: acorde parado
+  { const novo = acordeDaMao(); if (novo !== curDeg) { arpIdx = 0; curDeg = novo; } }
+  if (P === PZ_BX.RAJADA) {   // rajada: duas notas por semicolcheia (fusas), em figura de vaivém sobre o acorde
+    for (let h = 0; h < 2; h++) { const m = degMidi(ladderDeg(curDeg, RAJADA[rajIdx++ % RAJADA.length]), 33); notaBaixo(t + h * s16 / 2, m, s16 / 2 * .7, h ? .7 : .85); ultMidi = m; }
+    eventos.push({ t, g: 1 }); return;
+  }
+  rajIdx = 0;
   const rate = P === PZ_BX.DOBRO ? Math.max(1, MUS.rate / 2) : MUS.rate;
   if (pos % rate) return;
-  let m;
-  if (P === PZ_BX.PEDAL && pos % 4 === 0) m = degMidi(0, 33);                       // pedal: tônica grave nos tempos
-  else m = degMidi(ladderDeg(curDeg, arpNext()), 33);
+  const m = degMidi(ladderDeg(curDeg, arpNext()), 33);
   const glide = P === PZ_BX.GLIDE;
   notaBaixo(t, m, s16 * rate * (glide ? Math.max(1.05, MUS.gate) : MUS.gate), pos % 4 === 0 ? 1 : .85, glide && ultMidi !== null ? ultMidi : null);
   ultMidi = m; eventos.push({ t, g: 1 });
@@ -679,6 +689,8 @@ function somAoVivo() {
   bxOut.gain.setTargetAtTime(somOn && m1.ativa ? BX.vol * (.08 + .92 * m1.perto) : 0, c, m1.ativa ? .05 : .02);
   bxCutCS.offset.setTargetAtTime(-4800 * (1 - m1.aberta), c, .04);   // fechada = 4 oitavas abaixo do Cutoff
   bxForaCS.offset.setTargetAtTime(m1.fora, c, .04); bxForaInv.offset.setTargetAtTime(1 - m1.fora, c, .04);
+  bxDly.delayTime.setTargetAtTime(60 / MUS.bpm * .75, c, .05);   // colcheia pontuada
+  bxDlySend.gain.setTargetAtTime(m1.ativa && m1.pinca === PZ_BX.ECO ? .6 : 0, c, .06);
 }
 
 /* ================= IMAGEM: câmera, mãos, pinças, leituras ================= */
@@ -778,7 +790,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v4 (baixo Prophet)  ·  subir = nota/acorde · para fora = onda · perto = volume · abrir/fechar = filtro  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v5 (baixo Prophet)  ·  subir = nota/acorde · para fora = onda · perto = volume · abrir/fechar = filtro  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();

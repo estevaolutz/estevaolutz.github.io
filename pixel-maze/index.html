@@ -47,7 +47,7 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
 .btn{display:block;width:100%;min-height:48px;padding:12px;margin:8px 0 0;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#eceef5;font:600 15px "Space Grotesk",sans-serif;cursor:pointer}
 .btn.pri{background:#eef4ff;color:#111319;border:none;box-shadow:0 6px 24px rgba(159,212,255,.35)}
 .row{display:flex;gap:8px;margin-top:8px}.row .btn{margin:0}
-.seg{display:flex;gap:4px;margin:6px 0 4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.04)}.seg button{flex:1;min-height:38px;border-radius:10px;border:none;background:transparent;color:#c8cbd8;font:500 14px "Space Grotesk"}.seg button.on{background:rgba(255,255,255,.14);color:#fff}
+.seg{display:flex;gap:4px;margin:6px 0 4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.04)}.seg button{flex:1;min-height:38px;padding:0 2px;border-radius:10px;border:none;background:transparent;color:#c8cbd8;font:500 14px "Space Grotesk",system-ui,sans-serif}.seg button.on{background:rgba(255,255,255,.14);color:#fff}
 .lab{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8a8fa6;margin-top:16px}
 .help p{font-size:15px;line-height:1.55;margin:10px 0;color:#c8cbd8}.help b{color:#fff;font-weight:600}
 .help canvas{width:16px;height:16px;vertical-align:-3px;margin:0 2px}
@@ -78,6 +78,8 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
   <div class="row"><button class="btn" id="restart">Recomeçar</button><button class="btn" id="variant">Outro labirinto</button></div>
   <div class="lab">Câmera</div>
   <div class="seg"><button data-cam="follow">Seguir o pixel</button><button data-cam="quad">Uma página por vez</button></div>
+  <div class="lab">Velocidade do pixel</div>
+  <div class="seg"><button data-spd="3.5">Lenta</button><button data-spd="5">Calma</button><button data-spd="6.5">Normal</button><button data-spd="9">Rápida</button><button data-spd="12">Turbo</button></div>
   <div class="lab">Tocar no caminho para ir até lá</div>
   <div class="seg"><button data-tap="1">Ligado</button><button data-tap="0">Desligado</button></div>
   <div class="lab">Som</div>
@@ -96,6 +98,7 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
   <p><b>Losango dourado:</b> <span id="hStar"></span> a saída só se acende depois que o pixel captura o losango dourado, sempre na última parte do labirinto.</p>
   <p><b>Buracos:</b> os poços com anel colorido estão ligados aos pares pela cor. O pixel cai num e sai no outro, muitas vezes em outra página.</p>
   <p><b>Rastro:</b> o chão por onde você passou fica levemente tingido, e nos níveis escuros os lugares já vistos continuam à meia-luz.</p>
+  <p><b>Velocidade:</b> no menu de pausa (botão de duas barras, no alto) dá para escolher entre Lenta, Calma, Normal, Rápida e Turbo.</p>
   <p><b>Folha inteira:</b> o botão de quatro quadrados, no alto, mostra o labirinto todo (tecla M).</p>
   <button class="btn pri" id="helpClose">Entendi</button>
 </div></div>
@@ -237,7 +240,7 @@ const MG=0.5; // margem em células
 // ================= estado salvo =================
 const store={get(k,d){try{const v=localStorage.getItem('pixelmaze_'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('pixelmaze_'+k,JSON.stringify(v));}catch(e){}}};
 let progress=store.get('progress',{unlocked:1,best:{}});
-let settings=Object.assign({cam:'follow',tap:true,sound:true,music:true},store.get('settings',{}));
+let settings=Object.assign({cam:'follow',tap:true,sound:true,music:true,speed:6.5},store.get('settings',{}));
 const saveSettings=()=>store.set('settings',settings);
 
 // ================= áudio sintetizado =================
@@ -365,13 +368,12 @@ function win(){const lv=game.level,p=lv.p;lv.won=true;p.state='win';p.anim=0;gam
   setTimeout(()=>{if(game.level===lv)show('win');},1400);}
 function fmtT(s){const m=Math.floor(s/60),r=Math.floor(s%60);return m+':'+(r<10?'0':'')+r;}
 
-const SPEED=6.2;
 function update(dt){const lv=game.level,p=lv.p;if(!lv.won&&lv.started)lv.time+=dt;
   p.bump=Math.max(0,p.bump-dt);p.squash+=((p.moving?1:0)-p.squash)*Math.min(1,dt*14);
   if(p.state==='fall'){p.anim+=dt/0.45;if(p.anim>=1){p.cell=p.from=p.to=p.teleTo;p.lock=p.teleTo;p.state='rise';p.anim=0;visit(lv,p.cell);reveal(lv,p.cell);SFX.rise();const[x,y]=cellPx(p.cell);burst(x,y,lv.holeOf.get(p.cell).col,22,3);lv.trail.length=0;}}
   else if(p.state==='rise'){p.anim+=dt/0.35;if(p.anim>=1)p.state='roll';}
   else if(p.state==='win'){p.anim=Math.min(1,p.anim+dt/1.1);}
-  else{let budget=SPEED*dt;
+  else{let budget=(settings.speed||6.5)*dt;
     for(let guard=0;guard<4&&budget>0;guard++){
       if(p.moving){const h=curHold();if(h!=null&&h===OPP(p.dir)&&!game.route){const f=p.from;p.from=p.to;p.to=f;p.t=1-p.t;p.dir=h;}
         const need=1-p.t;if(budget<need){p.t+=budget;budget=0;}else{p.t=1;budget-=need;arrive();if(p.state!=='roll')break;}}
@@ -531,7 +533,9 @@ function resume(){show(null);}
 function syncSeg(){document.querySelectorAll('[data-cam]').forEach(b=>b.classList.toggle('on',b.dataset.cam===settings.cam));
   document.querySelectorAll('[data-tap]').forEach(b=>b.classList.toggle('on',(b.dataset.tap==='1')===settings.tap));
   document.querySelectorAll('[data-snd]').forEach(b=>b.classList.toggle('on',(b.dataset.snd==='1')===settings.sound));
-  document.querySelectorAll('[data-mus]').forEach(b=>b.classList.toggle('on',(b.dataset.mus==='1')===settings.music));}
+  document.querySelectorAll('[data-mus]').forEach(b=>b.classList.toggle('on',(b.dataset.mus==='1')===settings.music));
+  document.querySelectorAll('[data-spd]').forEach(b=>b.classList.toggle('on',+b.dataset.spd===settings.speed));}
+document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{settings.speed=+b.dataset.spd;saveSettings();syncSeg();});
 document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{settings.cam=b.dataset.cam;saveSettings();syncSeg();});
 document.querySelectorAll('[data-tap]').forEach(b=>b.onclick=()=>{settings.tap=b.dataset.tap==='1';saveSettings();syncSeg();});
 document.querySelectorAll('[data-snd]').forEach(b=>b.onclick=()=>{settings.sound=b.dataset.snd==='1';saveSettings();syncSeg();applyAudio();});

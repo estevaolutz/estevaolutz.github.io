@@ -118,34 +118,46 @@ function desenhar(ctx, W, H, px, opc){
     ctx.lineWidth=opc.linha||2; ctx.strokeStyle='#e8b04a';
     ctx.beginPath(); q.forEach((p,k)=>k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath(); ctx.stroke();
     const rr=opc.raio||14;
-    q.forEach((p,k)=>{
+    q.forEach((p0,k)=>{
+      const p=[Math.min(W-rr,Math.max(rr,p0[0])),Math.min(H-rr,Math.max(rr,p0[1]))];
+      const fora=p[0]!==p0[0]||p[1]!==p0[1];
+      ctx.setLineDash(fora?[4,4]:[]);
       ctx.beginPath();ctx.arc(p[0],p[1],rr,0,Math.PI*2);
       ctx.fillStyle=k===S.sel?'#e8b04a':'#0008';ctx.fill();ctx.strokeStyle='#e8b04a';ctx.stroke();
       ctx.fillStyle=k===S.sel?'#111':'#e8b04a';ctx.font=`bold ${rr}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText(k+1,p[0],p[1]+1);
+      ctx.setLineDash([]);
     });
   }
 }
 
 /* ---------- arrastar cantos (saída e miniatura) ---------- */
 function arrastavel(cv, aoMudar){
-  let ativo=-1;
+  // Perto de um canto: pega aquele canto. Longe de todos: arrasta o canto selecionado à distância
+  // (serve para cantos fora da tela). Com Shift, arrasta a grade inteira.
+  let modo=null, ult=null;
   const pos=ev=>{const r=cv.getBoundingClientRect();return [(ev.clientX-r.left)/r.width,(ev.clientY-r.top)/r.height,r];};
   cv.addEventListener('pointerdown',ev=>{
     if(!S.calib && SAIDA) return;
     const [x,y,r]=pos(ev); let melhor=-1,dm=1e9;
-    S.cantos.forEach(([cx,cy],k)=>{const d=Math.hypot((cx-x)*r.width,(cy-y)*r.height); if(d<dm){dm=d;melhor=k;}});
-    if(dm<60){ativo=melhor;S.sel=melhor;cv.setPointerCapture(ev.pointerId);aoMudar();}
+    S.cantos.forEach(([cx,cy],k)=>{const px=Math.min(1,Math.max(0,cx)),py=Math.min(1,Math.max(0,cy));
+      const d=Math.hypot((px-x)*r.width,(py-y)*r.height); if(d<dm){dm=d;melhor=k;}});
+    if(ev.shiftKey) modo='todos'; else { if(dm<50) S.sel=melhor; modo='um'; }
+    ult=[x,y]; cv.setPointerCapture(ev.pointerId); aoMudar();
   });
-  cv.addEventListener('pointermove',ev=>{ if(ativo<0) return; const [x,y]=pos(ev);
-    S.cantos[ativo]=[Math.min(1.2,Math.max(-.2,x)),Math.min(1.2,Math.max(-.2,y))]; aoMudar(); });
-  cv.addEventListener('pointerup',()=>{ativo=-1;});
+  cv.addEventListener('pointermove',ev=>{ if(!modo) return; const [x,y]=pos(ev);
+    const dx=x-ult[0], dy=y-ult[1]; ult=[x,y];
+    const lim=v=>Math.min(3,Math.max(-2,v));
+    (modo==='todos'?S.cantos:[S.cantos[S.sel]]).forEach(p=>{p[0]=lim(p[0]+dx);p[1]=lim(p[1]+dy);});
+    aoMudar(); });
+  cv.addEventListener('pointerup',()=>{modo=null;});
 }
 function teclas(aoMudar){
   addEventListener('keydown',ev=>{
     if(ev.target.tagName==='INPUT') return;
     if(['1','2','3','4'].includes(ev.key)){S.sel=+ev.key-1;aoMudar();return;}
-    const passo=(ev.shiftKey?10:1)/ (SAIDA?innerWidth:1920);
+    const passo=(ev.altKey?50:ev.shiftKey?10:1)/ (SAIDA?innerWidth:1920);
+    if(ev.key==='0'){S.cantos=JSON.parse(JSON.stringify(PADRAO.cantos));aoMudar();return;}
     const m={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[ev.key];
     if(m){ev.preventDefault(); const p=S.cantos[S.sel]; const ar=SAIDA?innerWidth/innerHeight:16/9;
       p[0]+=m[0]*passo; p[1]+=m[1]*passo*ar; aoMudar(); }
@@ -216,7 +228,7 @@ function calcular(t){
 if(SAIDA){
   document.body.className='saida';
   document.title='Quadro de Pixels — saída';
-  document.body.innerHTML='<canvas id="out"></canvas><div id="dica">E abre/fecha o painel · arraste os cantos · 1–4 escolhe canto · setas ajustam (Shift = 10×) · F tela cheia · C contorno · N números</div><div id="pn"></div>';
+  document.body.innerHTML='<canvas id="out"></canvas><div id="dica">E painel · arraste perto de um canto para pegá-lo, ou em qualquer lugar para mover o canto selecionado · Shift+arrastar move tudo · 1–4 escolhe canto · setas (Shift 10×, Alt 50×) · 0 recentraliza · F tela cheia · C contorno · N números</div><div id="pn"></div>';
   const cv=document.getElementById('out'), ctx=cv.getContext('2d');
   let remoto=null, ultimo=0, t0s=performance.now();
   const pn=document.getElementById('pn');

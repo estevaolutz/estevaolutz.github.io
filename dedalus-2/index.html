@@ -650,11 +650,12 @@ function arpNext() {
 /* ---------- relógio com antecipação ---------- */
 let nextT = 0, passo = 0;
 const eventos = [];   // notas para a imagem
+let somErro = '';
 function agenda() {
   if (!ac || !somOn) return;
   const s16 = 60 / MUS.bpm / 4;
   if (nextT < ac.currentTime) nextT = ac.currentTime + .05;
-  while (nextT < ac.currentTime + .12) { tocaPasso(passo, nextT, s16); passo++; nextT += s16; }
+  while (nextT < ac.currentTime + .12) { try { tocaPasso(passo, nextT, s16); } catch (err) { somErro = err.message; console.error(err); } passo++; nextT += s16; }
 }
 setInterval(agenda, 25);
 let ultMidi = null;
@@ -777,8 +778,8 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v3 (baixo Prophet)  ·  subir = nota/acorde · para fora = onda · perto = volume · abrir/fechar = filtro  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
-  const msg = cam.msg || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : '');
+  ctx.fillText('Dedalus II · v4 (baixo Prophet)  ·  subir = nota/acorde · para fora = onda · perto = volume · abrir/fechar = filtro  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();
 }
@@ -830,6 +831,8 @@ async function toggleSom() {
   somOn = !somOn; $('bSom').textContent = somOn ? 'Desligar som' : 'Ligar som'; $('bSom').classList.toggle('on', somOn);
 }
 $('bSom').onclick = toggleSom;
+['pointerdown', 'keydown'].forEach(ev => addEventListener(ev, () => { if (ac && somOn && ac.state !== 'running') ac.resume(); }));   // o navegador suspendeu o áudio: qualquer clique/tecla religa
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ac && somOn && ac.state !== 'running') ac.resume(); });
 const BX_IDS = { bxVol: ['vol'], bxCut: ['cut'], bxRes: ['res'], bxEnv: ['env'], ampA: ['amp', 0], ampD: ['amp', 1], ampS: ['amp', 2], ampR: ['amp', 3], fltA: ['flt', 0], fltD: ['flt', 1], fltS: ['flt', 2], fltR: ['flt', 3] };
 function syncPainelBaixo() { Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? BX[k] : BX[k][i]; }); $('bxTimbre').value = BX.timbre; salvaSom(); }
 Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).oninput = e => { const v = +e.target.value; if (i === undefined) BX[k] = v; else BX[k][i] = v; salvaSom(); }; });

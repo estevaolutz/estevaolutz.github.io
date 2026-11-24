@@ -80,7 +80,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
 <body>
 <div id="entrada" role="dialog" aria-labelledby="entT"><div class="c">
 <h1 id="entT">Dedalus</h1>
-<p>Uma obra audiovisual tocada pelas mãos. A câmera acompanha o seu corpo: a mão esquerda toca o arpejo do baixo e a direita o synth lead. Nas duas: cima↔baixo muda a nota (agudo em cima), esquerda↔direita a forma da onda, e a distância controla o volume. Fechar a mão esquerda fecha o filtro do baixo; abrir a direita aumenta o drive do lead. Cada mão toca sozinha. Sem mãos na tela, a música de fundo se apaga.</p>
+<p>Uma obra audiovisual tocada pelas mãos. A câmera acompanha o seu corpo: a mão esquerda toca o arpejo do baixo e a direita o synth lead. Nas duas: cima↔baixo muda a nota (agudo em cima), esquerda↔direita a forma da onda, e a distância controla o volume. O filtro de cada voz é controlado só pela abertura da mão: fechada = filtro fechado, aberta = filtro aberto (no lead, abrir também aumenta o drive). Cada mão toca sozinha. Sem mãos na tela, a música de fundo se apaga.</p>
 <p class="k">Fique a 1,5–2 m da câmera, com os ombros visíveis · use fones ou caixas de som · <span class="kTecla">H abre o painel</span></p>
 <label><input type="checkbox" id="entCam" checked> Usar a câmera (sem ela, o mouse faz o papel das mãos)</label>
 <div class="b"><button class="p" id="entOrg">Começar</button><button id="entSalvo" hidden>Começar · som original</button></div>
@@ -101,6 +101,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
   <span class="som-antigo" hidden><label>Tônica <select id="sRoot"></select></label></span>
   <label title="Como as notas do lead seguem o arp bass">Notas do lead <select id="leadNotes"><option value="0" selected>Escala do baixo (nota a nota)</option><option value="1">Só as notas do arpejo</option></select></label>
   <label title="Quanto drive o lead ganha com a mão direita totalmente aberta">Drive máximo <input id="rDrvMax" type="range" min="0" max="1" step=".05" value=".35"><span id="vDrvMax">35%</span></label>
+  <label title="Quanto do lead vai para os delays e reverbs. Baixo = som seco e direto · alto = espacial">Ambiência do lead <input id="rLeadAmb" type="range" min="0" max="1" step=".01" value=".12"><span id="vLeadAmb">12%</span></label>
   <select id="thMode" hidden><option value="0">0</option><option value="1" selected>1</option><option value="2">2</option></select>
   <span class="som-antigo" hidden><label>Escala <select id="sScale">
     <optgroup label="Menores">
@@ -290,8 +291,8 @@ const JI = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 5, 5 / 3
 const jiHz = (m, rootM) => TIM.ji ? mtof(rootM) * 2 ** Math.floor((m - rootM) / 12) * JI[(((m - rootM) % 12) + 12) % 12] : mtof(m);
 let nbuf = null;
 function getNoise() { if (!nbuf) { nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } return nbuf; }
-const HUD = { ab: { 1: null, 2: null }, filtro: 20000 };
-const S = { handTest: 0, leadNotes: 0, drvMax: .35, root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
+const HUD = { ab: { 1: null, 2: null }, filtro: 20000, filtroL: 20000 };
+const S = { handTest: 0, leadNotes: 0, drvMax: .35, leadAmb: .12, root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
 const vGain = v => v * v * 1.56;   // curva perceptual: .8 ≈ ganho unitário
 const sc = () => SCALES[S.scale];
 const chordOffs = () => (sc().length === 7 ? [0,2,4,6] : [0,1,2,3]);
@@ -981,13 +982,15 @@ function leadNotas() {   // graus (contados a partir da tônica) que a mão esqu
   return L;
 }
 /* DRIVE do lead (mão direita): fechada = sem drive · abrindo = mais saturação. Seco/saturado com volume compensado. */
+let thAmbG = null, leadLP = null;
 let leadDrvIn, leadDry, leadPre, leadWet, leadDrv = 0; const leadVozes = []; let leadWaveK = -1;
 function initLeadDrive() {
   leadDrvIn = ac.createGain(); leadDry = ac.createGain(); leadPre = ac.createGain(); leadWet = ac.createGain();
   const sh = ac.createWaveShaper(), N = 2048, cur = new Float32Array(N); for (let i = 0; i < N; i++) { const x = i / (N - 1) * 2 - 1; cur[i] = Math.tanh(x * 3) / Math.tanh(3); } sh.curve = cur; sh.oversample = '4x';
   const tone = ac.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 4200; tone.Q.value = .5;   // tira a aspereza dos agudos da saturação
   leadDry.gain.value = 1; leadPre.gain.value = 1; leadWet.gain.value = 0;
-  leadDrvIn.connect(leadDry); leadDry.connect(thBus); leadDrvIn.connect(leadPre); leadPre.connect(sh); sh.connect(tone); tone.connect(leadWet); leadWet.connect(thBus);
+  leadLP = ac.createBiquadFilter(); leadLP.type = 'lowpass'; leadLP.Q.value = 1.2; leadLP.frequency.value = 20000; leadLP.connect(thBus);   // filtro da mão do lead (fechada = fechado · aberta = aberto)
+  leadDrvIn.connect(leadDry); leadDry.connect(leadLP); leadDrvIn.connect(leadPre); leadPre.connect(sh); sh.connect(tone); tone.connect(leadWet); leadWet.connect(leadLP);
 }
 function setLeadDrive(a) {
   if (!leadPre) return; a = clamp(a, 0, 1) * S.drvMax; leadDrv = a;   // a = quanto a mão abriu × "Drive máximo" do painel
@@ -1013,12 +1016,14 @@ function thereminNote(t, f, { peak = .15, xn = .5, vib = 1, wy = null }) {
   if (wy === null) { setWave(o1, H.t1); setWave(o2, H.t2); mx.gain.value = H.mix; } else { const w = morphWave(wy); o1.setPeriodicWave(w); o2.setPeriodicWave(w); mx.gain.value = .5; }   // X = forma de onda (as duas cópias, levemente desafinadas)
   o1.frequency.value = o2.frequency.value = f; o2.detune.value = 4;
   const fc = clamp(Math.max(wy === null ? 0 : f * 10, f * 2 ** (H.lo + xn * H.span + T.cut)), 120, 14000), off = t + T.a + T.d + T.hold;   // off = fim do sustain (a nota "solta" sozinha)
-  lp.type = 'lowpass'; lp.Q.value = clamp(H.q * T.q, .1, 22); lp.frequency.setValueAtTime(Math.max(120, fc * Math.pow(.35, T.env)), t); lp.frequency.exponentialRampToValueAtTime(fc, t + Math.max(.02, T.a * 1.3));
-  lp.frequency.setValueAtTime(fc, off); lp.frequency.setTargetAtTime(Math.max(120, fc * .45), off, Math.max(.05, T.r * .45 * T.frel));   // release do filtro
+  lp.type = 'lowpass';
+  if (wy !== null) { lp.Q.value = .5; lp.frequency.value = 18000; }   // lead tocado pela mão: filtro aberto e parado — quem filtra é só a abertura da mão (leadLP)
+  else { lp.Q.value = clamp(H.q * T.q, .1, 22); lp.frequency.setValueAtTime(Math.max(120, fc * Math.pow(.35, T.env)), t); lp.frequency.exponentialRampToValueAtTime(fc, t + Math.max(.02, T.a * 1.3));
+  lp.frequency.setValueAtTime(fc, off); lp.frequency.setTargetAtTime(Math.max(120, fc * .45), off, Math.max(.05, T.r * .45 * T.frel)); }   // release do filtro
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + Math.max(.005, T.a)); g.gain.linearRampToValueAtTime(peak * T.s, t + T.a + Math.max(.01, T.d)); g.gain.setValueAtTime(peak * T.s, off); g.gain.setTargetAtTime(0, off, Math.max(.03, T.r / 4));
   const end = off + Math.max(T.r * 1.6, T.r * T.frel * 1.2) + .1;
   const vd = ac.createGain(); vd.gain.setValueAtTime(0, t); vd.gain.linearRampToValueAtTime((8 + 8) * H.vib * vib, t + T.a + T.d); thLfo.connect(vd); vd.connect(o1.detune); vd.connect(o2.detune);   // vibrato nasce depois do ataque
-  p.pan.value = clamp(.4 + (Math.random() - .5) * .25, -1, 1);
+  p.pan.value = wy !== null ? .15 : clamp(.4 + (Math.random() - .5) * .25, -1, 1);   // lead: posição fixa, perto do centro (direto)
   o1.connect(lp); o2.connect(mx); mx.connect(lp); lp.connect(g); g.connect(p); p.connect(leadDrvIn || thBus);
   if (wy !== null) { leadVozes.push({ o1, o2, end }); while (leadVozes.length > 8) leadVozes.shift(); }
   o1.start(t); o2.start(t); o1.stop(end); o2.stop(end); o1.onended = () => { try { thLfo.disconnect(vd); } catch (e) {} };
@@ -1691,7 +1696,7 @@ function frame(nowMs) {
   const la = clamp(1 - (nowMs - label.born) / 2200, 0, 1);
   if (la > 0) { ctx.fillStyle = `rgba(232,236,246,${la})`; ctx.font = '600 44px system-ui,sans-serif'; ctx.fillText(label.txt, W / 2, H / 2 - 20); }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(142,152,176,.8)'; ctx.font = '12px system-ui,sans-serif';
-  ctx.fillText('v74  ·  Y nota · X onda · Z volume · mão E fechada = filtro · mão D aberta = drive  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
+  ctx.fillText('v75  ·  Y nota · X onda · Z volume · mãos: fechada = filtro fechado · aberta = filtro aberto (+ drive no lead)  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
   if (cam.on && cam.dbg && $('cDbg').checked) {   // diagnóstico do tracking das mãos
     const D = cam.dbg, pp = q => { const v = camXY(q); return [px(v.x), py(v.y)]; }, dot = (q, col, r) => { const [x, y] = pp(q); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); };
     ctx.save(); ctx.globalAlpha = 1;
@@ -1741,7 +1746,7 @@ function drawHandHud() {
   if (S.handTest !== 2) rows.push(['#fb7185', 'MÃO ESQUERDA · ARP BASS', !L1.on ? 'desligada' : !isTracked(1) ? 'não detectada' :
     `Y nota: ${chordName(curDeg)}  ·  X onda: ${waveNome((L1.x + 1) / 2)}  ·  Z volume: ${pc(zVol(L1.z))}  ·  mão aberta ${ab(HUD.ab[1])} → filtro ${hz(HUD.filtro)}`]);
   if (S.handTest !== 1) rows.push(['#38bdf8', 'MÃO DIREITA · LEAD', !L2.on ? 'desligada' : !isTracked(2) ? 'não detectada' :
-    `Y nota: ${thDeg === null ? '—' : nota(degMidi(thDeg, 60))}  ·  X onda: ${waveNome((L2.x + 1) / 2)}  ·  Z volume: ${pc(zVol(L2.z))}  ·  mão aberta ${ab(HUD.ab[2])} → drive ${pc(leadDrv)}`]);
+    `Y nota: ${thDeg === null ? '—' : nota(degMidi(thDeg, 60))}  ·  X onda: ${waveNome((L2.x + 1) / 2)}  ·  Z volume: ${pc(zVol(L2.z))}  ·  mão aberta ${ab(HUD.ab[2])} → filtro ${hz(HUD.filtroL)} · drive ${pc(leadDrv)}`]);
   ctx.save(); ctx.font = '13px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left';
   const y0 = H - 92 - rows.length * 40;
   ctx.fillStyle = 'rgba(9,11,16,.72)'; ctx.fillRect(10, y0 - 18, Math.min(W - 20, 820), rows.length * 40 + 8);
@@ -1754,6 +1759,7 @@ $('sRoot').innerHTML = NOTES.map((n, i) => `<option value="${i}" ${i === S.root 
 $('sRoot').onchange = e => { S.root = +e.target.value; };
 $('thMode').onchange = e => { S.thMode = +e.target.value; thAKey = ''; };
 $('leadNotes').onchange = e => { S.leadNotes = +e.target.value; thDeg = null; };
+$('rLeadAmb').oninput = e => { S.leadAmb = +e.target.value; $('vLeadAmb').textContent = Math.round(S.leadAmb * 100) + '%'; if (thAmbG && ac) thAmbG.gain.setTargetAtTime(S.leadAmb, ac.currentTime, .05); };
 $('rDrvMax').oninput = e => { S.drvMax = +e.target.value; $('vDrvMax').textContent = Math.round(S.drvMax * 100) + '%'; };
 $('sScale').onchange = e => { S.scale = e.target.value; LIMBS.forEach(l => (l.idx = 3)); mkDoDedalus(); };
 { const r0 = $('sRoot').onchange; $('sRoot').onchange = e => { r0(e); mkDoDedalus(); }; }
@@ -1979,7 +1985,8 @@ function initFx(lim) {
   }
   mk('crush'); mk('splice');
   // sends: instrumento → efeito
-  const taps = { bass: bodyBus, th: thBus, bg: bgBus };
+  thAmbG = ac.createGain(); thAmbG.gain.value = S.leadAmb; thBus.connect(thAmbG);   // ambiência do lead: escala TODOS os envios do lead (delays/reverbs) — padrão seco e direto
+  const taps = { bass: bodyBus, th: thAmbG, bg: bgBus };
   INST.forEach(ins => FXD.forEach(d => { const g = ac.createGain(); g.gain.value = fxS.send[ins.id][d.id]; taps[ins.id].connect(g); g.connect(FX[d.id].i); FX.snd[ins.id][d.id] = g; }));
   FXD.forEach(d => { FX[d.id].r.gain.value = fxS.ret[d.id]; });
   // bitcrusher e splicer: AudioWorklet carregado por data: URL (blob: falha quando a página é aberta como arquivo local, file://);
@@ -2431,7 +2438,7 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
     1: { filtro: true, filtroMin: 180, filtroMax: 16000 },
     // esquerda: aberta = delay longo · fechada = delay curto com feedback subindo (fbMax)
     // esquerda: fechada = drive desligado · abrindo = drive aumenta (até 100% com a mão toda aberta)
-    2: { drive: true },
+    2: { drive: true, filtroMin: 250, filtroMax: 16000 },   // direita: a abertura também abre o filtro do lead
     fundoEspera: 1.0, fundoSome: 1.5,
     // arpejador (Motor Knick): só toca com as DUAS mãos na tela e ABERTAS · abre acima de arpAbre, fecha abaixo de arpFecha (histerese)
     arpAbre: .55, arpFecha: .4, arpTolera: .3,   // arpTolera: segundos que uma mão pode sumir/piscar sem cortar o arpejo
@@ -2464,7 +2471,7 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
         if (F) { const hz = v === null ? 20000 : GES[i].filtroMin * (GES[i].filtroMax / GES[i].filtroMin) ** v; F.frequency.setTargetAtTime(hz, ac.currentTime, .06); HUD.filtro = hz; }
         HUD.ab[i] = v; return;
       }
-      if (GES[i].drive) { HUD.ab[i] = v; setLeadDrive(v === null ? 0 : clamp((v - GES.abMin) / Math.max(.05, 1 - GES.abMin), 0, 1)); return; }
+      if (GES[i].drive) { HUD.ab[i] = v; if (leadLP) { const hz = v === null ? 20000 : GES[i].filtroMin * (GES[i].filtroMax / GES[i].filtroMin) ** v; leadLP.frequency.setTargetAtTime(hz, ac.currentTime, .06); HUD.filtroL = hz; } setLeadDrive(v === null ? 0 : clamp((v - GES.abMin) / Math.max(.05, 1 - GES.abMin), 0, 1)); return; }
       enviar((i === 1 ? 'd' : 'e') + 'Ab', GES[i].ab, aberta);
       enviar((i === 1 ? 'd' : 'e') + 'Fe', GES[i].fe, fechada);
       if (GES[i].fbMax && FX && FX[GES[i].fe[0]]) {   // mão esquerda fechada: o feedback do delay sobe junto com o send

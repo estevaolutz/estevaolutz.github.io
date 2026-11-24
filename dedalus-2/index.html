@@ -690,12 +690,13 @@ let somErro = '';
 function agenda() {
   if (!ac || !somOn) return;
   const s16 = 60 / MUS.bpm / 4;
-  if (nextT < ac.currentTime) nextT = ac.currentTime + .05;
+  if (nextT < ac.currentTime) { nextT = ac.currentTime + .05; gradeV++; gradeT = nextT; }   // grade do tempo recomeçou (som religado, aba voltou…)
   while (nextT < ac.currentTime + .12) { try { tocaPasso(passo, nextT, s16); } catch (err) { somErro = err.message; console.error(err); } passo++; nextT += s16; }
 }
 setInterval(agenda, 25);
 let ultMidi = null;
-let tempoT = 0;   // hora (relógio do áudio) do último tempo agendado
+let tempoT = 0, gradeV = 0, gradeT = 0;   // gradeV/gradeT: versão e início da grade do relógio (o gate se realinha a ela)
+   // hora (relógio do áudio) do último tempo agendado
 function tocaPasso(st, t, s16) {
   const m1 = CTRL.maos[1], pos = st % 16, P = m1.pinca;
   if (pos % 4 === 0) tempoT = t;
@@ -767,7 +768,7 @@ function initLead() {
 function alinhaGate() {   // (re)inicia os pulsos do gate cravados no próximo tempo; usado no início e quando o BPM muda
   const c = ac.currentTime, b = 60 / MUS.bpm; let T = tempoT || c; while (T < c + .03) T += b;
   ['g4', 'g8'].forEach((k, i) => { const old = ld[k]; const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = MUS.bpm / 60 * (i ? 8 : 4); o.connect(i ? ld.d8 : ld.d4); o.start(T); try { old.stop(T); } catch (e) {} ld[k] = o; });
-  ld.gBpm = MUS.bpm;
+  ld.gBpm = MUS.bpm; ld.gGrade = gradeV;
 }
 const leadLista = () => { const n = sc().length, L = []; for (let d = 0; d <= 2 * n; d++) L.push(d); return L; };   // 2 oitavas da escala
 function leadAoVivo() {
@@ -786,7 +787,7 @@ function leadAoVivo() {
   ld.rs.gain.setTargetAtTime(LD.rev, c, .1);
   ld.dl.delayTime.setTargetAtTime(60 / MUS.bpm * 2, c, .05); ld.dSend.gain.setTargetAtTime(delay ? .7 : 0, c, .06);
   // gate rítmico: só a PROFUNDIDADE muda (rampa de ~40 ms) — entra e sai sem estalo
-  if (ld.gBpm !== MUS.bpm) alinhaGate();
+  if (ld.gBpm !== MUS.bpm || (ld.gGrade !== gradeV && tempoT >= gradeT)) alinhaGate();   // mesmo BPM e mesma grade do arpejo
   const p4 = gateDiv === 4 ? 1 : 0, p8 = gateDiv === 8 ? 1 : 0, tg = .04;
   ld.d4.gain.setTargetAtTime(p4 * .5, c, tg); ld.d8.gain.setTargetAtTime(p8 * .5, c, tg);
   ld.gConst.offset.setTargetAtTime(1 - (p4 + p8) * .5, c, tg);
@@ -904,7 +905,7 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v18 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v19 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();

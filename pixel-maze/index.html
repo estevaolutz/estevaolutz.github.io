@@ -316,37 +316,31 @@ function snare(t,peak){noiseHit(t,'bandpass',1900,0.8,0.22,peak);blip('triangle'
 function hat(t,peak,open){noiseHit(t,'highpass',7500,0.7,open?0.2:0.035,peak);}
 function rim(t,peak){blip('square',1650,t,0.025,peak,900,AU.mus);noiseHit(t,'bandpass',3200,4,0.03,peak*0.6);}
 function tom(t,f,peak){blip('sine',f*1.6,t,0.3,peak,f,AU.mus);}
-// padrões de 16 passos por nível de tensão: 0 parado, 1 começou, 2 meio, 3 reta final
+// padrões de 16 passos por nível de tensão: 0 parado, 1 começou, 2 meio, 3 reta final (minimalista: pouca coisa, bem colocada)
 const GROOVE=[
- {k:[0],s:[],h:[],r:[10]},
- {k:[0,10],s:[],h:[0,4,8,12],r:[4,12,15]},
- {k:[0,6,10],s:[8],h:[0,2,4,6,8,10,12,14],r:[3,11]},
- {k:[0,3,6,10,13],s:[4,12],h:[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],r:[7]}];
+ {k:[0],r:[],h:[]},
+ {k:[0,8],r:[],h:[4,12]},
+ {k:[0,10],r:[8],h:[2,6,10,14]},
+ {k:[0,6,10],r:[8],h:[0,2,4,6,8,10,12,14]}];
 function musTick(){const ctx=AU.ctx,lv=game.level;if(!ctx||!lv)return;
   if(lv.won){droneStop();return;}
   if(!MUS.drone)droneStart();
   const D=MUS.drone,T=musTension(),now=ctx.currentTime,mode=MODES[lv.idx%MODES.length],root=lv.cfg.mus.root;
-  D.lp.frequency.setTargetAtTime(400+T*600,now,0.8);D.dis.g.gain.setTargetAtTime(T>0.4?0.006+T*0.01:0,now,2);D.tri.g.gain.setTargetAtTime(T>0.75?0.008:0,now,2);
-  const bpm=84+T*40,sp=60/bpm/4,lvl=!lv.started?0:T<0.35?1:T<0.7?2:3,G=GROOVE[lvl];
-  while(MUS.next<now+0.25){const t=MUS.next,st=MUS.step,s16=st%16,bar=(st/16|0)%4;
-    if(st%64===0){D.on=Math.random()<0.25+T*0.2;D.out.gain.setTargetAtTime(D.on?0.2+T*0.25:0,t,3);}
+  D.lp.frequency.setTargetAtTime(400+T*500,now,0.8);D.dis.g.gain.setTargetAtTime(T>0.5?0.005+T*0.006:0,now,2);D.tri.g.gain.setTargetAtTime(0,now,2);
+  const bpm=80+T*24,sp=60/bpm/4,lvl=!lv.started?0:T<0.35?1:T<0.7?2:3,G=GROOVE[lvl];
+  while(MUS.next<now+0.25){const t=MUS.next,st=MUS.step,s16=st%16;
+    if(st%64===0){D.on=Math.random()<0.2+T*0.15;D.out.gain.setTargetAtTime(D.on?0.18+T*0.15:0,t,4);}
     if(st%64===0){const sh=SHIFTS[(st/64|0)%SHIFTS.length];if(sh!==MUS.shift){MUS.shift=sh;D.v.forEach(x=>x.o.frequency.setTargetAtTime(mtof(x.m+sh),t,1.2));}}
-    const base=root+MUS.shift,fill=lvl>=2&&bar===3&&s16>=12;
-    // bateria
-    if(fill){if(s16===12||s16===14)tom(t,s16===12?150:110,0.12);if(s16===13||s16===15)snare(t,0.05+(s16-12)*0.02);if(s16===15&&lvl===3)tom(t,80,0.14);}
-    else{
-      if(G.k.includes(s16))kick(t,(s16===0?0.5:0.36)+T*0.12);
-      if(G.s.includes(s16))snare(t,0.11+T*0.05);else if(lvl>=2&&Math.random()<0.07)snare(t,0.025); // ghost notes
-      if(G.h.includes(s16))hat(t,(s16%4===2?0.05:0.022)+T*0.015,lvl>=3&&s16===14);
-      if(G.r.includes(s16)||(lvl>=1&&Math.random()<0.04))rim(t,0.03+T*0.02);}
-    // baixo que acompanha o bumbo
-    if(lvl>=2&&G.k.includes(s16)&&!fill)blip('triangle',mtof(base-12+(bar===2?mode[1]:bar===3&&lvl===3?mode[5]-12:0)),t,sp*1.8,0.06+T*0.03,0,AU.musLP);
-    // notas soltas, mais raras
-    if(st%4===2&&Math.random()<0.05+T*0.08){MUS.deg+=[-2,-1,1,2,3,-3][Math.floor(Math.random()*6)];MUS.deg=Math.max(-3,Math.min(9,MUS.deg));
+    const base=root+MUS.shift;
+    if(G.k.includes(s16))kick(t,(s16===0?0.32:0.22)+T*0.08);
+    if(G.r.includes(s16))rim(t,0.018+T*0.012);
+    if(G.h.includes(s16))hat(t,0.01+T*0.008,false);
+    // uma nota grave só no primeiro tempo, na reta final
+    if(lvl===3&&s16===0)blip('triangle',mtof(base-12+((st/32|0)%2?mode[1]:0)),t,sp*3,0.05,0,AU.musLP);
+    // notas soltas, raras
+    if(st%8===4&&Math.random()<0.04+T*0.05){MUS.deg+=[-2,-1,1,2][Math.floor(Math.random()*4)];MUS.deg=Math.max(-3,Math.min(9,MUS.deg));
       const n=mode.length,o=Math.floor(MUS.deg/n),dg=((MUS.deg%n)+n)%n,m=base+12+o*12+mode[dg];
-      blip('sine',mtof(m),t,sp*(4+Math.random()*6),0.018+T*0.01,0,AU.musLP,true);}
-    // crescendo de ruído antes de virar a frase
-    if(st%64===48&&lvl>=2&&Math.random()<0.5)riser(t,sp*16,0.015+T*0.02);
+      blip('sine',mtof(m),t,sp*(6+Math.random()*6),0.015+T*0.008,0,AU.musLP,true);}
     MUS.step++;MUS.next+=sp;}}
 function startMusic(){if(!AU.ctx)return;droneStop();MUS.step=0;MUS.deg=0;MUS.shift=0;MUS.swellAt=0;MUS.next=AU.ctx.currentTime+0.3;if(!MUS.timer)MUS.timer=setInterval(musTick,80);}
 function applyAudio(){if(!AU.ctx)return;const t=AU.ctx.currentTime;AU.sfx.gain.setTargetAtTime(settings.sound?1:0,t,0.05);AU.mus.gain.setTargetAtTime(settings.music?0.5:0,t,0.2);}

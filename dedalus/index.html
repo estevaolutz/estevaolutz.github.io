@@ -390,8 +390,31 @@ const handSize = h => { const d = (a, b) => imgD(h[a], h[b]); return (d(0, 9) + 
 const log2 = x => Math.log(x) / Math.LN2;
 function resolveHands(lm, raw) {
   const now = performance.now() / 1000, cands = [];
-  ((raw && raw.landmarks) || []).forEach((h, i) => { const c = palmCenter(h); cands.push({ kind: 'palm', x: c.x, y: c.y, h, label: raw.handedness && raw.handedness[i] && raw.handedness[i][0] && raw.handedness[i][0].categoryName }); });
-  [1, 2].forEach(g => { const p = poseHandAvg(g, lm); if (p) cands.push({ kind: 'pose', grp: g, x: p.x, y: p.y, z: p.z, visibility: p.visibility }); });
+  ((raw && raw.landmarks) || []).forEach((h, i) => { const c = palmCenter(h), hd = raw.handedness && raw.handedness[i] && raw.handedness[i][0]; cands.push({ kind: 'palm', x: c.x, y: c.y, h, label: hd && hd.categoryName, score: hd ? hd.score : 0 }); });
+  // ---- TRAVA DE LADO: cada mão física pertence a UM timbre (direita = baixo · esquerda = lead), nunca aos dois ----
+  // 1) a mesma mão detectada duas vezes (palmas sobrepostas) vira uma só
+  for (let i = cands.length - 1; i >= 0; i--) for (let j = 0; j < i; j++) if (imgD(cands[i], cands[j]) < .1) { if ((cands[i].score || 0) > (cands[j].score || 0)) cands[j] = cands[i]; cands.splice(i, 1); break; }
+  // 2) lado de cada palma: pelo pulso do Pose (anatômico) quando ele está colado na palma; senão pelo rótulo do detector de mãos
+  const grpR = cam.wrist[1] === 16 ? 1 : 2;   // grupo da mão DIREITA do performer
+  const labSide = l => l === 'Left' ? grpR : l === 'Right' ? 3 - grpR : null;   // vídeo não espelhado: "Left" do detector = mão direita do performer
+  cands.forEach(c => {
+    let side = null, bd = .09;
+    [1, 2].forEach(g => { const w = lm[cam.wrist[g]]; if (w && (w.visibility ?? 1) > .6) { const d = imgD(c.h[0], w); if (d < bd) { bd = d; side = g; } } });
+    if (!side && c.score >= .75) side = labSide(c.label);
+    c.side = side;
+  });
+  if (cands.length === 2 && cands[0].side && cands[0].side === cands[1].side) {   // duas palmas com o mesmo lado: na imagem (não espelhada) a direita do performer fica à esquerda
+    const [a, b] = cands[0].x < cands[1].x ? [cands[0], cands[1]] : [cands[1], cands[0]]; a.side = grpR; b.side = 3 - grpR;
+  }
+  cands.forEach(c => { if (c.side) c.grp = c.side; });
+  // 3) pulsos do Pose: só servem ao próprio lado, e somem se estiverem em cima de uma palma do OUTRO lado (fantasma da mão que não está na tela)
+  [1, 2].forEach(g => {
+    const p = poseHandAvg(g, lm); if (!p) return;
+    const palms = cands.filter(c => c.kind === 'palm');
+    if (palms.some(c => c.side && c.side !== g && imgD(c, p) < .22)) return;
+    if ((p.visibility ?? 1) < .7 && palms.some(c => imgD(c, p) < .25)) return;
+    cands.push({ kind: 'pose', grp: g, x: p.x, y: p.y, z: p.z, visibility: p.visibility });
+  });
   // ---- Modelo do braço (cotovelo): descarta "mãos" que na verdade são o cotovelo ----
   // O Hand Landmarker às vezes vê um cotovelo dobrado como punho, e o Pose pode colar o pulso no cotovelo. Cada braço tem um comprimento de antebraço
   // aprendido (F0, em larguras de imagem; começa em ~0,62 × largura dos ombros). Uma palma bem mais perto do cotovelo que do pulso é rejeitada ANTES da fusão.
@@ -410,12 +433,14 @@ function resolveHands(lm, raw) {
   // a mesma mão aparece como palma E como ponto do Pose: funde (a palma manda; herda o rótulo do Pose) para que um ponto nunca "adote" a duplicata
   for (let i = cands.length - 1; i >= 0; i--) {
     const cp = cands[i]; if (cp.kind !== 'pose') continue;
-    let bj = -1, bd = .16; cands.forEach((q, j) => { if (q.kind === 'palm') { const d = imgD(cp, q); if (d < bd) { bd = d; bj = j; } } });
+    let bj = -1, bd = .16; cands.forEach((q, j) => { if (q.kind === 'palm' && (!q.side || q.side === cp.grp)) { const d = imgD(cp, q); if (d < bd) { bd = d; bj = j; } } });
     if (bj >= 0) { if (cands[bj].grp == null) cands[bj].grp = cp.grp; cands[bj].poseXY = { x: cp.x, y: cp.y }; cands.splice(i, 1); }
   }
   const wr = { 1: seen(lm[cam.wrist[1]]) ? lm[cam.wrist[1]] : null, 2: seen(lm[cam.wrist[2]]) ? lm[cam.wrist[2]] : null }, P = .12;   // P: custo de deixar um ponto sem mão
   const cost = (j, k) => {
     const cd = cands[j], pr = predOf(k);
+    if (cd.side && cd.side !== k) return Infinity;            // trava: palma de um lado nunca toca o timbre do outro
+    if (cd.kind === 'pose' && cd.grp !== k) return Infinity;  // pulso do Pose só serve à própria mão
     if (pr) { const d = imgD(cd, pr); return d <= (cd.kind === 'pose' ? Math.min(gateOf(k), cd.weak ? .12 : .25) : gateOf(k)) ? d + (cd.kind === 'pose' ? (cd.weak ? .12 : .04) : 0) : Infinity; }   // com trilha: só aceita mão dentro do raio de salto
     if (cd.kind === 'pose' && cd.weak) return Infinity;   // pulso do Pose colado no cotovelo nunca serve para (re)adquirir a mão
     const op = predOf(3 - k);
@@ -1789,7 +1814,7 @@ function frame(nowMs) {
   const la = clamp(1 - (nowMs - label.born) / 2200, 0, 1);
   if (la > 0) { ctx.fillStyle = `rgba(232,236,246,${la})`; ctx.font = '600 44px system-ui,sans-serif'; ctx.fillText(label.txt, W / 2, H / 2 - 20); }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(142,152,176,.8)'; ctx.font = '12px system-ui,sans-serif';
-  ctx.fillText('v81  ·  mão direita: altura = acorde · distância = volume · abrir/fechar = filtro · fora da tela = silêncio  |  M calibrar mão direita  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
+  ctx.fillText('v82  ·  mão direita: altura = acorde · distância = volume · abrir/fechar = filtro · fora da tela = silêncio  |  M calibrar mão direita  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
   if (cam.on && cam.dbg && $('cDbg').checked) {   // diagnóstico do tracking das mãos
     const D = cam.dbg, pp = q => { const v = camXY(q); return [px(v.x), py(v.y)]; }, dot = (q, col, r) => { const [x, y] = pp(q); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); };
     ctx.save(); ctx.globalAlpha = 1;

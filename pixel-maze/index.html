@@ -248,7 +248,7 @@ const store={get(k,d){try{const v=localStorage.getItem('pixelmaze_'+k);return v=
 let progress=store.get('progress',{unlocked:1,best:{}});
 let settings=Object.assign({cam:'follow',tap:true,sound:true,music:true,speed:6.5,ctrl:'finger'},store.get('settings',{}));
 // computador e iPad: na primeira visita o labirinto já abre inteiro na tela
-if(store.get('settings',{}).cam==null&&Math.min(innerWidth,innerHeight)>=700)settings.cam='whole';
+if(!settings.camChosen&&Math.min(innerWidth,innerHeight)>=700)settings.cam='whole';
 const wholeView=()=>game.mapView||settings.cam==='whole';
 const saveSettings=()=>store.set('settings',settings);
 
@@ -349,7 +349,7 @@ function viewH(){const v=window.visualViewport;return Math.round(v?Math.min(v.he
 function layout(){DPR=Math.min(window.devicePixelRatio||1,2);VW=innerWidth;VH=viewH();VWd=Math.round(VW*DPR);VHd=Math.round(VH*DPR);cv.width=VWd;cv.height=VHd;cv.style.width=VW+'px';cv.style.height=VH+'px';TOP=66*DPR;BOT=(safeBottom()+(settings.cam==='whole'&&!game.mapView?12:34))*DPR;
   dk.width=Math.ceil(VWd/4);dk.height=Math.ceil(VHd/4);
   const lv=game.level;if(!lv)return;const W=lv.L.W,H=lv.L.H;
-  const nS=wholeView()?Math.min(VWd/(W+2*MG),(VHd-TOP-BOT)/(H+2*MG)):VWd/(W/2+0.7);
+  const nS=wholeView()?Math.min(VWd/(W+2*MG),(VHd-TOP-BOT)/(H+2*MG)):Math.min(VWd/(W/2+0.7),(VHd-TOP-BOT)/(H/2+0.7));
   if(Math.abs(nS-S)>0.01||!lv.static){S=nS;lv.mw=(W+2*MG)*S;lv.mh=(H+2*MG)*S;buildStatic(lv);buildVisited(lv);}
   game.snap=true;}
 
@@ -607,9 +607,9 @@ function syncSeg(){document.querySelectorAll('[data-cam]').forEach(b=>b.classLis
 document.querySelectorAll('[data-ctrl]').forEach(b=>b.onclick=()=>setCtrl(b.dataset.ctrl));
 $('calib').onclick=()=>{calibrate();toast(tiltLive()?'Pronto: esta posição agora é o plano.':'O sensor de inclinação não respondeu neste aparelho.',2200);};
 document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{settings.speed=+b.dataset.spd;saveSettings();syncSeg();});
-document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{const was=settings.cam;settings.cam=b.dataset.cam;saveSettings();syncSeg();game.mapView=false;syncMapBtn();
+document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{settings.cam=b.dataset.cam;settings.camChosen=true;saveSettings();syncSeg();game.mapView=false;syncMapBtn();
   const lv=game.level;if(!lv)return;const land=innerWidth>innerHeight*1.1,wantW=settings.cam==='whole'&&land,isW=lv.L.W>lv.L.H;
-  if(wantW!==isW&&!lv.started&&!lv.random)loadLevel(lv.idx,false,lv.seed);else layout();});
+  if(wantW!==isW&&!lv.started&&!lv.won)loadLevel(lv.idx,lv.random,lv.seed);else layout();});
 function syncMapBtn(){$('mapBtn').style.display=settings.cam==='whole'?'none':'';}
 syncMapBtn();
 document.querySelectorAll('[data-tap]').forEach(b=>b.onclick=()=>{settings.tap=b.dataset.tap==='1';saveSettings();syncSeg();});
@@ -629,7 +629,11 @@ $('toMenu').onclick=()=>{renderLevels();show('menu');};
 $('btnNext').onclick=()=>startLevel(game.level.idx+1);$('btnAgain').onclick=()=>{const lv=game.level;startLevel(lv.idx,lv.random,lv.seed);};$('btnVar').onclick=()=>startLevel(game.level.idx,true);$('btnMenu').onclick=()=>{renderLevels();show('menu');};
 $('fsBtn').onclick=()=>{const d=document.documentElement;try{if(!document.fullscreenElement)(d.requestFullscreen||d.webkitRequestFullscreen).call(d);else document.exitFullscreen();}catch(e){}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();if(AU.ctx)AU.ctx.suspend();}else if(AU.ctx)AU.ctx.resume();});
-addEventListener('resize',()=>layout());if(window.visualViewport)visualViewport.addEventListener('resize',()=>layout());
+let orientT=0;function onResize(){layout();clearTimeout(orientT);orientT=setTimeout(fitOrientation,300);}
+// ao girar a tela no modo Mapa inteiro, a folha gira junto (se o labirinto ainda não começou)
+function fitOrientation(){const lv=game.level;if(!lv||settings.cam!=='whole'||lv.won)return;const land=innerWidth>innerHeight*1.1,isW=lv.L.W>lv.L.H;if(land===isW)return;
+  if(!lv.started){loadLevel(lv.idx,lv.random,lv.seed);}else if(!lv.tips.orient){lv.tips.orient=1;toast('Para a folha acompanhar a tela, recomece este labirinto (pausa → Recomeçar).',3600);}}
+addEventListener('resize',onResize);if(window.visualViewport)visualViewport.addEventListener('resize',onResize);
 (function(){const hs=$('hShapes');['circle','triangle','square','hex','moon'].forEach(k=>hs.appendChild(shapeIcon(k,16)));$('hStar').appendChild(shapeIcon('star',16));})();
 // constelação: cada labirinto vencido acende uma estrela
 function drawSky(){const c=$('sky'),d=Math.min(devicePixelRatio||1,3),w=c.clientWidth||380,h=96;c.width=w*d;c.height=h*d;const g=c.getContext('2d');g.scale(d,d);

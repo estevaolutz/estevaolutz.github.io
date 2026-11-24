@@ -78,6 +78,7 @@ h2{font:700 26px/1.1 "Cormorant SC",serif;margin:0 0 12px;color:#e8dcb6}
 
 <div class="scr" id="menu"><div class="card">
   <h1>Labirintos</h1><div class="tag">I — Floresta. Cinco labirintos vistos do alto das árvores, cada um do tamanho de uma folha A4 dividida em quatro páginas.</div>
+  <div class="seg" id="diffSeg"><button data-diff="facil">Fácil</button><button data-diff="medio">Médio</button><button data-diff="dificil">Difícil</button></div>
   <div id="levels"></div>
   <button class="btn pri" id="play">Continuar a jornada</button>
   <button class="btn" id="helpBtn">Como jogar</button>
@@ -616,7 +617,13 @@ const LEVELS=[
 // ---------- estado salvo ----------
 const store={get(k,d){try{const v=localStorage.getItem('labirintos_'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('labirintos_'+k,JSON.stringify(v));}catch(e){}}};
 let progress=store.get('progress2',{unlocked:1,best:{}});
-let settings=Object.assign({view:'follow',sound:true,music:true,dpad:true,gfx:'alta',speed:4.3,tap:true},store.get('settings2',{}));if(!settings.ctl||settings.ctl==='setas')settings.ctl='nenhum';settings.dpad=settings.ctl==='joystick';
+// dificuldade = tamanho da grade (médio é o tamanho padrão de LEVELS)
+const DIFF={facil:{n:'Fácil',size:[[8,11],[9,12],[9,13],[10,14],[11,15]],depth:[1,2,2,2,2]},
+  medio:{n:'Médio',size:null,depth:null},
+  dificil:{n:'Difícil',size:[[24,34],[26,37],[28,40],[30,42],[32,45]],depth:[4,5,6,6,7]}};
+function levelCfg(i){const c=LEVELS[i],d=DIFF[settings.diff]||DIFF.medio;if(!d.size)return c;return Object.assign({},c,{w:d.size[i][0],h:d.size[i][1],minItemDepth:d.depth[i]});}
+const DIFF_OK=d=>d==='facil'||d==='medio'||d==='dificil';
+let settings=Object.assign({view:'follow',sound:true,music:true,dpad:true,gfx:'alta',speed:4.3,tap:true},store.get('settings2',{}));if(!DIFF_OK(settings.diff))settings.diff='medio';if(!settings.ctl||settings.ctl==='setas')settings.ctl='nenhum';settings.dpad=settings.ctl==='joystick';
 
 // ---------- áudio (sintetizado) ----------
 const AU={ctx:null,ambNodes:[],timers:[]};
@@ -752,7 +759,7 @@ const OPP=d=>(d+2)%4;
 function ekey(a,b,N){return a<b?a*N+b:b*N+a;}
 
 function loadLevel(idx,randomSeed){
-  const cfg=LEVELS[idx];const seed=randomSeed?Math.floor(Math.random()*1e9):cfg.seed;
+  const cfg=levelCfg(idx);const seed=randomSeed?Math.floor(Math.random()*1e9):cfg.seed;
   const L=generateLevel(cfg,seed);const N=L.W*L.H;
   const lv={idx,cfg,L,N,seed,random:!!randomSeed};
   lv.barrierAt=new Map();
@@ -769,7 +776,7 @@ function loadLevel(idx,randomSeed){
   reveal(lv,L.start);buildWorld(lv);
   clearChunks();R2.map=null;R2.clouds=[];R2.birds=[];R2.motes=[];R2.cloudT=10+Math.random()*14;R2.birdT=8+Math.random()*10;R2.zoom=1;
   layout();camSnap();buildMap(lv);R2.force=true;
-  $('lvname').textContent=(idx+1)+' · '+cfg.name+(lv.random?' (variação)':'');
+  $('lvname').textContent=(idx+1)+' · '+cfg.name+(settings.diff!=='medio'?' · '+DIFF[settings.diff].n:'')+(lv.random?' (variação)':'');
   updateHUD();startAmbience(cfg);
   if(idx===0&&!progress.best.L0&&!lv.random)setTimeout(()=>{if(game.level===lv&&!lv.started)toast('Arraste o dedo para andar, ou toque num ponto do caminho.',4200);},900);
 }
@@ -831,7 +838,7 @@ function tapTo(sx,sy){const lv=game.level;if(!lv||lv.won||!settings.tap)return;c
   if(par[c]===-2){lv.target={cell:c,t:0.6,bad:true};return;}
   const path=[];for(let u=c;u!==src;u=par[u])path.push(u);path.reverse();game.route=path;game.hold=null;lv.target={cell:c,t:0.8};audioInit();}
 function win(){const lv=game.level,p=lv.player;lv.won=true;p.winT=0;game.hold=null;game.route=null;SFX.win();addFx(p.x+.5,p.y+.5,'#ffe9a8',40,1.6);
-  const key='L'+lv.idx;
+  const key='L'+lv.idx+(settings.diff==='medio'?'':'_'+settings.diff);
   if(!lv.random){const b=progress.best[key];if(!b||lv.time<b.time)progress.best[key]={time:lv.time,steps:lv.steps};progress.unlocked=Math.max(progress.unlocked,Math.min(LEVELS.length,lv.idx+2));store.set('progress2',progress);}
   const best=progress.best[key];
   $('winTitle').textContent=lv.cfg.name;
@@ -895,7 +902,7 @@ function setView(v){R2.zoom=1;settings.view=v;store.set('settings2',settings);up
 
 // ---------- telas ----------
 function show(id){['menu','pause','win','help'].forEach(s=>$(s).classList.toggle('show',s===id));game.paused=!!id&&id!=='win';if(id)game.hold=null;if(id==='menu')renderMenu();}
-function renderMenu(){const box=$('levels');box.innerHTML='';LEVELS.forEach((c,i)=>{const lock=i+1>progress.unlocked,b=progress.best['L'+i];
+function renderMenu(){document.querySelectorAll('[data-diff]').forEach(b=>b.classList.toggle('on',b.dataset.diff===settings.diff));const box=$('levels');box.innerHTML='';LEVELS.forEach((c0,i)=>{const c=levelCfg(i),lock=i+1>progress.unlocked,b=progress.best['L'+i+(settings.diff==='medio'?'':'_'+settings.diff)];
   const kc=c.barriers.filter(x=>x==='key').length,tools=[...new Set(c.barriers.filter(x=>x!=='key').map(x=>BARRIER_ITEM[x]))];
   const parts=[kc+(kc>1?' chaves':' chave')].concat(tools.map(t=>ITEM_INFO[t].n.toLowerCase()));if(c.portals)parts.push(c.portals+(c.portals>1?' portais':' portal'));
   const el=document.createElement('button');el.className='lvl'+(lock?' lock':'');el.style.setProperty('--c',c.pal.c3);
@@ -977,6 +984,7 @@ $('variant').onclick=()=>{loadLevel(game.level.idx,true);show(null);toast('Um no
 $('toMenu').onclick=()=>show('menu');
 document.querySelectorAll('[data-gfx]').forEach(b=>b.onclick=()=>{settings.gfx=b.dataset.gfx;store.set('settings2',settings);layout();updateHUD();});
 $('musT').onclick=()=>{audioInit();setMusic(!settings.music);updateHUD();};
+document.querySelectorAll('[data-diff]').forEach(b=>b.onclick=()=>{settings.diff=b.dataset.diff;store.set('settings2',settings);renderMenu();});
 document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{settings.speed=+b.dataset.spd;store.set('settings2',settings);updateHUD();});
 document.querySelectorAll('[data-tap]').forEach(b=>b.onclick=()=>{settings.tap=b.dataset.tap==='1';store.set('settings2',settings);updateHUD();});
 document.querySelectorAll('[data-ctl]').forEach(b=>b.onclick=()=>{settings.ctl=b.dataset.ctl;store.set('settings2',settings);layout();updateHUD();});

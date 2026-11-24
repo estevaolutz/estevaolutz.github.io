@@ -1014,7 +1014,8 @@ let thDeg = null, thChord = -1, thEnv = 0, thLastT = -9, thLastDeg = null, thNot
 function thereminNote(t, f, { peak = .15, xn = .5, vib = 1, wy = null }) {
   const H = TIM.th, T = ADSR.th, o1 = ac.createOscillator(), o2 = ac.createOscillator(), mx = ac.createGain(), lp = ac.createBiquadFilter(), g = ac.createGain(), p = ac.createStereoPanner();
   if (wy === null) { setWave(o1, H.t1); setWave(o2, H.t2); mx.gain.value = H.mix; } else { const w = morphWave(wy); o1.setPeriodicWave(w); o2.setPeriodicWave(w); mx.gain.value = .5; }   // X = forma de onda (as duas cópias, levemente desafinadas)
-  o1.frequency.value = o2.frequency.value = f; o2.detune.value = 4;
+  o1.frequency.value = o2.frequency.value = f; o2.detune.value = wy === null ? 4 : 0;   // lead: as duas cópias afinadas juntas (desafinadas soavam como duas vozes)
+  if (wy !== null) leadVozes.forEach(v => { if (v.end > t) { try { v.g.gain.cancelScheduledValues(t); v.g.gain.setValueAtTime(v.g.gain.value, t); v.g.gain.setTargetAtTime(0, t, .012); v.o1.stop(t + .08); v.o2.stop(t + .08); } catch (e) {} v.end = t; } });   // MONOFÔNICO: a nota nova corta a anterior na hora
   const fc = clamp(Math.max(wy === null ? 0 : f * 10, f * 2 ** (H.lo + xn * H.span + T.cut)), 120, 14000), off = t + T.a + T.d + T.hold;   // off = fim do sustain (a nota "solta" sozinha)
   lp.type = 'lowpass';
   if (wy !== null) { lp.Q.value = .5; lp.frequency.value = 18000; }   // lead tocado pela mão: filtro aberto e parado — quem filtra é só a abertura da mão (leadLP)
@@ -1025,7 +1026,7 @@ function thereminNote(t, f, { peak = .15, xn = .5, vib = 1, wy = null }) {
   const vd = ac.createGain(); vd.gain.setValueAtTime(0, t); vd.gain.linearRampToValueAtTime((8 + 8) * H.vib * vib, t + T.a + T.d); thLfo.connect(vd); vd.connect(o1.detune); vd.connect(o2.detune);   // vibrato nasce depois do ataque
   p.pan.value = wy !== null ? .15 : clamp(.4 + (Math.random() - .5) * .25, -1, 1);   // lead: posição fixa, perto do centro (direto)
   o1.connect(lp); o2.connect(mx); mx.connect(lp); lp.connect(g); g.connect(p); p.connect(leadDrvIn || thBus);
-  if (wy !== null) { leadVozes.push({ o1, o2, end }); while (leadVozes.length > 8) leadVozes.shift(); }
+  if (wy !== null) { leadVozes.push({ o1, o2, g, end }); while (leadVozes.length > 8) leadVozes.shift(); }
   o1.start(t); o2.start(t); o1.stop(end); o2.stop(end); o1.onended = () => { try { thLfo.disconnect(vd); } catch (e) {} };
 }
 function updateTheremin() {
@@ -1696,7 +1697,7 @@ function frame(nowMs) {
   const la = clamp(1 - (nowMs - label.born) / 2200, 0, 1);
   if (la > 0) { ctx.fillStyle = `rgba(232,236,246,${la})`; ctx.font = '600 44px system-ui,sans-serif'; ctx.fillText(label.txt, W / 2, H / 2 - 20); }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(142,152,176,.8)'; ctx.font = '12px system-ui,sans-serif';
-  ctx.fillText('v75  ·  Y nota · X onda · Z volume · mãos: fechada = filtro fechado · aberta = filtro aberto (+ drive no lead)  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
+  ctx.fillText('v76  ·  Y nota · X onda · Z volume · mãos: fechada = filtro fechado · aberta = filtro aberto (+ drive no lead)  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
   if (cam.on && cam.dbg && $('cDbg').checked) {   // diagnóstico do tracking das mãos
     const D = cam.dbg, pp = q => { const v = camXY(q); return [px(v.x), py(v.y)]; }, dot = (q, col, r) => { const [x, y] = pp(q); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); };
     ctx.save(); ctx.globalAlpha = 1;

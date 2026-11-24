@@ -80,7 +80,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
 <body>
 <div id="entrada" role="dialog" aria-labelledby="entT"><div class="c">
 <h1 id="entT">Dedalus</h1>
-<p>Uma obra audiovisual tocada pelas mãos. A câmera acompanha o seu corpo: a mão direita toca o arpejo do baixo e a esquerda o synth lead. Nas duas: cima↔baixo muda a nota (agudo em cima), esquerda↔direita a forma da onda, e a distância controla o volume. Na mão direita, cada pinça do polegar com um dedo (indicador, médio, anelar, mínimo) escolhe um acorde, e a altura escolhe a oitava. O filtro de cada voz é controlado só pela abertura da mão: fechada = filtro fechado, aberta = filtro aberto (no lead, abrir também aumenta o drive). Cada mão toca sozinha. Sem mãos na tela, a música de fundo se apaga.</p>
+<p>Uma obra audiovisual tocada pelas mãos. Por enquanto só a mão direita toca: ela faz o arpejo do baixo. Subir e descer a mão troca o acorde, aproximar da câmera aumenta o volume, abrir e fechar a mão abre e fecha o filtro, e tirar a mão da tela silencia o arpejo. Antes de tocar, use “Calibrar mão direita” (tecla M) para ajustar os controles ao seu alcance.</p>
 <p class="k">Fique a 1,5–2 m da câmera, com os ombros visíveis · use fones ou caixas de som · <span class="kTecla">H abre o painel</span></p>
 <label><input type="checkbox" id="entCam" checked> Usar a câmera (sem ela, o mouse faz o papel das mãos)</label>
 <div class="b"><button class="p" id="entOrg">Começar</button><button id="entSalvo" hidden>Começar · som original</button></div>
@@ -91,6 +91,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
   <button id="bHideUi" type="button" aria-label="Fechar painel">✕ Fechar</button>
   <button id="bAudio">Ligar áudio</button>
   <button id="bCam">Ligar câmera</button>
+  <button id="bCalD" type="button" title="Mapeia o alcance da mão direita: alto, baixo, perto, longe, aberta, fechada (tecla M)">Calibrar mão direita</button>
   <button id="bWiz" disabled title="Assistente em 3 etapas: distância · mão esquerda (lead) · mão direita (baixo) (tecla G)">Assistente de calibração</button>
   <label title="Para conferir uma mão de cada vez: a outra mão e o fundo ficam mudos e aparecem as leituras ao vivo">Teste de mão <select id="handTest"><option value="0">As duas mãos</option><option value="1">Só mão direita · arp bass</option><option value="2">Só mão esquerda · lead</option></select></label>
   <label><input type="checkbox" id="cHud"> Leituras das mãos</label>
@@ -99,7 +100,6 @@ input[type=range]{accent-color:var(--ac);width:110px}
   <label><input id="cMirror" type="checkbox" checked> Espelhar</label>
   <label>Tema visual <select id="visTheme" title="T alterna"><option value="cyber" selected>Cyberpunk</option><option value="classic">Clássico</option></select></label>
   <span class="som-antigo" hidden><label>Tônica <select id="sRoot"></select></label></span>
-  <span title="Mão direita (arp bass): cada pinça do polegar com um dedo escolhe um acorde (grau da escala). O acorde fica até a próxima pinça.">Pinças do baixo: <label>indicador <select id="pz0"></select></label> <label>médio <select id="pz1"></select></label> <label>anelar <select id="pz2"></select></label> <label>mínimo <select id="pz3"></select></label> <button id="bPinca" type="button" title="Mão esquerda aberta, depois uma pinça de cada vez (indicador, médio, anelar, mínimo)">Calibrar pinças</button></span>
   <label title="Como as notas do lead seguem o arp bass">Notas do lead <select id="leadNotes"><option value="0" selected>Escala do baixo (nota a nota)</option><option value="1">Só as notas do arpejo</option></select></label>
   <label title="Quanto drive o lead ganha com a mão esquerda totalmente aberta">Drive máximo <input id="rDrvMax" type="range" min="0" max="1" step=".05" value=".35"><span id="vDrvMax">35%</span></label>
   <label title="Quanto do lead vai para os delays e reverbs. Baixo = som seco e direto · alto = espacial">Ambiência do lead <input id="rLeadAmb" type="range" min="0" max="1" step=".01" value=".35"><span id="vLeadAmb">35%</span></label>
@@ -119,7 +119,6 @@ input[type=range]{accent-color:var(--ac);width:110px}
   <span class="som-antigo" hidden><label>Tremolo <input id="rTrem" type="range" min="0" max="1" step=".01" value=".35"></label></span>
   <label><input type="checkbox" id="cNorm"> Mãos pelo corpo</label>
   <label><input type="checkbox" id="cHands" checked> Palma das mãos</label>
-  <label title="Detecta cada mão num recorte ampliado em volta do pulso (dedos e pinças bem mais precisos, principalmente longe da câmera). Desligue se o computador ficar lento."><input type="checkbox" id="cCrop" checked> Zoom nas mãos</label>
   <label>Alcance mãos <input id="rA" type="range" min=".6" max="2" step=".05" value="1"></label>
   <label>Sensibilidade <input id="rSens" type="range" min=".5" max="3" step=".1" value="1.5"></label>
   <span class="som-antigo" hidden><label>Andamento <input id="rBpm" type="range" min="36" max="140" value="96"><span id="vBpm">96</span></label></span>
@@ -292,7 +291,7 @@ const jiHz = (m, rootM) => TIM.ji ? mtof(rootM) * 2 ** Math.floor((m - rootM) / 
 let nbuf = null;
 function getNoise() { if (!nbuf) { nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } return nbuf; }
 const HUD = { ab: { 1: null, 2: null }, filtro: 20000, filtroL: 20000 };
-const S = { handCrop: true, handTest: 0, leadNotes: 0, drvMax: .35, leadAmb: .35, root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
+const S = { bassWave: .3, handTest: 0, leadNotes: 0, drvMax: .35, leadAmb: .35, root: 2, scale: 'dorian', bpm: 96, audio: false, sens: 1.5, volBody: .8, volBg: 0, ghost: 1, bassMode: 'arp', arpPat: 'up', arpRate: 2, arpOct: 2, arpSev: true, thMode: 1 };
 const vGain = v => v * v * 1.56;   // curva perceptual: .8 ≈ ganho unitário
 const sc = () => SCALES[S.scale];
 const chordOffs = () => (sc().length === 7 ? [0,2,4,6] : [0,1,2,3]);
@@ -331,7 +330,7 @@ const LIMBS = [
   { n: 'mão E',  role: 'theremin', c: '#38bdf8', bx: -.5,  by: .15 },
   { n: 'pé E',   role: 'bass', c: '#a78bfa', bx: -.25, by: -.65 },
   { n: 'pé D',   role: 'bass', c: '#34d399', bx: .25,  by: -.65 }
-].map((l, i) => ({ ...l, on: i === 1 || i === 2, arp: 0, x: l.bx, y: l.by, vx: l.bx, vy: l.by, z: 0, gate: false, speed: 0, idx: 3, pending: false, hot: false, lastHit: 0, vol: .8, lastSeen: -9, out: false, tp: null, tv: { x: 0, y: 0 }, tpT: 0, tz: 0, coastStart: 0 }));
+].map((l, i) => ({ ...l, on: i === 1, arp: 0, x: l.bx, y: l.by, vx: l.bx, vy: l.by, z: 0, gate: false, speed: 0, idx: 3, pending: false, hot: false, lastHit: 0, vol: .8, lastSeen: -9, out: false, tp: null, tv: { x: 0, y: 0 }, tpT: 0, tz: 0, coastStart: 0 }));
 const IDX = [0, 16, 15, 27, 28];   // cabeça, mão D (baixo), mão E (lead), pé E, pé D (MediaPipe Pose)
 const cam = { on: false, landmarker: null, stream: null, lm: null, detected: false, msg: '', lastVT: -1, lastTs: -1, zBase: new Array(33).fill(0), zGain: 2.5, zCurve: 1.5, wrist: { 1: 16, 2: 15 }, roll: 0, roll0: 0, rawHands: null, ref0: 0, face: null, mouth: null, mouthOpen: 0, mouthFace: false, zFar: {}, zNearM: {}, hs0: {}, sw0: null, hg: 2.2, hc: { x: 0, y: .35 }, norm: false, hr: 1, ref: null, hands: null, vision: null, useHands: true, handsOut: { 1: null, 2: null }, handPts: { 1: null, 2: null }, tgt: [] };
 const video = document.getElementById('video');
@@ -391,7 +390,7 @@ const handSize = h => { const d = (a, b) => imgD(h[a], h[b]); return (d(0, 9) + 
 const log2 = x => Math.log(x) / Math.LN2;
 function resolveHands(lm, raw) {
   const now = performance.now() / 1000, cands = [];
-  ((raw && raw.landmarks) || []).forEach((h, i) => { const c = palmCenter(h); cands.push({ kind: 'palm', x: c.x, y: c.y, h, grp: raw.grp && raw.grp[i] != null ? raw.grp[i] : null, label: raw.handedness && raw.handedness[i] && raw.handedness[i][0] && raw.handedness[i][0].categoryName }); });
+  ((raw && raw.landmarks) || []).forEach((h, i) => { const c = palmCenter(h); cands.push({ kind: 'palm', x: c.x, y: c.y, h, label: raw.handedness && raw.handedness[i] && raw.handedness[i][0] && raw.handedness[i][0].categoryName }); });
   [1, 2].forEach(g => { const p = poseHandAvg(g, lm); if (p) cands.push({ kind: 'pose', grp: g, x: p.x, y: p.y, z: p.z, visibility: p.visibility }); });
   // ---- Modelo do braço (cotovelo): descarta "mãos" que na verdade são o cotovelo ----
   // O Hand Landmarker às vezes vê um cotovelo dobrado como punho, e o Pose pode colar o pulso no cotovelo. Cada braço tem um comprimento de antebraço
@@ -487,7 +486,7 @@ function lockHand(k, w) {   // fixa o ponto k (1 baixo · 2 theremin) na mão cu
   if (!best) { const p = poseHandAvg(k, lm); if (!p) return false; best = { x: p.x, y: p.y, size: 0 }; }
   const L = LIMBS[k], now = performance.now() / 1000;
   L.tp = { x: best.x, y: best.y }; L.tv = { x: 0, y: 0 }; L.tpT = now; L.lastSeen = now; L.tz = wr.z; L.tsz = best.size || 0; L.coastStart = 0;
-  if (best.size && cam.ref) { const key = zk(k); cam.hs0[key] = best.size * vw / cam.ref.w; delete cam.zFar[key]; delete cam.zNearM[key]; }
+  if (best.size && cam.ref) { const key = zk(k); cam.hs0[key] = best.size * vw / cam.ref.w; delete cam.zFar[key]; delete cam.zNearM[key]; if (k === 1 && CALD.v.zKey === key && CALD.v.zNear) { cam.zNearM[key] = CALD.v.zNear; cam.zFar[key] = CALD.v.zFar; } }
   return true;
 }
 function wizTick() {
@@ -580,43 +579,6 @@ function handsTracked() {
   const hs = [1, 2].filter(i => LIMBS[i].on);
   return (hs.length ? hs : [0]).some(isTracked);
 }
-/* RECORTE COM ZOOM DAS MÃOS: para cada mão, um quadrado em volta do pulso (empurrado na direção do antebraço, onde fica a palma)
-   é copiado da imagem em alta resolução para um canvas 256×256 e só ele vai para o detector de mãos. A mão passa a ocupar quase
-   o quadro inteiro → dedos muito mais definidos (pinças) mesmo tocando longe da câmera. Os pontos voltam para a imagem inteira. */
-const HCROP = { S: 256, cv: null, ctx: null, prev: { 1: null, 2: null } };
-function cropHands(lm) {
-  const vw = video.videoWidth, vh = video.videoHeight; if (!vw || !vh) return null;
-  if (!HCROP.cv) { HCROP.cv = document.createElement('canvas'); HCROP.cv.width = HCROP.cv.height = HCROP.S; HCROP.ctx = HCROP.cv.getContext('2d'); }
-  const X = HCROP.ctx, S = HCROP.S, out = { landmarks: [], handedness: [], grp: [] }, now = performance.now();
-  cam.crops = [];
-  for (const g of [1, 2]) {
-    if (!LIMBS[g].on) continue;
-    const w = cam.wrist[g], Wp = lm[w], E = lm[w - 2], pv = HCROP.prev[g];
-    if (!seen(Wp) && !(pv && now - pv.t < 250)) continue;
-    let cx, cy, fore = cam.ref ? .6 * cam.ref.w : .1 * vw;
-    if (seen(Wp)) {
-      cx = Wp.x * vw; cy = Wp.y * vh;
-      if (E && (E.visibility ?? 1) > .5) { const dx = (Wp.x - E.x) * vw, dy = (Wp.y - E.y) * vh, f = Math.hypot(dx, dy); if (f > 10) { fore = f; cx += dx * .45; cy += dy * .45; } }   // a palma fica além do pulso
-    }
-    if (pv && now - pv.t < 250) { if (cx === undefined) { cx = pv.x; cy = pv.y; } else { cx = lerp(cx, pv.x, .6); cy = lerp(cy, pv.y, .6); } fore = Math.max(fore * .5, pv.s / 2.2); }   // segue a mão vista no quadro anterior
-    const s = clamp(Math.max(fore * 1.9, pv && now - pv.t < 250 ? pv.s * 1.2 : 0), 96, Math.min(vw, vh)), sx = cx - s / 2, sy = cy - s / 2;
-    X.fillStyle = '#000'; X.fillRect(0, 0, S, S);
-    const ax = Math.max(0, sx), ay = Math.max(0, sy), bx = Math.min(vw, sx + s), by = Math.min(vh, sy + s);   // parte do quadrado dentro da imagem
-    if (bx - ax < 8 || by - ay < 8) continue;
-    X.drawImage(video, ax, ay, bx - ax, by - ay, (ax - sx) / s * S, (ay - sy) / s * S, (bx - ax) / s * S, (by - ay) / s * S);
-    cam.crops.push({ g, sx, sy, s, vw, vh });
-    let r; try { r = cam.handsCrop.detect(HCROP.cv); } catch (err) { cam.handsCrop = null; cam.msg = 'Recorte das mãos indisponível: usando a imagem inteira'; return null; }
-    if (!r || !r.landmarks || !r.landmarks.length) { HCROP.prev[g] = null; continue; }
-    const wx = seen(Wp) ? (Wp.x * vw - sx) / s : .5, wy = seen(Wp) ? (Wp.y * vh - sy) / s : .5;   // escolhe, no recorte, a mão cujo pulso está mais perto do pulso do Pose
-    let bi = -1, bd = .5; r.landmarks.forEach((h, i) => { const d = Math.hypot(h[0].x - wx, h[0].y - wy); if (d < bd) { bd = d; bi = i; } });
-    if (bi < 0) { HCROP.prev[g] = null; continue; }
-    const h = r.landmarks[bi].map(p => ({ x: (sx + p.x * s) / vw, y: (sy + p.y * s) / vh, z: p.z, visibility: 1 }));
-    out.landmarks.push(h); out.handedness.push(r.handedness[bi]); out.grp.push(g);
-    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; h.forEach(p => { x0 = Math.min(x0, p.x * vw); x1 = Math.max(x1, p.x * vw); y0 = Math.min(y0, p.y * vh); y1 = Math.max(y1, p.y * vh); });
-    HCROP.prev[g] = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, s: Math.max(x1 - x0, y1 - y0) * 1.6, t: now };   // próximo recorte: centrado na mão encontrada, com folga
-  }
-  return out;
-}
 function detect() {
   if (!cam.on || !cam.landmarker || video.readyState < 2 || video.currentTime === cam.lastVT) return;
   cam.lastVT = video.currentTime;
@@ -625,18 +587,11 @@ function detect() {
   cam.lm = (r.landmarks && r.landmarks[0]) || null;
   if (cam.lm && !bodyRef(cam.lm)) cam.ref = null;   // sem ombros visíveis: volta ao mapeamento pela imagem
   let raw = null;
-  if (cam.useHands && cam.lm) {
-    if (cam.handsCrop && S.handCrop) raw = cropHands(cam.lm);   // recorte ampliado em volta de cada pulso
-    const want = [1, 2].filter(g => LIMBS[g].on).length;
-    if (cam.hands && (!raw || raw.landmarks.length < want)) {   // faltou mão no recorte: procura na imagem inteira
-      try {
-        const full = cam.hands.detectForVideo(video, ts);
-        if (!raw) raw = { landmarks: [], handedness: [], grp: [] };
-        (full.landmarks || []).forEach((h, i) => { const c = palmCenter(h); if (raw.landmarks.every(o => imgD(palmCenter(o), c) > .08)) { raw.landmarks.push(h); raw.handedness.push(full.handedness[i]); raw.grp.push(null); } });
-      } catch (err) { cam.useHands = false; cam.msg = 'Palma das mãos indisponível (' + err.message + '): usando o Pose'; }
-    }
-  } else cam.crops = [];
-  cam.mouth = cam.lm ? mouthFrom(cam.lm, null) : null;   // sem detector de rosto (removido: libera a GPU para as mãos)
+  if (cam.hands && cam.useHands && cam.lm) {
+    try { raw = cam.hands.detectForVideo(video, ts); }
+    catch (err) { cam.useHands = false; cam.msg = 'Palma das mãos indisponível (' + err.message + '): usando o Pose'; }
+  }
+  cam.mouth = cam.lm ? mouthFrom(cam.lm, null) : null;   // sem detector de rosto
   if (cam.lm && seen(cam.lm[7]) && seen(cam.lm[8])) {   // inclinação lateral da cabeça (rad): + = orelha direita do performer desce
     const r = -Math.atan2((cam.lm[7].y - cam.lm[8].y) * (video.videoHeight || 9), (cam.lm[7].x - cam.lm[8].x) * (video.videoWidth || 16));
     cam.roll = lerp(cam.roll, r, .35);
@@ -1111,7 +1066,7 @@ function chordFromBody() {
 const PINCA_DEDOS = [8, 12, 16, 20], PINCA_NOMES = ['indicador', 'médio', 'anelar', 'mínimo'], PINCA_SOLTA = 1.45, ROMANOS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
 const PINCA = { dedo: -1, ultimo: 0, nova: false, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3], graus: [0, 3, 4, 5], cal: null };
 try { const c = JSON.parse(localStorage.getItem('dedalus_pincas') || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PINCA.lim = c.lim; } catch (e) {}
-const pincaAtiva = () => cam.on && cam.useHands;   // com câmera: acorde pelas pinças · sem câmera (mouse/joystick): acorde pela altura
+const pincaAtiva = () => false;   // pinças desligadas (recomeço do zero)   // com câmera: acorde pelas pinças · sem câmera (mouse/joystick): acorde pela altura
 function pincaTick() {
   const p = cam.on && cam.handPts ? cam.handPts[1] : null, h = p && p.h;
   if (!h) { PINCA.d = [9, 9, 9, 9]; PINCA.dedo = -1; return; }
@@ -1123,7 +1078,7 @@ function pincaTick() {
   PINCA.d.forEach((d, k) => { const q = d / PINCA.lim[k]; if (q < bd) { bd = q; best = k; } });   // o dedo mais "dentro" do seu limite vence
   if (best >= 0) { PINCA.dedo = best; PINCA.nova = true; PINCA.ultimo = best; }
 }
-setInterval(pincaTick, 33);
+// setInterval(pincaTick, 33);   // pinças desligadas
 function pincaCalStart() {
   if (!cam.on) { cam.msg = 'Ligue a câmera primeiro'; return; }
   PINCA.cal = { passo: 0, t: 0, soma: [0, 0, 0, 0], n: 0, aberta: null, fechada: [], last: performance.now() };
@@ -1151,11 +1106,48 @@ function bassOitava() {
   else if (bOit === 1 && y < .25) bOit = 0; else if (bOit === -1 && y > -.25) bOit = 0;
   return bOit;
 }
+/* ---------- CALIBRAÇÃO DA MÃO DIREITA (arp bass): mapeia o alcance real do performer ----------
+   6 etapas, ~2 s cada: mão no ponto mais ALTO e mais BAIXO (faixa dos acordes), mais PERTO e mais LONGE da câmera (volume),
+   mão bem ABERTA e bem FECHADA (filtro). Cada controle passa a usar exatamente esse espaço. Fica salvo no navegador. */
+const CALD_PASSOS = [
+  ['Mão direita no ponto MAIS ALTO que você quer usar', 'yHi'], ['Mão direita no ponto MAIS BAIXO', 'yLo'],
+  ['Mão direita o MAIS PERTO da câmera que vai tocar', 'zNear'], ['Mão direita o MAIS LONGE da câmera que vai tocar', 'zFar'],
+  ['Mão direita bem ABERTA, dedos esticados', 'abHi'], ['Mão direita bem FECHADA', 'abLo']];
+const CALD = { v: { yLo: -.8, yHi: .8, abLo: .15, abHi: .85 }, run: null };
+const ABRAW = { 1: null, 2: null };   // abertura bruta de cada mão (0 fechada … 1 aberta), medida no loop dos gestos
+try { const c = JSON.parse(localStorage.getItem('dedalus_cal_maoD') || 'null'); if (c && c.yHi !== undefined) Object.assign(CALD.v, c); } catch (e) {}
+const calY = y => clamp((y - CALD.v.yLo) / Math.max(.1, CALD.v.yHi - CALD.v.yLo), 0, 1);       // 0 = ponto mais baixo · 1 = mais alto
+const calAb = a => clamp((a - CALD.v.abLo) / Math.max(.05, CALD.v.abHi - CALD.v.abLo), 0, 1);   // 0 = fechada · 1 = aberta
+function caldStart() { if (!cam.on) { cam.msg = 'Ligue a câmera primeiro'; return; } CALD.run = { passo: 0, t: 0, soma: 0, n: 0, last: performance.now() }; }
+function caldTick() {
+  const C = CALD.run; if (!C) return;
+  const now = performance.now(), dt = Math.min(.2, (now - C.last) / 1000); C.last = now;
+  const L = LIMBS[1], key = CALD_PASSOS[C.passo][1];
+  const val = key[0] === 'y' ? L.y : key[0] === 'z' ? (L.tm && now / 1000 - L.tmT < .4 ? L.tm : null) : ABRAW[1];
+  if (!isTracked(1) || val === null || val === undefined) { C.t = Math.max(0, C.t - dt); C.soma = 0; C.n = 0; C.semMao = true; return; }   // sem mão: espera
+  C.semMao = false; C.t += dt;
+  if (C.t < 1) return;                    // 1 s para posicionar
+  C.soma += val; C.n++;
+  if (C.t < 2.2) return;                  // 1,2 s medindo
+  const m = C.soma / C.n;
+  if (key === 'zNear' || key === 'zFar') (key === 'zNear' ? cam.zNearM : cam.zFar)[zk(1)] = m; else CALD.v[key] = m;
+  if (key === 'zNear' || key === 'zFar') { CALD.v[key] = m; CALD.v.zKey = zk(1); }
+  C.passo++; C.t = 0; C.soma = 0; C.n = 0;
+  if (C.passo >= CALD_PASSOS.length) {
+    if (CALD.v.yHi < CALD.v.yLo) [CALD.v.yHi, CALD.v.yLo] = [CALD.v.yLo, CALD.v.yHi];
+    if (CALD.v.abHi < CALD.v.abLo) [CALD.v.abHi, CALD.v.abLo] = [CALD.v.abLo, CALD.v.abHi];
+    try { localStorage.setItem('dedalus_cal_maoD', JSON.stringify(CALD.v)); } catch (e) {}
+    CALD.run = null; cam.msg = 'Mão direita calibrada ✓'; setTimeout(() => { if (cam.msg === 'Mão direita calibrada ✓') cam.msg = ''; }, 2500);
+  }
+}
+setInterval(caldTick, 33);
+// volume (Z) calibrado volta ao carregar a página
+if (CALD.v.zKey && CALD.v.zNear && CALD.v.zFar) { cam.zNearM[CALD.v.zKey] = CALD.v.zNear; cam.zFar[CALD.v.zKey] = CALD.v.zFar; }
 // Sem câmera: a altura divide o modo em n faixas (um grau/acorde por faixa), com histerese para não vibrar na fronteira
 let chordSel = 0;
 function chordFromHand() {
   if (pincaAtiva()) return PINCA.graus[PINCA.ultimo] % sc().length;
-  const n = sc().length, yp = clamp((LIMBS[1].y + 1) / 2, 0, .999) * n;   // eixo Y: grave embaixo, agudo em cima
+  const n = sc().length, yp = Math.min(.999, calY(LIMBS[1].y)) * n;   // eixo Y (no alcance calibrado): grave embaixo, agudo em cima
   if (chordSel >= n || Math.abs(yp - (chordSel + .5)) > .65) chordSel = Math.min(n - 1, Math.floor(yp));
   return chordSel;
 }
@@ -1193,7 +1185,7 @@ function arpBassStep(pos, t, s16) {
   if (pos % S.arpRate) return;
   const k = arpNext(), vel = zVol(l.z) * (pos % 4 === 0 ? 1 : .82);
   if (vel < .03) return;
-  const m = degMidi(ladderDeg(curDeg, k), 36) + 12 * bassOitava(), yn = clamp((l.x + 1) / 2, 0, 1), len = s16 * S.arpRate * 1.5;
+  const m = degMidi(ladderDeg(curDeg, k), 36) + 12 * bassOitava(), yn = S.bassWave, len = s16 * S.arpRate * 1.5;
   const o = ac.createOscillator(), g = ac.createGain(), pk = .34 * vel * vGain(l.vol);
   o.setPeriodicWave(morphWave(yn)); o.frequency.value = mtof(m); o.detune.value = (Math.random() - .5) * 6;
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(pk, t + .006); g.gain.setTargetAtTime(pk * .6, t + .02, len * .4); g.gain.setTargetAtTime(0, t + len, .07);
@@ -1797,11 +1789,10 @@ function frame(nowMs) {
   const la = clamp(1 - (nowMs - label.born) / 2200, 0, 1);
   if (la > 0) { ctx.fillStyle = `rgba(232,236,246,${la})`; ctx.font = '600 44px system-ui,sans-serif'; ctx.fillText(label.txt, W / 2, H / 2 - 20); }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(142,152,176,.8)'; ctx.font = '12px system-ui,sans-serif';
-  ctx.fillText('v80  ·  pinças = acorde do baixo · Y nota · X onda · Z volume · mãos: fechada = filtro fechado · aberta = filtro aberto (+ drive no lead)  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
+  ctx.fillText('v81  ·  mão direita: altura = acorde · distância = volume · abrir/fechar = filtro · fora da tela = silêncio  |  M calibrar mão direita  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
   if (cam.on && cam.dbg && $('cDbg').checked) {   // diagnóstico do tracking das mãos
     const D = cam.dbg, pp = q => { const v = camXY(q); return [px(v.x), py(v.y)]; }, dot = (q, col, r) => { const [x, y] = pp(q); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); };
     ctx.save(); ctx.globalAlpha = 1;
-    (cam.crops || []).forEach(c => { const a = pp({ x: c.sx / c.vw, y: c.sy / c.vh }), b = pp({ x: (c.sx + c.s) / c.vw, y: (c.sy + c.s) / c.vh }); ctx.strokeStyle = COLS[c.g] ? COLS[c.g] + '.9)' : '#fff'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]); ctx.strokeRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])); ctx.setLineDash([]); });   // quadrados do zoom nas mãos
     D.elbows.forEach(q => dot(q, '#fff', 6));
     D.cands.forEach(c => dot(c, c.kind === 'palm' ? '#4ade80' : (c.weak ? '#fb923c' : '#fde047'), 5));
     ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 3; D.rej.forEach(q => { const [x, y] = pp(q); ctx.beginPath(); ctx.moveTo(x - 9, y - 9); ctx.lineTo(x + 9, y + 9); ctx.moveTo(x + 9, y - 9); ctx.lineTo(x - 9, y + 9); ctx.stroke(); });
@@ -1820,7 +1811,13 @@ function frame(nowMs) {
   }
   { // painel do assistente: elemento HTML logo abaixo do painel de controle (ou no topo, se o painel estiver escondido)
     const el = $('wiz');
-    if (PINCA.cal) {
+    if (CALD.run) {
+      const ui = $('ui'), r = ui.classList.contains('hide') ? null : ui.getBoundingClientRect(), C = CALD.run;
+      el.style.top = (r ? r.bottom + 8 : 12) + 'px'; el.style.display = 'block';
+      $('wizT').textContent = `Calibrar mão direita · ${C.passo + 1}/${CALD_PASSOS.length}`;
+      $('wizN').textContent = CALD_PASSOS[C.passo][0] + (C.semMao ? ' — mão não detectada' : C.t < 1 ? ' — posicione…' : ' — segure parada…');
+      $('wizB').style.width = Math.round(clamp((C.t - 1) / 1.2, 0, 1) * 100) + '%'; $('wizS').textContent = 'Esc ou M cancela';
+    } else if (PINCA.cal) {
       const ui = $('ui'), r = ui.classList.contains('hide') ? null : ui.getBoundingClientRect(), C = PINCA.cal;
       el.style.top = (r ? r.bottom + 8 : 12) + 'px'; el.style.display = 'block';
       $('wizT').textContent = `Pinças do baixo · ${C.passo + 1}/5`;
@@ -1852,7 +1849,7 @@ function drawHandHud() {
   const hz = h => h >= 19000 ? 'todo aberto' : h >= 1000 ? (h / 1000).toFixed(1) + ' kHz' : Math.round(h) + ' Hz';
   const L1 = LIMBS[1], L2 = LIMBS[2], rows = [];
   if (S.handTest !== 2) rows.push(['#fb7185', 'MÃO DIREITA · ARP BASS', !L1.on ? 'desligada' : !isTracked(1) ? 'não detectada' :
-    (pincaAtiva() ? `pinça: ${PINCA.dedo >= 0 ? PINCA_NOMES[PINCA.dedo] : '—'} → acorde ${chordName(curDeg)}  ·  Y oitava ${['−1', '0', '+1'][bOit + 1]}` : `Y nota: ${chordName(curDeg)}`) + `  ·  X onda: ${waveNome((L1.x + 1) / 2)}  ·  Z volume: ${pc(zVol(L1.z))}  ·  mão aberta ${ab(HUD.ab[1])} → filtro ${hz(HUD.filtro)}`]);
+    `Y acorde: ${chordName(curDeg)} (${pc(calY(L1.y))} da altura)  ·  Z volume: ${pc(zVol(L1.z))}  ·  mão aberta ${ab(HUD.ab[1])} → filtro ${hz(HUD.filtro)}`]);
   if (S.handTest !== 1) rows.push(['#38bdf8', 'MÃO ESQUERDA · LEAD', !L2.on ? 'desligada' : !isTracked(2) ? 'não detectada' :
     `Y nota: ${thDeg === null ? '—' : nota(degMidi(thDeg, 60))}  ·  X onda: ${waveNome((L2.x + 1) / 2)}  ·  Z volume: ${pc(zVol(L2.z))}  ·  mão aberta ${ab(HUD.ab[2])} → filtro ${hz(HUD.filtroL)} · drive ${pc(leadDrv)}`]);
   ctx.save(); ctx.font = '13px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left';
@@ -1887,12 +1884,10 @@ $('cNorm').onchange = e => { cam.norm = e.target.checked; };
 $('cHands').onchange = e => { cam.useHands = e.target.checked; };
 $('rA').oninput = e => { cam.hr = +e.target.value; };
 $('rSens').oninput = e => { S.sens = +e.target.value; };
-[0, 1, 2, 3].forEach(k => { const el = $('pz' + k); el.innerHTML = ROMANOS.map((n, i) => `<option value="${i}">${n}</option>`).join(''); el.value = PINCA.graus[k]; el.onchange = () => { PINCA.graus[k] = +el.value; if (PINCA.ultimo === k) PINCA.nova = true; }; });
-$('bPinca').onclick = () => pincaCalStart();
-addEventListener('keydown', e => { if (e.key === 'Escape' && PINCA.cal) { PINCA.cal = null; cam.msg = ''; } });
-$('cCrop').onchange = e => { S.handCrop = e.target.checked; HCROP.prev = { 1: null, 2: null }; };
+$('bCalD').onclick = () => (CALD.run ? (CALD.run = null) : caldStart());
+addEventListener('keydown', e => { if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; if (e.key === 'Escape' && CALD.run) CALD.run = null; else if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey) (CALD.run ? (CALD.run = null) : caldStart()); });
 $('handTest').onchange = e => {   // teste de uma mão: liga só o ponto escolhido; a outra mão e o fundo ficam mudos
-  S.handTest = +e.target.value; LIMBS[1].on = S.handTest !== 2; LIMBS[2].on = S.handTest !== 1;
+  S.handTest = +e.target.value; LIMBS[1].on = S.handTest !== 2; LIMBS[2].on = false;   // lead desligado no recomeço (volta quando formos configurar a mão esquerda)
   if (S.handTest !== 2) setLeadDrive(0);
 };
 $('rBpm').oninput = e => { S.bpm = +e.target.value; $('vBpm').textContent = S.bpm; setDelayTime(); };
@@ -1934,16 +1929,12 @@ async function toggleCam() {
     if (!cam.landmarker) cam.landmarker = await makePose();
     if (!cam.hands && cam.vision) {   // modelo de mãos (opcional: se falhar, o Pose cobre)
       cam.msg = 'Carregando modelo de mãos…';
-      const ho = d => ({ baseOptions: { modelAssetPath: HAND_MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: .5, minHandPresenceConfidence: .5, minTrackingConfidence: .5 });
+      const ho = d => ({ baseOptions: { modelAssetPath: HAND_MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: .35, minHandPresenceConfidence: .35, minTrackingConfidence: .35 });
       try { cam.hands = await HandLandmarker.createFromOptions(cam.vision, ho('GPU')); }
       catch { try { cam.hands = await HandLandmarker.createFromOptions(cam.vision, ho('CPU')); } catch { cam.hands = null; } }
-      // RECORTE COM ZOOM: segundo detector, em modo imagem, que recebe só um quadrado ampliado em volta de cada mão (posição dada pelo Pose)
-      const hc = d => ({ baseOptions: { modelAssetPath: HAND_MODEL, delegate: d }, runningMode: 'IMAGE', numHands: 2, minHandDetectionConfidence: .55, minHandPresenceConfidence: .55 });
-      try { cam.handsCrop = await HandLandmarker.createFromOptions(cam.vision, hc('GPU')); }
-      catch { try { cam.handsCrop = await HandLandmarker.createFromOptions(cam.vision, hc('CPU')); } catch { cam.handsCrop = null; } }
     }
     cam.msg = 'Pedindo acesso à câmera…';
-    cam.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 }, facingMode: 'user' }, audio: false });
+    cam.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
     video.srcObject = cam.stream; await video.play();
     cam.on = true; cam.msg = '';
     b.textContent = 'Desligar câmera'; b.classList.add('on'); $('bWiz').disabled = false;
@@ -2571,7 +2562,8 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
     const t = performance.now() / 1000;
     [1, 2].forEach(i => {
       const p = cam.on && cam.handPts ? cam.handPts[i] : null;
-      const a = i === 1 && PINCA.dedo >= 0 && ab[1] !== null ? ab[1] : (p && p.h ? abertura(p.h) : null);   // fazendo pinça: o filtro do baixo fica parado
+      const a0 = p && p.h ? abertura(p.h) : null; ABRAW[i] = a0;
+      const a = a0 === null ? null : calAb(a0);   // abertura no alcance calibrado: 0 fechada · 1 aberta
       ab[i] = a === null ? null : (ab[i] === null ? a : lerp(ab[i], a, .5));
       const v = GES.on && ab[i] !== null ? ab[i] : null;
       const aberta = v === null ? 0 : clamp((v - GES.abMax) / Math.max(.05, 1 - GES.abMax), 0, 1);

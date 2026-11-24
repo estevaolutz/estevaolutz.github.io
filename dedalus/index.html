@@ -80,7 +80,7 @@ input[type=range]{accent-color:var(--ac);width:110px}
 <body>
 <div id="entrada" role="dialog" aria-labelledby="entT"><div class="c">
 <h1 id="entT">Dedalus</h1>
-<p>Uma obra audiovisual tocada pelas mãos. Por enquanto só a mão direita toca: ela faz o arpejo do baixo. Subir e descer a mão troca o acorde, aproximar da câmera aumenta o volume, abrir e fechar a mão abre e fecha o filtro, e tirar a mão da tela silencia o arpejo. Antes de tocar, use “Calibrar mão direita” (tecla M) para ajustar os controles ao seu alcance.</p>
+<p>Uma obra audiovisual tocada pelas mãos. A mão direita toca o arpejo do baixo e a esquerda o synth lead, com controles espelhados: subir a mão troca o acorde (direita) ou a nota (esquerda), levar a mão para fora — a direita para o canto direito, a esquerda para o canto esquerdo — muda a forma da onda, aproximar da câmera aumenta o volume, e abrir e fechar a mão abre e fecha o filtro. Mão fora da tela = silêncio. Antes de tocar, calibre cada mão (teclas M e L).</p>
 <p class="k">Fique a 1,5–2 m da câmera, com os ombros visíveis · use fones ou caixas de som · <span class="kTecla">H abre o painel</span></p>
 <label><input type="checkbox" id="entCam" checked> Usar a câmera (sem ela, o mouse faz o papel das mãos)</label>
 <div class="b"><button class="p" id="entOrg">Começar</button><button id="entSalvo" hidden>Começar · som original</button></div>
@@ -91,7 +91,8 @@ input[type=range]{accent-color:var(--ac);width:110px}
   <button id="bHideUi" type="button" aria-label="Fechar painel">✕ Fechar</button>
   <button id="bAudio">Ligar áudio</button>
   <button id="bCam">Ligar câmera</button>
-  <button id="bCalD" type="button" title="Mapeia o alcance da mão direita: alto, baixo, perto, longe, aberta, fechada (tecla M)">Calibrar mão direita</button>
+  <button id="bCalD" type="button" title="Mapeia o alcance da mão direita (arp bass): alto, baixo, dentro, fora, perto, longe, aberta, fechada (tecla M)">Calibrar mão direita</button>
+  <button id="bCalE" type="button" title="Mapeia o alcance da mão esquerda (lead), espelhado (tecla L)">Calibrar mão esquerda</button>
   <button id="bWiz" disabled title="Assistente em 3 etapas: distância · mão esquerda (lead) · mão direita (baixo) (tecla G)">Assistente de calibração</button>
   <label title="Para conferir uma mão de cada vez: a outra mão e o fundo ficam mudos e aparecem as leituras ao vivo">Teste de mão <select id="handTest"><option value="0">As duas mãos</option><option value="1">Só mão direita · arp bass</option><option value="2">Só mão esquerda · lead</option></select></label>
   <label><input type="checkbox" id="cHud"> Leituras das mãos</label>
@@ -330,7 +331,7 @@ const LIMBS = [
   { n: 'mão E',  role: 'theremin', c: '#38bdf8', bx: -.5,  by: .15 },
   { n: 'pé E',   role: 'bass', c: '#a78bfa', bx: -.25, by: -.65 },
   { n: 'pé D',   role: 'bass', c: '#34d399', bx: .25,  by: -.65 }
-].map((l, i) => ({ ...l, on: i === 1, arp: 0, x: l.bx, y: l.by, vx: l.bx, vy: l.by, z: 0, gate: false, speed: 0, idx: 3, pending: false, hot: false, lastHit: 0, vol: .8, lastSeen: -9, out: false, tp: null, tv: { x: 0, y: 0 }, tpT: 0, tz: 0, coastStart: 0 }));
+].map((l, i) => ({ ...l, on: i === 1 || i === 2, arp: 0, x: l.bx, y: l.by, vx: l.bx, vy: l.by, z: 0, gate: false, speed: 0, idx: 3, pending: false, hot: false, lastHit: 0, vol: .8, lastSeen: -9, out: false, tp: null, tv: { x: 0, y: 0 }, tpT: 0, tz: 0, coastStart: 0 }));
 const IDX = [0, 16, 15, 27, 28];   // cabeça, mão D (baixo), mão E (lead), pé E, pé D (MediaPipe Pose)
 const cam = { on: false, landmarker: null, stream: null, lm: null, detected: false, msg: '', lastVT: -1, lastTs: -1, zBase: new Array(33).fill(0), zGain: 2.5, zCurve: 1.5, wrist: { 1: 16, 2: 15 }, roll: 0, roll0: 0, rawHands: null, ref0: 0, face: null, mouth: null, mouthOpen: 0, mouthFace: false, zFar: {}, zNearM: {}, hs0: {}, sw0: null, hg: 2.2, hc: { x: 0, y: .35 }, norm: false, hr: 1, ref: null, hands: null, vision: null, useHands: true, handsOut: { 1: null, 2: null }, handPts: { 1: null, 2: null }, tgt: [] };
 const video = document.getElementById('video');
@@ -511,7 +512,7 @@ function lockHand(k, w) {   // fixa o ponto k (1 baixo · 2 theremin) na mão cu
   if (!best) { const p = poseHandAvg(k, lm); if (!p) return false; best = { x: p.x, y: p.y, size: 0 }; }
   const L = LIMBS[k], now = performance.now() / 1000;
   L.tp = { x: best.x, y: best.y }; L.tv = { x: 0, y: 0 }; L.tpT = now; L.lastSeen = now; L.tz = wr.z; L.tsz = best.size || 0; L.coastStart = 0;
-  if (best.size && cam.ref) { const key = zk(k); cam.hs0[key] = best.size * vw / cam.ref.w; delete cam.zFar[key]; delete cam.zNearM[key]; if (k === 1 && CALD.v.zKey === key && CALD.v.zNear) { cam.zNearM[key] = CALD.v.zNear; cam.zFar[key] = CALD.v.zFar; } }
+  if (best.size && cam.ref) { const key = zk(k); cam.hs0[key] = best.size * vw / cam.ref.w; delete cam.zFar[key]; delete cam.zNearM[key]; if (CALM[k] && CALM[k].zKey === key && CALM[k].zNear) { cam.zNearM[key] = CALM[k].zNear; cam.zFar[key] = CALM[k].zFar; } }
   return true;
 }
 function wizTick() {
@@ -1060,13 +1061,13 @@ function updateTheremin() {
   const on = S.audio && body.present && l.on && isTracked(2), zv = zVol(l.z);
   // NOTA (Y = altura), direta como no Trava de Frequência e no Eclipse Sonoro: a altura da tela é dividida em faixas iguais (grave embaixo, agudo em cima),
   // uma por nota, na MESMA escala e tônica do arp bass. Modo "Notas do arpejo": só as notas que o baixo está arpejando agora.
-  const lista = leadNotas(), pos = clamp((l.y + 1) / 2, 0, .9999) * lista.length;
+  const lista = leadNotas(), pos = Math.min(.9999, calY(2, l.y)) * lista.length;   // altura (calibrada) = nota
   let ix = thDeg === null ? -1 : lista.indexOf(thDeg);
   if (ix < 0 || Math.abs(pos - (ix + .5)) > .5 + LEAD_HIST) ix = Math.floor(pos);   // histerese pequena: não treme na fronteira
   thDeg = lista[ix]; thChord = curDeg;
   const f = mtof(degMidi(thDeg, LEAD_BASE));   // mesma afinação do baixo (temperada): as notas casam exatamente   // registro: mais uma oitava abaixo (antes a base era 72)
   // o theremin ataca NOTAS: cada mudança de grau (ou de acorde) inicia uma nota nova; mão parada reinicia a nota a cada 4 tempos
-  const xn = .6, wy = clamp((l.x + 1) / 2, 0, 1);   // eixo X = forma de onda
+  const xn = .6, wy = calX(2, l.x);   // X para FORA (à esquerda) = forma de onda — espelho da mão direita
   if (on && morphKey(wy) !== leadWaveK) { leadWaveK = morphKey(wy); const w = morphWave(wy); leadVozes.forEach(v => { if (v.end > c) { try { v.o1.setPeriodicWave(w); v.o2.setPeriodicWave(w); } catch (e) {} } }); }   // a nota que está soando também muda de onda
   thGain.gain.setTargetAtTime(0, c, .05);   // oscilador contínuo (drone) fica mudo
   if (on) {
@@ -1131,48 +1132,51 @@ function bassOitava() {
   else if (bOit === 1 && y < .25) bOit = 0; else if (bOit === -1 && y > -.25) bOit = 0;
   return bOit;
 }
-/* ---------- CALIBRAÇÃO DA MÃO DIREITA (arp bass): mapeia o alcance real do performer ----------
-   6 etapas, ~2 s cada: mão no ponto mais ALTO e mais BAIXO (faixa dos acordes), mais PERTO e mais LONGE da câmera (volume),
-   mão bem ABERTA e bem FECHADA (filtro). Cada controle passa a usar exatamente esse espaço. Fica salvo no navegador. */
-const CALD_PASSOS = [
-  ['Mão direita no ponto MAIS ALTO que você quer usar', 'yHi'], ['Mão direita no ponto MAIS BAIXO', 'yLo'],
-  ['Mão direita o MAIS PERTO da câmera que vai tocar', 'zNear'], ['Mão direita o MAIS LONGE da câmera que vai tocar', 'zFar'],
-  ['Mão direita bem ABERTA, dedos esticados', 'abHi'], ['Mão direita bem FECHADA', 'abLo']];
-const CALD = { v: { yLo: -.8, yHi: .8, abLo: .15, abHi: .85 }, run: null };
+/* ---------- CALIBRAÇÃO DE CADA MÃO (1 = direita · arp bass, 2 = esquerda · lead): mapeia o alcance real do performer ----------
+   8 etapas, ~2 s cada. Eixos ESPELHADOS: para as duas mãos, "para fora" (direita → canto direito, esquerda → canto esquerdo)
+   tem o mesmo efeito (forma de onda), e subir tem o mesmo efeito (nota/acorde mais agudo). Fica salvo no navegador. */
+const MAO_NOME = { 1: 'direita', 2: 'esquerda' };
+const CAL_PASSOS = g => [
+  [`Mão ${MAO_NOME[g]} no ponto MAIS ALTO que você quer usar`, 'yHi'], [`Mão ${MAO_NOME[g]} no ponto MAIS BAIXO`, 'yLo'],
+  [`Mão ${MAO_NOME[g]} o mais para DENTRO (perto do centro do corpo)`, 'xIn'], [`Mão ${MAO_NOME[g]} o mais para FORA (${g === 1 ? 'à direita' : 'à esquerda'})`, 'xOut'],
+  [`Mão ${MAO_NOME[g]} o MAIS PERTO da câmera que vai tocar`, 'zNear'], [`Mão ${MAO_NOME[g]} o MAIS LONGE da câmera que vai tocar`, 'zFar'],
+  [`Mão ${MAO_NOME[g]} bem ABERTA, dedos esticados`, 'abHi'], [`Mão ${MAO_NOME[g]} bem FECHADA`, 'abLo']];
+const CALM = { 1: { yLo: -.8, yHi: .8, xIn: 0, xOut: .9, abLo: .15, abHi: .85 }, 2: { yLo: -.8, yHi: .8, xIn: 0, xOut: -.9, abLo: .15, abHi: .85 } };
+const CALD = { run: null };   // calibração em andamento: { g, passo, … }
 const ABRAW = { 1: null, 2: null };   // abertura bruta de cada mão (0 fechada … 1 aberta), medida no loop dos gestos
-try { const c = JSON.parse(localStorage.getItem('dedalus_cal_maoD') || 'null'); if (c && c.yHi !== undefined) Object.assign(CALD.v, c); } catch (e) {}
-const calY = y => clamp((y - CALD.v.yLo) / Math.max(.1, CALD.v.yHi - CALD.v.yLo), 0, 1);       // 0 = ponto mais baixo · 1 = mais alto
-const calAb = a => clamp((a - CALD.v.abLo) / Math.max(.05, CALD.v.abHi - CALD.v.abLo), 0, 1);   // 0 = fechada · 1 = aberta
-function caldStart() { if (!cam.on) { cam.msg = 'Ligue a câmera primeiro'; return; } CALD.run = { passo: 0, t: 0, soma: 0, n: 0, last: performance.now() }; }
+try { const c = JSON.parse(localStorage.getItem('dedalus_cal_mao1') || localStorage.getItem('dedalus_cal_maoD') || 'null'); if (c && c.yHi !== undefined) Object.assign(CALM[1], c); } catch (e) {}
+try { const c = JSON.parse(localStorage.getItem('dedalus_cal_mao2') || 'null'); if (c && c.yHi !== undefined) Object.assign(CALM[2], c); } catch (e) {}
+const calY = (g, y) => clamp((y - CALM[g].yLo) / Math.max(.1, CALM[g].yHi - CALM[g].yLo), 0, 1);   // 0 = ponto mais baixo · 1 = mais alto
+const calX = (g, x) => { const c = CALM[g], d = c.xOut - c.xIn; return Math.abs(d) < .1 ? clamp(g === 1 ? (x + 1) / 2 : (1 - x) / 2, 0, 1) : clamp((x - c.xIn) / d, 0, 1); };   // 0 = dentro · 1 = fora (espelhado)
+const calAb = (g, a) => clamp((a - CALM[g].abLo) / Math.max(.05, CALM[g].abHi - CALM[g].abLo), 0, 1);   // 0 = fechada · 1 = aberta
+function caldStart(g) { if (!cam.on) { cam.msg = 'Ligue a câmera primeiro'; return; } CALD.run = { g, passo: 0, t: 0, soma: 0, n: 0, last: performance.now() }; }
 function caldTick() {
   const C = CALD.run; if (!C) return;
   const now = performance.now(), dt = Math.min(.2, (now - C.last) / 1000); C.last = now;
-  const L = LIMBS[1], key = CALD_PASSOS[C.passo][1];
-  const val = key[0] === 'y' ? L.y : key[0] === 'z' ? (L.tm && now / 1000 - L.tmT < .4 ? L.tm : null) : ABRAW[1];
-  if (!isTracked(1) || val === null || val === undefined) { C.t = Math.max(0, C.t - dt); C.soma = 0; C.n = 0; C.semMao = true; return; }   // sem mão: espera
+  const g = C.g, L = LIMBS[g], P = CAL_PASSOS(g), key = P[C.passo][1], V = CALM[g];
+  const val = key[0] === 'y' ? L.y : key[0] === 'x' ? L.x : key[0] === 'z' ? (L.tm && now / 1000 - L.tmT < .4 ? L.tm : null) : ABRAW[g];
+  if (!L.on || !isTracked(g) || val === null || val === undefined) { C.t = Math.max(0, C.t - dt); C.soma = 0; C.n = 0; C.semMao = true; return; }   // sem mão: espera
   C.semMao = false; C.t += dt;
   if (C.t < 1) return;                    // 1 s para posicionar
   C.soma += val; C.n++;
   if (C.t < 2.2) return;                  // 1,2 s medindo
-  const m = C.soma / C.n;
-  if (key === 'zNear' || key === 'zFar') (key === 'zNear' ? cam.zNearM : cam.zFar)[zk(1)] = m; else CALD.v[key] = m;
-  if (key === 'zNear' || key === 'zFar') { CALD.v[key] = m; CALD.v.zKey = zk(1); }
+  const m = C.soma / C.n; V[key] = m;
+  if (key === 'zNear' || key === 'zFar') { (key === 'zNear' ? cam.zNearM : cam.zFar)[zk(g)] = m; V.zKey = zk(g); }
   C.passo++; C.t = 0; C.soma = 0; C.n = 0;
-  if (C.passo >= CALD_PASSOS.length) {
-    if (CALD.v.yHi < CALD.v.yLo) [CALD.v.yHi, CALD.v.yLo] = [CALD.v.yLo, CALD.v.yHi];
-    if (CALD.v.abHi < CALD.v.abLo) [CALD.v.abHi, CALD.v.abLo] = [CALD.v.abLo, CALD.v.abHi];
-    try { localStorage.setItem('dedalus_cal_maoD', JSON.stringify(CALD.v)); } catch (e) {}
-    CALD.run = null; cam.msg = 'Mão direita calibrada ✓'; setTimeout(() => { if (cam.msg === 'Mão direita calibrada ✓') cam.msg = ''; }, 2500);
+  if (C.passo >= P.length) {
+    if (V.yHi < V.yLo) [V.yHi, V.yLo] = [V.yLo, V.yHi];
+    if (V.abHi < V.abLo) [V.abHi, V.abLo] = [V.abLo, V.abHi];
+    try { localStorage.setItem('dedalus_cal_mao' + g, JSON.stringify(V)); } catch (e) {}
+    const ok = `Mão ${MAO_NOME[g]} calibrada ✓`; CALD.run = null; cam.msg = ok; setTimeout(() => { if (cam.msg === ok) cam.msg = ''; }, 2500);
   }
 }
 setInterval(caldTick, 33);
-// volume (Z) calibrado volta ao carregar a página
-if (CALD.v.zKey && CALD.v.zNear && CALD.v.zFar) { cam.zNearM[CALD.v.zKey] = CALD.v.zNear; cam.zFar[CALD.v.zKey] = CALD.v.zFar; }
+[1, 2].forEach(g => { const V = CALM[g]; if (V.zKey && V.zNear && V.zFar) { cam.zNearM[V.zKey] = V.zNear; cam.zFar[V.zKey] = V.zFar; } });   // volume calibrado volta ao carregar
 // Sem câmera: a altura divide o modo em n faixas (um grau/acorde por faixa), com histerese para não vibrar na fronteira
 let chordSel = 0;
 function chordFromHand() {
   if (pincaAtiva()) return PINCA.graus[PINCA.ultimo] % sc().length;
-  const n = sc().length, yp = Math.min(.999, calY(LIMBS[1].y)) * n;   // eixo Y (no alcance calibrado): grave embaixo, agudo em cima
+  const n = sc().length, yp = Math.min(.999, calY(1, LIMBS[1].y)) * n;   // eixo Y (no alcance calibrado): grave embaixo, agudo em cima
   if (chordSel >= n || Math.abs(yp - (chordSel + .5)) > .65) chordSel = Math.min(n - 1, Math.floor(yp));
   return chordSel;
 }
@@ -1210,7 +1214,7 @@ function arpBassStep(pos, t, s16) {
   if (pos % S.arpRate) return;
   const k = arpNext(), vel = zVol(l.z) * (pos % 4 === 0 ? 1 : .82);
   if (vel < .03) return;
-  const m = degMidi(ladderDeg(curDeg, k), 36) + 12 * bassOitava(), yn = S.bassWave, len = s16 * S.arpRate * 1.5;
+  const m = degMidi(ladderDeg(curDeg, k), 36) + 12 * bassOitava(), yn = calX(1, l.x), len = s16   /* X para fora = forma de onda */ * S.arpRate * 1.5;
   const o = ac.createOscillator(), g = ac.createGain(), pk = .34 * vel * vGain(l.vol);
   o.setPeriodicWave(morphWave(yn)); o.frequency.value = mtof(m); o.detune.value = (Math.random() - .5) * 6;
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(pk, t + .006); g.gain.setTargetAtTime(pk * .6, t + .02, len * .4); g.gain.setTargetAtTime(0, t + len, .07);
@@ -1814,7 +1818,7 @@ function frame(nowMs) {
   const la = clamp(1 - (nowMs - label.born) / 2200, 0, 1);
   if (la > 0) { ctx.fillStyle = `rgba(232,236,246,${la})`; ctx.font = '600 44px system-ui,sans-serif'; ctx.fillText(label.txt, W / 2, H / 2 - 20); }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(142,152,176,.8)'; ctx.font = '12px system-ui,sans-serif';
-  ctx.fillText('v82  ·  mão direita: altura = acorde · distância = volume · abrir/fechar = filtro · fora da tela = silêncio  |  M calibrar mão direita  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
+  ctx.fillText('v83  ·  eixos espelhados: subir = nota/acorde · para fora = onda · distância = volume · abrir/fechar = filtro  |  M calibrar direita · L calibrar esquerda  |  H painel · K câmera · G assistente · B baixo seq/arp · C zerar Z · F Z longe · N Z perto · ↑↓ volume corpo · ←→ volume fundo · 1 2 liga/desliga vozes · Shift+1…0 presets', 14, H - 14);
   if (cam.on && cam.dbg && $('cDbg').checked) {   // diagnóstico do tracking das mãos
     const D = cam.dbg, pp = q => { const v = camXY(q); return [px(v.x), py(v.y)]; }, dot = (q, col, r) => { const [x, y] = pp(q); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); };
     ctx.save(); ctx.globalAlpha = 1;
@@ -1839,9 +1843,9 @@ function frame(nowMs) {
     if (CALD.run) {
       const ui = $('ui'), r = ui.classList.contains('hide') ? null : ui.getBoundingClientRect(), C = CALD.run;
       el.style.top = (r ? r.bottom + 8 : 12) + 'px'; el.style.display = 'block';
-      $('wizT').textContent = `Calibrar mão direita · ${C.passo + 1}/${CALD_PASSOS.length}`;
-      $('wizN').textContent = CALD_PASSOS[C.passo][0] + (C.semMao ? ' — mão não detectada' : C.t < 1 ? ' — posicione…' : ' — segure parada…');
-      $('wizB').style.width = Math.round(clamp((C.t - 1) / 1.2, 0, 1) * 100) + '%'; $('wizS').textContent = 'Esc ou M cancela';
+      const P = CAL_PASSOS(C.g); $('wizT').textContent = `Calibrar mão ${MAO_NOME[C.g]} · ${C.passo + 1}/${P.length}`;
+      $('wizN').textContent = P[C.passo][0] + (C.semMao ? ' — mão não detectada' : C.t < 1 ? ' — posicione…' : ' — segure parada…');
+      $('wizB').style.width = Math.round(clamp((C.t - 1) / 1.2, 0, 1) * 100) + '%'; $('wizS').textContent = 'Esc cancela';
     } else if (PINCA.cal) {
       const ui = $('ui'), r = ui.classList.contains('hide') ? null : ui.getBoundingClientRect(), C = PINCA.cal;
       el.style.top = (r ? r.bottom + 8 : 12) + 'px'; el.style.display = 'block';
@@ -1874,9 +1878,9 @@ function drawHandHud() {
   const hz = h => h >= 19000 ? 'todo aberto' : h >= 1000 ? (h / 1000).toFixed(1) + ' kHz' : Math.round(h) + ' Hz';
   const L1 = LIMBS[1], L2 = LIMBS[2], rows = [];
   if (S.handTest !== 2) rows.push(['#fb7185', 'MÃO DIREITA · ARP BASS', !L1.on ? 'desligada' : !isTracked(1) ? 'não detectada' :
-    `Y acorde: ${chordName(curDeg)} (${pc(calY(L1.y))} da altura)  ·  Z volume: ${pc(zVol(L1.z))}  ·  mão aberta ${ab(HUD.ab[1])} → filtro ${hz(HUD.filtro)}`]);
+    `Y acorde: ${chordName(curDeg)} (${pc(calY(1, L1.y))} da altura)  ·  X onda: ${waveNome(calX(1, L1.x))}  ·  Z volume: ${pc(zVol(L1.z))}  ·  mão aberta ${ab(HUD.ab[1])} → filtro ${hz(HUD.filtro)}`]);
   if (S.handTest !== 1) rows.push(['#38bdf8', 'MÃO ESQUERDA · LEAD', !L2.on ? 'desligada' : !isTracked(2) ? 'não detectada' :
-    `Y nota: ${thDeg === null ? '—' : nota(degMidi(thDeg, 60))}  ·  X onda: ${waveNome((L2.x + 1) / 2)}  ·  Z volume: ${pc(zVol(L2.z))}  ·  mão aberta ${ab(HUD.ab[2])} → filtro ${hz(HUD.filtroL)} · drive ${pc(leadDrv)}`]);
+    `Y nota: ${thDeg === null ? '—' : nota(degMidi(thDeg, 60))}  ·  X onda: ${waveNome(calX(2, L2.x))}  ·  Z volume: ${pc(zVol(L2.z))}  ·  mão aberta ${ab(HUD.ab[2])} → filtro ${hz(HUD.filtroL)} · drive ${pc(leadDrv)}`]);
   ctx.save(); ctx.font = '13px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left';
   const y0 = H - 92 - rows.length * 40;
   ctx.fillStyle = 'rgba(9,11,16,.72)'; ctx.fillRect(10, y0 - 18, Math.min(W - 20, 820), rows.length * 40 + 8);
@@ -1909,10 +1913,11 @@ $('cNorm').onchange = e => { cam.norm = e.target.checked; };
 $('cHands').onchange = e => { cam.useHands = e.target.checked; };
 $('rA').oninput = e => { cam.hr = +e.target.value; };
 $('rSens').oninput = e => { S.sens = +e.target.value; };
-$('bCalD').onclick = () => (CALD.run ? (CALD.run = null) : caldStart());
-addEventListener('keydown', e => { if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; if (e.key === 'Escape' && CALD.run) CALD.run = null; else if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey) (CALD.run ? (CALD.run = null) : caldStart()); });
+$('bCalD').onclick = () => (CALD.run ? (CALD.run = null) : caldStart(1));
+$('bCalE').onclick = () => (CALD.run ? (CALD.run = null) : caldStart(2));
+addEventListener('keydown', e => { if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return; if (e.key === 'Escape' && CALD.run) CALD.run = null; else if ((e.key === 'm' || e.key === 'M' || e.key === 'l' || e.key === 'L') && !e.metaKey && !e.ctrlKey) (CALD.run ? (CALD.run = null) : caldStart(/m/i.test(e.key) ? 1 : 2)); });
 $('handTest').onchange = e => {   // teste de uma mão: liga só o ponto escolhido; a outra mão e o fundo ficam mudos
-  S.handTest = +e.target.value; LIMBS[1].on = S.handTest !== 2; LIMBS[2].on = false;   // lead desligado no recomeço (volta quando formos configurar a mão esquerda)
+  S.handTest = +e.target.value; LIMBS[1].on = S.handTest !== 2; LIMBS[2].on = S.handTest !== 1;
   if (S.handTest !== 2) setLeadDrive(0);
 };
 $('rBpm').oninput = e => { S.bpm = +e.target.value; $('vBpm').textContent = S.bpm; setDelayTime(); };
@@ -2588,7 +2593,7 @@ const keyOf = e => {   // chave estável de cada controle do painel (não depend
     [1, 2].forEach(i => {
       const p = cam.on && cam.handPts ? cam.handPts[i] : null;
       const a0 = p && p.h ? abertura(p.h) : null; ABRAW[i] = a0;
-      const a = a0 === null ? null : calAb(a0);   // abertura no alcance calibrado: 0 fechada · 1 aberta
+      const a = a0 === null ? null : calAb(i, a0);   // abertura no alcance calibrado: 0 fechada · 1 aberta
       ab[i] = a === null ? null : (ab[i] === null ? a : lerp(ab[i], a, .5));
       const v = GES.on && ab[i] !== null ? ab[i] : null;
       const aberta = v === null ? 0 : clamp((v - GES.abMax) / Math.max(.05, 1 - GES.abMax), 0, 1);

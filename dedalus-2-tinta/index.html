@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><script src="../lib/projecao.js"></script><script src="../lib/gravacao.js"></script><script src="../lib/camera.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dedalus II · Tinta Viva</title>
+<style>
+:root{--bg:#090b10;--panel:#131722;--bd:#262d3f;--tx:#e8ecf6;--mu:#8e98b0;--ac:#5eead4}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:13px system-ui,sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#ui{position:fixed;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:rgba(19,23,34,.9);border:1px solid var(--bd);border-radius:10px;padding:9px 11px;max-width:calc(100% - 24px);max-height:calc(100vh - 24px);overflow:auto}
+#ui.hide{display:none}
+#mainBar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:100%}
+#advTab{width:100%}
+#advTab>summary{cursor:pointer;color:var(--mu);padding:2px 0}
+#advBody{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)}
+button,select{padding:7px 10px;border-radius:7px;border:1px solid var(--bd);background:#1b2131;color:var(--tx);font:inherit;cursor:pointer}
+button:hover{background:#252d42}
+.vrow{display:flex;align-items:center;gap:8px;padding:5px 9px;border:1px solid var(--bd);border-left:4px solid var(--bd);border-radius:8px}
+.vrow label{color:var(--tx)}
+.vrow input[type=range]{width:90px}
+.seq-cell{width:28px;padding:7px 0;text-align:center;font-size:11px;font-family:ui-monospace,monospace}
+.seq-cell.beat{margin-left:6px}
+.seq-cell.on{background:#9f1239;border-color:#fb7185;color:#fff}
+.seq-cell.now{outline:2px solid var(--ac);outline-offset:1px}
+/* botão para reabrir o painel: semitransparente, só aparece com o painel escondido e some após 3 s sem mexer o mouse */
+#showUi{position:fixed;left:12px;top:12px;z-index:5;opacity:0;pointer-events:none;transition:opacity .3s;background:rgba(19,23,34,.55)}
+#ui:not(.hide) ~ #showUi{display:none}
+body.awake #ui.hide ~ #showUi{opacity:.4;pointer-events:auto}
+#ui.hide ~ #showUi:hover,#ui.hide ~ #showUi:focus-visible{opacity:1;pointer-events:auto}
+#wiz{position:fixed;left:12px;width:min(640px,calc(100% - 24px));display:none;background:rgba(9,11,16,.88);border:1px solid rgba(251,191,36,.7);border-radius:10px;padding:10px 14px;text-align:center;z-index:4;pointer-events:none}
+#wiz b{display:block;color:#fbbf24;font-size:15px;margin-bottom:4px}
+#wiz .bar{height:8px;background:rgba(255,255,255,.12);border-radius:4px;margin:8px 0 6px;overflow:hidden}
+#wiz .bar i{display:block;height:100%;width:0;background:#fbbf24}
+#wiz small{color:var(--mu);font-size:11px}
+#ui label{display:flex;align-items:center;gap:6px;color:var(--mu)}
+#gl{z-index:0;background:#000}#cv{z-index:1}
+button.on{background:#134e4a;border-color:var(--ac)}
+#somBar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;width:100%;padding-top:8px;border-top:1px solid var(--bd)}
+.grp{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 8px;border:1px solid var(--bd);border-radius:8px}
+.grp b{font-size:11px;letter-spacing:.06em;color:var(--mu)}
+.grp input[type=range]{width:74px}
+button:disabled{opacity:.45;cursor:default}
+video{display:none}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="cv"></canvas>
+<video id="video" playsinline muted></video>
+<div id="ui">
+  <div id="mainBar">
+    <b style="letter-spacing:.08em">DEDALUS II · TINTA VIVA</b>
+    <button id="bCam">Ligar câmera</button>
+    <button id="bWiz" disabled title="Identifica cada mão: distância · mão esquerda · mão direita (tecla G)">Identificar mãos</button>
+    <button id="bCalD" disabled title="Alcance da mão direita: alto, baixo, dentro, fora, perto, longe, aberta, fechada (tecla M)">Calibrar mão direita</button>
+    <button id="bCalE" disabled title="Alcance da mão esquerda, espelhado (tecla L)">Calibrar mão esquerda</button>
+    <button id="bPzD" disabled title="Pinças da mão direita: aberta, depois indicador, médio, anelar, mínimo (tecla P)">Pinças D</button>
+    <button id="bPzE" disabled title="Pinças da mão esquerda (tecla O)">Pinças E</button>
+    <label><input type="checkbox" id="cHud" checked> Leituras</label>
+    <label><input type="checkbox" id="cMirror" checked> Espelhar</label>
+    <label title="Opacidade da imagem da câmera">Câmera <input id="rCamA" type="range" min="0" max="1" step=".05" value=".1"></label>
+    <label>Modelo de pose <select id="selPose"><option value="lite">lite</option><option value="full" selected>full</option><option value="heavy">heavy</option></select></label>
+    <label><input type="checkbox" id="cHands" checked> Palma das mãos</label>
+    <button id="bHide" title="Esconder o painel (tecla H)">✕</button>
+  </div>
+  <div id="somBar">
+    <button id="bSom" title="Liga/desliga o som (tecla S)">Ligar som</button>
+    <span class="grp"><b style="color:#fb7185">BAIXO PROPHET</b>
+      <label>Timbre <select id="bxTimbre"><option value="0">1 · Serra clássica</option><option value="1">2 · Pulso redondo</option><option value="2">3 · Sync (poly-mod)</option></select></label>
+      <label title="Registro do baixo">Oitava <select id="bxOit"><option value="-2">−2</option><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option><option value="2">+2</option></select></label>
+      <label>Volume <input id="bxVol" type="range" min="0" max="1" step=".01" value=".8"></label>
+      <label title="Corte do filtro com a mão direita toda para a DIREITA (perto do corpo = 4 oitavas abaixo)">Cutoff <input id="bxCut" type="range" min="200" max="12000" step="10" value="3200"></label>
+      <label>Resson. <input id="bxRes" type="range" min="0" max="1" step=".01" value=".25"></label>
+      <label title="Quanto o envelope do filtro abre o corte (em oitavas)">Env→filtro <input id="bxEnv" type="range" min="0" max="5" step=".05" value="2.5"></label>
+    </span>
+    <span class="grp"><b>AMP ADSR</b>
+      <label>A <input id="ampA" type="range" min=".001" max="2" step=".001" value=".005"></label>
+      <label>D <input id="ampD" type="range" min=".01" max="3" step=".01" value=".3"></label>
+      <label>S <input id="ampS" type="range" min="0" max="1" step=".01" value=".7"></label>
+      <label>R <input id="ampR" type="range" min=".01" max="4" step=".01" value=".25"></label>
+    </span>
+    <span class="grp"><b>FILTER ADSR</b>
+      <label>A <input id="fltA" type="range" min=".001" max="2" step=".001" value=".005"></label>
+      <label>D <input id="fltD" type="range" min=".01" max="3" step=".01" value=".35"></label>
+      <label>S <input id="fltS" type="range" min="0" max="1" step=".01" value=".3"></label>
+      <label>R <input id="fltR" type="range" min=".01" max="4" step=".01" value=".3"></label>
+    </span>
+    <span class="grp"><b style="color:#38bdf8">LEAD THEREMIN</b>
+      <label>Oitava <select id="ldOit"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select></label>
+      <label>Volume <input id="ldVol" type="range" min="0" max="1" step=".01" value=".7"></label>
+      <label title="Corte do filtro com a mão esquerda toda para a ESQUERDA">Cutoff <input id="ldCut" type="range" min="300" max="12000" step="10" value="5000"></label>
+      <label title="Deslize entre uma nota e a próxima (segundos)">Glide <input id="ldGlide" type="range" min="0" max=".4" step=".005" value="0"></label>
+      <label title="Profundidade do vibrato (cents)">Vibrato <input id="ldVib" type="range" min="0" max="40" step="1" value="12"></label>
+      <label title="Velocidade do vibrato (Hz)">Vel. vib. <input id="ldVibR" type="range" min="2" max="8" step=".1" value="5.2"></label>
+      <label title="Quanto do lead vai para o reverb">Reverb <input id="ldRev" type="range" min="0" max="1" step=".01" value=".4"></label>
+    </span>
+    <span class="grp"><b>LEAD ADSR</b>
+      <label>A <input id="ldA" type="range" min=".001" max="2" step=".001" value=".06"></label>
+      <label>D <input id="ldD" type="range" min=".01" max="3" step=".01" value=".4"></label>
+      <label>S <input id="ldS" type="range" min="0" max="1" step=".01" value=".8"></label>
+      <label>R <input id="ldR" type="range" min=".01" max="4" step=".01" value=".6"></label>
+    </span>
+    <span class="grp"><b>ARPEJO</b>
+      <label>Tônica <select id="sRoot"></select></label>
+      <label>Escala <select id="sScale"><option value="dorian">Dórico</option><option value="aeolian">Eólio (menor)</option><option value="ionian">Jônico (maior)</option><option value="mixolydian">Mixolídio</option><option value="lydian">Lídio</option><option value="phrygian">Frígio</option><option value="harmonicMinor">Menor harmônica</option><option value="pentMinor">Pentatônica menor</option></select></label>
+      <label>BPM <input id="sBpm" type="range" min="40" max="160" step="1" value="90"><span id="vBpm">90</span></label>
+      <label>Padrão <select id="arpPat"><option value="up">Subindo</option><option value="down">Descendo</option><option value="updown">Sobe e desce</option><option value="random">Aleatório</option></select></label>
+      <label>Divisão <select id="arpRate"><option value="1">1/16</option><option value="2" selected>1/8</option><option value="4">1/4</option></select></label>
+      <label>Oitavas <select id="arpOct"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
+      <label><input type="checkbox" id="arpSev" checked> 7ª</label>
+      <label title="Duração de cada nota em relação ao passo">Gate <input id="arpGate" type="range" min=".1" max="1.5" step=".05" value=".8"></label>
+    </span>
+  </div>
+</div>
+<div id="wiz"><b id="wizT"></b><div id="wizN"></div><div class="bar"><i id="wizB"></i></div><small id="wizS">Esc cancela</small></div>
+<button id="showUi" aria-label="Mostrar painel de controle">☰ Painel</button>
+<script type="module">
+import { FilesetResolver, PoseLandmarker, HandLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs';
+const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm';
+const POSE_URL = v => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${v}/float16/1/pose_landmarker_${v}.task`;
+const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+/* =====================================================================================================
+   DEDALUS II — base de controle (sem som). Mesma detecção da v84 do Dedalus: Pose + palmas, trava de lado
+   (direita / esquerda), calibração de alcance por mão e pinças. O motor de som novo entra a partir daqui:
+   ele só precisa ler o objeto CTRL (atualizado a cada quadro) e ouvir os eventos de pinça (onPinca).
+   ===================================================================================================== */
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+const S = { sens: 1.5 };
+const HUD = { ab: { 1: null, 2: null } };
+/* ---------- Corpo: pontos rastreados (0 cabeça · 1 mão direita · 2 mão esquerda · 3/4 pés, desligados) ---------- */
+const LIMBS = [
+  { n: 'cabeça', role: 'pad',   c: '#fbbf24', bx: 0,    by: .65 },
+  { n: 'mão D',  role: 'bass', c: '#fb7185', bx: .5,  by: .15 },
+  { n: 'mão E',  role: 'lead', c: '#38bdf8', bx: -.5,  by: .15 },
+  { n: 'pé E',   role: 'bass', c: '#a78bfa', bx: -.25, by: -.65 },
+  { n: 'pé D',   role: 'bass', c: '#34d399', bx: .25,  by: -.65 }
+].map((l, i) => ({ ...l, on: i === 1 || i === 2, arp: 0, x: l.bx, y: l.by, vx: l.bx, vy: l.by, z: 0, gate: false, speed: 0, idx: 3, pending: false, hot: false, lastHit: 0, vol: .8, lastSeen: -9, out: false, tp: null, tv: { x: 0, y: 0 }, tpT: 0, tz: 0, coastStart: 0 }));
+const IDX = [0, 16, 15, 27, 28];   // cabeça, mão D (baixo), mão E (lead), pé E, pé D (MediaPipe Pose)
+const cam = { on: false, landmarker: null, stream: null, lm: null, detected: false, msg: '', lastVT: -1, lastTs: -1, zBase: new Array(33).fill(0), zGain: 2.5, zCurve: 1.5, wrist: { 1: 16, 2: 15 }, roll: 0, roll0: 0, rawHands: null, ref0: 0, face: null, mouth: null, mouthOpen: 0, mouthFace: false, zFar: {}, zNearM: {}, hs0: {}, sw0: null, hg: 2.2, hc: { x: 0, y: .35 }, norm: false, hr: 1, ref: null, hands: null, vision: null, useHands: true, handsOut: { 1: null, 2: null }, handPts: { 1: null, 2: null }, tgt: [] };
+const video = document.getElementById('video');
+const mirror = () => document.getElementById('cMirror').checked;
+// recorte "cover" do vídeo na tela: imagem e landmarks usam o mesmo mapeamento (ficam alinhados)
+function crop() {
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9, tr = innerWidth / innerHeight, vr = vw / vh;
+  return vr > tr ? { vw, vh, sh: vh, sw: vh * tr, sx: (vw - vh * tr) / 2, sy: 0 } : { vw, vh, sw: vw, sh: vw / tr, sx: 0, sy: (vh - vw / tr) / 2 };
+}
+function camXY(p) {
+  const c = crop(); let u = (p.x * c.vw - c.sx) / c.sw; const v = (p.y * c.vh - c.sy) / c.sh;
+  if (mirror()) u = 1 - u;
+  return { x: clamp(u * 2 - 1, -1, 1), y: clamp(-(v * 2 - 1), -1, 1) };
+}
+const seen = p => p && (p.visibility ?? 1) > .3;
+// Referência do corpo: centro e largura dos ombros (em pixels do vídeo, suavizados). As mãos passam a ser medidas em "larguras de ombro".
+function bodyRef(lm) {
+  const a = lm[11], b = lm[12];
+  if (!seen(a) || !seen(b)) return null;
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+  const w = Math.hypot((a.x - b.x) * vw, (a.y - b.y) * vh);
+  if (w < vw * .022) return null;                       // ombros inválidos (longe demais ou mal detectados)
+  const cx = (a.x + b.x) / 2 * vw, cy = (a.y + b.y) / 2 * vh, r = cam.ref;
+  cam.ref = r ? { w: lerp(r.w, w, .15), cx: lerp(r.cx, cx, .15), cy: lerp(r.cy, cy, .15) } : { w, cx, cy };
+  return cam.ref;
+}
+function bodyXY(p) {
+  const r = cam.ref, vw = video.videoWidth || 16, vh = video.videoHeight || 9, k = r.w * 1.7;   // 1,7 largura de ombro ≈ alcance do braço
+  const x = (p.x * vw - r.cx) / k * cam.hr * (mirror() ? -1 : 1);
+  const y = -((p.y * vh - (r.cy + .6 * r.w)) / k) * cam.hr;   // zero na altura do peito
+  return { x: clamp(x, -1, 1), y: clamp(y, -1, 1) };
+}
+// ---- Centro de cada mão ----
+// Preferência: palma do Hand Landmarker (média de pulso + 4 nós dos dedos); sem ele, média dos pontos da mão no Pose (pulso, mindinho, indicador, polegar).
+const PALM = [0, 5, 9, 13, 17];
+// ---- Travamento de identidade ----
+// Cada mão é um ALVO com trilha própria (posição + velocidade). Depois de adquirida, só a continuidade decide quem é quem
+// (nunca "esquerda/direita da tela"): as mãos podem cruzar e cada uma continua no seu instrumento.
+const imgD = (a, b) => { const vw = video.videoWidth || 16, vh = video.videoHeight || 9; return Math.hypot((a.x - b.x) * vw, (a.y - b.y) * vh) / vw; };   // em larguras de imagem
+const trackOf = k => (LIMBS[k].tp && performance.now() / 1000 - LIMBS[k].lastSeen < .6) ? LIMBS[k].tp : null;   // última posição aceita (some após .6 s perdida)
+const gateOf = k => .10 + 1.5 * clamp(performance.now() / 1000 - LIMBS[k].lastSeen, .03, .6);                    // raio máximo de salto: cresce com o tempo perdido
+const palmCenter = h => { let sx = 0, sy = 0; PALM.forEach(j => { sx += h[j].x; sy += h[j].y; }); return { x: sx / PALM.length, y: sy / PALM.length }; };
+function predOf(k) {   // onde a mão deve estar agora (última posição + velocidade)
+  const tr = trackOf(k); if (!tr) return null;
+  const L = LIMBS[k], dt = clamp(performance.now() / 1000 - L.tpT, 0, .3);
+  return { x: tr.x + L.tv.x * dt * .8, y: tr.y + L.tv.y * dt * .8 };
+}
+function poseHandAvg(g, lm) {   // centro da mão no Pose: média de pulso, mindinho, indicador e polegar
+  const w0 = cam.wrist[g], ids = [w0, w0 + 2, w0 + 4, w0 + 6], pw = lm[ids[0]];
+  if (!seen(pw)) return null;
+  let sx = 0, sy = 0, n = 0; ids.forEach(j => { const q = lm[j]; if (seen(q)) { sx += q.x; sy += q.y; n++; } });
+  return n >= 2 ? { x: sx / n, y: sy / n, z: pw.z, visibility: pw.visibility ?? 1 } : { x: pw.x, y: pw.y, z: pw.z, visibility: pw.visibility ?? 1 };
+}
+const zNear = (lm, p) => { let best = null, bd = 9; [15, 16].forEach(j => { const q = lm[j]; if (q) { const d = imgD(p, q); if (d < bd) { bd = d; best = q; } } }); return best ? best.z : 0; };   // Z do pulso mais próximo (não depende do rótulo L/R)
+// Profundidade pelo TAMANHO APARENTE: mão/ombros maiores na imagem = mais perto da câmera (muito mais estável que o z do Pose)
+const handSize = h => { const d = (a, b) => imgD(h[a], h[b]); return (d(0, 9) + d(0, 5) + d(0, 17) + d(5, 17)) / 4; };
+const log2 = x => Math.log(x) / Math.LN2;
+function resolveHands(lm, raw) {
+  const now = performance.now() / 1000, cands = [];
+  ((raw && raw.landmarks) || []).forEach((h, i) => { const c = palmCenter(h), hd = raw.handedness && raw.handedness[i] && raw.handedness[i][0]; cands.push({ kind: 'palm', x: c.x, y: c.y, h, label: hd && hd.categoryName, score: hd ? hd.score : 0 }); });
+  // ---- TRAVA DE LADO: cada mão física pertence a UM timbre (direita = baixo · esquerda = lead), nunca aos dois ----
+  // 1) a mesma mão detectada duas vezes (palmas sobrepostas) vira uma só
+  for (let i = cands.length - 1; i >= 0; i--) for (let j = 0; j < i; j++) if (imgD(cands[i], cands[j]) < .1) { if ((cands[i].score || 0) > (cands[j].score || 0)) cands[j] = cands[i]; cands.splice(i, 1); break; }
+  // 2) lado de cada palma: pelo pulso do Pose (anatômico) quando ele está colado na palma; senão pelo rótulo do detector de mãos
+  const grpR = cam.wrist[1] === 16 ? 1 : 2;   // grupo da mão DIREITA do performer
+  const labSide = l => l === 'Left' ? grpR : l === 'Right' ? 3 - grpR : null;   // vídeo não espelhado: "Left" do detector = mão direita do performer
+  cands.forEach(c => {
+    let side = null, bd = .09;
+    [1, 2].forEach(g => { const w = lm[cam.wrist[g]]; if (w && (w.visibility ?? 1) > .6) { const d = imgD(c.h[0], w); if (d < bd) { bd = d; side = g; } } });
+    if (!side && c.score >= .75) side = labSide(c.label);
+    c.side = side;
+  });
+  if (cands.length === 2 && cands[0].side && cands[0].side === cands[1].side) {   // duas palmas com o mesmo lado: na imagem (não espelhada) a direita do performer fica à esquerda
+    const [a, b] = cands[0].x < cands[1].x ? [cands[0], cands[1]] : [cands[1], cands[0]]; a.side = grpR; b.side = 3 - grpR;
+  }
+  cands.forEach(c => { if (c.side) c.grp = c.side; });
+  // 3) pulsos do Pose: só servem ao próprio lado, e somem se estiverem em cima de uma palma do OUTRO lado (fantasma da mão que não está na tela)
+  [1, 2].forEach(g => {
+    const p = poseHandAvg(g, lm); if (!p) return;
+    const palms = cands.filter(c => c.kind === 'palm');
+    if (palms.some(c => c.side && c.side !== g && imgD(c, p) < .22)) return;
+    if ((p.visibility ?? 1) < .7 && palms.some(c => imgD(c, p) < .25)) return;
+    cands.push({ kind: 'pose', grp: g, x: p.x, y: p.y, z: p.z, visibility: p.visibility });
+  });
+  // ---- Modelo do braço (cotovelo): descarta "mãos" que na verdade são o cotovelo ----
+  // O Hand Landmarker às vezes vê um cotovelo dobrado como punho, e o Pose pode colar o pulso no cotovelo. Cada braço tem um comprimento de antebraço
+  // aprendido (F0, em larguras de imagem; começa em ~0,62 × largura dos ombros). Uma palma bem mais perto do cotovelo que do pulso é rejeitada ANTES da fusão.
+  cam.fore = cam.fore || [0, 0];
+  const vwv = video.videoWidth || 16, arms = [[15, 13], [16, 14]].map(([w, e], ix) => {
+    const E = lm[e], Wp = lm[w], eOk = E && (E.visibility ?? 1) > .5, wOk = seen(Wp), F0 = cam.fore[ix] || (cam.ref ? .62 * cam.ref.w / vwv : .12);
+    return { ix, E: eOk ? E : null, W: wOk ? Wp : null, F0, F: eOk && wOk ? imgD(E, Wp) : null };
+  });
+  const dbg = { rej: [], elbows: arms.filter(a => a.E).map(a => ({ x: a.E.x, y: a.E.y })) };
+  for (let i = cands.length - 1; i >= 0; i--) {
+    const c = cands[i]; let bad = null;
+    if (c.kind === 'palm') arms.forEach(a => { if (bad || !a.E) return; const de = imgD(c, a.E), dw = a.W ? imgD(c, a.W) : Infinity; if (de < .5 * a.F0 && (a.W ? de < .7 * dw : de < .35 * a.F0)) bad = 'cotovelo'; });
+    else { const a = arms[cam.wrist[c.grp] === 16 ? 1 : 0]; if (a.E && a.F !== null && a.F < .4 * a.F0) c.weak = true; }   // antebraço "colapsado": pulso do Pose suspeito
+    if (bad) { dbg.rej.push({ x: c.x, y: c.y, why: bad }); cands.splice(i, 1); }
+  }
+  // a mesma mão aparece como palma E como ponto do Pose: funde (a palma manda; herda o rótulo do Pose) para que um ponto nunca "adote" a duplicata
+  for (let i = cands.length - 1; i >= 0; i--) {
+    const cp = cands[i]; if (cp.kind !== 'pose') continue;
+    let bj = -1, bd = .16; cands.forEach((q, j) => { if (q.kind === 'palm' && (!q.side || q.side === cp.grp)) { const d = imgD(cp, q); if (d < bd) { bd = d; bj = j; } } });
+    if (bj >= 0) { if (cands[bj].grp == null) cands[bj].grp = cp.grp; cands[bj].poseXY = { x: cp.x, y: cp.y }; cands.splice(i, 1); }
+  }
+  const wr = { 1: seen(lm[cam.wrist[1]]) ? lm[cam.wrist[1]] : null, 2: seen(lm[cam.wrist[2]]) ? lm[cam.wrist[2]] : null }, P = .12;   // P: custo de deixar um ponto sem mão
+  const cost = (j, k) => {
+    const cd = cands[j], pr = predOf(k);
+    if (cd.side && cd.side !== k) return Infinity;            // trava: palma de um lado nunca toca o timbre do outro
+    if (cd.kind === 'pose' && cd.grp !== k) return Infinity;  // pulso do Pose só serve à própria mão
+    if (pr) { const d = imgD(cd, pr); return d <= (cd.kind === 'pose' ? Math.min(gateOf(k), cd.weak ? .12 : .25) : gateOf(k)) ? d + (cd.kind === 'pose' ? (cd.weak ? .12 : .04) : 0) : Infinity; }   // com trilha: só aceita mão dentro do raio de salto
+    if (cd.kind === 'pose' && cd.weak) return Infinity;   // pulso do Pose colado no cotovelo nunca serve para (re)adquirir a mão
+    const op = predOf(3 - k);
+    if (op) {   // a outra mão já está travada: esta é obrigatoriamente "a outra", qualquer mão livre serve (longe da travada)
+      if (imgD(cd, op) <= .12) return Infinity;
+      return cd.kind === 'palm' ? .08 : (cd.visibility >= .6 ? .10 : Infinity);
+    }
+    if (cd.grp != null) return cd.grp === k ? .05 : Infinity;                      // aquisição inicial: o rótulo do Pose (próprio ou herdado) só vale aqui
+    if (wr[k]) { const d = imgD(cd.h[0], wr[k]); return d < .22 ? d : Infinity; }
+    return (cd.label === 'Left' ? (cam.wrist[1] === 16 ? 1 : 2) : cd.label === 'Right' ? (cam.wrist[1] === 16 ? 2 : 1) : 0) === k ? .05 : Infinity;   // sem Pose: rótulo (vídeo não espelhado → invertido)
+  };
+  let best = Infinity, pick = [-1, -1];
+  for (let a = -1; a < cands.length; a++) for (let b = -1; b < cands.length; b++) {
+    if (a >= 0 && a === b) continue;                                  // a mesma mão nunca serve a dois pontos
+    if (a >= 0 && b >= 0 && imgD(cands[a], cands[b]) < .12) continue; // dois pontos nunca ocupam o mesmo lugar
+    const tot = (a < 0 ? P : cost(a, 1)) + (b < 0 ? P : cost(b, 2));
+    if (tot < best) { best = tot; pick = [a, b]; }
+  }
+  const out = { 1: null, 2: null };
+  [1, 2].forEach(k => {
+    const j = pick[k - 1]; if (j < 0) return;
+    const cd = cands[j], L = LIMBS[k]; L.coastStart = 0;
+    if (cd.kind === 'palm') {
+      if (cd.poseXY) { const ox = cd.x - cd.poseXY.x, oy = cd.y - cd.poseXY.y; if (Math.hypot(ox, oy) < .08) L.off = L.off ? { x: lerp(L.off.x, ox, .1), y: lerp(L.off.y, oy, .1) } : { x: ox, y: oy }; L.offT = now; }
+      let ba = null, bd = Infinity; arms.forEach(a => { if (a.W && a.E) { const d = imgD(cd, a.W); if (d < bd) { bd = d; ba = a; } } });   // aprende o antebraço quando a palma confirma o pulso
+      if (ba && bd < .6 * ba.F0 && ba.F > .7 * ba.F0 * (cam.fore[ba.ix] ? 1 : .5) && ba.F < 1.4 * ba.F0 * (cam.fore[ba.ix] ? 1 : 2)) cam.fore[ba.ix] = cam.fore[ba.ix] ? lerp(cam.fore[ba.ix], ba.F, .05) : ba.F;
+    } else if (L.off && now - L.offT < 3) { cd.x += L.off.x; cd.y += L.off.y; }   // mantém a mesma "origem" ao alternar entre palma e Pose
+    out[k] = { x: cd.x, y: cd.y, z: zNear(lm, cd), visibility: cd.kind === 'palm' ? 1 : cd.visibility, palm: cd.kind === 'palm', size: cd.kind === 'palm' ? handSize(cd.h) : 0, h: cd.kind === 'palm' ? cd.h : null };
+  });
+  [1, 2].forEach(k => {   // oclusão: sem candidato e com a outra mão por perto, o ponto segue na velocidade que tinha (por até .5 s) em vez de se colar na outra mão
+    if (out[k]) return;
+    const pr = predOf(k); if (!pr) return;
+    const po = out[3 - k] || predOf(3 - k);
+    if (!po || imgD(pr, po) > .15) return;
+    const L = LIMBS[k]; if (!L.coastStart) L.coastStart = now;
+    if (now - L.coastStart < .5) out[k] = { x: pr.x, y: pr.y, z: L.tz, visibility: 1, coast: true, size: L.tsz || 0 };
+  });
+  dbg.cands = cands.map(c => ({ x: c.x, y: c.y, kind: c.kind, weak: !!c.weak })); dbg.pick = [1, 2].map(k => out[k] ? { x: out[k].x, y: out[k].y, k } : null); cam.dbg = dbg;
+  return out;
+}
+// ================= ASSISTENTE DE CALIBRAÇÃO (3 etapas) =================
+// 1 distância de tocar · 2 levantar a mão ESQUERDA → trava o lead · 3 levantar a mão DIREITA → trava o baixo.
+// "Esquerda/direita" = as do corpo do performer (o Pose distingue anatomicamente, não depende do espelho da tela).
+const wiz = { step: 0, hold: 0, last: 0, w0: 0, note: '', doneAt: 0 };
+const WIZ_HOLD = [0, 2, 1.3, 1.3];
+function wizStart() { if (!cam.on) { cam.msg = 'Ligue a câmera primeiro'; return; } Object.assign(wiz, { step: 1, hold: 0, last: performance.now(), w0: 0, note: '' }); }
+function wizStop() { wiz.step = 0; }
+function wristUp(lm, w) { const q = lm[w]; if (!seen(q) || !cam.ref) return false; return q.y * (video.videoHeight || 9) < cam.ref.cy - .3 * cam.ref.w; }
+function lockHand(k, w) {   // fixa o ponto k (1 baixo · 2 theremin) na mão cujo pulso é o landmark w
+  const lm = cam.lm, wr = lm[w], vw = video.videoWidth || 16; let best = null, bd = .22;
+  ((cam.rawHands && cam.rawHands.landmarks) || []).forEach(h => { const c = palmCenter(h), d = imgD(c, wr); if (d < bd) { bd = d; best = { x: c.x, y: c.y, size: handSize(h) }; } });
+  cam.wrist[k] = w; cam.wrist[3 - k] = w === 15 ? 16 : 15; IDX[k] = w; IDX[3 - k] = cam.wrist[3 - k];
+  if (!best) { const p = poseHandAvg(k, lm); if (!p) return false; best = { x: p.x, y: p.y, size: 0 }; }
+  const L = LIMBS[k], now = performance.now() / 1000;
+  L.tp = { x: best.x, y: best.y }; L.tv = { x: 0, y: 0 }; L.tpT = now; L.lastSeen = now; L.tz = wr.z; L.tsz = best.size || 0; L.coastStart = 0;
+  if (best.size && cam.ref) { const key = zk(k); cam.hs0[key] = best.size * vw / cam.ref.w; delete cam.zFar[key]; delete cam.zNearM[key]; if (CALM[k] && CALM[k].zKey === key && CALM[k].zNear) { cam.zNearM[key] = CALM[k].zNear; cam.zFar[key] = CALM[k].zFar; } }
+  return true;
+}
+function wizTick() {
+  const now = performance.now(), dt = Math.min(.2, (now - wiz.last) / 1000); wiz.last = now;
+  if (!wiz.step || !cam.lm) return;
+  const lm = cam.lm; let ok = false;
+  if (wiz.step === 1) {
+    if (cam.ref && seen(lm[0])) {
+      if (!wiz.w0 || Math.abs(cam.ref.w / wiz.w0 - 1) > .05) { wiz.w0 = cam.ref.w; wiz.hold = 0; } else ok = true;
+      wiz.note = 'Fique parado, de frente, na distância em que vai tocar (ombros e rosto visíveis).';
+    } else { wiz.note = 'Ombros e rosto precisam estar visíveis.'; wiz.w0 = 0; }
+  } else {
+    const k = wiz.step === 2 ? 2 : 1, mine = wiz.step === 2 ? 15 : 16, other = mine === 15 ? 16 : 15;
+    const nm = wiz.step === 2 ? 'ESQUERDA' : 'DIREITA';
+    if (!cam.ref) wiz.note = 'Ombros precisam estar visíveis.';
+    else if (!wristUp(lm, mine)) wiz.note = `Levante a mão ${nm} acima do ombro e segure.` + (wristUp(lm, other) && wiz.step === 2 ? ' (essa é a direita)' : '');
+    else if (wiz.step === 3 && LIMBS[2].tp && lm[mine] && imgD(lm[mine], LIMBS[2].tp) < .12) wiz.note = 'Afaste a mão direita da esquerda.';
+    else if (wiz.step === 2 && wristUp(lm, other)) wiz.note = 'Levante só a mão ESQUERDA.';
+    else { ok = true; wiz.note = `Mão ${nm} identificada — segure parada…`; }
+  }
+  wiz.hold = ok ? wiz.hold + dt : Math.max(0, wiz.hold - dt * 2);
+  if (wiz.hold < WIZ_HOLD[wiz.step]) return;
+  wiz.hold = 0;
+  if (wiz.step === 1) {
+    cam.sw0 = cam.ref.w; cam.ref0 = cam.ref.w; cam.hs0 = {}; cam.zFar = {}; cam.zNearM = {};
+    lm.forEach((p, i) => { cam.zBase[i] = p.z; }); const q = camXY(lm[0]); cam.hc = { x: q.x, y: q.y }; cam.roll0 = cam.roll;
+    wiz.dist = cam.ref.w / (video.videoWidth || 16); wiz.step = 2; wiz.w0 = 0;
+  } else if (wiz.step === 2) { if (lockHand(2, 15)) wiz.step = 3; }
+  else if (wiz.step === 3) { if (lockHand(1, 16)) { wiz.step = 4; wiz.doneAt = now; } }
+}
+function limbPoint(i, lm) { return i === 0 ? lm[0] : (i === 1 || i === 2) ? cam.handPts[i] : lm[IDX[i]]; }
+// Z → profundidade normalizada (-1 longe … +1 perto). Mãos: tamanho da palma; cabeça: largura dos ombros; resto/sem palma: z do Pose.
+// A linha de base (neutro) é a primeira medida após ligar/calibrar; dobrar o tamanho aparente ≈ zGain.
+// Mãos: tamanho da palma EM LARGURAS DE OMBRO (esticar o braço p/ a câmera aumenta a razão; afastar o corpo inteiro não muda nada → dá para tocar de longe).
+// Chave da calibração inclui o modo (r = relativo aos ombros · a = absoluto, se os ombros sumirem).
+const zk = i => i + (cam.ref ? 'r' : 'a');
+function zMeas(i, pt) {
+  if (i === 1 || i === 2) { if (!(pt.size > 0)) return 0; return cam.ref ? pt.size * (video.videoWidth || 16) / cam.ref.w : pt.size; }
+  return i === 0 && cam.ref ? cam.ref.w : 0;   // cabeça: largura dos ombros (distância do corpo)
+}
+function zDepth(i, pt) {
+  const m = zMeas(i, pt), k = zk(i), f = cam.zFar[k], n = cam.zNearM[k];
+  if (m > 0 && f && n) return clamp(2 * (Math.log(m / f) / Math.log(n / f)) - 1, -1, 1);   // calibrado: longe → -1 (mudo) · perto → +1 (cheio)
+  if (m > 0 && (i === 1 || i === 2)) { if (!cam.hs0[k]) cam.hs0[k] = m; return clamp(log2(m / cam.hs0[k]) * cam.zGain, -1, 1); }
+  if (i === 0 && cam.ref) { if (!cam.sw0) cam.sw0 = cam.ref.w; return clamp(log2(cam.ref.w / cam.sw0) * cam.zGain, -1, 1); }
+  return clamp(-(pt.z - cam.zBase[IDX[i]]) * cam.zGain, -1, 1);
+}
+function limbTarget(i, lm) {
+  const pt = limbPoint(i, lm);
+  if (!pt) return null;
+  // Dentro do quadro? Usa a área realmente exibida (após o recorte) e uma histerese: sai a 1,5% da borda, só volta a 5% para dentro
+  const c = crop(), u = (pt.x * c.vw - c.sx) / c.sw, w = (pt.y * c.vh - c.sy) / c.sh;
+  const hand = i === 1 || i === 2, palm = hand && !!cam.handsOut[i], L = LIMBS[i], m = L.out ? .05 : .015;
+  L.out = !(u > m && u < 1 - m && w > m && w < 1 - m);
+  if (L.out) return null;
+  // Pose extrapola pontos fora da imagem: sem palma detectada, o pulso precisa estar bem visível (e mais ainda perto da borda)
+  const edge = Math.min(u, 1 - u, w, 1 - w) < .06;
+  const need = Math.max(hand && !palm ? .5 : .3, edge && !palm ? .75 : 0);
+  if ((pt.visibility ?? 1) < need) return null;
+  const ns = performance.now() / 1000;   // trilha do ponto: posição + velocidade (base do travamento de identidade)
+  if (L.tp && ns - L.tpT < .3) { const dt = Math.max(.016, ns - L.tpT); L.tv = { x: lerp(L.tv.x, (pt.x - L.tp.x) / dt, .4), y: lerp(L.tv.y, (pt.y - L.tp.y) / dt, .4) }; } else L.tv = { x: 0, y: 0 };
+  L.tp = { x: pt.x, y: pt.y }; L.tpT = ns; L.tz = pt.z; L.tsz = pt.size || 0; { const m = zMeas(i, pt); if (m > 0) { L.tm = (L.tm && ns - L.tmT < .5) ? lerp(L.tm, m, .3) : m; L.tmT = ns; } }
+  const v = camXY(pt), q = ((i === 1 || i === 2) && cam.ref && cam.norm) ? bodyXY(pt) : v;   // v: onde o ponto está na imagem · q: valor de controle
+  return {
+    vx: v.x, vy: v.y,
+    x: i === 0 ? clamp((q.x - cam.hc.x) * cam.hg, -1, 1) : q.x,
+    y: i === 0 ? clamp((q.y - cam.hc.y) * cam.hg, -1, 1) : q.y,
+    z: zDepth(i, pt)
+  };
+}
+// Filtro One Euro: tira o tremor quando o ponto está quase parado e quase não atrasa quando ele se move rápido
+class OneEuro {
+  constructor(minCut, beta) { this.minCut = minCut; this.beta = beta; this.t = null; this.x = 0; this.dx = 0; }
+  static a(cut, dt) { const tau = 1 / (2 * Math.PI * cut); return 1 / (1 + tau / dt); }
+  reset() { this.t = null; }
+  f(x, t) {
+    if (this.t === null) { this.t = t; this.x = x; this.dx = 0; return x; }
+    const dt = Math.max(1e-3, t - this.t); this.t = t;
+    this.dx += OneEuro.a(1, dt) * ((x - this.x) / dt - this.dx);
+    this.x += OneEuro.a(this.minCut + this.beta * Math.abs(this.dx), dt) * (x - this.x);
+    return this.x;
+  }
+}
+const euro = IDX.map(() => ({ x: new OneEuro(1.8, 5), y: new OneEuro(1.8, 5), z: new OneEuro(1, 1.5), vx: new OneEuro(4, 10), vy: new OneEuro(4, 10) }));   // vx/vy: filtro leve, o ponto tem que colar na mão
+// Ponto "captado" = visto nos últimos .35 s (tolera falhas curtas). Sem câmera ligada, tudo conta como captado (simulação/mouse).
+function isTracked(i) { return !cam.on || (!LIMBS[i].out && performance.now() / 1000 - LIMBS[i].lastSeen < .35); }   // out = fora do quadro: corte imediato, sem tolerância
+// Áudio global: toca enquanto ao menos uma mão ligada no painel está captada (se as duas mãos estiverem desligadas, vale a cabeça)
+function handsTracked() {
+  if (!cam.on) return true;
+  const hs = [1, 2].filter(i => LIMBS[i].on);
+  return (hs.length ? hs : [0]).some(isTracked);
+}
+function detect() {
+  if (!cam.on || !cam.landmarker || video.readyState < 2 || video.currentTime === cam.lastVT) return;
+  cam.lastVT = video.currentTime;
+  const ts = Math.max(cam.lastTs + 1, Math.round(performance.now())); cam.lastTs = ts;
+  const r = cam.landmarker.detectForVideo(video, ts);
+  cam.lm = (r.landmarks && r.landmarks[0]) || null;
+  if (cam.lm && !bodyRef(cam.lm)) cam.ref = null;   // sem ombros visíveis: volta ao mapeamento pela imagem
+  let raw = null;
+  if (cam.hands && cam.useHands && cam.lm) {
+    try { raw = cam.hands.detectForVideo(video, ts); }
+    catch (err) { cam.useHands = false; cam.msg = 'Palma das mãos indisponível (' + err.message + '): usando o Pose'; }
+  }
+  if (cam.lm && seen(cam.lm[7]) && seen(cam.lm[8])) {   // inclinação lateral da cabeça (rad): + = orelha direita do performer desce
+    const r = -Math.atan2((cam.lm[7].y - cam.lm[8].y) * (video.videoHeight || 9), (cam.lm[7].x - cam.lm[8].x) * (video.videoWidth || 16));
+    cam.roll = lerp(cam.roll, r, .35);
+  }
+  if (cam.lm) wizTick(); else wiz.last = performance.now();
+  cam.rawHands = raw;
+  cam.handPts = cam.lm ? resolveHands(cam.lm, raw) : { 1: null, 2: null };
+  cam.handsOut = { 1: cam.handPts[1] && cam.handPts[1].palm ? true : null, 2: cam.handPts[2] && cam.handPts[2].palm ? true : null };
+  const tt = performance.now() / 1000;
+  cam.tgt = IDX.map((ix, i) => {
+    const tg = cam.lm && LIMBS[i].on ? limbTarget(i, cam.lm) : null, e = euro[i];
+    if (!tg) { e.x.reset(); e.y.reset(); e.z.reset(); e.vx.reset(); e.vy.reset(); return null; }
+    LIMBS[i].lastSeen = tt;
+    return { x: e.x.f(tg.x, tt), y: e.y.f(tg.y, tt), z: e.z.f(tg.z, tt), vx: e.vx.f(tg.vx, tt), vy: e.vy.f(tg.vy, tt) };
+  });
+  cam.detected = !!cam.lm && IDX.some((ix, k) => LIMBS[k].on && seen(cam.lm[ix]));   // aceita corpo parcial (ex.: só uma mão)
+}
+
+/* ---------- corpo e suavização dos pontos ---------- */
+const body = { present: false };
+function updateBody(dt) {
+  body.present = cam.on && cam.detected;
+  const sm = 1 - Math.exp(-dt * 20 * .35);
+  LIMBS.forEach((l, i) => {
+    const tg = cam.on && cam.detected && cam.tgt[i]; if (!tg) return;
+    const ox = l.x, oy = l.y;
+    l.x += (tg.x - l.x) * sm; l.y += (tg.y - l.y) * sm; l.z += (tg.z - l.z) * sm;
+    const vk = Math.min(1, dt * 30); l.vx += (tg.vx - l.vx) * vk; l.vy += (tg.vy - l.vy) * vk;
+    l.speed = lerp(l.speed, clamp(Math.hypot(l.x - ox, l.y - oy) / dt * .35 * S.sens, 0, 1), .3);
+  });
+}
+/* ---------- CALIBRAÇÃO DE CADA MÃO (1 = direita · arp bass, 2 = esquerda · lead): mapeia o alcance real do performer ----------
+   8 etapas, ~2 s cada. Eixos ESPELHADOS: para as duas mãos, "para fora" (direita → canto direito, esquerda → canto esquerdo)
+   tem o mesmo efeito (forma de onda), e subir tem o mesmo efeito (nota/acorde mais agudo). Fica salvo no navegador. */
+const MAO_NOME = { 1: 'direita', 2: 'esquerda' };
+const CAL_PASSOS = g => [
+  [`Mão ${MAO_NOME[g]} no ponto MAIS ALTO que você quer usar`, 'yHi'], [`Mão ${MAO_NOME[g]} no ponto MAIS BAIXO`, 'yLo'],
+  [`Mão ${MAO_NOME[g]} o mais para DENTRO (perto do centro do corpo)`, 'xIn'], [`Mão ${MAO_NOME[g]} o mais para FORA (${g === 1 ? 'à direita' : 'à esquerda'})`, 'xOut'],
+  [`Mão ${MAO_NOME[g]} o MAIS PERTO da câmera que vai tocar`, 'zNear'], [`Mão ${MAO_NOME[g]} o MAIS LONGE da câmera que vai tocar`, 'zFar'],
+  [`Mão ${MAO_NOME[g]} bem ABERTA, dedos esticados`, 'abHi'], [`Mão ${MAO_NOME[g]} bem FECHADA`, 'abLo']];
+const CALM = { 1: { yLo: -.8, yHi: .8, xIn: 0, xOut: .9, abLo: .15, abHi: .85 }, 2: { yLo: -.8, yHi: .8, xIn: 0, xOut: -.9, abLo: .15, abHi: .85 } };
+const CALD = { run: null };   // calibração em andamento: { g, passo, … }
+const ABRAW = { 1: null, 2: null };   // abertura bruta de cada mão (0 fechada … 1 aberta), medida no loop dos gestos
+try { const c = JSON.parse(localStorage.getItem('dedalus_cal_mao1') || localStorage.getItem('dedalus_cal_maoD') || 'null'); if (c && c.yHi !== undefined) Object.assign(CALM[1], c); } catch (e) {}
+try { const c = JSON.parse(localStorage.getItem('dedalus_cal_mao2') || 'null'); if (c && c.yHi !== undefined) Object.assign(CALM[2], c); } catch (e) {}
+const calY = (g, y) => clamp((y - CALM[g].yLo) / Math.max(.1, CALM[g].yHi - CALM[g].yLo), 0, 1);   // 0 = ponto mais baixo · 1 = mais alto
+const calX = (g, x) => { const c = CALM[g], d = c.xOut - c.xIn; return Math.abs(d) < .1 ? clamp(g === 1 ? (x + 1) / 2 : (1 - x) / 2, 0, 1) : clamp((x - c.xIn) / d, 0, 1); };   // 0 = dentro · 1 = fora (espelhado)
+const calAb = (g, a) => clamp((a - CALM[g].abLo) / Math.max(.05, CALM[g].abHi - CALM[g].abLo), 0, 1);   // 0 = fechada · 1 = aberta
+function caldStart(g) { if (!cam.on) { cam.msg = 'Ligue a câmera primeiro'; return; } PZ.cal = null; CALD.run = { g, passo: 0, t: 0, soma: 0, n: 0, last: performance.now() }; }
+function caldTick() {
+  const C = CALD.run; if (!C) return;
+  const now = performance.now(), dt = Math.min(.2, (now - C.last) / 1000); C.last = now;
+  const g = C.g, L = LIMBS[g], P = CAL_PASSOS(g), key = P[C.passo][1], V = CALM[g];
+  const val = key[0] === 'y' ? L.y : key[0] === 'x' ? L.x : key[0] === 'z' ? (L.tm && now / 1000 - L.tmT < .4 ? L.tm : null) : ABRAW[g];
+  if (!L.on || !isTracked(g) || val === null || val === undefined) { C.t = Math.max(0, C.t - dt); C.soma = 0; C.n = 0; C.semMao = true; return; }   // sem mão: espera
+  C.semMao = false; C.t += dt;
+  if (C.t < 1) return;                    // 1 s para posicionar
+  C.soma += val; C.n++;
+  if (C.t < 2.2) return;                  // 1,2 s medindo
+  const m = C.soma / C.n; V[key] = m;
+  if (key === 'zNear' || key === 'zFar') { (key === 'zNear' ? cam.zNearM : cam.zFar)[zk(g)] = m; V.zKey = zk(g); }
+  C.passo++; C.t = 0; C.soma = 0; C.n = 0;
+  if (C.passo >= P.length) {
+    if (V.yHi < V.yLo) [V.yHi, V.yLo] = [V.yLo, V.yHi];
+    if (V.abHi < V.abLo) [V.abHi, V.abLo] = [V.abLo, V.abHi];
+    try { localStorage.setItem('dedalus_cal_mao' + g, JSON.stringify(V)); } catch (e) {}
+    const ok = `Mão ${MAO_NOME[g]} calibrada ✓`; CALD.run = null; cam.msg = ok; setTimeout(() => { if (cam.msg === ok) cam.msg = ''; }, 2500);
+  }
+}
+setInterval(caldTick, 33);
+[1, 2].forEach(g => { const V = CALM[g]; if (V.zKey && V.zNear && V.zFar) { cam.zNearM[V.zKey] = V.zNear; cam.zFar[V.zKey] = V.zFar; } });   // volume calibrado volta ao carregar
+/* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
+   Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
+const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
+const PZ_EFEITO = { 1: ['8ª + eco', 'eco', 'glide', 'dobro + modo'], 2: ['vibrato', 'gate + delay', 'gate', 'gate ×2'] };   // esquerda: funções virão com o lead   // nomes na tela (as funções musicais virão com o som novo)
+const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
+[1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
+function pzTick() {
+  [1, 2].forEach(g => {
+    const P = PZ[g], p = cam.on && cam.handPts ? cam.handPts[g] : null, h = p && p.h, antes = P.dedo;
+    if (!h || !LIMBS[g].on) { P.d = [9, 9, 9, 9]; P.dedo = -1; }
+    else {
+      const tam = handSize(h) || 1e-3; P.d = PZ_DEDOS.map(j => imgD(h[4], h[j]) / tam);
+      if (PZ.cal && PZ.cal.g === g) { pzCalTick(); P.dedo = -1; }
+      else if (P.dedo >= 0) { if (P.d[P.dedo] > P.lim[P.dedo] * PZ_SOLTA) P.dedo = -1; }   // segura até abrir de verdade
+      else { let best = -1, bd = 1; P.d.forEach((d, k) => { const q = d / P.lim[k]; if (q < bd) { bd = q; best = k; } }); P.dedo = best; }   // o dedo mais "dentro" do limite vence
+    }
+    if (P.dedo !== antes) pzMudou(g, P.dedo, antes);
+  });
+}
+setInterval(pzTick, 33);
+function pzMudou(g, agora, antes) { CTRL.onPinca(g, agora, antes); }   // o motor de som novo pluga aqui
+function pzCalStart(g) { if (!cam.on) { cam.msg = 'Ligue a câmera primeiro'; return; } CALD.run = null; PZ.cal = { g, passo: 0, t: 0, soma: [0, 0, 0, 0], n: 0, aberta: null, fechada: [], last: performance.now() }; }
+function pzCalTick() {   // passo 0: mão aberta · 1–4: pinça de cada dedo (1 s para posicionar + 1,2 s medindo)
+  const C = PZ.cal, P = PZ[C.g], now = performance.now(), dt = Math.min(.2, (now - C.last) / 1000); C.last = now; C.t += dt;
+  if (C.t < 1) return;
+  C.n++; P.d.forEach((d, k) => { C.soma[k] += d; });
+  if (C.t < 2.2) return;
+  const media = C.soma.map(v => v / C.n);
+  if (C.passo === 0) C.aberta = media; else C.fechada[C.passo - 1] = media[C.passo - 1];
+  C.passo++; C.t = 0; C.n = 0; C.soma = [0, 0, 0, 0];
+  if (C.passo > 4) {
+    P.lim = C.fechada.map((f, k) => clamp(f + .4 * Math.max(0, C.aberta[k] - f), .1, .9));
+    try { localStorage.setItem('dedalus_pz' + C.g, JSON.stringify({ lim: P.lim })); } catch (e) {}
+    const ok = `Pinças da mão ${MAO_NOME[C.g]} calibradas ✓`; PZ.cal = null; cam.msg = ok; setTimeout(() => { if (cam.msg === ok) cam.msg = ''; }, 2500);
+  }
+}
+
+/* ---------- abertura da mão (0 fechada … 1 aberta, no alcance calibrado; parada enquanto faz pinça) ---------- */
+const abertura = h => { const tam = Math.hypot(h[0].x - h[9].x, h[0].y - h[9].y) || 1e-3; return clamp((Math.hypot(h[12].x - h[0].x, h[12].y - h[0].y) / tam - .9) / 1.1, 0, 1); };
+setInterval(() => {
+  [1, 2].forEach(i => {
+    const p = cam.on && cam.handPts ? cam.handPts[i] : null, a0 = p && p.h ? abertura(p.h) : null; ABRAW[i] = a0;
+    const a = PZ[i].dedo >= 0 && HUD.ab[i] !== null ? HUD.ab[i] : (a0 === null ? null : calAb(i, a0));
+    HUD.ab[i] = a === null ? null : (HUD.ab[i] === null ? a : lerp(HUD.ab[i], a, .5));
+  });
+}, 33);
+
+/* ================= CTRL: tudo o que o motor de som vai ler =================
+   CTRL.maos[1] (direita) e CTRL.maos[2] (esquerda):
+     ativa  — mão na tela (false = silêncio)
+     altura — 0 (ponto mais baixo calibrado) … 1 (mais alto)
+     fora   — 0 (dentro, perto do corpo) … 1 (fora: canto direito p/ a direita, esquerdo p/ a esquerda) — espelhado
+     perto  — 0 (mais longe calibrado) … 1 (mais perto)
+     aberta — 0 (fechada) … 1 (aberta)
+     pinca  — -1 nenhuma · 0 indicador · 1 médio · 2 anelar · 3 mínimo (vale enquanto segura)
+     vel    — velocidade do movimento (0 … 1)
+   CTRL.onPinca(mao, agora, antes) — chamado quando uma pinça começa/termina (o motor substitui esta função). */
+const CTRL = { maos: { 1: {}, 2: {} }, onPinca: () => {} };
+window.CTRL = CTRL;
+const zVol = z => (clamp(z, -1, 1) + 1) / 2;
+function atualizaCtrl() {
+  [1, 2].forEach(g => {
+    const L = LIMBS[g], m = CTRL.maos[g];
+    m.ativa = cam.on && L.on && isTracked(g);
+    m.altura = calY(g, L.y); m.fora = calX(g, L.x); m.perto = zVol(L.z);
+    m.aberta = HUD.ab[g] === null ? 0 : HUD.ab[g]; m.pinca = PZ[g].dedo; m.vel = L.speed;
+  });
+}
+
+/* ================= TEORIA ================= */
+const SCALES = {
+  dorian: [0,2,3,5,7,9,10], ionian: [0,2,4,5,7,9,11], aeolian: [0,2,3,5,7,8,10], lydian: [0,2,4,6,7,9,11],
+  mixolydian: [0,2,4,5,7,9,10], phrygian: [0,1,3,5,7,8,10], pentMinor: [0,3,5,7,10], harmonicMinor: [0,2,3,5,7,8,11]
+};
+const NOTES = ['Dó','Dó#','Ré','Ré#','Mi','Fá','Fá#','Sol','Sol#','Lá','Lá#','Si'];
+const MUS = { root: 2, scale: 'dorian', bpm: 90, pat: 'up', rate: 2, oct: 2, gate: .8, sev: 1, bxOit: 0 };
+const sc = () => SCALES[MUS.scale];
+const mtof = m => 440 * 2 ** ((m - 69) / 12);
+const chordOffs = () => (sc().length === 7 ? [0, 2, 4, 6] : [0, 1, 2, 3]);
+const degMidi = (d, base) => { const s = sc(), n = s.length; return base + MUS.root + s[((d % n) + n) % n] + 12 * Math.floor(d / n); };
+const ladderDeg = (deg, i) => deg + chordOffs()[i % 4] + sc().length * Math.floor(i / 4);
+function chordName(d) {
+  const v = sc(), n = v.length, root = NOTES[(MUS.root + v[d % n]) % 12];
+  if (n !== 7) return root;
+  const third = (v[(d + 2) % 7] - v[d] + 12) % 12, fifth = (v[(d + 4) % 7] - v[d] + 12) % 12;
+  return root + (third === 3 ? (fifth === 6 ? '°' : 'm') : (fifth === 8 ? '+' : ''));
+}
+
+/* ================= MOTOR DE SOM — BAIXO PROPHET (mão direita) =================
+   Voz no estilo Prophet-5: osc A (serra ↔ pulso estreito, pela mão "para fora") + osc B (levemente desafinado) + sub-oscilador,
+   filtro passa-baixa de 4 polos (2 biquads em série) com ressonância, envelope de FILTRO e de AMPLITUDE (ADSR).
+   Mão direita: altura = acorde · para a direita = corte do filtro · perto = volume · abrir/fechar = forma de onda do osc A (ao vivo,
+   inclusive nas notas que estão soando) · pinças = cor do acorde (7ª, sus4, 9ª, maior↔menor). Mão fora da tela = silêncio. */
+const TIMBRES = [
+  { n: 'Serra clássica',  a: 'saw',   b: 'saw',    bDet: 7,  bOct: 0,  bMix: .7, sub: .45, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3], cut: 3200, sync: 0 },
+  { n: 'Pulso redondo',   a: 'pulse', b: 'pulse',  bDet: -5, bOct: -1, bMix: .5, sub: .3,  res: .15, env: 1.6, amp: [.01, .5, .8, .35],  flt: [.01, .5, .45, .4], cut: 1800, sync: 0 },
+  { n: 'Sync (poly-mod)', a: 'saw',   b: 'square', bDet: 0,  bOct: -1, bMix: .45, sub: .25, res: .45, env: 3.2, amp: [.003, .25, .6, .2], flt: [.003, .22, .2, .25], cut: 2400, sync: 1 }
+];
+const BX = { timbre: 0, vol: .8, cut: 3200, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3] };
+const cr = {};
+let crushPronto = null;
+let ldLim = null;
+let ac = null, bxLfo = null, bxLfoG = null, bxDly = null, bxDlySend = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
+const pulseCache = {};
+function pulseWave(w) {   // onda de pulso com largura w (0,5 = quadrada) por série de Fourier
+  const k = Math.round(w * 100); if (pulseCache[k]) return pulseCache[k];
+  const N = 48, re = new Float32Array(N), im = new Float32Array(N);
+  for (let n = 1; n < N; n++) { re[n] = 0; im[n] = 2 / (n * Math.PI) * Math.sin(n * Math.PI * w); }
+  for (let n = 1; n < N; n++) { const a = im[n]; im[n] = 0; re[n] = a; }   // fase cosseno (centro do pulso)
+  return pulseCache[k] = ac.createPeriodicWave(re, im);
+}
+function oscDe(tipo, w = .5) { const o = ac.createOscillator(); if (tipo === 'pulse') o.setPeriodicWave(pulseWave(w)); else o.type = tipo === 'saw' ? 'sawtooth' : tipo; return o; }
+function initSom() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  const lim = ac.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 4; lim.ratio.value = 12; lim.attack.value = .003; lim.release.value = .2;
+  lim.connect(ac.destination); ldLim = lim;
+  bxOut = ac.createGain(); bxOut.gain.value = 0;
+  // BITCRUSHER (pinça do mínimo): saída seca + caminho esmagado (8 bits, taxa de amostragem ÷ 10), alternados por ganho
+  cr.dry = ac.createGain(); cr.wet = ac.createGain(); cr.dry.gain.value = 1; cr.wet.gain.value = 0;
+  bxOut.connect(cr.dry); cr.dry.connect(lim); cr.wet.connect(lim);
+  const shaperFallback = () => { const sh = ac.createWaveShaper(), N = 4096, cur = new Float32Array(N), q = 2 ** 7; for (let k = 0; k < N; k++) { const x = k / (N - 1) * 2 - 1; cur[k] = Math.round(x * q) / q; } sh.curve = cur; bxOut.connect(sh); sh.connect(cr.wet); };
+  const SRC = `registerProcessor('crush', class extends AudioWorkletProcessor { constructor() { super(); this.h = [0, 0]; this.n = 0; }
+    process(ins, outs) { const i = ins[0], o = outs[0]; if (!i || !i.length) return true; const q = 2 ** 7, down = 10;
+      const n0 = this.n; for (let c = 0; c < o.length; c++) { const a = i[c] || i[0], b = o[c]; let n = n0; for (let k = 0; k < b.length; k++) { if (n % down === 0) this.h[c] = Math.round(a[k] * q) / q; b[k] = this.h[c]; n++; } this.n = n; }
+      return true; } });`;
+  try { crushPronto = ac.audioWorklet.addModule('data:text/javascript;charset=utf-8,' + encodeURIComponent(SRC)); crushPronto.then(() => { const w = new AudioWorkletNode(ac, 'crush', { outputChannelCount: [2] }); bxOut.connect(w); w.connect(cr.wet); }).catch(shaperFallback); } catch (e) { shaperFallback(); }
+  // eco rítmico do baixo (pinça do indicador): delay em colcheia pontuada, com repetições que escurecem
+  bxDlySend = ac.createGain(); bxDlySend.gain.value = 0; bxDly = ac.createDelay(2);
+  const fb = ac.createGain(), lp = ac.createBiquadFilter(), hp = ac.createBiquadFilter(), ret = ac.createGain();
+  fb.gain.value = .5; lp.type = 'lowpass'; lp.frequency.value = 2200; hp.type = 'highpass'; hp.frequency.value = 90; ret.gain.value = .85;
+  bxOut.connect(bxDlySend); bxDlySend.connect(bxDly); bxDly.connect(lp); lp.connect(hp); hp.connect(fb); fb.connect(bxDly); hp.connect(ret); ret.connect(lim);
+  const cs = v => { const c = ac.createConstantSource(); c.offset.value = v; c.start(); return c; };
+  bxCutCS = cs(0);        // corte ao vivo pela mão para a direita (em cents, somado ao detune do filtro de cada voz)
+  // wah rítmico (pinça do mínimo): LFO triangular em colcheias, somado ao corte do filtro
+  bxLfo = ac.createOscillator(); bxLfo.type = 'triangle'; bxLfoG = ac.createGain(); bxLfoG.gain.value = 0; bxLfo.connect(bxLfoG); bxLfoG.connect(bxCutCS.offset); bxLfo.start();
+  bxForaCS = cs(0); bxForaInv = cs(1);   // mistura serra/pulso do osc A pela mão "para fora"
+}
+function aplicaTimbre(i, mexeControles = true) {
+  const T = TIMBRES[i]; BX.timbre = i;
+  if (mexeControles) { BX.res = T.res; BX.env = T.env; BX.cut = T.cut; BX.amp = T.amp.slice(); BX.flt = T.flt.slice(); syncPainelBaixo(); }
+}
+// uma nota do baixo: osciladores → filtro 4 polos (envelope) → amplificador (envelope)
+function notaBaixo(t, midi, dur, vel, deMidi = null) {
+  const T = TIMBRES[BX.timbre], f = mtof(midi), [aA, aD, aS, aR] = BX.amp, [fA, fD, fS, fR] = BX.flt;
+  const mix = ac.createGain(), f1 = ac.createBiquadFilter(), f2 = ac.createBiquadFilter(), g = ac.createGain();
+  // osc A: serra e pulso estreito em paralelo; a mão "para fora" faz a mistura (ao vivo)
+  const aSaw = oscDe(T.a === 'pulse' ? 'pulse' : 'saw', .5), aPul = oscDe('pulse', .12), gSaw = ac.createGain(), gPul = ac.createGain();
+  gSaw.gain.value = 0; gPul.gain.value = 0; bxForaInv.connect(gSaw.gain); bxForaCS.connect(gPul.gain);
+  const oB = oscDe(T.b, .35), gB = ac.createGain(); gB.gain.value = T.bMix;
+  const oS = ac.createOscillator(), gS = ac.createGain(); oS.type = 'square'; gS.gain.value = T.sub;
+  [aSaw, aPul].forEach(o => { o.frequency.value = f; });
+  oB.frequency.value = f * 2 ** T.bOct; oB.detune.value = T.bDet; oS.frequency.value = f / 2;
+  if (deMidi !== null && deMidi !== midi) {   // glide: todos os osciladores saem da nota anterior e deslizam até esta
+    const k = mtof(deMidi) / f, tg = Math.min(.12, dur * .45);
+    [[aSaw, f], [aPul, f], [oB, f * 2 ** T.bOct], [oS, f / 2]].forEach(([o, fo]) => { o.frequency.setValueAtTime(fo * k, t); o.frequency.exponentialRampToValueAtTime(fo, t + tg); });
+  }
+  if (T.sync) {   // "poly-mod": o envelope do filtro também varre a altura do osc A para cima (som de sync)
+    [aSaw, aPul].forEach(o => { o.detune.setValueAtTime(2400, t); o.detune.setTargetAtTime(0, t + fA, Math.max(.02, fD / 3)); });
+  }
+  aSaw.connect(gSaw); aPul.connect(gPul); gSaw.connect(mix); gPul.connect(mix); oB.connect(gB); gB.connect(mix); oS.connect(gS); gS.connect(mix);
+  // filtro: base = Cutoff × 2^(env·oitavas) no pico; a abertura da mão desloca tudo ao vivo (detune)
+  const q = .5 + BX.res * 9;
+  [f1, f2].forEach(F => { F.type = 'lowpass'; F.Q.value = F === f2 ? q : .6; bxCutCS.connect(F.detune); });
+  const base = clamp(BX.cut, 40, 18000), pico = clamp(base * 2 ** BX.env, 40, 18000), sus = base * 2 ** (BX.env * fS), fim = t + dur;
+  [f1, f2].forEach(F => {
+    F.frequency.setValueAtTime(base, t);
+    F.frequency.exponentialRampToValueAtTime(pico, t + Math.max(.002, fA));
+    F.frequency.setTargetAtTime(sus, t + fA, Math.max(.01, fD / 3));
+    F.frequency.setValueAtTime(sus, fim); F.frequency.setTargetAtTime(base, fim, Math.max(.01, fR / 3));
+  });
+  // amplificador
+  const pk = .32 * vel;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(pk, t + Math.max(.002, aA));
+  g.gain.setTargetAtTime(pk * aS, t + aA, Math.max(.01, aD / 3));
+  g.gain.setValueAtTime(pk * aS, fim); g.gain.setTargetAtTime(0, fim, Math.max(.01, aR / 3));
+  mix.connect(f1); f1.connect(f2); f2.connect(g); g.connect(bxOut);
+  const fimTotal = fim + aR * 2.5 + .05;
+  [aSaw, aPul, oB, oS].forEach(o => { o.start(t); o.stop(fimTotal); });
+  aSaw.onended = () => { try { bxForaInv.disconnect(gSaw.gain); bxForaCS.disconnect(gPul.gain); bxCutCS.disconnect(f1.detune); bxCutCS.disconnect(f2.detune); } catch (e) {} };
+}
+
+/* ---------- harmonia: acorde pela altura + cor pela pinça da mão direita ---------- */
+let curDeg = 0, chordSel = 0;
+function acordeDaMao() {
+  const n = sc().length, yp = Math.min(.999, CTRL.maos[1].altura) * n;
+  if (chordSel >= n || Math.abs(yp - (chordSel + .5)) > .65) chordSel = Math.min(n - 1, Math.floor(yp));   // histerese: não treme na fronteira
+  return chordSel;
+}
+/* PINÇAS DA MÃO DIREITA (valem enquanto segura):
+   indicador = OITAVA ACIMA + ECO · médio = ECO · anelar = GLIDE (portamento, notas ligadas) · mínimo = DOBRO da velocidade + outro MODO de arpejo (sobe e desce ↔ subindo)
+   ECO = delay em colcheia pontuada no BPM (as repetições continuam soando depois de soltar) */
+const PZ_FX = { 0: { oit: 1, eco: 1 }, 1: { eco: 1 }, 2: { glide: 1 }, 3: { dobro: 1 } };
+const pzFx = P => PZ_FX[P] || {};
+const baseBaixo = P => 33 + 12 * (MUS.bxOit + (pzFx(P).oit ? 1 : 0));
+let arpIdx = 0;
+function arpNext() {
+  const per = MUS.sev ? [0, 1, 2, 3] : [0, 1, 2], L = [];
+  for (let o = 0; o < MUS.oct; o++) per.forEach(t => L.push(o * 4 + t));
+  L.push(MUS.oct * 4);
+  const pat = pzFx(CTRL.maos[1].pinca).dobro ? (MUS.pat === 'updown' ? 'up' : 'updown') : MUS.pat;   // pinça 4: troca o modo do arpejo
+  if (pat === 'random') return L[Math.floor(Math.random() * L.length)];
+  const seq = pat === 'down' ? L.slice().reverse() : pat === 'updown' ? L.concat(L.slice(1, -1).reverse()) : L;
+  return seq[arpIdx++ % seq.length];
+}
+/* ---------- relógio com antecipação ---------- */
+let nextT = 0, passo = 0;
+const eventos = [];   // notas para a imagem
+let somErro = '';
+function agenda() {
+  if (!ac || !somOn) return;
+  const s16 = 60 / MUS.bpm / 4;
+  if (nextT < ac.currentTime) { nextT = ac.currentTime + .05; gradeV++; gradeT = nextT; }   // grade do tempo recomeçou (som religado, aba voltou…)
+  while (nextT < ac.currentTime + .12) { try { tocaPasso(passo, nextT, s16); } catch (err) { somErro = err.message; console.error(err); } passo++; nextT += s16; }
+}
+setInterval(agenda, 25);
+let ultMidi = null;
+let tempoT = 0, gradeV = 0, gradeT = 0;   // gradeV/gradeT: versão e início da grade do relógio (o gate se realinha a ela)
+   // hora (relógio do áudio) do último tempo agendado
+function tocaPasso(st, t, s16) {
+  const m1 = CTRL.maos[1], pos = st % 16, P = m1.pinca;
+  if (pos % 4 === 0) tempoT = t;
+  if (!m1.ativa) { arpIdx = 0; ultMidi = null; return; }
+  { const novo = acordeDaMao(); if (novo !== curDeg) { arpIdx = 0; curDeg = novo; } }
+  const rate = pzFx(P).dobro ? Math.max(1, MUS.rate / 2) : MUS.rate;   // pinça 4: dobro da velocidade
+  if (pos % rate) return;
+  const m = degMidi(ladderDeg(curDeg, arpNext()), baseBaixo(P));
+  const glide = !!pzFx(P).glide;
+  notaBaixo(t, m, s16 * rate * (glide ? Math.max(1.05, MUS.gate) : MUS.gate), pos % 4 === 0 ? 1 : .85, glide && ultMidi !== null ? ultMidi : null);
+  ultMidi = m; eventos.push({ t, g: 1, m });
+}
+/* ---------- controles ao vivo (a cada quadro): volume pela distância, corte pela abertura, onda pela mão "para fora" ---------- */
+function somAoVivo() {
+  if (!ac) return;
+  const m1 = CTRL.maos[1], c = ac.currentTime;
+  bxOut.gain.setTargetAtTime(somOn && m1.ativa ? BX.vol * (.08 + .92 * m1.perto) : 0, c, m1.ativa ? .05 : .02);
+  bxCutCS.offset.setTargetAtTime(-4800 * (1 - m1.fora), c, .04);   // mão para a DIREITA abre o filtro (dentro = 4 oitavas abaixo do Cutoff)
+  bxForaCS.offset.setTargetAtTime(m1.aberta, c, .04); bxForaInv.offset.setTargetAtTime(1 - m1.aberta, c, .04);   // abrir a mão: serra → pulso estreito
+  bxDlySend.gain.setTargetAtTime(m1.ativa && pzFx(m1.pinca).eco ? .6 : 0, c, .06);
+  const crush = m1.ativa && !!pzFx(m1.pinca).crush;
+  cr.wet.gain.setTargetAtTime(crush ? 1 : 0, c, .015); cr.dry.gain.setTargetAtTime(crush ? 0 : 1, c, .015);
+  const wah = false;   // (wah rítmico desligado: a pinça 4 virou oitava + eco)
+  bxLfo.frequency.setTargetAtTime(MUS.bpm / 60 * 2, c, .05); bxLfoG.gain.setTargetAtTime(wah ? 1500 : 0, c, .06);
+  bxDly.delayTime.setTargetAtTime(60 / MUS.bpm * .75, c, .05);   // colcheia pontuada
+}
+
+/* ================= MOTOR DE SOM — LEAD THEREMIN (mão esquerda) =================
+   Voz única e contínua (monofônica): seno + triângulo (mistura pela abertura da mão), vibrato suave, filtro passa-baixa e reverb.
+   Notas soltas: a altura da mão escolhe a nota (2 oitavas da MESMA escala do baixo); cada troca de nota reataca o envelope
+   com um glide curto; mão parada sustenta; mão fora da tela solta a nota (release).
+   Espelhado da mão direita: para a ESQUERDA = abre o filtro · perto = volume · abrir = seno limpo com vibrato · fechar = triângulo sem vibrato. */
+const LD = { oit: 0, vol: .7, cut: 5000, glide: 0, vib: 12, vibR: 5.2, rev: .4, adsr: [.06, .4, .8, .6] };
+const LEAD_HIST = .2;
+let ld = null, ldDeg = null, ldSoando = false;
+function initLead() {
+  const o1 = ac.createOscillator(), o2 = ac.createOscillator(), g1 = ac.createGain(), g2 = ac.createGain(), lp = ac.createBiquadFilter(), env = ac.createGain(), vol = ac.createGain();
+  const lfo = ac.createOscillator(), lfoG = ac.createGain(), cut = ac.createConstantSource(), mixT = ac.createConstantSource(), mixS = ac.createConstantSource();
+  o1.type = 'sine'; o2.type = 'triangle'; o2.detune.value = 0;   // afinado exatamente na nota da escala
+  g1.gain.value = 0; g2.gain.value = 0; mixS.offset.value = 1; mixT.offset.value = 0; mixS.connect(g1.gain); mixT.connect(g2.gain);   // abertura: seno ↔ triângulo
+  lfo.frequency.value = LD.vibR; lfoG.gain.value = LD.vib; lfo.connect(lfoG); lfoG.connect(o1.detune); lfoG.connect(o2.detune);
+  lp.type = 'lowpass'; lp.Q.value = .7; lp.frequency.value = LD.cut; cut.offset.value = 0; cut.connect(lp.detune);
+  env.gain.value = 0; vol.gain.value = 0;
+  // GATE rítmico (pinça 3): ganho que um pulso quadrado em semicolcheias abre e fecha (bordas suavizadas)
+  // gate = 1 − d/2 + (d/2)·pulso — os dois pulsos (semicolcheia e fusa) ficam SEMPRE rodando, alinhados ao tempo;
+  // ligar/desligar o gate só muda a profundidade d com rampa → nunca estala
+  const gate = ac.createGain(); gate.gain.value = 0; const gConst = ac.createConstantSource(); gConst.offset.value = 1; gConst.start(); gConst.connect(gate.gain);
+  const gSmooth = ac.createBiquadFilter(); gSmooth.type = 'lowpass'; gSmooth.frequency.value = 260; gSmooth.Q.value = .5; gSmooth.connect(gate.gain);
+  const g4 = ac.createOscillator(), g8 = ac.createOscillator(), d4 = ac.createGain(), d8 = ac.createGain();
+  g4.type = g8.type = 'square'; d4.gain.value = 0; d8.gain.value = 0; g4.connect(d4); g8.connect(d8); d4.connect(gSmooth); d8.connect(gSmooth);
+  o1.connect(g1); o2.connect(g2); g1.connect(lp); g2.connect(lp); lp.connect(env); env.connect(gate); gate.connect(vol);
+  // saída do lead: seco / BITCRUSHER (pinça 4)
+  const out = ac.createGain(), cDry = ac.createGain(), cWet = ac.createGain(); cDry.gain.value = 1; cWet.gain.value = 0;
+  vol.connect(cDry); cDry.connect(out); cWet.connect(out);
+  if (crushPronto) crushPronto.then(() => { const w = new AudioWorkletNode(ac, 'crush', { outputChannelCount: [2] }); vol.connect(w); w.connect(cWet); }).catch(() => {});
+  // DELAY LONGO (pinça 2): mínima (2 tempos) com repetições que escurecem; as repetições também vão ao reverb
+  const dSend = ac.createGain(), dl = ac.createDelay(4), dFb = ac.createGain(), dLp = ac.createBiquadFilter(), dRet = ac.createGain();
+  dSend.gain.value = 0; dFb.gain.value = .55; dLp.type = 'lowpass'; dLp.frequency.value = 3500; dRet.gain.value = .8;
+  out.connect(dSend); dSend.connect(dl); dl.connect(dLp); dLp.connect(dFb); dFb.connect(dl); dLp.connect(dRet);
+  // reverb etéreo: resposta de impulso gerada (cauda ~3,5 s que escurece)
+  const len = Math.floor(ac.sampleRate * 3.5), ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let y = 0; for (let i = 0; i < len; i++) { const tt = i / ac.sampleRate, k = .45 * Math.exp(-tt * .9) + .04; y += ((Math.random() * 2 - 1) - y) * k; d[i] = y * Math.exp(-tt * 1.4) * Math.min(1, tt / .03); } }
+  const cv = ac.createConvolver(), rs = ac.createGain(), pan = ac.createStereoPanner(); cv.buffer = ir; rs.gain.value = LD.rev; pan.pan.value = -.15;
+  out.connect(pan); pan.connect(ldLim); out.connect(rs); dRet.connect(pan); dRet.connect(rs);
+  // reverb plate de Dattorro (AudioWorklet); se não carregar, volta ao de convolução
+  ac.audioWorklet.addModule('data:text/javascript;charset=utf-8,' + encodeURIComponent(PLATE_SRC)).then(() => { const pl = new AudioWorkletNode(ac, 'plate', { outputChannelCount: [2] }); rs.connect(pl); pl.connect(ldLim); }).catch(() => { rs.connect(cv); cv.connect(ldLim); });
+  [o1, o2, lfo, cut, mixT, mixS].forEach(n => n.start());
+  ld = { o1, o2, lp, env, vol, lfo, lfoG, cut, mixT, mixS, rs, gConst, gSmooth, g4, g8, d4, d8, gBpm: 0, cDry, cWet, dSend, dl };
+  alinhaGate();
+}
+function alinhaGate() {   // (re)inicia os pulsos do gate cravados no próximo tempo; usado no início e quando o BPM muda
+  const c = ac.currentTime, b = 60 / MUS.bpm; let T = tempoT || c; while (T < c + .03) T += b;
+  ['g4', 'g8'].forEach((k, i) => { const old = ld[k]; const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = MUS.bpm / 60 * (i ? 8 : 4); o.connect(i ? ld.d8 : ld.d4); o.start(T); try { old.stop(T); } catch (e) {} ld[k] = o; });
+  ld.gBpm = MUS.bpm; ld.gGrade = gradeV;
+}
+const leadLista = () => { const n = sc().length, L = []; for (let d = 0; d <= 2 * n; d++) L.push(d); return L; };   // 2 oitavas da escala
+function leadAoVivo() {
+  if (!ac || !ld) return;
+  const m = CTRL.maos[2], c = ac.currentTime, [A, D, Sus, R] = LD.adsr, on = somOn && m.ativa;
+  ld.vol.gain.setTargetAtTime(on ? LD.vol * (.06 + .94 * m.perto) : 0, c, .05);
+  ld.cut.offset.setTargetAtTime(-4800 * (1 - m.fora), c, .04);          // para a ESQUERDA abre o filtro
+  ld.mixS.offset.setTargetAtTime(m.aberta, c, .05); ld.mixT.offset.setTargetAtTime(1 - m.aberta, c, .05);   // ABERTA = seno limpo (com vibrato) · fechada = triângulo
+  ld.lp.frequency.setTargetAtTime(LD.cut, c, .05);
+  const P = on ? m.pinca : -1;
+  // PINÇAS DA MÃO ESQUERDA: 1 vibrato forte · 2 gate + delay longo · 3 gate (semicolcheias) · 4 gate no dobro da figura (fusas)
+  const vibForte = P === 0, delay = P === 1, gateDiv = P === 3 ? 8 : (P === 2 || P === 1) ? 4 : 0;   // subdivisões por tempo (0 = sem gate)
+  // vibrato: a mão ABERTA traz o vibrato do painel; a pinça 1 força um vibrato forte
+  ld.lfo.frequency.setTargetAtTime(vibForte ? Math.max(6, LD.vibR) : LD.vibR, c, .1);
+  ld.lfoG.gain.setTargetAtTime(vibForte ? Math.max(38, LD.vib) : LD.vib * m.aberta, c, .12);
+  ld.rs.gain.setTargetAtTime(LD.rev, c, .1);
+  ld.dl.delayTime.setTargetAtTime(60 / MUS.bpm * 2, c, .05); ld.dSend.gain.setTargetAtTime(delay ? .7 : 0, c, .06);
+  // gate rítmico: só a PROFUNDIDADE muda (rampa de ~40 ms) — entra e sai sem estalo
+  if (ld.gBpm !== MUS.bpm || (ld.gGrade !== gradeV && tempoT >= gradeT)) alinhaGate();   // mesmo BPM e mesma grade do arpejo
+  const p4 = gateDiv === 4 ? 1 : 0, p8 = gateDiv === 8 ? 1 : 0, tg = .04;
+  ld.d4.gain.setTargetAtTime(p4 * .5, c, tg); ld.d8.gain.setTargetAtTime(p8 * .5, c, tg);
+  ld.gConst.offset.setTargetAtTime(1 - (p4 + p8) * .5, c, tg);
+  ld.cWet.gain.setTargetAtTime(0, c, .015); ld.cDry.gain.setTargetAtTime(1, c, .015);   // (bitcrusher do lead desligado)
+  if (!on) { if (ldSoando) { ld.env.gain.cancelScheduledValues(c); ld.env.gain.setValueAtTime(ld.env.gain.value, c); ld.env.gain.setTargetAtTime(0, c, Math.max(.01, R / 3)); ldSoando = false; } ldDeg = null; return; }
+  // nota pela altura (calibrada), com histerese para não tremer na fronteira
+  const lista = leadLista(), pos = Math.min(.9999, m.altura) * lista.length;
+  let ix = ldDeg === null ? -1 : lista.indexOf(ldDeg);
+  if (ix < 0 || Math.abs(pos - (ix + .5)) > .5 + LEAD_HIST) ix = Math.floor(pos);
+  const deg = lista[ix];
+  if (deg !== ldDeg || !ldSoando) {
+    const f = mtof(degMidi(deg, 60 + 12 * LD.oit)), gl = ldSoando && LD.glide > 0 ? LD.glide : 0;
+    [ld.o1, ld.o2].forEach(o => { o.frequency.cancelScheduledValues(c); if (gl > 0) { o.frequency.setValueAtTime(o.frequency.value, c); o.frequency.setTargetAtTime(f, c, gl / 3); } else o.frequency.setValueAtTime(f, c); });   // glide 0 = salto direto de nota da escala para nota da escala
+    if (!ldSoando) [ld.o1, ld.o2].forEach(o => o.frequency.setValueAtTime(f, c));
+    const g = ld.env.gain; g.cancelScheduledValues(c); g.setValueAtTime(g.value, c);
+    g.linearRampToValueAtTime(.32, c + Math.max(.005, A)); g.setTargetAtTime(.32 * Sus, c + Math.max(.005, A), Math.max(.01, D / 3));   // reataque a cada nota nova
+    ldDeg = deg; ldSoando = true; eventos.push({ t: c, g: 2, m: degMidi(deg, 60 + 12 * LD.oit) });
+  }
+}
+
+
+/* ---------- utilidades do visual ---------- */
+const hsl = (h, s, l) => { h = ((h % 360) + 360) % 360 / 360; const f = n => { const k = (n + h * 12) % 12, a = s * Math.min(l, 1 - l); return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); }; return [f(0), f(8), f(4)]; };
+const corAcorde = () => (curDeg / Math.max(1, sc().length)) * 300 + 200;   // matiz do acorde do baixo
+const corNota = () => ldDeg === null ? 190 : ((ldDeg % sc().length) / sc().length) * 300 + 20;   // matiz da nota do lead
+const rmsDe = (an, buf) => { if (!an) return 0; an.getFloatTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i += 4) s += buf[i] * buf[i]; return Math.sqrt(s / (buf.length / 4)); };
+const maoUV = g => ({ x: (LIMBS[g].vx + 1) / 2, y: (LIMBS[g].vy + 1) / 2 });
+
+/* ================= VISUAL — TINTA VIVA: simulação de fluido (WebGL2) =================
+   Cada mão injeta tinta e movimento. Mão direita: cada nota do baixo é um respingo na cor do acorde; para fora = fluido
+   mais solto (menos viscoso). Mão esquerda: fita contínua na cor da nota, que pulsa com o gate; para fora = mais redemoinho.
+   Eco do baixo = a tinta demora mais a sumir. Sem movimento, tudo se dissolve no preto. */
+const VIS = (() => {
+  const c = $('gl'), gl = c.getContext('webgl2', { alpha: false, antialias: false });
+  if (!gl || !gl.getExtension('EXT_color_buffer_float')) { cam.msg = 'WebGL2 indisponível: sem fluido'; return { frame() {}, nota() {}, audio() {} }; }
+  const VS = `#version 300 es
+in vec2 p; out vec2 uv; void main(){ uv = p * .5 + .5; gl_Position = vec4(p, 0., 1.); }`;
+  const H = `#version 300 es
+precision highp float; in vec2 uv; out vec4 o;
+`;
+  const prog = fs => { const p = gl.createProgram(); [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, H + fs]].forEach(([t, src]) => { const sh = gl.createShader(t); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); gl.attachShader(p, sh); }); gl.bindAttribLocation(p, 0, 'p'); gl.linkProgram(p); const u = {}; for (let i = 0; i < gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i++) { const a = gl.getActiveUniform(p, i); u[a.name] = gl.getUniformLocation(p, a.name); } return { p, u }; };
+  const N4 = `vec2 L=uv-vec2(tx.x,0.),R=uv+vec2(tx.x,0.),B=uv-vec2(0.,tx.y),T=uv+vec2(0.,tx.y);`;
+  const P = {
+    adv: prog(`uniform sampler2D uV,uS; uniform vec2 tx; uniform float dt,dis; void main(){ vec2 c=uv-dt*texture(uV,uv).xy*tx; o=texture(uS,c)/(1.+dis*dt); }`),
+    spl: prog(`uniform sampler2D uT; uniform vec2 pt; uniform vec3 col; uniform float r,asp; void main(){ vec2 d=uv-pt; d.x*=asp; o=vec4(texture(uT,uv).rgb+exp(-dot(d,d)/r)*col,1.); }`),
+    div: prog(`uniform sampler2D uV; uniform vec2 tx; void main(){ ${N4} o=vec4(.5*(texture(uV,R).x-texture(uV,L).x+texture(uV,T).y-texture(uV,B).y),0,0,1); }`),
+    crl: prog(`uniform sampler2D uV; uniform vec2 tx; void main(){ ${N4} o=vec4(.5*(texture(uV,R).y-texture(uV,L).y-texture(uV,T).x+texture(uV,B).x),0,0,1); }`),
+    vrt: prog(`uniform sampler2D uV,uC; uniform vec2 tx; uniform float cs,dt; void main(){ ${N4} float l=texture(uC,L).x,r=texture(uC,R).x,b=texture(uC,B).x,t=texture(uC,T).x,c=texture(uC,uv).x; vec2 f=.5*vec2(abs(t)-abs(b),abs(r)-abs(l)); f/=length(f)+1e-4; f*=cs*c; f.y*=-1.; o=vec4(texture(uV,uv).xy+f*dt,0,1); }`),
+    prs: prog(`uniform sampler2D uP,uD; uniform vec2 tx; void main(){ ${N4} o=vec4((texture(uP,L).x+texture(uP,R).x+texture(uP,B).x+texture(uP,T).x-texture(uD,uv).x)*.25,0,0,1); }`),
+    grd: prog(`uniform sampler2D uP,uV; uniform vec2 tx; void main(){ ${N4} vec2 v=texture(uV,uv).xy-.5*vec2(texture(uP,R).x-texture(uP,L).x,texture(uP,T).x-texture(uP,B).x); o=vec4(v,0,1); }`),
+    clr: prog(`uniform sampler2D uT; uniform float k; void main(){ o=k*texture(uT,uv); }`),
+    dsp: prog(`uniform sampler2D uD; uniform float br; void main(){ vec3 c=texture(uD,uv).rgb*br; c=c/(1.+c*.55); c=pow(c,vec3(.85)); float v=1.-.35*length(uv-.5); o=vec4(c*v,1); }`)
+  };
+  const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const fbo = (w, h) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]].forEach(([k, v]) => gl.texParameteri(gl.TEXTURE_2D, k, v)); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null); const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); return { t, f, w, h }; };
+  const dbl = (w, h) => { let a = fbo(w, h), b = fbo(w, h); return { get r() { return a; }, get w() { return b; }, swap() { [a, b] = [b, a]; } }; };
+  let SW = 0, SH = 0, vel, dye, prs, dv, cu;
+  function tam() {
+    const d = Math.min(devicePixelRatio || 1, 1.5); c.width = innerWidth * d; c.height = innerHeight * d;
+    const asp = innerWidth / innerHeight; SH = 160; SW = Math.round(SH * asp);
+    vel = dbl(SW, SH); prs = dbl(SW, SH); dv = fbo(SW, SH); cu = fbo(SW, SH); dye = dbl(Math.round(720 * asp), 720);
+  }
+  tam(); addEventListener('resize', tam);
+  const run = (pr, tgt, uni) => { gl.useProgram(pr.p); let unit = 0; for (const [k, v] of Object.entries(uni)) { const loc = pr.u[k]; if (loc == null) continue; if (v && v.t) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, v.t); gl.uniform1i(loc, unit++); } else if (Array.isArray(v)) gl['uniform' + v.length + 'f'](loc, ...v); else gl.uniform1f(loc, v); } if (tgt) { gl.bindFramebuffer(gl.FRAMEBUFFER, tgt.f); gl.viewport(0, 0, tgt.w, tgt.h); } else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, c.width, c.height); } gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); };
+  const splat = (x, y, dx, dy, col, r) => {
+    const asp = innerWidth / innerHeight;
+    run(P.spl, vel.w, { uT: vel.r, pt: [x, y], col: [dx, dy, 0], r: r, asp }); vel.swap();
+    run(P.spl, dye.w, { uT: dye.r, pt: [x, y], col, r: r, asp }); dye.swap();
+  };
+  const ant = { 1: null, 2: null }, buf = new Float32Array(1024); let an1 = null, an2 = null;
+  return {
+    audio() { an1 = ac.createAnalyser(); an1.fftSize = 1024; bxOut.connect(an1); an2 = ac.createAnalyser(); an2.fftSize = 1024; ld.vol.connect(an2); },
+    nota(g, e) {
+      if (g !== 1) return; const m = CTRL.maos[1]; if (!m.ativa) return; const p = maoUV(1), [r, gg, b] = hsl(corAcorde() + (Math.random() - .5) * 30, .85, .5), k = .8 * (.4 + .6 * m.perto), a = Math.random() * 6.283;
+      splat(p.x, p.y, Math.cos(a) * 260, Math.sin(a) * 260, [r * k, gg * k, b * k], .0018 + .003 * m.perto);   // respingo a cada nota do arpejo
+    },
+    frame(dt) {
+      dt = Math.min(dt, 1 / 30);
+      const m1 = CTRL.maos[1], m2 = CTRL.maos[2], lv = rmsDe(an2, buf);
+      [1, 2].forEach(g => {   // mãos: movimento vira velocidade; tinta contínua
+        const m = CTRL.maos[g], p = maoUV(g);
+        if (!m.ativa) { ant[g] = null; return; }
+        const a = ant[g]; ant[g] = p; if (!a) return;
+        const dx = (p.x - a.x) / dt, dy = (p.y - a.y) / dt, sp = Math.hypot(dx, dy);
+        if (g === 1) { if (sp > .02) { const [r, gg, b] = hsl(corAcorde(), .7, .45); splat(p.x, p.y, dx * SW * 2.5, dy * SH * 2.5, [r * .12, gg * .12, b * .12], .0012); } }
+        else { const [r, gg, b] = hsl(corNota(), .9, .55), k = somOn ? Math.min(1.2, lv * 9) : .15; splat(p.x, p.y, dx * SW * 2.5, dy * SH * 2.5, [r * k * .5, gg * k * .5, b * k * .5], .0009 + .0012 * m.perto); }
+      });
+      const tx = [1 / SW, 1 / SH], eco = m1.ativa && (m1.pinca === 0 || m1.pinca === 1);
+      run(P.crl, cu, { uV: vel.r, tx });
+      run(P.vrt, vel.w, { uV: vel.r, uC: cu, tx, cs: 8 + 40 * (m2.ativa ? m2.fora : .3), dt }); vel.swap();
+      run(P.div, dv, { uV: vel.r, tx });
+      run(P.clr, prs.w, { uT: prs.r, k: .8 }); prs.swap();
+      for (let i = 0; i < 20; i++) { run(P.prs, prs.w, { uP: prs.r, uD: dv, tx }); prs.swap(); }
+      run(P.grd, vel.w, { uP: prs.r, uV: vel.r, tx }); vel.swap();
+      run(P.adv, vel.w, { uV: vel.r, uS: vel.r, tx, dt, dis: m1.ativa ? .15 + 2.5 * (1 - m1.fora) : .8 }); vel.swap();   // para fora = fluido solto · dentro = viscoso
+      run(P.adv, dye.w, { uV: vel.r, uS: dye.r, tx, dt, dis: eco ? .12 : .55 }); dye.swap();                             // eco = tinta persiste
+      run(P.dsp, null, { uD: dye.r, br: 1 });
+    }
+  };
+})();
+/* ---------- REVERB PLATE (Dattorro) para o lead: AudioWorklet, no lugar do reverb de convolução ---------- */
+const PLATE_SRC = `registerProcessor('plate', class extends AudioWorkletProcessor {
+  constructor() { super(); const k = sampleRate / 29761, L = n => Math.max(2, Math.round(n * k)); const mk = n => ({ b: new Float32Array(n + 64), i: 0, n: n + 64, len: n });
+    this.ap = [mk(L(142)), mk(L(107)), mk(L(379)), mk(L(277))]; this.mA = mk(L(672)); this.dA1 = mk(L(4453)); this.aA = mk(L(1800)); this.dA2 = mk(L(3720));
+    this.mB = mk(L(908)); this.dB1 = mk(L(4217)); this.aB = mk(L(2656)); this.dB2 = mk(L(3163)); this.k = k; this.bw = 0; this.dmA = 0; this.dmB = 0; this.ph = 0;
+    this.decay = .62; this.damp = .32; }
+  rd(D, off) { return D.b[(D.i - off + D.n * 4) % D.n]; }
+  rdf(D, off) { const a = Math.floor(off), f = off - a; return this.rd(D, a) * (1 - f) + this.rd(D, a + 1) * f; }
+  wr(D, x) { D.b[D.i] = x; D.i = (D.i + 1) % D.n; }
+  ap1(D, x, g, len) { const d = this.rd(D, len); const v = x - g * d; this.wr(D, v); return d + g * v; }
+  process(ins, outs) { const i = ins[0], o = outs[0]; const iL = i[0], iR = i[1] || i[0]; const oL = o[0], oR = o[1] || o[0]; if (!iL) { oL.fill(0); if (oR !== oL) oR.fill(0); return true; }
+    const k = this.k, T = n => Math.round(n * k);
+    for (let s = 0; s < oL.length; s++) {
+      let x = (iL[s] + iR[s]) * .5; this.bw += .9995 * (x - this.bw); x = this.bw;
+      x = this.ap1(this.ap[0], x, .75, this.ap[0].len); x = this.ap1(this.ap[1], x, .75, this.ap[1].len); x = this.ap1(this.ap[2], x, .625, this.ap[2].len); x = this.ap1(this.ap[3], x, .625, this.ap[3].len);
+      this.ph += 1 / sampleRate; const ex = 16 * k * Math.sin(this.ph * 6.283), ey = 16 * k * Math.cos(this.ph * 6.283 * .91);
+      let a = x + this.decay * this.rd(this.dB2, this.dB2.len);
+      { const d = this.rdf(this.mA, this.mA.len + ex), v = a + .7 * d; this.wr(this.mA, v); a = d - .7 * v; }
+      this.wr(this.dA1, a); a = this.rd(this.dA1, this.dA1.len); this.dmA = a * (1 - this.damp) + this.dmA * this.damp; a = this.dmA * this.decay;
+      a = this.ap1(this.aA, a, .5, this.aA.len); this.wr(this.dA2, a);
+      let b = x + this.decay * this.rd(this.dA2, this.dA2.len);
+      { const d = this.rdf(this.mB, this.mB.len + ey), v = b + .7 * d; this.wr(this.mB, v); b = d - .7 * v; }
+      this.wr(this.dB1, b); b = this.rd(this.dB1, this.dB1.len); this.dmB = b * (1 - this.damp) + this.dmB * this.damp; b = this.dmB * this.decay;
+      b = this.ap1(this.aB, b, .5, this.aB.len); this.wr(this.dB2, b);
+      const l = this.rd(this.dB1, T(266)) + this.rd(this.dB1, T(2974)) - this.rd(this.aB, T(1913)) + this.rd(this.dB2, T(1996)) - this.rd(this.dA1, T(1990)) - this.rd(this.aA, T(187)) - this.rd(this.dA2, T(1066));
+      const r = this.rd(this.dA1, T(353)) + this.rd(this.dA1, T(3627)) - this.rd(this.aA, T(1228)) + this.rd(this.dA2, T(2673)) - this.rd(this.dB1, T(2111)) - this.rd(this.aB, T(335)) - this.rd(this.dB2, T(121));
+      oL[s] = l * .6; if (oR !== oL) oR[s] = r * .6;
+    } return true; } });`;
+
+/* ================= IMAGEM: câmera, mãos, pinças, leituras ================= */
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0;
+function resize() { const d = devicePixelRatio || 1; W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener('resize', resize); resize();
+const px = x => (x + 1) / 2 * W, py = y => (1 - y) / 2 * H;
+const COR = { 1: 'rgba(251,113,133,', 2: 'rgba(56,189,248,' };
+const OSSOS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const ultimaNota = { 1: 0, 2: 0 };
+function drawCam() {
+  const a = +$('rCamA').value; if (!cam.on || a <= 0 || video.readyState < 2) return;
+  const c = crop(); ctx.save(); ctx.globalAlpha = a;
+  if (mirror()) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, W, H); ctx.restore();
+}
+function drawMaos() {
+  [1, 2].forEach(g => {
+    const L = LIMBS[g], p = cam.handPts && cam.handPts[g], m = CTRL.maos[g]; if (!L.on || !m.ativa) return;
+    if (p && p.h) {   // esqueleto da mão
+      ctx.strokeStyle = COR[g] + '.8)'; ctx.lineWidth = 2; ctx.beginPath();
+      OSSOS.forEach(([a, b]) => { const A = camXY(p.h[a]), B = camXY(p.h[b]); ctx.moveTo(px(A.x), py(A.y)); ctx.lineTo(px(B.x), py(B.y)); }); ctx.stroke();
+      ctx.fillStyle = '#fff'; [4, 8, 12, 16, 20].forEach(j => { const q = camXY(p.h[j]); ctx.beginPath(); ctx.arc(px(q.x), py(q.y), 3, 0, 7); ctx.fill(); });
+    }
+    const x = px(L.vx), y = py(L.vy), r = 10 + 26 * m.perto;
+    const nt = ultimaNota[g] ? clamp(1 - (performance.now() - ultimaNota[g]) / 250, 0, 1) : 0; if (nt > 0) { ctx.strokeStyle = COR[g] + (nt * .8) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 14 * (1 - nt) + 6, 0, 7); ctx.stroke(); }   // pulso a cada nota   // ponto de controle: tamanho = perto, anel = abertura
+    ctx.strokeStyle = COR[g] + '1)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + 6.283 * m.aberta); ctx.stroke();
+    ctx.fillStyle = COR[g] + '.35)'; ctx.beginPath(); ctx.arc(x, y, r * .6, 0, 7); ctx.fill();
+  });
+}
+function drawReguas() {   // trilhos laterais: altura (vertical) e fora (horizontal) de cada mão, no alcance calibrado
+  ctx.save();
+  [1, 2].forEach(g => {
+    const m = CTRL.maos[g]; if (!LIMBS[g].on) return;
+    const xr = g === 1 ? W - 22 : 14, a = m.ativa ? 1 : .35;
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(xr, 60, 8, H - 120);
+    ctx.fillStyle = COR[g] + a + ')'; ctx.fillRect(xr - 3, 60 + (1 - m.altura) * (H - 120) - 2, 14, 4);
+    const yb = H - 40, x0 = g === 1 ? W / 2 + 20 : 20, w = W / 2 - 40;
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(x0, yb, w, 6);
+    const f = g === 1 ? m.fora : 1 - m.fora; ctx.fillStyle = COR[g] + a + ')'; ctx.fillRect(x0 + f * w - 2, yb - 3, 4, 12);
+  });
+  ctx.restore();
+}
+function drawPincas() {
+  if (!cam.on) return;
+  ctx.save(); ctx.font = '600 11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  [1, 2].forEach(g => {
+    if (!LIMBS[g].on) return;
+    const P = PZ[g], w = 72, x0 = g === 1 ? W - 40 - 4 * (w + 4) : 40, y = H - 70;
+    PZ_EFEITO[g].forEach((nm, k) => {
+      const on = P.dedo === k, q = clamp(1 - (P.d[k] / P.lim[k] - 1) / 2, 0, 1), x = x0 + k * (w + 4);
+      ctx.fillStyle = on ? COR[g] + '.55)' : 'rgba(255,255,255,.05)'; ctx.fillRect(x, y - 11, w, 22);
+      ctx.fillStyle = COR[g] + '.7)'; ctx.fillRect(x, y + 11, w * q, 2);
+      ctx.fillStyle = on ? '#fff' : 'rgba(142,152,176,.75)'; ctx.fillText(nm, x + w / 2, y);
+    });
+  });
+  ctx.restore();
+}
+function drawLeituras() {
+  if (!$('cHud').checked) return;
+  const pc = v => Math.round(clamp(v, 0, 1) * 100) + '%';
+  const linha = g => { const m = CTRL.maos[g]; return !m.ativa ? 'fora da tela' : (g === 1 && somOn ? `acorde ${chordName(curDeg)}${m.pinca >= 0 ? ' ' + PZ_EFEITO[1][m.pinca] : ''} · ` : '') + (g === 2 && somOn && ldDeg !== null ? `nota ${NOTES[((degMidi(ldDeg, 60) % 12) + 12) % 12]} · ` : '') + `altura ${pc(m.altura)} · fora ${pc(m.fora)} · perto ${pc(m.perto)} · aberta ${pc(m.aberta)} · pinça ${m.pinca >= 0 ? PZ_DEDO_NOME[m.pinca] : '—'}`; };
+  ctx.save(); ctx.font = '13px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const y0 = H - 150; ctx.fillStyle = 'rgba(9,11,16,.72)'; ctx.fillRect(10, y0 - 18, Math.min(W - 20, 760), 72);
+  ctx.fillStyle = '#fb7185'; ctx.fillText('MÃO DIREITA', 20, y0); ctx.fillStyle = '#e5e7eb'; ctx.fillText(linha(1), 20, y0 + 16);
+  ctx.fillStyle = '#38bdf8'; ctx.fillText('MÃO ESQUERDA', 20, y0 + 36); ctx.fillStyle = '#e5e7eb'; ctx.fillText(linha(2), 20, y0 + 52);
+  ctx.restore();
+}
+function drawWizBox() {
+  const el = $('wiz'), ui = $('ui'), r = ui.classList.contains('hide') ? null : ui.getBoundingClientRect(), top = (r ? r.bottom + 8 : 12) + 'px';
+  if (PZ.cal) {
+    const C = PZ.cal; el.style.top = top; el.style.display = 'block';
+    $('wizT').textContent = `Pinças da mão ${MAO_NOME[C.g]} · ${C.passo + 1}/5`;
+    $('wizN').textContent = C.passo === 0 ? `Mão ${MAO_NOME[C.g].toUpperCase()} aberta, dedos bem separados, de frente para a câmera.` : `Mão ${MAO_NOME[C.g]}: pinça do polegar com o ${PZ_DEDO_NOME[C.passo - 1].toUpperCase()} — segure.`;
+    $('wizB').style.width = Math.round(clamp((C.t - 1) / 1.2, 0, 1) * 100) + '%'; $('wizS').textContent = 'Esc cancela · a mão precisa estar visível';
+  } else if (CALD.run) {
+    const C = CALD.run, P = CAL_PASSOS(C.g); el.style.top = top; el.style.display = 'block';
+    $('wizT').textContent = `Calibrar mão ${MAO_NOME[C.g]} · ${C.passo + 1}/${P.length}`;
+    $('wizN').textContent = P[C.passo][0] + (C.semMao ? ' — mão não detectada' : C.t < 1 ? ' — posicione…' : ' — segure parada…');
+    $('wizB').style.width = Math.round(clamp((C.t - 1) / 1.2, 0, 1) * 100) + '%'; $('wizS').textContent = 'Esc cancela';
+  } else if (wiz.step) {
+    el.style.top = top; el.style.display = 'block';
+    const T = ['', '1/3 · Distância', '2/3 · Mão esquerda', '3/3 · Mão direita', 'Mãos identificadas'];
+    $('wizT').textContent = T[wiz.step];
+    if (wiz.step === 4) { $('wizN').textContent = 'Cada mão travada no seu lado.'; $('wizB').style.width = '100%'; $('wizS').textContent = ''; if (performance.now() - wiz.doneAt > 2500) wiz.step = 0; }
+    else { $('wizN').textContent = wiz.note; $('wizB').style.width = Math.round(clamp(wiz.hold / WIZ_HOLD[wiz.step], 0, 1) * 100) + '%'; $('wizS').textContent = 'G ou Esc cancela'; }
+  } else el.style.display = 'none';
+}
+let last = performance.now();
+function frame(nowMs) {
+  requestAnimationFrame(frame);
+  const dt = clamp((nowMs - last) / 1000, .001, .08); last = nowMs;
+  try { detect(); } catch (err) { cam.msg = 'Erro de tracking: ' + err.message; }
+  updateBody(dt); atualizaCtrl(); somAoVivo(); leadAoVivo();
+  ctx.clearRect(0, 0, W, H); try { VIS.frame(dt, nowMs); } catch (err) { cam.msg = 'Erro no visual: ' + err.message; }
+  while (eventos.length && ac && eventos[0].t <= ac.currentTime) { const e = eventos.shift(); ultimaNota[e.g] = performance.now(); try { VIS.nota(e.g, e); } catch (err) {} }
+  drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
+  ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
+  ctx.fillText('Dedalus II · Tinta Viva · v1  ·  cada mão pinta: notas do baixo = respingos na cor do acorde · lead = fita de tinta que pulsa com o gate · para fora = fluido solto / redemoinho  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
+  if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
+  ctx.restore();
+}
+requestAnimationFrame(frame);
+
+/* ================= CONTROLES ================= */
+async function makePose() {
+  const vision = cam.vision = cam.vision || await FilesetResolver.forVisionTasks(WASM), v = $('selPose').value;
+  const opts = d => ({ baseOptions: { modelAssetPath: POSE_URL(v), delegate: d }, runningMode: 'VIDEO', numPoses: 1, minPoseDetectionConfidence: .4, minPosePresenceConfidence: .4, minTrackingConfidence: .4 });
+  try { return await PoseLandmarker.createFromOptions(vision, opts('GPU')); }
+  catch { return await PoseLandmarker.createFromOptions(vision, opts('CPU')); }
+}
+$('selPose').onchange = async () => {   // troca o modelo (se a câmera estiver ligada, recarrega na hora; senão vale ao ligar)
+  const old = cam.landmarker; cam.landmarker = null; try { old && old.close(); } catch (e) {}
+  if (!cam.on) return;
+  cam.msg = 'Carregando modelo de pose (' + $('selPose').value + ')…';
+  try { cam.landmarker = await makePose(); cam.msg = ''; } catch (e) { cam.msg = 'Modelo indisponível: ' + e.message; }
+};
+async function toggleCam() {
+  const b = $('bCam');
+  if (cam.on) {
+    cam.on = false; cam.detected = false; cam.lm = null; cam.msg = '';
+    if (cam.stream) cam.stream.getTracks().forEach(t => t.stop());
+    cam.stream = null; video.srcObject = null;
+    b.textContent = 'Ligar câmera'; b.classList.remove('on'); $('bWiz').disabled = true; [ 'bCalD','bCalE','bPzD','bPzE' ].forEach(id => $(id).disabled = true); return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { cam.msg = 'Câmera indisponível: abra por https ou localhost.'; return; }
+  try {
+    b.disabled = true; cam.msg = 'Carregando modelo de pose…';
+    if (!cam.landmarker) cam.landmarker = await makePose();
+    if (!cam.hands && cam.vision) {   // modelo de mãos (opcional: se falhar, o Pose cobre)
+      cam.msg = 'Carregando modelo de mãos…';
+      const ho = d => ({ baseOptions: { modelAssetPath: HAND_MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: .35, minHandPresenceConfidence: .35, minTrackingConfidence: .35 });
+      try { cam.hands = await HandLandmarker.createFromOptions(cam.vision, ho('GPU')); }
+      catch { try { cam.hands = await HandLandmarker.createFromOptions(cam.vision, ho('CPU')); } catch { cam.hands = null; } }
+    }
+    cam.msg = 'Pedindo acesso à câmera…';
+    cam.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
+    video.srcObject = cam.stream; await video.play();
+    cam.on = true; cam.msg = '';
+    b.textContent = 'Desligar câmera'; b.classList.add('on'); $('bWiz').disabled = false; [ 'bCalD','bCalE','bPzD','bPzE' ].forEach(id => $(id).disabled = false);
+  } catch (err) { cam.msg = 'Erro na câmera: ' + (err.message || err.name); }
+  finally { b.disabled = false; }
+}
+$('bCam').onclick = toggleCam;
+async function toggleSom() {
+  if (!ac) { initSom(); initLead(); try { VIS.audio(); } catch (err) { console.error(err); } }
+  if (ac.state === 'suspended') await ac.resume();
+  somOn = !somOn; $('bSom').textContent = somOn ? 'Desligar som' : 'Ligar som'; $('bSom').classList.toggle('on', somOn);
+}
+$('bSom').onclick = toggleSom;
+['pointerdown', 'keydown'].forEach(ev => addEventListener(ev, () => { if (ac && somOn && ac.state !== 'running') ac.resume(); }));   // o navegador suspendeu o áudio: qualquer clique/tecla religa
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ac && somOn && ac.state !== 'running') ac.resume(); });
+const BX_IDS = { bxVol: ['vol'], bxCut: ['cut'], bxRes: ['res'], bxEnv: ['env'], ampA: ['amp', 0], ampD: ['amp', 1], ampS: ['amp', 2], ampR: ['amp', 3], fltA: ['flt', 0], fltD: ['flt', 1], fltS: ['flt', 2], fltR: ['flt', 3] };
+function syncPainelBaixo() { Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? BX[k] : BX[k][i]; }); $('bxTimbre').value = BX.timbre; salvaSom(); }
+Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).oninput = e => { const v = +e.target.value; if (i === undefined) BX[k] = v; else BX[k][i] = v; salvaSom(); }; });
+$('bxTimbre').onchange = e => aplicaTimbre(+e.target.value);
+$('sRoot').innerHTML = NOTES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+const MUS_IDS = { bxOit: 'bxOit', sRoot: 'root', sScale: 'scale', sBpm: 'bpm', arpPat: 'pat', arpRate: 'rate', arpOct: 'oct', arpGate: 'gate' };
+$('arpSev').onchange = e => { MUS.sev = e.target.checked ? 1 : 0; salvaSom(); };
+Object.entries(MUS_IDS).forEach(([id, k]) => { const el = $(id); el.oninput = el.onchange = () => { MUS[k] = (k === 'scale' || k === 'pat') ? el.value : +el.value; if (k === 'bpm') $('vBpm').textContent = MUS.bpm; salvaSom(); }; });
+const LD_IDS = { ldOit: ['oit'], ldVol: ['vol'], ldCut: ['cut'], ldGlide: ['glide'], ldVib: ['vib'], ldVibR: ['vibR'], ldRev: ['rev'], ldA: ['adsr', 0], ldD: ['adsr', 1], ldS: ['adsr', 2], ldR: ['adsr', 3] };
+Object.entries(LD_IDS).forEach(([id, [k, i]]) => { const el = $(id); el.oninput = el.onchange = () => { const v = +el.value; if (i === undefined) LD[k] = v; else LD[k][i] = v; salvaSom(); }; });
+function salvaSom() { try { localStorage.setItem('dedalus2_som', JSON.stringify({ BX, MUS, LD, LDv2: 1 })); } catch (e) {} }
+(function carregaSom() {
+  try { const c = JSON.parse(localStorage.getItem('dedalus2_som') || 'null'); if (c) { Object.assign(BX, c.BX || {}); Object.assign(MUS, c.MUS || {}); if (c.LD) Object.assign(LD, c.LD); if (!c.LDv2) LD.glide = 0; } } catch (e) {}
+  Object.entries(LD_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? LD[k] : LD[k][i]; });
+  Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? BX[k] : BX[k][i]; }); $('bxTimbre').value = BX.timbre;
+  Object.entries(MUS_IDS).forEach(([id, k]) => { $(id).value = MUS[k]; }); $('vBpm').textContent = MUS.bpm; $('arpSev').checked = !!MUS.sev;
+})();
+$('bWiz').onclick = () => (wiz.step ? wizStop() : wizStart());
+$('bCalD').onclick = () => (CALD.run ? (CALD.run = null) : caldStart(1));
+$('bCalE').onclick = () => (CALD.run ? (CALD.run = null) : caldStart(2));
+$('bPzD').onclick = () => (PZ.cal ? (PZ.cal = null) : pzCalStart(1));
+$('bPzE').onclick = () => (PZ.cal ? (PZ.cal = null) : pzCalStart(2));
+$('cHands').onchange = e => { cam.useHands = e.target.checked; };
+const toggleUi = () => $('ui').classList.toggle('hide');
+$('bHide').onclick = toggleUi; $('showUi').onclick = toggleUi;
+let wakeT = 0; addEventListener('pointermove', () => { document.body.classList.add('awake'); clearTimeout(wakeT); wakeT = setTimeout(() => document.body.classList.remove('awake'), 3000); });
+addEventListener('keydown', e => {
+  if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'escape') { CALD.run = null; PZ.cal = null; wizStop(); }
+  else if (k === 'k') toggleCam();
+  else if (k === 'g') (wiz.step ? wizStop() : wizStart());
+  else if (k === 'm') (CALD.run ? (CALD.run = null) : caldStart(1));
+  else if (k === 'l') (CALD.run ? (CALD.run = null) : caldStart(2));
+  else if (k === 'p') (PZ.cal ? (PZ.cal = null) : pzCalStart(1));
+  else if (k === 'o') (PZ.cal ? (PZ.cal = null) : pzCalStart(2));
+  else if (k === 'h') toggleUi();
+  else if (k === 's') toggleSom();
+});
+</script>
+</body>
+</html>

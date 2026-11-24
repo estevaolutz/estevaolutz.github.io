@@ -269,9 +269,9 @@ function r3Init(){
   T.trunk=new THREE.CylinderGeometry(0.6,1,1,6);T.trunk.translate(0,0.5,0);
   R3.T=T;R3.vegMat=addCutout(new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.9,flatShading:true}));
 }
-R3.cutU={uCut:{value:new THREE.Vector3(-9999,-9999,1)},uCutZ:{value:0}};
+R3.cutU={uCut:{value:new THREE.Vector4(-9999,-9999,1,1)},uCutZ:{value:0}};
 function addCutout(mat){mat.onBeforeCompile=sh=>{sh.uniforms.uCut=R3.cutU.uCut;sh.uniforms.uCutZ=R3.cutU.uCutZ;
-  sh.fragmentShader='uniform vec3 uCut;\nuniform float uCutZ;\n'+sh.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{float cd=distance(gl_FragCoord.xy,uCut.xy)/uCut.z;if(cd<1.0&&gl_FragCoord.z<uCutZ){float n=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));if(cd<0.6||n>(cd-0.6)/0.4)discard;}}');};mat.needsUpdate=true;return mat;}
+  sh.fragmentShader='uniform vec4 uCut;\nuniform float uCutZ;\nfloat cb2(vec2 a){a=floor(a);return fract(dot(a,vec2(0.5,a.y*0.75)));}\nfloat cb8(vec2 a){return cb2(0.25*a)*0.0625+cb2(0.5*a)*0.25+cb2(a);}\n'+sh.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{vec2 cq=(gl_FragCoord.xy-uCut.xy)/uCut.zw;float cd=length(cq);if(cd<1.0&&gl_FragCoord.z<uCutZ){float keep=cd<0.6?0.4:mix(0.4,1.0,(cd-0.6)/0.4);if(cb8(gl_FragCoord.xy)>=keep)discard;}}');};mat.needsUpdate=true;return mat;}
 function r3PR(){return settings.gfx==='leve'?Math.min(1,window.devicePixelRatio||1):Math.min(window.devicePixelRatio||1,R3.prCap||2);}
 function r3Quality(){if(!R3.r)return;R3.r.setPixelRatio(r3PR());R3.r.shadowMap.type=settings.gfx==='leve'?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
   if(R3.sun){const sz=settings.gfx==='leve'?1024:2048;if(R3.sun.shadow.mapSize.x!==sz){R3.sun.shadow.mapSize.set(sz,sz);if(R3.sun.shadow.map){R3.sun.shadow.map.dispose();R3.sun.shadow.map=null;}}}
@@ -343,7 +343,7 @@ function buildScene(lv){
     S.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),6,0.018+rnd()*0.02,4),rootM));}
   // paredes: blocos de folhagem com gradiente de luz
   const box=R3.T.box.clone();const cols=[];const pos=box.attributes.position,nor=box.attributes.normal;const top0=lin(K.top0),top1=lin(K.top1),s0=lin(K.side0),s1=lin(K.side1);
-  for(let i=0;i<pos.count;i++){const y=pos.getY(i),x=pos.getX(i),z=pos.getZ(i);let c;if(nor.getY(i)>0.5){c=top0.clone().lerp(top1,(x+z+1)/2);}else c=s1.clone().lerp(s0,y+0.5);cols.push(c.r,c.g,c.b);}
+  for(let i=0;i<pos.count;i++){const y=pos.getY(i),x=pos.getX(i),z=pos.getZ(i);let c;if(nor.getY(i)>0.5){c=top0.clone().lerp(top1,0.35);}else c=s1.clone().lerp(s0,y+0.5);cols.push(c.r,c.g,c.b);}
   box.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));box.userData={};
   const wallMat=addCutout(new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.88}));
   const walls=new THREE.InstancedMesh(box,wallMat,segs.length);const m4=new THREE.Matrix4(),q=new THREE.Quaternion(),v=new THREE.Vector3(),sc=new THREE.Vector3();
@@ -471,8 +471,8 @@ function r3Update(dt){
   R3.fx=R3.fx.filter(f=>{f.life-=dt;f.vy-=9*dt;f.m.position.x+=f.vx*dt;f.m.position.y+=f.vy*dt;f.m.position.z+=f.vz*dt;
     if(f.m.position.y<(f.s||0.02)){f.m.position.y=f.s||0.02;f.vy*=-0.25;f.vx*=0.6;f.vz*=0.6;}if(f.spin){f.m.rotation.x+=f.spin*dt;f.m.rotation.z+=f.spin*dt;}
     if(f.life<=0&&!f.rest){R3.scene.remove(f.m);return false;}if(f.life<=0)return false;return true;});
-  {const v=new THREE.Vector3(px,0.4,pz).project(cam);const sz=r3Size;r3Size.set(0,0);R3.r.getDrawingBufferSize(r3Size);
-   const pxPerWorld=r3Size.x/C.w;R3.cutU.uCut.value.set((v.x+1)/2*r3Size.x,(v.y+1)/2*r3Size.y,Math.max(30,1.05*pxPerWorld));R3.cutU.uCutZ.value=v.z*0.5+0.5-0.002;}
+  {const v=new THREE.Vector3(px,0.3,pz).project(cam);r3Size.set(0,0);R3.r.getDrawingBufferSize(r3Size);
+   const ppw=r3Size.x/C.w;R3.cutU.uCut.value.set((v.x+1)/2*r3Size.x,(v.y+1)/2*r3Size.y,Math.max(14,0.36*ppw),Math.max(20,0.52*ppw));R3.cutU.uCutZ.value=v.z*0.5+0.5-0.0006;}
   // três passadas: cenário, silhueta atrás das paredes, exploradora
   const r=R3.r;r.clear();cam.layers.set(0);r.shadowMap.needsUpdate=true;r.render(R3.scene,cam);cam.layers.set(1);r.render(R3.scene,cam);
 }

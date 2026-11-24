@@ -65,7 +65,7 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
 
 <div class="scr show" id="menu"><div class="card glass">
   <h1><i></i>Pixel Maze</h1>
-  <div class="tag">Um pixel de luz atravessa cinco labirintos, cada um do tamanho de uma folha A4. Capture as formas, abra os portões, atravesse os buracos e encontre a estrela que acende a saída.</div>
+  <div class="tag">Um pixel de luz atravessa cinco labirintos, cada um do tamanho de uma folha A4. Capture as formas, abra os portões, atravesse os buracos e encontre o losango dourado que acende a saída.</div>
   <canvas id="sky"></canvas>
   <div id="levels"></div>
   <button class="btn pri" id="play">Jogar</button>
@@ -90,10 +90,10 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
 
 <div class="scr" id="help"><div class="card glass help">
   <h2>Como jogar</h2>
-  <p>Você é um <b>pixel de luz</b>. Leve-o do canto de cima até o <b>portal da estrela</b>. Cada labirinto é uma folha A4 dividida em <b>quatro páginas</b>, e o caminho passa por todas.</p>
+  <p>Você é um <b>pixel de luz</b>. Leve-o do canto de cima até o <b>portal do losango dourado</b>. Cada labirinto é uma folha A4 dividida em <b>quatro páginas</b>, e o caminho passa por todas.</p>
   <p><b>Andar:</b> encoste o dedo em qualquer lugar e arraste na direção. O pixel anda enquanto você segura e faz sozinho as curvas dos corredores. Ou <b>toque num ponto do caminho</b> e ele vai até lá. No computador: setas ou WASD.</p>
   <p><b>Formas:</b> <span id="hShapes"></span> ficam escondidas em becos. Cada forma abre o <b>portão da mesma forma</b> e se gasta ao abrir.</p>
-  <p><b>Estrela:</b> <span id="hStar"></span> a saída só se acende depois que o pixel captura a estrela, sempre na última parte do labirinto.</p>
+  <p><b>Losango dourado:</b> <span id="hStar"></span> a saída só se acende depois que o pixel captura o losango dourado, sempre na última parte do labirinto.</p>
   <p><b>Buracos:</b> os poços com anel colorido estão ligados aos pares pela cor. O pixel cai num e sai no outro, muitas vezes em outra página.</p>
   <p><b>Rastro:</b> o chão por onde você passou fica levemente tingido, e nos níveis escuros os lugares já vistos continuam à meia-luz.</p>
   <p><b>Folha inteira:</b> o botão de quatro quadrados, no alto, mostra o labirinto todo (tecla M).</p>
@@ -183,9 +183,9 @@ const SHAPES={
   circle:{n:'círculo',art:'o',col:'#4fd8ff'},
   triangle:{n:'triângulo',art:'o',col:'#ffb547'},
   square:{n:'quadrado',art:'o',col:'#ff5d8f'},
-  diamond:{n:'losango',art:'o',col:'#7ee081'},
+  hex:{n:'hexágono',art:'o',col:'#7ee081'},
   moon:{n:'lua',art:'a',col:'#a98bff'},
-  star:{n:'estrela',art:'a',col:'#ffd84d'}};
+  star:{n:'losango dourado',art:'o',col:'#ffd84d'}};
 function hex2rgb(h){const v=parseInt(h.slice(1),16);return[(v>>16)&255,(v>>8)&255,v&255];}
 function rgba(h,a){const c=hex2rgb(h);return'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')';}
 function lighten(h,t){const c=hex2rgb(h);return'rgb('+c.map(v=>Math.round(v+(255-v)*t)).join(',')+')';}
@@ -193,9 +193,10 @@ function rr(g,x,y,w,h,r){r=Math.min(r,w/2,h/2);g.beginPath();g.moveTo(x+r,y);g.a
 function shapePath(g,k,r){g.beginPath();
   if(k==='circle'||k==='moon')g.arc(0,0,r*0.92,0,Math.PI*2);
   else if(k==='square')rr(g,-r*.78,-r*.78,r*1.56,r*1.56,r*.24);
-  else if(k==='diamond'){g.moveTo(0,-r*1.02);g.lineTo(r*.9,0);g.lineTo(0,r*1.02);g.lineTo(-r*.9,0);g.closePath();}
+  else if(k==='star'){g.moveTo(0,-r*1.12);g.lineTo(r*.78,0);g.lineTo(0,r*1.12);g.lineTo(-r*.78,0);g.closePath();}
+  else if(k==='hex'){for(let i=0;i<6;i++){const a=i*Math.PI/3,x=Math.cos(a)*r*.98,y=Math.sin(a)*r*.98;i?g.lineTo(x,y):g.moveTo(x,y);}g.closePath();}
   else if(k==='triangle'){g.moveTo(0,-r*.98);g.lineTo(r*.98,r*.74);g.lineTo(-r*.98,r*.74);g.closePath();}
-  else if(k==='star'){for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,q=(i%2?0.46:1.06)*r;i?g.lineTo(Math.cos(a)*q,Math.sin(a)*q+r*.06):g.moveTo(Math.cos(a)*q,Math.sin(a)*q+r*.06);}g.closePath();}}
+  else if(k==='star_old'){for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,q=(i%2?0.46:1.06)*r;i?g.lineTo(Math.cos(a)*q,Math.sin(a)*q+r*.06):g.moveTo(Math.cos(a)*q,Math.sin(a)*q+r*.06);}g.closePath();}}
 const SPR={};
 // mode: glow (no jogo), flat (ícones), dim (apagado)
 function sprite(k,r,mode,colOverride){r=Math.max(2,Math.round(r));const key=k+r+mode+(colOverride||'');if(SPR[key])return SPR[key];
@@ -215,19 +216,19 @@ function shapeIcon(k,css){const d=Math.min(window.devicePixelRatio||1,3),s=css*d
 // ================= níveis =================
 const LEVELS=[
  {name:'Névoa',sub:'1 par de buracos · 2 portões',w:24,h:34,gates:['circle','triangle'],holes:1,branchy:.15,minItemDepth:3,minPath:.2,seed:111,
-  pal:{bg:'#111319',floor:'#1b1e28',floor2:'#222634',wall:'#dfe3ee',side:'#8d94a8',trail:'#7cc8ff',hero:'#bfe2ff',night:'#07080c'},amb:1,mem:0,
+  pal:{bg:'#111319',floor:'#1b1e28',floor2:'#222634',wall:'#7486b8',side:'#3b4568',trail:'#7cc8ff',hero:'#bfe2ff',night:'#07080c'},amb:1,mem:0,
   mus:{root:57,scale:[0,2,4,7,9],chords:[[0,4,7],[9,0,4],[5,9,0],[7,11,2]]}},
  {name:'Jade',sub:'1 par de buracos · 3 portões',w:26,h:37,gates:['square','circle','triangle'],holes:1,branchy:.18,minItemDepth:4,minPath:.2,seed:222,
-  pal:{bg:'#0b1412',floor:'#13201c',floor2:'#182823',wall:'#c4ead9',side:'#5f9584',trail:'#6fe3b4',hero:'#c8ffe6',night:'#030807'},amb:.8,mem:.12,
+  pal:{bg:'#0b1412',floor:'#13201c',floor2:'#182823',wall:'#3fae8a',side:'#1f5a48',trail:'#6fe3b4',hero:'#c8ffe6',night:'#030807'},amb:.8,mem:.12,
   mus:{root:55,scale:[0,2,3,7,10],chords:[[0,3,7],[8,0,3],[3,7,10],[10,2,5]]}},
- {name:'Terracota',sub:'2 pares de buracos · 4 portões',w:28,h:40,gates:['triangle','diamond','circle','square'],holes:2,branchy:.2,minItemDepth:5,minPath:.2,seed:333,
-  pal:{bg:'#18110f',floor:'#241a16',floor2:'#2c201b',wall:'#f3d6c0',side:'#a77b64',trail:'#ffae7a',hero:'#ffe2c8',night:'#080403'},amb:.6,mem:.18,
+ {name:'Terracota',sub:'2 pares de buracos · 4 portões',w:28,h:40,gates:['triangle','hex','circle','square'],holes:2,branchy:.2,minItemDepth:5,minPath:.2,seed:333,
+  pal:{bg:'#18110f',floor:'#241a16',floor2:'#2c201b',wall:'#d27a52',side:'#73402b',trail:'#ffae7a',hero:'#ffe2c8',night:'#080403'},amb:.6,mem:.18,
   mus:{root:53,scale:[0,2,4,5,7,9],chords:[[0,4,7],[2,5,9],[4,7,11],[5,9,0]]}},
- {name:'Índigo',sub:'2 pares de buracos · 5 portões',w:30,h:42,gates:['moon','circle','diamond','triangle','square'],holes:2,branchy:.2,minItemDepth:6,minPath:.2,seed:444,
-  pal:{bg:'#0c0d1c',floor:'#15172d',floor2:'#1b1e3a',wall:'#c2c8ff',side:'#6870c0',trail:'#a99bff',hero:'#dcd8ff',night:'#04040b'},amb:.36,mem:.24,
+ {name:'Índigo',sub:'2 pares de buracos · 5 portões',w:30,h:42,gates:['moon','circle','hex','triangle','square'],holes:2,branchy:.2,minItemDepth:6,minPath:.2,seed:444,
+  pal:{bg:'#0c0d1c',floor:'#15172d',floor2:'#1b1e3a',wall:'#6a66e0',side:'#33317a',trail:'#a99bff',hero:'#dcd8ff',night:'#04040b'},amb:.36,mem:.24,
   mus:{root:50,scale:[0,3,5,7,10],chords:[[0,3,7],[5,8,0],[3,7,10],[7,10,2]]}},
- {name:'Abismo',sub:'3 pares de buracos · 5 portões',w:32,h:45,gates:['square','moon','triangle','diamond','circle'],holes:3,branchy:.22,minItemDepth:6,minPath:.2,seed:555,
-  pal:{bg:'#05080b',floor:'#0c1317',floor2:'#10191e',wall:'#96c0cb',side:'#47666f',trail:'#66e0ff',hero:'#cdf6ff',night:'#010203'},amb:.14,mem:.26,
+ {name:'Abismo',sub:'3 pares de buracos · 5 portões',w:32,h:45,gates:['square','moon','triangle','hex','circle'],holes:3,branchy:.22,minItemDepth:6,minPath:.2,seed:555,
+  pal:{bg:'#05080b',floor:'#0c1317',floor2:'#10191e',wall:'#2a92a3',side:'#144850',trail:'#66e0ff',hero:'#cdf6ff',night:'#010203'},amb:.14,mem:.26,
   mus:{root:48,scale:[0,2,3,7,8],chords:[[0,3,7],[8,0,3],[5,8,0],[7,11,2]]}}
 ];
 const HOLE_COLS=['#7fe3ff','#ff8fd6','#d9ff86'];
@@ -348,10 +349,10 @@ function arrive(){const lv=game.level,p=lv.p,L=lv.L;p.cell=p.to;p.moving=false;l
   if(p.lock>=0&&p.cell!==p.lock)p.lock=-1;
   const it=lv.itemAt.get(p.cell),[px,py]=cellPx(p.cell);
   if(it&&!it.taken){it.taken=true;lv.held.push(it.item);burst(px,py,SHAPES[it.item].col,34,3.4);
-    if(it.item==='star'){SFX.star();toast('Você capturou a estrela. O portal da saída se acendeu.',2600);}
+    if(it.item==='star'){SFX.star();toast('Você capturou o losango dourado. O portal da saída se acendeu.',2600);}
     else{SFX.capture();toast('Você capturou '+nm(it.item)+'. '+(SHAPES[it.item].art==='a'?'Ela':'Ele')+' abre o portão '+dodo(it.item)+SHAPES[it.item].n+'.',2600);}
     updateSlots();}
-  if(p.cell===L.exit){if(lv.held.includes('star')){win();return;}if(!lv.tips.exit){lv.tips.exit=1;SFX.locked();toast('O portal da saída está apagado. Falta capturar a estrela.',2800);}}
+  if(p.cell===L.exit){if(lv.held.includes('star')){win();return;}if(!lv.tips.exit){lv.tips.exit=1;SFX.locked();toast('O portal da saída está apagado. Falta capturar o losango dourado.',2800);}}
   const h=lv.holeOf.get(p.cell);
   if(h&&p.lock!==p.cell){p.state='fall';p.anim=0;p.teleTo=h.to;game.route=null;SFX.fall();burst(px,py,h.col,16,2);
     if(!lv.tips.hole){lv.tips.hole=1;setTimeout(()=>toast('O pixel caiu num buraco e saiu no outro buraco da mesma cor.',2800),700);}}}
@@ -418,7 +419,7 @@ function buildStatic(lv){const L=lv.L,P=lv.cfg.pal,c=lv.static||document.createE
   g.save();g.shadowColor='rgba(0,0,0,.6)';g.shadowBlur=S*.35;g.shadowOffsetX=S*.05;g.shadowOffsetY=S*.2;g.strokeStyle=P.side;g.lineWidth=T;path(S*.07);g.stroke();g.restore();
   g.strokeStyle=P.side;g.lineWidth=T;path(S*.07);g.stroke();
   g.strokeStyle=P.wall;g.lineWidth=T;path(0);g.stroke();
-  g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=T*.28;path(-T*.22);g.stroke();
+  g.strokeStyle='rgba(255,255,255,.28)';g.lineWidth=T*.26;path(-T*.22);g.stroke();
   lv.static=c;}
 function buildVisited(lv){const c=lv.vis||document.createElement('canvas');c.width=Math.ceil(lv.mw);c.height=Math.ceil(lv.mh);lv.vis=c;lv.visx=c.getContext('2d');for(let i=0;i<lv.N;i++)if(lv.visited[i])paintVisited(lv,i);}
 function paintVisited(lv,c){if(!lv.visx)return;const g=lv.visx,x=(c%lv.L.W+MG)*S,y=(((c/lv.L.W)|0)+MG)*S;g.fillStyle=rgba(lv.cfg.pal.trail,.065);rr(g,x+S*.14,y+S*.14,S*.72,S*.72,S*.2);g.fill();}
@@ -550,7 +551,7 @@ $('btnNext').onclick=()=>startLevel(game.level.idx+1);$('btnAgain').onclick=()=>
 $('fsBtn').onclick=()=>{const d=document.documentElement;try{if(!document.fullscreenElement)(d.requestFullscreen||d.webkitRequestFullscreen).call(d);else document.exitFullscreen();}catch(e){}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();if(AU.ctx)AU.ctx.suspend();}else if(AU.ctx)AU.ctx.resume();});
 addEventListener('resize',()=>layout());if(window.visualViewport)visualViewport.addEventListener('resize',()=>layout());
-(function(){const hs=$('hShapes');['circle','triangle','square','diamond','moon'].forEach(k=>hs.appendChild(shapeIcon(k,16)));$('hStar').appendChild(shapeIcon('star',16));})();
+(function(){const hs=$('hShapes');['circle','triangle','square','hex','moon'].forEach(k=>hs.appendChild(shapeIcon(k,16)));$('hStar').appendChild(shapeIcon('star',16));})();
 // constelação: cada labirinto vencido acende uma estrela
 function drawSky(){const c=$('sky'),d=Math.min(devicePixelRatio||1,3),w=c.clientWidth||380,h=96;c.width=w*d;c.height=h*d;const g=c.getContext('2d');g.scale(d,d);
   const rnd=mulberry32(9);for(let i=0;i<60;i++){g.fillStyle='rgba(255,255,255,'+(0.05+rnd()*0.15)+')';g.beginPath();g.arc(rnd()*w,rnd()*h,rnd()*1.1+.3,0,7);g.fill();}

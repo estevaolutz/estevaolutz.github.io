@@ -126,7 +126,7 @@ const DIRS=[{dx:0,dy:-1,b:1,o:4},{dx:1,dy:0,b:2,o:8},{dx:0,dy:1,b:4,o:1},{dx:-1,
 const OPP=d=>(d+2)&3;
 function generateLevel(cfg,seed){for(let a=0;a<5000;a++){const r=tryGen(cfg,(seed*7919+a*104729)>>>0);if(r)return r;}throw new Error('falha ao gerar');}
 function tryGen(cfg,seed){
-  const rnd=mulberry32(seed),W=cfg.w,H=cfg.h,N=W*H,ri=n=>Math.floor(rnd()*n);
+  let rnd=mulberry32(seed);const W=cfg.w,H=cfg.h,N=W*H,ri=n=>Math.floor(rnd()*n);
   const open=new Uint8Array(N),vis=new Uint8Array(N),act=[];const s0=ri(N);vis[s0]=1;act.push(s0);
   while(act.length){const idx=rnd()<cfg.branchy?ri(act.length):act.length-1;const c=act[idx],x=c%W,y=(c/W)|0;const op=[];
     for(let d=0;d<4;d++){const nx=x+DIRS[d].dx,ny=y+DIRS[d].dy;if(nx>=0&&ny>=0&&nx<W&&ny<H&&!vis[ny*W+nx])op.push(d);}
@@ -164,6 +164,8 @@ function tryGen(cfg,seed){
   const onPath=new Uint8Array(N);path.forEach(c=>onPath[c]=1);
   const off=new Int32Array(N).fill(-1);{const q=[...path];path.forEach(c=>off[c]=0);for(let i=0;i<q.length;i++){const c=q[i];for(const n of nb(c))if(off[n]<0){off[n]=off[c]+1;q.push(n);}}}
   // ---- portões de forma no caminho ----
+  // as paredes e os buracos vêm da semente do nível; a posição dos portões e a ordem das formas mudam a cada partida
+  if(cfg.salt)rnd=mulberry32((seed^cfg.salt)>>>0);
   const B=cfg.gates.length,ekey=(a,b)=>a<b?a*N+b:b*N+a;
   for(let tries=0;tries<40;tries++){
     const pos=[];let ok=true;
@@ -364,12 +366,13 @@ function layout(){DPR=Math.min(window.devicePixelRatio||1,2);VW=innerWidth;VH=vi
   if(Math.abs(nS-S)>0.01||!lv.static){S=nS;lv.mw=(W+2*MG)*S;lv.mh=(H+2*MG)*S;buildStatic(lv);buildVisited(lv);}
   game.snap=true;}
 
-function loadLevel(idx,randomSeed,fixedSeed){
-  let cfg=LEVELS[idx];const seed=fixedSeed!=null?fixedSeed:randomSeed?Math.floor(Math.random()*1e9):cfg.seed;
+function loadLevel(idx,randomSeed,fixedSeed,order){
+  if(!order){const g=[...LEVELS[idx].gates];for(let i=g.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[g[i],g[j]]=[g[j],g[i]];}order={gates:g,salt:1+Math.floor(Math.random()*2147483646)};}
+  let cfg=Object.assign({},LEVELS[idx],{gates:order.gates,salt:order.salt});const seed=fixedSeed!=null?fixedSeed:randomSeed?Math.floor(Math.random()*1e9):cfg.seed;
   // mapa inteiro numa tela deitada (computador, iPad na horizontal): a folha A4 também deita, para ocupar a tela toda
   if(settings.cam==='whole'&&innerWidth>innerHeight*1.1)cfg=Object.assign({},cfg,{w:cfg.h,h:cfg.w});
   const L=generateLevel(cfg,seed),N=L.W*L.H;
-  const lv={idx,cfg,L,N,seed,random:!!randomSeed};
+  const lv={idx,cfg,L,N,seed,order,random:!!randomSeed};
   lv.gateAt=new Map();L.gates.forEach(b=>{b.open=false;b.anim=0;lv.gateAt.set(ekey(b.a,b.b,N),b);});
   lv.itemAt=new Map();L.items.forEach(it=>{it.taken=false;lv.itemAt.set(it.cell,it);});
   lv.holeOf=new Map();L.holes.forEach((h,i)=>{h.col=HOLE_COLS[i%HOLE_COLS.length];lv.holeOf.set(h.a,{to:h.b,col:h.col});lv.holeOf.set(h.b,{to:h.a,col:h.col});});
@@ -570,7 +573,7 @@ function hero(lv,x,y,t){const g=ctx,p=lv.p,P=lv.cfg.pal;let s=S*.42;
   lv.held.forEach((k,i)=>{const a=t*2.2+i*6.283/lv.held.length,r=S*.46;drawSprite(sprite(k,S*.085,'glow'),x+Math.cos(a)*r,y+Math.sin(a)*r*.92);});}
 
 // ================= HUD =================
-function buildSlots(){const lv=game.level,el=$('slots');el.innerHTML='';[...lv.cfg.gates,'star'].forEach(k=>{const c=shapeIcon(k,18);c.dataset.k=k;el.appendChild(c);});updateSlots();}
+function buildSlots(){const lv=game.level,el=$('slots');el.innerHTML='';[...LEVELS[lv.idx].gates,'star'].forEach(k=>{const c=shapeIcon(k,18);c.dataset.k=k;el.appendChild(c);});updateSlots();}
 function updateSlots(){const lv=game.level;const usedCount={},heldCount={};lv.used.forEach(k=>usedCount[k]=(usedCount[k]||0)+1);lv.held.forEach(k=>heldCount[k]=(heldCount[k]||0)+1);
   [...$('slots').children].forEach(c=>{const k=c.dataset.k;if(usedCount[k]>0){usedCount[k]--;c.className='used';}else if(heldCount[k]>0){heldCount[k]--;c.className='held';c.style.filter='drop-shadow(0 0 5px '+SHAPES[k].col+')';}else c.className='miss';if(c.className!=='held')c.style.filter='';});}
 let hudT=0;function hud(dt){hudT+=dt;if(hudT>0.25){hudT=0;$('time').textContent=fmtT(game.level.time);}}
@@ -619,13 +622,13 @@ $('calib').onclick=()=>{calibrate();toast(tiltLive()?'Pronto: esta posição ago
 document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{settings.speed=+b.dataset.spd;saveSettings();syncSeg();});
 document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{settings.cam=b.dataset.cam;settings.camChosen=true;saveSettings();syncSeg();game.mapView=false;syncMapBtn();
   const lv=game.level;if(!lv)return;const land=innerWidth>innerHeight*1.1,wantW=settings.cam==='whole'&&land,isW=lv.L.W>lv.L.H;
-  if(wantW!==isW&&!lv.started&&!lv.won)loadLevel(lv.idx,lv.random,lv.seed);else layout();});
+  if(wantW!==isW&&!lv.started&&!lv.won)loadLevel(lv.idx,lv.random,lv.seed,lv.order);else layout();});
 function syncMapBtn(){$('mapBtn').style.display=settings.cam==='whole'?'none':'';}
 syncMapBtn();
 document.querySelectorAll('[data-tap]').forEach(b=>b.onclick=()=>{settings.tap=b.dataset.tap==='1';saveSettings();syncSeg();});
 document.querySelectorAll('[data-snd]').forEach(b=>b.onclick=()=>{settings.sound=b.dataset.snd==='1';saveSettings();syncSeg();applyAudio();});
 document.querySelectorAll('[data-mus]').forEach(b=>b.onclick=()=>{settings.music=b.dataset.mus==='1';saveSettings();syncSeg();applyAudio();});
-function startLevel(i,rand,seed){audioInit();if(settings.ctrl==='tilt')tiltInit();game.mapView=false;loadLevel(i,rand,seed);show(null);}
+function startLevel(i,rand,seed,order){audioInit();if(settings.ctrl==='tilt')tiltInit();game.mapView=false;loadLevel(i,rand,seed,order);show(null);}
 function renderLevels(){const el=$('levels');el.innerHTML='';LEVELS.forEach((L,i)=>{const lock=i>=progress.unlocked,b=progress.best['L'+i];const bt=document.createElement('button');bt.className='lvl'+(lock?' lock':'');bt.style.setProperty('--c',L.pal.wall);bt.style.setProperty('--b',L.pal.floor);
   bt.innerHTML='<span class="num">'+(i+1)+'</span><span class="info"><div class="nm">'+L.name+'</div><div class="sub">'+L.sub+'</div></span><span class="best">'+(b?fmtT(b.time)+'<small>'+b.steps+' passos</small>':'')+'</span>';
   if(!lock)bt.onclick=()=>startLevel(i);el.appendChild(bt);});drawSky();}
@@ -634,7 +637,7 @@ $('helpBtn').onclick=()=>{show('help');game.helpFrom='menu';};$('helpBtn2').oncl
 $('helpClose').onclick=()=>{if(game.helpFrom==='pause')show('pause');else show('menu');};
 $('menuBtn').onclick=pause;$('mapBtn').onclick=()=>{audioInit();toggleMap();};
 $('resume').onclick=resume;
-$('restart').onclick=()=>{const lv=game.level;startLevel(lv.idx,lv.random,lv.seed);};$('variant').onclick=()=>startLevel(game.level.idx,true);
+$('restart').onclick=()=>{const lv=game.level;startLevel(lv.idx,lv.random,lv.seed,lv.order);};$('variant').onclick=()=>startLevel(game.level.idx,true);
 $('toMenu').onclick=()=>{renderLevels();show('menu');};
 $('btnNext').onclick=()=>startLevel(game.level.idx+1);$('btnAgain').onclick=()=>{const lv=game.level;startLevel(lv.idx,lv.random,lv.seed);};$('btnVar').onclick=()=>startLevel(game.level.idx,true);$('btnMenu').onclick=()=>{renderLevels();show('menu');};
 $('fsBtn').onclick=()=>{const d=document.documentElement;try{if(!document.fullscreenElement)(d.requestFullscreen||d.webkitRequestFullscreen).call(d);else document.exitFullscreen();}catch(e){}};
@@ -642,7 +645,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();if
 let orientT=0;function onResize(){layout();clearTimeout(orientT);orientT=setTimeout(fitOrientation,300);}
 // ao girar a tela no modo Mapa inteiro, a folha gira junto (se o labirinto ainda não começou)
 function fitOrientation(){const lv=game.level;if(!lv||settings.cam!=='whole'||lv.won)return;const land=innerWidth>innerHeight*1.1,isW=lv.L.W>lv.L.H;if(land===isW)return;
-  if(!lv.started){loadLevel(lv.idx,lv.random,lv.seed);}else if(!lv.tips.orient){lv.tips.orient=1;toast('Para a folha acompanhar a tela, recomece este labirinto (pausa → Recomeçar).',3600);}}
+  if(!lv.started){loadLevel(lv.idx,lv.random,lv.seed,lv.order);}else if(!lv.tips.orient){lv.tips.orient=1;toast('Para a folha acompanhar a tela, recomece este labirinto (pausa → Recomeçar).',3600);}}
 addEventListener('resize',onResize);if(window.visualViewport)visualViewport.addEventListener('resize',onResize);
 (function(){const hs=$('hShapes');['circle','triangle','square','hex','moon'].forEach(k=>hs.appendChild(shapeIcon(k,16)));$('hStar').appendChild(shapeIcon('star',16));})();
 // constelação: cada labirinto vencido acende uma estrela

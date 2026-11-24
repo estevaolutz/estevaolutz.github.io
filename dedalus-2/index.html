@@ -85,6 +85,21 @@ video{display:none}
       <label>S <input id="fltS" type="range" min="0" max="1" step=".01" value=".3"></label>
       <label>R <input id="fltR" type="range" min=".01" max="4" step=".01" value=".3"></label>
     </span>
+    <span class="grp"><b style="color:#38bdf8">LEAD THEREMIN</b>
+      <label>Oitava <select id="ldOit"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select></label>
+      <label>Volume <input id="ldVol" type="range" min="0" max="1" step=".01" value=".7"></label>
+      <label title="Corte do filtro com a mão esquerda toda para a ESQUERDA">Cutoff <input id="ldCut" type="range" min="300" max="12000" step="10" value="5000"></label>
+      <label title="Deslize entre uma nota e a próxima (segundos)">Glide <input id="ldGlide" type="range" min="0" max=".4" step=".005" value=".05"></label>
+      <label title="Profundidade do vibrato (cents)">Vibrato <input id="ldVib" type="range" min="0" max="40" step="1" value="12"></label>
+      <label title="Velocidade do vibrato (Hz)">Vel. vib. <input id="ldVibR" type="range" min="2" max="8" step=".1" value="5.2"></label>
+      <label title="Quanto do lead vai para o reverb">Reverb <input id="ldRev" type="range" min="0" max="1" step=".01" value=".4"></label>
+    </span>
+    <span class="grp"><b>LEAD ADSR</b>
+      <label>A <input id="ldA" type="range" min=".001" max="2" step=".001" value=".06"></label>
+      <label>D <input id="ldD" type="range" min=".01" max="3" step=".01" value=".4"></label>
+      <label>S <input id="ldS" type="range" min="0" max="1" step=".01" value=".8"></label>
+      <label>R <input id="ldR" type="range" min=".01" max="4" step=".01" value=".6"></label>
+    </span>
     <span class="grp"><b>ARPEJO</b>
       <label>Tônica <select id="sRoot"></select></label>
       <label>Escala <select id="sScale"><option value="dorian">Dórico</option><option value="aeolian">Eólio (menor)</option><option value="ionian">Jônico (maior)</option><option value="mixolydian">Mixolídio</option><option value="lydian">Lídio</option><option value="phrygian">Frígio</option><option value="harmonicMinor">Menor harmônica</option><option value="pentMinor">Pentatônica menor</option></select></label>
@@ -564,6 +579,7 @@ const TIMBRES = [
 ];
 const BX = { timbre: 0, vol: .8, cut: 3200, res: .25, env: 2.5, amp: [.005, .3, .7, .25], flt: [.005, .35, .3, .3] };
 const frz = { on: false };
+let ldLim = null;
 let ac = null, bxLfo = null, bxLfoG = null, bxDly = null, bxDlySend = null, bxOut = null, bxCutCS = null, bxForaCS = null, bxForaInv = null, somOn = false;
 const pulseCache = {};
 function pulseWave(w) {   // onda de pulso com largura w (0,5 = quadrada) por série de Fourier
@@ -577,7 +593,7 @@ function oscDe(tipo, w = .5) { const o = ac.createOscillator(); if (tipo === 'pu
 function initSom() {
   ac = new (window.AudioContext || window.webkitAudioContext)();
   const lim = ac.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 4; lim.ratio.value = 12; lim.attack.value = .003; lim.release.value = .2;
-  lim.connect(ac.destination);
+  lim.connect(ac.destination); ldLim = lim;
   bxOut = ac.createGain(); bxOut.gain.value = 0;
   // FREEZE (pinça do indicador): uma linha de atraso de exatamente 1 tempo guarda sempre o último tempo tocado;
   // ao congelar (no próximo tempo), a entrada fecha e a realimentação vai a 100% → o último tempo fica em loop, no BPM.
@@ -718,6 +734,56 @@ function somAoVivo() {
   bxDly.delayTime.setTargetAtTime(60 / MUS.bpm * .75, c, .05);   // colcheia pontuada
 }
 
+/* ================= MOTOR DE SOM — LEAD THEREMIN (mão esquerda) =================
+   Voz única e contínua (monofônica): seno + triângulo (mistura pela abertura da mão), vibrato suave, filtro passa-baixa e reverb.
+   Notas soltas: a altura da mão escolhe a nota (2 oitavas da MESMA escala do baixo); cada troca de nota reataca o envelope
+   com um glide curto; mão parada sustenta; mão fora da tela solta a nota (release).
+   Espelhado da mão direita: para a ESQUERDA = abre o filtro · perto = volume · abrir/fechar = forma de onda (seno → triângulo). */
+const LD = { oit: 0, vol: .7, cut: 5000, glide: .05, vib: 12, vibR: 5.2, rev: .4, adsr: [.06, .4, .8, .6] };
+const LEAD_HIST = .2;
+let ld = null, ldDeg = null, ldSoando = false;
+function initLead() {
+  const o1 = ac.createOscillator(), o2 = ac.createOscillator(), g1 = ac.createGain(), g2 = ac.createGain(), lp = ac.createBiquadFilter(), env = ac.createGain(), vol = ac.createGain();
+  const lfo = ac.createOscillator(), lfoG = ac.createGain(), cut = ac.createConstantSource(), mixT = ac.createConstantSource(), mixS = ac.createConstantSource();
+  o1.type = 'sine'; o2.type = 'triangle'; o2.detune.value = 3;
+  g1.gain.value = 0; g2.gain.value = 0; mixS.offset.value = 1; mixT.offset.value = 0; mixS.connect(g1.gain); mixT.connect(g2.gain);   // abertura: seno ↔ triângulo
+  lfo.frequency.value = LD.vibR; lfoG.gain.value = LD.vib; lfo.connect(lfoG); lfoG.connect(o1.detune); lfoG.connect(o2.detune);
+  lp.type = 'lowpass'; lp.Q.value = .7; lp.frequency.value = LD.cut; cut.offset.value = 0; cut.connect(lp.detune);
+  env.gain.value = 0; vol.gain.value = 0;
+  o1.connect(g1); o2.connect(g2); g1.connect(lp); g2.connect(lp); lp.connect(env); env.connect(vol);
+  // reverb etéreo: resposta de impulso gerada (cauda ~3,5 s que escurece)
+  const len = Math.floor(ac.sampleRate * 3.5), ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let y = 0; for (let i = 0; i < len; i++) { const tt = i / ac.sampleRate, k = .45 * Math.exp(-tt * .9) + .04; y += ((Math.random() * 2 - 1) - y) * k; d[i] = y * Math.exp(-tt * 1.4) * Math.min(1, tt / .03); } }
+  const cv = ac.createConvolver(), rs = ac.createGain(), pan = ac.createStereoPanner(); cv.buffer = ir; rs.gain.value = LD.rev; pan.pan.value = -.15;
+  vol.connect(pan); pan.connect(ldLim); vol.connect(rs); rs.connect(cv); cv.connect(ldLim);
+  [o1, o2, lfo, cut, mixT, mixS].forEach(n => n.start());
+  ld = { o1, o2, lp, env, vol, lfo, lfoG, cut, mixT, mixS, rs };
+}
+const leadLista = () => { const n = sc().length, L = []; for (let d = 0; d <= 2 * n; d++) L.push(d); return L; };   // 2 oitavas da escala
+function leadAoVivo() {
+  if (!ac || !ld) return;
+  const m = CTRL.maos[2], c = ac.currentTime, [A, D, Sus, R] = LD.adsr, on = somOn && m.ativa;
+  ld.vol.gain.setTargetAtTime(on ? LD.vol * (.06 + .94 * m.perto) : 0, c, .05);
+  ld.cut.offset.setTargetAtTime(-4800 * (1 - m.fora), c, .04);          // para a ESQUERDA abre o filtro
+  ld.mixT.offset.setTargetAtTime(m.aberta, c, .05); ld.mixS.offset.setTargetAtTime(1 - m.aberta, c, .05);   // aberta = triângulo
+  ld.lp.frequency.setTargetAtTime(LD.cut, c, .05);
+  ld.lfo.frequency.setTargetAtTime(LD.vibR, c, .1); ld.lfoG.gain.setTargetAtTime(LD.vib, c, .1); ld.rs.gain.setTargetAtTime(LD.rev, c, .1);
+  if (!on) { if (ldSoando) { ld.env.gain.cancelScheduledValues(c); ld.env.gain.setValueAtTime(ld.env.gain.value, c); ld.env.gain.setTargetAtTime(0, c, Math.max(.01, R / 3)); ldSoando = false; } ldDeg = null; return; }
+  // nota pela altura (calibrada), com histerese para não tremer na fronteira
+  const lista = leadLista(), pos = Math.min(.9999, m.altura) * lista.length;
+  let ix = ldDeg === null ? -1 : lista.indexOf(ldDeg);
+  if (ix < 0 || Math.abs(pos - (ix + .5)) > .5 + LEAD_HIST) ix = Math.floor(pos);
+  const deg = lista[ix];
+  if (deg !== ldDeg || !ldSoando) {
+    const f = mtof(degMidi(deg, 60 + 12 * LD.oit)), gl = ldSoando ? Math.max(.001, LD.glide) : .001;
+    [ld.o1, ld.o2].forEach(o => { o.frequency.cancelScheduledValues(c); o.frequency.setValueAtTime(o.frequency.value, c); o.frequency.setTargetAtTime(f, c, gl / 3); });
+    if (!ldSoando) [ld.o1, ld.o2].forEach(o => o.frequency.setValueAtTime(f, c));
+    const g = ld.env.gain; g.cancelScheduledValues(c); g.setValueAtTime(g.value, c);
+    g.linearRampToValueAtTime(.32, c + Math.max(.005, A)); g.setTargetAtTime(.32 * Sus, c + Math.max(.005, A), Math.max(.01, D / 3));   // reataque a cada nota nova
+    ldDeg = deg; ldSoando = true; eventos.push({ t: c, g: 2 });
+  }
+}
+
 /* ================= IMAGEM: câmera, mãos, pinças, leituras ================= */
 const cv = $('cv'), ctx = cv.getContext('2d');
 let W = 0, H = 0;
@@ -778,7 +844,7 @@ function drawPincas() {
 function drawLeituras() {
   if (!$('cHud').checked) return;
   const pc = v => Math.round(clamp(v, 0, 1) * 100) + '%';
-  const linha = g => { const m = CTRL.maos[g]; return !m.ativa ? 'fora da tela' : (g === 1 && somOn ? `acorde ${chordName(curDeg)}${m.pinca >= 0 ? ' ' + PZ_EFEITO[1][m.pinca] : ''} · ` : '') + `altura ${pc(m.altura)} · fora ${pc(m.fora)} · perto ${pc(m.perto)} · aberta ${pc(m.aberta)} · pinça ${m.pinca >= 0 ? PZ_DEDO_NOME[m.pinca] : '—'}`; };
+  const linha = g => { const m = CTRL.maos[g]; return !m.ativa ? 'fora da tela' : (g === 1 && somOn ? `acorde ${chordName(curDeg)}${m.pinca >= 0 ? ' ' + PZ_EFEITO[1][m.pinca] : ''} · ` : '') + (g === 2 && somOn && ldDeg !== null ? `nota ${NOTES[((degMidi(ldDeg, 60) % 12) + 12) % 12]} · ` : '') + `altura ${pc(m.altura)} · fora ${pc(m.fora)} · perto ${pc(m.perto)} · aberta ${pc(m.aberta)} · pinça ${m.pinca >= 0 ? PZ_DEDO_NOME[m.pinca] : '—'}`; };
   ctx.save(); ctx.font = '13px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   const y0 = H - 150; ctx.fillStyle = 'rgba(9,11,16,.72)'; ctx.fillRect(10, y0 - 18, Math.min(W - 20, 760), 72);
   ctx.fillStyle = '#fb7185'; ctx.fillText('MÃO DIREITA', 20, y0); ctx.fillStyle = '#e5e7eb'; ctx.fillText(linha(1), 20, y0 + 16);
@@ -810,12 +876,12 @@ function frame(nowMs) {
   requestAnimationFrame(frame);
   const dt = clamp((nowMs - last) / 1000, .001, .08); last = nowMs;
   try { detect(); } catch (err) { cam.msg = 'Erro de tracking: ' + err.message; }
-  updateBody(dt); atualizaCtrl(); somAoVivo();
+  updateBody(dt); atualizaCtrl(); somAoVivo(); leadAoVivo();
   ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, W, H);
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) ultimaNota[eventos.shift().g] = performance.now();
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · v10 (baixo Prophet)  ·  mão direita: subir = acorde · para a direita = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · v12 (baixo Prophet + lead theremin)  ·  espelhado: subir = acorde/nota · para fora = abre o filtro · perto = volume · abrir/fechar = forma de onda  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
   if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
   ctx.restore();
@@ -863,7 +929,7 @@ async function toggleCam() {
 }
 $('bCam').onclick = toggleCam;
 async function toggleSom() {
-  if (!ac) initSom();
+  if (!ac) { initSom(); initLead(); }
   if (ac.state === 'suspended') await ac.resume();
   somOn = !somOn; $('bSom').textContent = somOn ? 'Desligar som' : 'Ligar som'; $('bSom').classList.toggle('on', somOn);
 }
@@ -878,9 +944,12 @@ $('sRoot').innerHTML = NOTES.map((n, i) => `<option value="${i}">${n}</option>`)
 const MUS_IDS = { bxOit: 'bxOit', sRoot: 'root', sScale: 'scale', sBpm: 'bpm', arpPat: 'pat', arpRate: 'rate', arpOct: 'oct', arpGate: 'gate' };
 $('arpSev').onchange = e => { MUS.sev = e.target.checked ? 1 : 0; salvaSom(); };
 Object.entries(MUS_IDS).forEach(([id, k]) => { const el = $(id); el.oninput = el.onchange = () => { MUS[k] = (k === 'scale' || k === 'pat') ? el.value : +el.value; if (k === 'bpm') $('vBpm').textContent = MUS.bpm; salvaSom(); }; });
-function salvaSom() { try { localStorage.setItem('dedalus2_som', JSON.stringify({ BX, MUS })); } catch (e) {} }
+const LD_IDS = { ldOit: ['oit'], ldVol: ['vol'], ldCut: ['cut'], ldGlide: ['glide'], ldVib: ['vib'], ldVibR: ['vibR'], ldRev: ['rev'], ldA: ['adsr', 0], ldD: ['adsr', 1], ldS: ['adsr', 2], ldR: ['adsr', 3] };
+Object.entries(LD_IDS).forEach(([id, [k, i]]) => { const el = $(id); el.oninput = el.onchange = () => { const v = +el.value; if (i === undefined) LD[k] = v; else LD[k][i] = v; salvaSom(); }; });
+function salvaSom() { try { localStorage.setItem('dedalus2_som', JSON.stringify({ BX, MUS, LD })); } catch (e) {} }
 (function carregaSom() {
-  try { const c = JSON.parse(localStorage.getItem('dedalus2_som') || 'null'); if (c) { Object.assign(BX, c.BX || {}); Object.assign(MUS, c.MUS || {}); } } catch (e) {}
+  try { const c = JSON.parse(localStorage.getItem('dedalus2_som') || 'null'); if (c) { Object.assign(BX, c.BX || {}); Object.assign(MUS, c.MUS || {}); if (c.LD) Object.assign(LD, c.LD); } } catch (e) {}
+  Object.entries(LD_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? LD[k] : LD[k][i]; });
   Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? BX[k] : BX[k][i]; }); $('bxTimbre').value = BX.timbre;
   Object.entries(MUS_IDS).forEach(([id, k]) => { $(id).value = MUS[k]; }); $('vBpm').textContent = MUS.bpm; $('arpSev').checked = !!MUS.sev;
 })();

@@ -255,7 +255,7 @@ function glowTex(){const c=document.createElement('canvas');c.width=c.height=64;
 
 
 // ===== Motor 3D isométrico (três.js r128) — geometria limpa + luz pintada =====
-const YAW=45*DEG,PITCH=35.264*DEG;
+const YAW=45*DEG,PITCH=41*DEG;
 function r3Init(){
   const r=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true,powerPreference:'high-performance'});
   r.setClearColor(0x000000,0);r.autoClear=false;
@@ -281,7 +281,7 @@ function r3Quality(){if(!R3.r)return;R3.r.setPixelRatio(r3PR());R3.r.shadowMap.t
   if(R3.sun){const sz=settings.gfx==='leve'?1024:2048;if(R3.sun.shadow.mapSize.x!==sz){R3.sun.shadow.mapSize.set(sz,sz);if(R3.sun.shadow.map){R3.sun.shadow.map.dispose();R3.sun.shadow.map=null;}}}
   R3.scene&&R3.scene.traverse(o=>{if(o.material&&!Array.isArray(o.material))o.material.needsUpdate=true;});}
 function r3Resize(){if(!R3.r)return;R3.r.setPixelRatio(r3PR());R3.r.setSize(VW,VH);if(game.level)paintSky(game.level);}
-function disposeScene(){if(!R3.scene)return;R3.scene.traverse(o=>{if(o.geometry&&!Object.values(R3.T).includes(o.geometry)&&!o.userData.sharedGeo)o.geometry.dispose();if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>{if(m!==R3.vegMat){if(m.map&&m.map!==R3.glow)m.map.dispose();m.dispose();}});}});R3.scene=null;}
+function disposeScene(){if(!R3.scene)return;R3.scene.traverse(o=>{if(o.geometry&&!Object.values(R3.T).includes(o.geometry)&&!o.userData.sharedGeo)o.geometry.dispose();if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>{if(m!==R3.vegMat&&m!==R3.bumpMat){if(m.map&&m.map!==R3.glow)m.map.dispose();m.dispose();}});}});R3.scene=null;}
 
 // ---------- céu pintado (camada 2D atrás do 3D) ----------
 function paintSky(lv){
@@ -321,7 +321,7 @@ function earthTex(K){const c=document.createElement('canvas');c.width=64;c.heigh
   const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.wrapS=THREE.RepeatWrapping;return t;}
 
 // ---------- cena ----------
-const WALL_H=0.62,WALL_T=0.22;
+const WALL_H=0.4,WALL_T=0.24;
 function buildScene(lv){
   disposeScene();paintSky(lv);
   const L=lv.L,K=lv.cfg.look,S=new THREE.Scene();R3.scene=S;const rnd=mulberry32(lv.seed^0x1234567);
@@ -349,13 +349,13 @@ function buildScene(lv){
   const box=R3.T.box.clone();const cols=[];const pos=box.attributes.position,nor=box.attributes.normal;const top0=lin(K.top0),top1=lin(K.top1),s0=lin(K.side0),s1=lin(K.side1);
   for(let i=0;i<pos.count;i++){const y=pos.getY(i),x=pos.getX(i),z=pos.getZ(i);let c;if(nor.getY(i)>0.5){c=top0.clone().lerp(top1,0.35);}else c=s1.clone().lerp(s0,y+0.5);cols.push(c.r,c.g,c.b);}
   box.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));box.userData={};
-  const wallMat=addCutout(new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.88}));
+  const wallMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.88});
   const walls=new THREE.InstancedMesh(box,wallMat,segs.length);const m4=new THREE.Matrix4(),q=new THREE.Quaternion(),v=new THREE.Vector3(),sc=new THREE.Vector3();
   segs.forEach((s,i)=>{const hor=s[1]===s[3];const cx=(s[0]+s[2])/2,cz=(s[1]+s[3])/2;v.set(cx,WALL_H/2,cz);sc.set(hor?1+WALL_T:WALL_T,WALL_H,hor?WALL_T:1+WALL_T);m4.compose(v,q,sc);walls.setMatrixAt(i,m4);});
   walls.castShadow=true;walls.receiveShadow=true;S.add(walls);
   // borda de folhas macia no topo das paredes
   if(settings.gfx!=='leve'){const per=[];segs.forEach(s=>{const hor=s[1]===s[3];const n=7;for(let k=0;k<=n;k++){const t=k/n;for(const side of[-1,1]){const x=s[0]+(s[2]-s[0])*t+(hor?0:side*WALL_T/2),z=s[1]+(s[3]-s[1])*t+(hor?side*WALL_T/2:0);per.push([x,WALL_H-0.01,z]);}}});
-    const bm=new THREE.InstancedMesh(R3.T.bump,R3.vegMat,per.length);const col=new THREE.Color();
+    if(!R3.bumpMat)R3.bumpMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.9,flatShading:true});const bm=new THREE.InstancedMesh(R3.T.bump,R3.bumpMat,per.length);const col=new THREE.Color();
     per.forEach((p,i)=>{const r=0.045+rnd()*0.035;m4.compose(v.set(p[0]+(rnd()-.5)*0.03,p[1],p[2]+(rnd()-.5)*0.03),q.setFromEuler(new THREE.Euler(rnd()*3,rnd()*3,0)),sc.set(r,r*0.8,r));bm.setMatrixAt(i,m4);col.copy(top0).lerp(top1,rnd()*0.6);bm.setColorAt(i,col);});
     bm.castShadow=false;bm.receiveShadow=true;S.add(bm);}
   // árvores geométricas sobre as quinas
@@ -379,7 +379,7 @@ function buildScene(lv){
   R3.fx=[];R3.camState=null;R3.marker=null;
 }
 function buildSecrets(lv){const K=lv.cfg.look;lv.L.secrets.forEach(s=>{const W=lv.L.W,ax=s.a%W,ay=(s.a/W)|0;const hor=s.d===2;const cx=hor?ax+0.5:ax+1,cz=hor?ay+1:ay+0.5;
-  const g=new THREE.Group();const mat=addCutout(new THREE.MeshStandardMaterial({color:lin(K.secret),roughness:0.95}));const m=new THREE.Mesh(R3.T.box,mat);m.userData.sharedGeo=1;m.scale.set(hor?1+WALL_T:WALL_T,WALL_H*0.96,hor?WALL_T:1+WALL_T);m.position.set(cx,WALL_H*0.48,cz);m.castShadow=true;m.receiveShadow=true;g.add(m);
+  const g=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:lin(K.secret),roughness:0.95});const m=new THREE.Mesh(R3.T.box,mat);m.userData.sharedGeo=1;m.scale.set(hor?1+WALL_T:WALL_T,WALL_H*0.96,hor?WALL_T:1+WALL_T);m.position.set(cx,WALL_H*0.48,cz);m.castShadow=true;m.receiveShadow=true;g.add(m);
   const fm=new THREE.MeshStandardMaterial({color:lin(K.flower),emissive:lin(K.flower),emissiveIntensity:0.25});
   for(let i=0;i<4;i++){const f=new THREE.Mesh(new THREE.SphereGeometry(0.03,6,4),fm);const t=(i+0.5)/4-0.5;f.position.set(cx+(hor?t:WALL_T*0.52),WALL_H*(0.35+(i%2)*0.3),cz+(hor?WALL_T*0.52:t));g.add(f);}
   R3.scene.add(g);s.obj=g;});}
@@ -481,7 +481,7 @@ function r3Update(dt){
     if(f.m.position.y<(f.s||0.02)){f.m.position.y=f.s||0.02;f.vy*=-0.25;f.vx*=0.6;f.vz*=0.6;}if(f.spin){f.m.rotation.x+=f.spin*dt;f.m.rotation.z+=f.spin*dt;}
     if(f.life<=0&&!f.rest){R3.scene.remove(f.m);return false;}if(f.life<=0)return false;return true;});
   {const v=new THREE.Vector3(px,0.3,pz).project(cam);r3Size.set(0,0);R3.r.getDrawingBufferSize(r3Size);
-   const ppw=r3Size.x/C.w;R3.cutU.uCut.value.set((v.x+1)/2*r3Size.x,(v.y+1)/2*r3Size.y,Math.max(14,0.36*ppw),Math.max(20,0.52*ppw));R3.cutU.uCutZ.value=v.z*0.5+0.5-0.0006;}
+   const ppw=r3Size.x/C.w;R3.cutU.uCut.value.set((v.x+1)/2*r3Size.x,(v.y+1)/2*r3Size.y,Math.max(16,0.4*ppw),Math.max(24,0.6*ppw));R3.cutU.uCutZ.value=v.z*0.5+0.5-0.0006;}
   // três passadas: cenário, silhueta atrás das paredes, exploradora
   const r=R3.r;r.clear();cam.layers.set(0);r.shadowMap.needsUpdate=true;r.render(R3.scene,cam);cam.layers.set(1);r.render(R3.scene,cam);
 }
@@ -639,15 +639,15 @@ function startAmbience(cfg){
   stopAmbience();if(!AU.ctx)return;startMusic(LEVELS.indexOf(cfg));const ctx=AU.ctx,t=ctx.currentTime,A=cfg.amb;
   // vento: ruído marrom filtrado com LFO lento
   const ws=ctx.createBufferSource();ws.buffer=AU.brown;ws.loop=true;const wf=ctx.createBiquadFilter();wf.type='lowpass';wf.frequency.value=450;
-  const wg=ctx.createGain();wg.gain.value=0;wg.gain.setTargetAtTime(A.wind,t,1.5);const lfo=ctx.createOscillator();lfo.frequency.value=0.07;const lg=ctx.createGain();lg.gain.value=A.wind*0.7;lfo.connect(lg);lg.connect(wg.gain);
-  const lfo2=ctx.createOscillator();lfo2.frequency.value=0.031;const lg2=ctx.createGain();lg2.gain.value=180;lfo2.connect(lg2);lg2.connect(wf.frequency);
+  const wg=ctx.createGain();wg.gain.value=0;wg.gain.setTargetAtTime(A.wind*0.6,t,1.5);const lfo=ctx.createOscillator();lfo.frequency.value=0.07;const lg=ctx.createGain();lg.gain.value=0;lfo.connect(lg);
+  const lfo2=ctx.createOscillator();lfo2.frequency.value=0.031;const lg2=ctx.createGain();lg2.gain.value=0;lfo2.connect(lg2);lg2.connect(wf.frequency);
   ws.connect(wf);wf.connect(wg);wg.connect(AU.amb);ws.start();lfo.start();lfo2.start();
   // folhas farfalhando
   const ls=ctx.createBufferSource();ls.buffer=AU.white;ls.loop=true;const lf=ctx.createBiquadFilter();lf.type='bandpass';lf.frequency.value=5200;lf.Q.value=0.6;
-  const lgn=ctx.createGain();lgn.gain.value=0;const lfo3=ctx.createOscillator();lfo3.frequency.value=0.13;const l3g=ctx.createGain();l3g.gain.value=A.wind*0.12;lfo3.connect(l3g);l3g.connect(lgn.gain);
+  const lgn=ctx.createGain();lgn.gain.value=0;const lfo3=ctx.createOscillator();lfo3.frequency.value=0.13;const l3g=ctx.createGain();l3g.gain.value=0;lfo3.connect(l3g);l3g.connect(lgn.gain);
   ls.connect(lf);lf.connect(lgn);lgn.connect(AU.amb);ls.start();lfo3.start();
   // pad harmônico suave
-  const pg=ctx.createGain();pg.gain.value=0;pg.gain.setTargetAtTime(0.022,t,3);const pf=ctx.createBiquadFilter();pf.type='lowpass';pf.frequency.value=700;
+  const pg=ctx.createGain();pg.gain.value=0;pg.gain.value=0;const pf=ctx.createBiquadFilter();pf.type='lowpass';pf.frequency.value=700;
   const pl=ctx.createOscillator();pl.frequency.value=0.05;const plg=ctx.createGain();plg.gain.value=300;pl.connect(plg);plg.connect(pf.frequency);pl.start();
   const oscs=A.pad.map((f,i)=>{const o=ctx.createOscillator();o.type=i%2?'triangle':'sine';o.frequency.value=f;o.detune.value=(Math.random()-.5)*8;o.connect(pf);o.start();return o;});
   pf.connect(pg);pg.connect(AU.amb);pg.connect(AU.rev);
@@ -682,12 +682,13 @@ const SONGS=[
 const MUS={on:false,step:0,next:0,timer:null,song:null,chordIdx:0,lastMel:null};
 const mtof=m=>440*Math.pow(2,(m-69)/12);
 function musInit(){const ctx=AU.ctx;if(AU.mus)return;AU.mus=ctx.createGain();AU.mus.gain.value=settings.music?0.55:0;AU.mus.connect(AU.master);
-  AU.musRev=ctx.createGain();AU.musRev.gain.value=0.55;AU.musRev.connect(AU.rev);
+  AU.musRev=ctx.createGain();AU.musRev.gain.value=0.22;AU.musRev.connect(AU.rev);
   AU.musLP=ctx.createBiquadFilter();AU.musLP.type='lowpass';AU.musLP.frequency.value=6000;AU.musLP.connect(AU.mus);AU.musLP.connect(AU.musRev);}
 function setMusic(on){settings.music=on;store.set('settings2',settings);if(AU.ctx&&AU.mus)AU.mus.gain.setTargetAtTime(on?0.55:0,AU.ctx.currentTime,0.2);}
 function vEnv(g,t,a,peak,dec){g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(0.0001,t+a+dec);}
 function note(inst,m,t,vel,len){const ctx=AU.ctx,f=mtof(m),out=AU.musLP;const p=ctx.createStereoPanner?ctx.createStereoPanner():ctx.createGain();if(p.pan)p.pan.value=Math.max(-0.7,Math.min(0.7,(m-66)/18));p.connect(out);
   const osc=(type,fr,peak,a,dec,det)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;o.frequency.value=fr;if(det)o.detune.value=det;vEnv(g,t,a,peak*vel,dec);o.connect(g);g.connect(p);o.start(t);o.stop(t+a+dec+0.1);};
+  if(inst==='pulse'){const o=ctx.createOscillator(),fl=ctx.createBiquadFilter(),gg=ctx.createGain();o.type='triangle';o.frequency.value=f;fl.type='lowpass';fl.frequency.value=f*3;vEnv(gg,t,0.003,0.07*vel,0.22);o.connect(fl);fl.connect(gg);gg.connect(AU.mus);o.start(t);o.stop(t+0.3);return;}
   if(inst==='kalimba'){osc('sine',f,0.16,0.004,1.6);osc('sine',f*5.4,0.035,0.002,0.18);osc('triangle',f*2,0.02,0.004,0.5);}
   else if(inst==='pluck'){const o=ctx.createOscillator(),fl=ctx.createBiquadFilter(),g=ctx.createGain();o.type='sawtooth';o.frequency.value=f;fl.type='lowpass';fl.Q.value=2;fl.frequency.setValueAtTime(f*6,t);fl.frequency.exponentialRampToValueAtTime(f*1.2,t+0.4);vEnv(g,t,0.004,0.07*vel,1.1);o.connect(fl);fl.connect(g);g.connect(p);o.start(t);o.stop(t+1.3);osc('sine',f,0.07,0.004,1.2);}
   else if(inst==='piano'){osc('triangle',f,0.12,0.006,2.4);osc('sine',f*2,0.04,0.004,1.2);osc('sine',f*3,0.015,0.003,0.5);}
@@ -697,17 +698,17 @@ function pad(chord,t,dur,inst){const ctx=AU.ctx;const fl=ctx.createBiquadFilter(
   const g=ctx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.028,t+1.6);g.gain.setValueAtTime(0.028,t+dur-0.4);g.gain.linearRampToValueAtTime(0.0001,t+dur+1.6);fl.connect(g);g.connect(AU.musLP);
   chord.slice(1).forEach(m=>{[-7,7].forEach(d=>{const o=ctx.createOscillator();o.type='sawtooth';o.frequency.value=mtof(m);o.detune.value=d;o.connect(fl);o.start(t);o.stop(t+dur+1.8);});});}
 function bass(m,t,dur){const ctx=AU.ctx,o=ctx.createOscillator(),g=ctx.createGain(),o2=ctx.createOscillator();o.type='sine';o2.type='triangle';o.frequency.value=mtof(m);o2.frequency.value=mtof(m);
-  g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.09,t+0.05);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);const g2=ctx.createGain();g2.gain.value=0.25;o.connect(g);o2.connect(g2);g2.connect(g);g.connect(AU.mus);o.start(t);o2.start(t);o.stop(t+dur+0.1);o2.stop(t+dur+0.1);}
+  g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.08,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);const g2=ctx.createGain();g2.gain.value=0.25;o.connect(g);o2.connect(g2);g2.connect(g);g.connect(AU.mus);o.start(t);o2.start(t);o.stop(t+dur+0.1);o2.stop(t+dur+0.1);}
 function shaker(t,v){const ctx=AU.ctx,s=ctx.createBufferSource();s.buffer=AU.white;const fl=ctx.createBiquadFilter();fl.type='bandpass';fl.frequency.value=7000;fl.Q.value=1;const g=ctx.createGain();vEnv(g,t,0.006,0.03*v,0.07);s.connect(fl);fl.connect(g);g.connect(AU.mus);s.start(t,Math.random());s.stop(t+0.12);}
 function musLayers(){const lv=game.level;if(!lv)return 0;let n=1;if(lv.started)n=2;if(lv.L.items.some(i=>i.taken))n=3;if(lv.L.barriers.length&&lv.L.barriers.every(b=>b.open))n=4;return n;}
 function musTick(){if(!AU.ctx||!MUS.song)return;const ctx=AU.ctx,S=MUS.song,sp=60/S.bpm/4;
   while(MUS.next<ctx.currentTime+0.35){const t=MUS.next,st=MUS.step%32,lay=musLayers(),ch=S.chords[MUS.chordIdx%S.chords.length];
-    if(st===0){pad(ch,t,sp*32,S.inst);bass(ch[0]-12+12,t,sp*14);}
-    if(st===16)bass(ch[0],t,sp*12);
-    if(lay>=2&&st%2===0&&Math.random()<S.arpP*(st%8===0?1.3:0.8)){const tones=ch.slice(1).map(m=>m+12);const i=(MUS.step/2)%tones.length|0;note(S.inst,tones[(i*(st%16<8?1:-1)+tones.length*4)%tones.length],t+(Math.random()-.5)*0.012,0.55+Math.random()*0.35);}
-    if(lay>=3&&Math.random()<S.melP*(st%4===0?1.6:0.5)){const sc=S.scale;let k=MUS.lastMel==null?Math.floor(sc.length/2):MUS.lastMel+Math.round((Math.random()-.5)*3.2);k=Math.max(0,Math.min(sc.length-1,k));MUS.lastMel=k;let m=sc[k];
+    if(st%16===0)bass(ch[0],t,sp*5);
+    if(st%4===0){const pat=[ch[1],ch[2],ch[1],ch[3]];note('pulse',pat[(st/4)%4],t,st%16===0?0.9:0.6);}
+    if(lay>=2&&st%4===2&&Math.random()<S.arpP*0.6){const tones=ch.slice(1).map(m=>m+12);const i=(MUS.step/2)%tones.length|0;note(S.inst,tones[(i*(st%16<8?1:-1)+tones.length*4)%tones.length],t+(Math.random()-.5)*0.012,0.55+Math.random()*0.35);}
+    if(lay>=3&&st%4===0&&Math.random()<S.melP*0.9){const sc=S.scale;let k=MUS.lastMel==null?Math.floor(sc.length/2):MUS.lastMel+Math.round((Math.random()-.5)*3.2);k=Math.max(0,Math.min(sc.length-1,k));MUS.lastMel=k;let m=sc[k];
       if(!ch.slice(1).some(c=>(m-c)%12===0)&&st%8===0){m=ch[1+Math.floor(Math.random()*4)];while(m<sc[0])m+=12;}note(S.inst,m,t,0.75+Math.random()*0.2);}
-    if(lay>=4&&(st%4===2))shaker(t,st%8===2?1:0.6);
+    if(lay>=4&&(st%8===4))shaker(t,0.8);
     MUS.step++;if(MUS.step%32===0)MUS.chordIdx++;MUS.next+=sp;}}
 function startMusic(idx){if(!AU.ctx)return;musInit();MUS.song=SONGS[idx%SONGS.length];MUS.step=0;MUS.chordIdx=0;MUS.lastMel=null;MUS.next=AU.ctx.currentTime+0.6;if(!MUS.timer)MUS.timer=setInterval(musTick,90);}
 

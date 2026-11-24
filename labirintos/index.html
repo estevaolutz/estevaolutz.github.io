@@ -68,7 +68,7 @@ h2{font:700 26px/1.1 "Cormorant SC",serif;margin:0 0 12px;color:#e8dcb6}
 <div id="fjoy" aria-label="Joystick"><div id="fknob"></div></div>
 <div id="hud">
   <button class="ib" id="menuBtn" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-  <div id="compass" title="A bússola aponta para a saída"><div id="needle"></div></div>
+  <div id="compass" title="A bússola aponta para a saída. Toque para recentralizar a câmera." role="button" tabindex="0" style="cursor:pointer"><div id="needle"></div></div>
   <div id="mid"><div id="lvname"></div><div id="row2"><span id="time">0:00</span><div id="inv"></div></div></div>
   <button class="ib" id="sndBtn" aria-label="Som"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="w" d="M16 9c1.5 1.5 1.5 4.5 0 6M18.5 6.5c3 3 3 8 0 11"/><path class="x" d="M16 9l5 6M21 9l-5 6"/></svg></button>
   <button class="ib" id="viewBtn"><span id="viewLbl">Seguir</span></button>
@@ -108,7 +108,7 @@ h2{font:700 26px/1.1 "Cormorant SC",serif;margin:0 0 12px;color:#e8dcb6}
   <p><b>Andar:</b> ela só se move enquanto você segura. Encoste o dedo em qualquer ponto da tela e arraste na direção, e segure enquanto quiser andar. No menu de pausa dá para trocar por um joystick fixo de polegar. No computador, use as setas ou WASD (as setas seguem a tela, mesmo com o mapa girado). A tecla M mostra o mapa.</p>
   <p><b>Joystick:</b> no menu de pausa, em Controle na tela, escolha Joystick fixo. Também funciona um controle físico (Bluetooth ou USB): alavanca ou cruz para andar, LB e RB giram enquanto apertados, gatilhos dão zoom, Y troca a visão, B abre o mapa, Start pausa.</p>
   <p><b>Tela cheia:</b> o botão de cantos no canto inferior direito (ou no menu de pausa). No Android, o menu do Chrome › Adicionar à tela inicial instala o jogo como app, que já abre em tela cheia.</p>
-  <p><b>Zoom e giro:</b> afaste ou aproxime dois dedos para ver mais perto ou mais longe; torça os dois dedos para girar o mapa. Segure os botões redondos no canto para girar o tabuleiro livremente (no computador: segure Q ou E, ou arraste com o botão direito do mouse; a roda dá zoom).</p>
+  <p><b>Zoom, movimento e giro:</b> com dois dedos, afaste ou aproxime para o zoom, arraste para passear pelo mapa e torça para girar. Toque na bússola para voltar a câmera à exploradora. Segure os botões redondos no canto para girar o tabuleiro livremente (no computador: roda do mouse dá zoom, botão do meio ou Shift + arrastar move o mapa, botão direito ou Q/E gira).</p>
   <p><b>Mochila:</b> todo labirinto começa com a mochila vazia. Chaves e ferramentas estão escondidas pelo caminho, quase sempre no fundo de becos, e precisam ser encontradas antes do obstáculo que resolvem.</p>
   <p><b>Chaves</b> de bronze, prata, ouro e esmeralda abrem o portão de ferro da mesma cor e se gastam ao abrir.</p>
   <p><b>Machado</b> corta troncos caídos. <b>Picareta</b> quebra rochas. <b>Pá</b> cava por baixo de emaranhados de raízes. Uma vez encontrada, a ferramenta serve até o fim daquele labirinto.</p>
@@ -408,14 +408,18 @@ function buildHero(lv){const K=lv.cfg.look;const g=new THREE.Group(),body=new TH
 // ---------- câmera isométrica ----------
 const CAMDIR=new THREE.Vector3();R3.yawT=YAW;R3.yawC=YAW;
 function setCamDir(y){CAMDIR.set(Math.sin(y)*Math.cos(PITCH),Math.sin(PITCH),Math.cos(y)*Math.cos(PITCH));}setCamDir(YAW);
+R3.pan=new THREE.Vector3();
+function r3Pan(dx,dy){if(!R3.camState)return;const wpp=R3.camState.w/VW;const right=new THREE.Vector3(1,0,0).applyQuaternion(R3.cam.quaternion);right.y=0;right.normalize();const fwd=new THREE.Vector3(-CAMDIR.x,0,-CAMDIR.z).normalize();
+  R3.pan.addScaledVector(right,-dx*wpp).addScaledVector(fwd,dy*wpp/Math.sin(PITCH));const L=game.level.L;R3.pan.x=Math.max(-L.W,Math.min(L.W,R3.pan.x));R3.pan.z=Math.max(-L.H,Math.min(L.H,R3.pan.z));}
 function r3Rotate(s){const q=Math.PI/2;R3.yawT=Math.round((R3.yawT-YAW)/q)*q+YAW+s*q;}
 function fitWidth(x0,z0,x1,z1){const cam=R3.cam,tx=(x0+x1)/2,tz=(z0+z1)/2;cam.position.set(tx,0,tz).addScaledVector(CAMDIR,80);cam.lookAt(tx,0,tz);cam.updateMatrixWorld();
   let mx=0,my=0;const v=new THREE.Vector3();for(const x of[x0,x1])for(const z of[z0,z1])for(const y of[-0.5,WALL_H]){v.set(x,y,z).applyMatrix4(cam.matrixWorldInverse);mx=Math.max(mx,Math.abs(v.x));my=Math.max(my,Math.abs(v.y));}
   const top=64,bot=settings.dpad?170:28,asp=VW/(VH-top-bot);return Math.max(2*mx,2*my*asp)*1.06;}
 function camGoal(){const lv=game.level,L=lv.L,p=lv.player,v=settings.view;
-  if(v==='map')return{tx:L.W/2,tz:L.H/2,w:fitWidth(-0.3,-0.3,L.W+0.3,L.H+0.3)};
-  if(v==='pages'){const q=(p.x+0.5>=L.W/2?1:0)+(p.y+0.5>=L.H/2?2:0),hw=L.W/2,hh=L.H/2,x0=q&1?hw:0,z0=q&2?hh:0;return{tx:x0+hw/2,tz:z0+hh/2,w:fitWidth(x0,z0,x0+hw,z0+hh)};}
-  return{tx:p.x+.5,tz:p.y+.5,w:9.5/R3.zoom};}
+  if(v==='map')return{tx:L.W/2+R3.pan.x,tz:L.H/2+R3.pan.z,w:fitWidth(-0.3,-0.3,L.W+0.3,L.H+0.3)/R3.zoom};
+  if(v==='pages'){const q=(p.x+0.5>=L.W/2?1:0)+(p.y+0.5>=L.H/2?2:0),hw=L.W/2,hh=L.H/2,x0=q&1?hw:0,z0=q&2?hh:0;return{tx:x0+hw/2+R3.pan.x,tz:z0+hh/2+R3.pan.z,w:fitWidth(x0,z0,x0+hw,z0+hh)/R3.zoom};}
+  if(p.moving&&!R3.touching)R3.pan.multiplyScalar(0.9);
+  return{tx:p.x+.5+R3.pan.x,tz:p.y+.5+R3.pan.z,w:9.5/R3.zoom};}
 function screenDir(wx,wz){const v=new THREE.Vector3(wx,0,wz).applyQuaternion(R3.cam.quaternion.clone().invert());return[v.x,-v.y];}
 function r3DirFromScreen(dx,dy){let best=0,bd=-1e9;for(let d=0;d<4;d++){const[sx,sy]=screenDir(DIRS[d].dx,DIRS[d].dy);const l=Math.hypot(sx,sy);const dot=(dx*sx+dy*sy)/l;if(dot>bd){bd=dot;best=d;}}return best;}
 
@@ -788,7 +792,7 @@ function updateHUD(){const lv=game.level;if(!lv)return;let h='';
   $('sndBtn').classList.toggle('off',!settings.sound);document.querySelectorAll('[data-ctl]').forEach(b=>b.classList.toggle('on',b.dataset.ctl===settings.ctl));settings.dpad=settings.ctl==='joystick';$('fjoy').style.display=settings.ctl==='joystick'?'':'none';$('musT').textContent=settings.music?'Ligada':'Desligada';document.querySelectorAll('[data-gfx]').forEach(b=>b.classList.toggle('on',b.dataset.gfx===settings.gfx));
   $('dpad').style.display='none';
 }
-function setView(v){settings.view=v;store.set('settings2',settings);updateHUD();toast({follow:'Visão: seguir a exploradora',pages:'Visão: uma página por vez',map:'Visão: a folha inteira'}[v],1200);}
+function setView(v){R3.zoom=1;R3.pan.set(0,0,0);settings.view=v;store.set('settings2',settings);updateHUD();toast({follow:'Visão: seguir a exploradora',pages:'Visão: uma página por vez',map:'Visão: a folha inteira'}[v],1200);}
 
 // ---------- telas ----------
 function show(id){['menu','pause','win','help'].forEach(s=>$(s).classList.toggle('show',s===id));game.paused=!!id&&id!=='win';if(id)game.hold=null;if(id==='menu')renderMenu();}
@@ -810,11 +814,11 @@ addEventListener('blur',()=>{held.length=0;game.hold=null;});
 // joystick: encoste o dedo em qualquer ponto e arraste na direção; soltar para
 const joy=$('joy'),knob=$('knob');let js=null;
 const ptrs=new Map();let pinch=null;
-cv.addEventListener('wheel',e=>{e.preventDefault();R3.zoom=Math.max(0.45,Math.min(2.6,R3.zoom*Math.exp(-e.deltaY*0.0015)));},{passive:false});
-cv.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});if(ptrs.size===2){const[a,b]=[...ptrs.values()];pinch={d0:Math.hypot(a.x-b.x,a.y-b.y),z0:R3.zoom,a0:Math.atan2(b.y-a.y,b.x-a.x),y0:R3.yawT};js=null;game.hold=null;joy.classList.remove('on');return;}});
-cv.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pinch&&ptrs.size===2){const[a,b]=[...ptrs.values()];R3.zoom=Math.max(0.45,Math.min(2.6,pinch.z0*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d0));let da=Math.atan2(b.y-a.y,b.x-a.x)-pinch.a0;da=Math.atan2(Math.sin(da),Math.cos(da));R3.yawT=pinch.y0-da;}});
-const pend=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;};cv.addEventListener('pointerup',pend);cv.addEventListener('pointercancel',pend);
-cv.addEventListener('pointerdown',e=>{audioInit();if(game.paused||ptrs.size>1||e.button===2)return;js={x0:e.clientX,y0:e.clientY,id:e.pointerId};try{cv.setPointerCapture(e.pointerId);}catch(_){}
+cv.addEventListener('wheel',e=>{e.preventDefault();R3.zoom=Math.max(0.2,Math.min(4,R3.zoom*Math.exp(-e.deltaY*0.0015)));},{passive:false});
+cv.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});if(ptrs.size===2){const[a,b]=[...ptrs.values()];pinch={d0:Math.hypot(a.x-b.x,a.y-b.y),z0:R3.zoom,a0:Math.atan2(b.y-a.y,b.x-a.x),y0:R3.yawT,mx:(a.x+b.x)/2,my:(a.y+b.y)/2};R3.touching=true;js=null;game.hold=null;joy.classList.remove('on');return;}});
+cv.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pinch&&ptrs.size===2){const[a,b]=[...ptrs.values()];R3.zoom=Math.max(0.2,Math.min(4,pinch.z0*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d0));const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;r3Pan(mx-pinch.mx,my-pinch.my);pinch.mx=mx;pinch.my=my;let da=Math.atan2(b.y-a.y,b.x-a.x)-pinch.a0;da=Math.atan2(Math.sin(da),Math.cos(da));R3.yawT=pinch.y0-da;}});
+const pend=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2){pinch=null;R3.touching=false;}};cv.addEventListener('pointerup',pend);cv.addEventListener('pointercancel',pend);
+cv.addEventListener('pointerdown',e=>{audioInit();if(game.paused||ptrs.size>1||e.button===2||e.button===1||e.shiftKey)return;js={x0:e.clientX,y0:e.clientY,id:e.pointerId};try{cv.setPointerCapture(e.pointerId);}catch(_){}
   joy.style.left=e.clientX+'px';joy.style.top=e.clientY+'px';knob.style.transform='translate(-50%,-50%)';joy.classList.add('on');});
 cv.addEventListener('pointermove',e=>{if(!js||e.pointerId!==js.id||pinch)return;let dx=e.clientX-js.x0,dy=e.clientY-js.y0;const dist=Math.hypot(dx,dy),max=44;
   if(dist>max){js.x0+= dx*(1-max/dist);js.y0+=dy*(1-max/dist);dx=e.clientX-js.x0;dy=e.clientY-js.y0;joy.style.left=js.x0+'px';joy.style.top=js.y0+'px';}
@@ -827,6 +831,7 @@ document.querySelectorAll('#dpad button').forEach(b=>{const d=+b.dataset.d;
   const up=()=>{if(game.hold===d)game.hold=null;};b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('lostpointercapture',up);
   b.addEventListener('contextmenu',e=>e.preventDefault());});
 $('menuBtn').onclick=()=>show('pause');
+$('compass').onclick=()=>{R3.zoom=1;R3.pan.set(0,0,0);toast('Câmera recentralizada.',1000);};
 function isFS(){return !!(document.fullscreenElement||document.webkitFullscreenElement);}
 function toggleFS(){try{if(isFS()){(document.exitFullscreen||document.webkitExitFullscreen).call(document);}else{const el=document.documentElement,rq=el.requestFullscreen||el.webkitRequestFullscreen;if(!rq){toast('Este navegador não permite tela cheia. Use Compartilhar › Adicionar à Tela de Início.',3200);return;}const p=rq.call(el,{navigationUI:'hide'});if(p&&p.catch)p.catch(()=>toast('Não foi possível entrar em tela cheia.'));}}catch(e){toast('Não foi possível entrar em tela cheia.');}}
 function fsUI(){const on=isFS();$('fsBtn').classList.toggle('on',on);$('fsT').textContent=on?'Sair da tela cheia':'Tela cheia';}
@@ -834,6 +839,7 @@ $('fsBtn').onclick=()=>{audioInit();toggleFS();};$('fsT').onclick=()=>{toggleFS(
 document.addEventListener('fullscreenchange',()=>{fsUI();setTimeout(resize,150);});document.addEventListener('webkitfullscreenchange',()=>{fsUI();setTimeout(resize,150);});
 [['rotL',-1],['rotR',1]].forEach(([id,s])=>{const b=$(id);b.addEventListener('pointerdown',e=>{e.preventDefault();audioInit();R3.spin=s;try{b.setPointerCapture(e.pointerId);}catch(_){}});const st=()=>{if(R3.spin===s)R3.spin=0;};b.addEventListener('pointerup',st);b.addEventListener('pointercancel',st);b.addEventListener('lostpointercapture',st);b.addEventListener('contextmenu',e=>e.preventDefault());});
 // arrastar com o botão direito do mouse gira
+{let pd=null;cv.addEventListener('mousedown',e=>{if(e.button===1||(e.button===0&&e.shiftKey)){e.preventDefault();pd={x:e.clientX,y:e.clientY};R3.touching=true;}});addEventListener('mousemove',e=>{if(pd){r3Pan(e.clientX-pd.x,e.clientY-pd.y);pd.x=e.clientX;pd.y=e.clientY;}});addEventListener('mouseup',()=>{if(pd){pd=null;R3.touching=false;}});}
 {let rd=null;cv.addEventListener('contextmenu',e=>e.preventDefault());cv.addEventListener('mousedown',e=>{if(e.button===2)rd={x:e.clientX,y0:R3.yawT};});addEventListener('mousemove',e=>{if(rd)R3.yawT=rd.y0-(e.clientX-rd.x)*0.008;});addEventListener('mouseup',()=>rd=null);}
 $('viewBtn').onclick=()=>setView({follow:'pages',pages:'map',map:'follow'}[settings.view]);
 $('pages').onclick=()=>setView(settings.view==='map'?'follow':'map');
@@ -864,7 +870,7 @@ function pollPad(dt){const gps=navigator.getGamepads?navigator.getGamepads():[];
   else if($('pause').classList.contains('show')){if(press(0)||press(1))show(null);}
   else if(!game.paused&&game.level){
     R3.padSpin=(b(5)?1:0)-(b(4)?1:0);if(press(3))setView({follow:'pages',pages:'map',map:'follow'}[settings.view]);if(press(1))setView(settings.view==='map'?'follow':'map');
-    const lt=gp.buttons[6]?gp.buttons[6].value:0,rt=gp.buttons[7]?gp.buttons[7].value:0;if(lt>0.05||rt>0.05)R3.zoom=Math.max(0.45,Math.min(2.6,R3.zoom*Math.exp((rt-lt)*dt*1.6)));
+    const lt=gp.buttons[6]?gp.buttons[6].value:0,rt=gp.buttons[7]?gp.buttons[7].value:0;if(lt>0.05||rt>0.05)R3.zoom=Math.max(0.2,Math.min(4,R3.zoom*Math.exp((rt-lt)*dt*1.6)));
     const ax=gp.axes[0]||0,ay=gp.axes[1]||0,rx=gp.axes[2]||0;if(Math.abs(rx)>0.3)R3.yawT+=rx*dt*2.2;
     let d=null;if(Math.hypot(ax,ay)>0.45)d=r3DirFromScreen(ax,ay);
     else if(b(12))d=r3DirFromScreen(0.3,-1);else if(b(15))d=r3DirFromScreen(1,0.3);else if(b(13))d=r3DirFromScreen(-0.3,1);else if(b(14))d=r3DirFromScreen(-1,-0.3);

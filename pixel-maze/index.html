@@ -100,7 +100,7 @@ h2{font-weight:700;font-size:22px;margin:0 0 14px;letter-spacing:-.01em}
 <div class="scr" id="help"><div class="card glass help">
   <h2>Como jogar</h2>
   <p>Você é um <b>pixel de luz</b>. Leve-o da <b>entrada</b>, no canto de cima à esquerda, até a <b>saída</b>, no canto oposto, embaixo à direita. Com andares, a entrada e a saída ficam em andares diferentes. No caminho há portões: as formas que você coleciona abrem os portões, e o <b>losango verde</b> abre o portão da saída. Cada labirinto é uma folha A4 dividida em <b>quatro páginas</b>, e o caminho passa por todas.</p>
-  <p><b>Andar:</b> encoste o dedo em qualquer lugar e arraste na direção. O pixel anda enquanto você segura e faz sozinho as curvas dos corredores. Ou <b>toque num ponto do caminho</b> e ele vai até lá. No computador: setas ou WASD.</p>
+  <p><b>Andar:</b> encoste o dedo em qualquer lugar e arraste na direção. O pixel anda enquanto você segura e faz sozinho as curvas dos corredores. Para virar, basta deslizar um pouco o dedo para o novo lado, sem tirar da tela. Se pedir a curva antes da hora, o pixel segue reto e vira na primeira abertura. Ou <b>toque num ponto do caminho</b> e ele vai até lá. No computador: setas ou WASD.</p>
   <p><b>Inclinar o celular:</b> escolha esse controle no menu de pausa (botão de duas barras) e o labirinto vira uma mesa de equilíbrio. O pixel rola com inércia, quica nas paredes e é puxado pelos buracos quando passa perto. A posição em que você segura o celular ao começar vale como plano; para mudar, use <b>Nivelar aqui</b> na pausa. Sem sensor (ou no computador), arraste o dedo ou use as setas para inclinar a mesa.</p>
   <p><b>Formas:</b> <span id="hShapes"></span> ficam escondidas em becos. Cada forma abre o <b>portão da mesma forma</b> e se gasta ao abrir.</p>
   <p><b>Losango verde:</b> <span id="hStar"></span> a saída só se acende depois que o pixel captura o losango verde, sempre na última parte do labirinto.</p>
@@ -485,9 +485,11 @@ function decide(){const lv=game.level,p=lv.p;
   const e=edge(p.cell,d);
   if(e.k==='open')return d;
   if(e.k==='gate'){if(lv.held.includes(e.b.shape)){openGate(e.b);return d;}lockedMsg(e.b);bump(d);return null;}
+  // pedido de curva antes da hora: continua rolando na direção atual e vira na primeira abertura
+  if(p.rolling&&d!==OPP(p.dir)&&edge(p.cell,p.dir).k==='open')return p.dir;
   if(d!==OPP(p.dir)){const opts=[0,1,2,3].filter(k=>k!==OPP(p.dir)&&canPass(p.cell,k));if(opts.length===1&&opts[0]!==OPP(d)){const e2=edge(p.cell,opts[0]);if(e2.k==='gate')openGate(e2.b);return opts[0];}}
   bump(d);return null;}
-function startMove(d){const lv=game.level,p=lv.p,n=neighbor(p.cell,d);p.from=p.cell;p.to=n;p.t=0;p.moving=true;p.dir=d;p.lastBump=-1;lv.lastLock=null;
+function startMove(d){const lv=game.level,p=lv.p,n=neighbor(p.cell,d);p.rolling=true;p.from=p.cell;p.to=n;p.t=0;p.moving=true;p.dir=d;p.lastBump=-1;lv.lastLock=null;
   lv.started=true;if(game.route&&game.route[0]===n)game.route.shift();}
 function arrive(){const p=game.level.p;p.cell=p.to;p.moving=false;enterCell(false);}
 function enterCell(phys){const lv=game.level,p=lv.p,L=lv.L;lv.steps++;visit(lv,p.cell);reveal(lv,p.cell);SFX.step();
@@ -513,7 +515,7 @@ function fmtT(s){const m=Math.floor(s/60),r=Math.floor(s%60);return m+':'+(r<10?
 
 function update(dt){const lv=game.level,p=lv.p;if(!lv.won&&lv.started)lv.time+=dt;
   p.bump=Math.max(0,p.bump-dt);p.squash+=((settings.ctrl==='tilt'?Math.min(1,p.spd/5):p.moving?1:0)-p.squash)*Math.min(1,dt*14);
-  if(p.state==='fall'){p.anim+=dt/0.45;if(p.anim>=1){p.cell=p.from=p.to=p.teleTo;p.lock=p.teleTo;p.x=p.cell%lv.L.W+0.5;p.y=((p.cell/lv.L.W)|0)+0.5;p.vx=p.vy=0;p.state='rise';p.anim=0;setViewFloor(floorOf(p.cell));visit(lv,p.cell);reveal(lv,p.cell);if(!lv.holeOf.get(p.cell).stair)SFX.rise();const[x,y]=cellPx(p.cell);burst(x,y,lv.holeOf.get(p.cell).col,22,3);lv.trail.length=0;}}
+  if(p.state==='fall'){p.anim+=dt/0.45;if(p.anim>=1){p.rolling=false;p.cell=p.from=p.to=p.teleTo;p.lock=p.teleTo;p.x=p.cell%lv.L.W+0.5;p.y=((p.cell/lv.L.W)|0)+0.5;p.vx=p.vy=0;p.state='rise';p.anim=0;setViewFloor(floorOf(p.cell));visit(lv,p.cell);reveal(lv,p.cell);if(!lv.holeOf.get(p.cell).stair)SFX.rise();const[x,y]=cellPx(p.cell);burst(x,y,lv.holeOf.get(p.cell).col,22,3);lv.trail.length=0;}}
   else if(p.state==='rise'){p.anim+=dt/0.35;if(p.anim>=1)p.state='roll';}
   else if(p.state==='win'){p.anim=Math.min(1,p.anim+dt/1.1);}
   else if(settings.ctrl==='tilt'){if(!lv.won)physStep(dt);}
@@ -521,7 +523,7 @@ function update(dt){const lv=game.level,p=lv.p;if(!lv.won&&lv.started)lv.time+=d
     for(let guard=0;guard<4&&budget>0;guard++){
       if(p.moving){const h=curHold();if(h!=null&&h===OPP(p.dir)&&!game.route){const f=p.from;p.from=p.to;p.to=f;p.t=1-p.t;p.dir=h;}
         const need=1-p.t;if(budget<need){p.t+=budget;budget=0;}else{p.t=1;budget-=need;arrive();if(p.state!=='roll')break;}}
-      if(!p.moving&&p.state==='roll'&&!lv.won){const d=decide();if(d==null)break;startMove(d);}else if(!p.moving)break;}}
+      if(!p.moving&&p.state==='roll'&&!lv.won){const d=decide();if(d==null){p.rolling=false;break;}startMove(d);}else if(!p.moving)break;}}
   const[hx,hy]=heroPx();if(p.state==='roll'||p.state==='win'){lv.trail.unshift([hx/S,hy/S]);if(lv.trail.length>14)lv.trail.length=14;}
   for(const f of lv.fx){f.x+=f.vx*dt;f.y+=f.vy*dt;f.vx*=0.93;f.vy*=0.93;f.life-=dt;}lv.fx=lv.fx.filter(f=>f.life>0);
   lv.L.gates.forEach(b=>{if(b.open&&b.anim<1)b.anim=Math.min(1,b.anim+dt/0.45);});
@@ -666,13 +668,22 @@ let hudT=0;function hud(dt){hudT+=dt;if(hudT>0.25){hudT=0;$('time').textContent=
 
 // ================= entrada =================
 const joy=$('joy'),knob=$('knob');let ptr=null;
-cv.addEventListener('pointerdown',e=>{if(game.paused)return;audioInit();ptr={id:e.pointerId,x0:e.clientX,y0:e.clientY,ox:e.clientX,oy:e.clientY,t:performance.now(),moved:false};cv.setPointerCapture(e.pointerId);});
+cv.addEventListener('pointerdown',e=>{if(game.paused)return;audioInit();ptr={id:e.pointerId,x0:e.clientX,y0:e.clientY,ox:e.clientX,oy:e.clientY,ax:e.clientX,ay:e.clientY,t:performance.now(),moved:false};cv.setPointerCapture(e.pointerId);});
 cv.addEventListener('pointermove',e=>{if(!ptr||e.pointerId!==ptr.id)return;let dx=e.clientX-ptr.ox,dy=e.clientY-ptr.oy;const dist=Math.hypot(dx,dy);
   if(Math.hypot(e.clientX-ptr.x0,e.clientY-ptr.y0)>12)ptr.moved=true;
-  if(dist>14){game.hold=Math.abs(dx)>Math.abs(dy)?(dx>0?1:3):(dy>0?2:0);game.route=null;}
+  // direção: conta o movimento desde a última decisão (âncora), não desde onde o dedo encostou.
+  // Um deslize curto (16 px) para o lado já vira; continuar deslizando na mesma direção só arrasta a âncora junto.
+  const ax=e.clientX-ptr.ax,ay=e.clientY-ptr.ay,h=game.hold,TH=16;
+  if(h==null){if(Math.hypot(ax,ay)>14){game.hold=Math.abs(ax)>Math.abs(ay)?(ax>0?1:3):(ay>0?2:0);game.route=null;ptr.ax=e.clientX;ptr.ay=e.clientY;}}
+  else{const hor=h===1||h===3,along=hor?(h===1?ax:-ax):(h===2?ay:-ay),side=hor?ay:ax;
+    if(Math.abs(side)>TH&&Math.abs(side)>Math.abs(along)*0.75){game.hold=hor?(side>0?2:0):(side>0?1:3);game.route=null;ptr.ax=e.clientX;ptr.ay=e.clientY;}
+    else if(along<-TH){game.hold=OPP(h);game.route=null;ptr.ax=e.clientX;ptr.ay=e.clientY;}
+    else if(along>8){ptr.ax=e.clientX;ptr.ay=e.clientY;}}
   if(dist>46){ptr.ox=e.clientX-dx/dist*46;ptr.oy=e.clientY-dy/dist*46;dx=e.clientX-ptr.ox;dy=e.clientY-ptr.oy;}
   game.joyV=ptr.moved?{x:dx/46,y:dy/46}:null;
-  if(ptr.moved){joy.style.left=ptr.ox+'px';joy.style.top=ptr.oy+'px';joy.classList.add('on');knob.style.transform='translate(calc(-50% + '+(dx*0.7)+'px),calc(-50% + '+(dy*0.7)+'px))';}});
+  if(ptr.moved){joy.style.left=ptr.ox+'px';joy.style.top=ptr.oy+'px';joy.classList.add('on');
+    if(settings.ctrl==='tilt'||game.hold==null)knob.style.transform='translate(calc(-50% + '+(dx*0.7)+'px),calc(-50% + '+(dy*0.7)+'px))';
+    else{const D=DIRS[game.hold];knob.style.transform='translate(calc(-50% + '+(D.dx*26)+'px),calc(-50% + '+(D.dy*26)+'px))';}}});
 function ptrEnd(e){if(!ptr||e.pointerId!==ptr.id)return;if(!ptr.moved&&performance.now()-ptr.t<350&&settings.tap)tapTo(e.clientX,e.clientY);ptr=null;game.hold=null;game.joyV=null;joy.classList.remove('on');}
 cv.addEventListener('pointerup',ptrEnd);cv.addEventListener('pointercancel',ptrEnd);
 function tapTo(sx,sy){const lv=game.level;if(settings.ctrl==='tilt')return;if(!lv||lv.won||lv.p.state!=='roll')return;const lx=sx*DPR+Math.round(cam.x),ly=sy*DPR+Math.round(cam.y);

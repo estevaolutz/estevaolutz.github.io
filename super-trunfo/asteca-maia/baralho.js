@@ -1,0 +1,78 @@
+/* Super Trunfo · Mitologia Asteca e Maia — 48 cartas
+   Atributos: poder, inteligência, força, velocidade, agressividade, astúcia, coragem (1 a 10)
+   Cada carta: [código, nome, [atributos], arquivo no Wikimedia Commons, obra, mito] */
+const BARALHO = {
+  id: "asteca-maia",
+  subtitulo: "Mitologia Asteca e Maia",
+  grupos: {
+    A:{n:"Deuses Astecas",       cor:"#4f8ff7", escura:"#1f4fa8", clara:"#dbe8ff"},
+    B:{n:"Deuses Maias",         cor:"#5aae3a", escura:"#2f6b1c", clara:"#e0f2d6"},
+    C:{n:"Heróis e Reis",        cor:"#d23a22", escura:"#8a1d0e", clara:"#fbe0da"},
+    D:{n:"Criaturas",            cor:"#8a1a66", escura:"#4f0a39", clara:"#f3dcec"},
+  },
+  superTrunfo: "A1",
+  desafiantes: ["A2","A9","D1"],
+  bots: {facil:"Guerreiro-Jaguar", medio:"Sacerdote", dificil:"Imperador"},
+  temas: { faixa:{n:"Códice", classe:"tema-codice"}, nobre:{n:"Jade e Obsidiana", classe:"tema-jade"} },
+  verso: { simbolo:"✺" },
+  versoCor: "#0f5c55",
+  leque: ["A1","A7","C3","D1"],
+  enquadramento: {A5:"50% 20%", A11:"50% 25%", B6:"50% 30%", B7:"50% 20%", B11:"50% 30%", C8:"50% 25%", D4:"50% 30%"},
+  cartas: [
+ // ---------- A · DEUSES ASTECAS ----------
+ ["A1","Quetzalcóatl",   [10,9,7,8,5,8,8], "Quetzalcóatl como la serpiente emplumada y el dios del viento Ehécatl, en el folio 19.jpg", "Códice Telleriano-Remensis, fólio 19", "A Serpente Emplumada, deus do vento e da sabedoria, que deu o milho aos homens."],
+ ["A2","Tezcatlipoca",   [9,9,6,7,8,10,7], "Tezcatlipoca 3.jpg", "Códice Borgia", "O Espelho Fumegante, senhor da noite e da magia, rival de Quetzalcóatl."],
+ ["A3","Huitzilopochtli",[9,6,8,8,9,6,9], "Huitzilopochtli telleriano.jpg", "Códice Telleriano-Remensis", "Deus do Sol e da guerra, que guiou os astecas até Tenochtitlan."],
+ ["A4","Tláloc",         [9,5,8,5,8,4,7],  "Colección del Museo del Templo Mayor - 2025 - 31.jpg", "Vaso de Tláloc, Museu do Templo Maior", "Deus da chuva e do raio, que traz a água ou a seca."],
+ ["A5","Coatlicue",      [9,6,8,2,8,5,8],  "Coatlicue.png", "Estátua de Coatlicue, Museu Nacional de Antropologia", "A mãe dos deuses, com saia de serpentes."],
+ ["A6","Chalchiuhtlicue",[9,6,6,8,7,6,6],  "Chalchiuhtlicue from Codex Borbonicus.jpg", "Códice Borbônico", "Deusa dos rios e dos lagos, a da saia de jade."],
+ ["A7","Tonatiuh",       [9,6,8,9,8,4,9], "Monolito de la Piedra del Sol.jpg", "Pedra do Sol, Museu Nacional de Antropologia", "O Sol do Quinto Mundo, cujo rosto está no centro da Pedra do Sol."],
+ ["A8","Xochiquetzal",   [8,8,2,7,2,9,5],  "Xochiquetzal Codex Fejérváry-Mayer 29-1.jpg", "Códice Fejérváry-Mayer", "Deusa das flores, da beleza e das artes."],
+ ["A9","Mictlantecuhtli",[9,7,7,3,8,8,6],  "Mictlantecuhtli 1.jpg", "Códice Borgia", "Senhor do Mictlán, o mundo dos mortos."],
+ ["A10","Mayahuel",      [8,8,3,6,2,9,7],  "Mayahuel 1.jpg", "Códice Borgia", "Deusa do agave, mãe dos quatrocentos coelhos."],
+ ["A11","Xochipilli",    [8,9,4,7,3,8,7],  "Statue of Xochipilli (From the National Museum of Anthropology, Mexico City).jpg", "Estátua de Xochipilli, Museu Nacional de Antropologia", "O príncipe das flores, deus da música, da dança e dos jogos."],
+ ["A12","Centéotl",      [8,7,9,6,4,6,7],  "Centeotl.jpg", "Códice Borbônico", "O deus do milho, alimento de todo o povo."],
+
+ // ---------- B · DEUSES MAIAS ----------
+ ["B1","Itzamná",        [9,10,4,3,2,8,7], "God D Itzamna.jpg", "Itzamná em vaso maia pintado", "Criador sábio, inventor da escrita e do calendário maia."],
+ ["B2","Kukulcán",       [9,9,7,8,6,8,8],  "Pyramid of Kukulkan Chichen Itza 2012 (8952118044).jpg", "Pirâmide de Kukulcán, Chichén Itzá", "A Serpente Emplumada dos maias: sua sombra desce a pirâmide no equinócio."],
+ ["B3","Chaac",          [9,5,9,6,9,4,8],  "Chac códice maya.jpg", "Chaac no Códice de Dresden", "Deus da chuva, que racha as nuvens com seu machado de pedra."],
+ ["B4","Ixchel",         [9,9,3,5,3,8,6],  "Ixchel Dresden Codex.jpg", "Ixchel no Códice de Dresden", "Deusa da Lua, da tecelagem e das parteiras."],
+ ["B5","Kinich Ahau",    [9,7,7,9,7,5,8],  "Mask of Kinich Ahau, Sun God, Palenque, Late Classic, 600-900 AD.jpg", "Máscara de Kinich Ahau, Palenque", "O Senhor de Rosto de Sol, que vira jaguar à noite."],
+ ["B6","K'awiil",        [8,8,6,7,5,9,7],  "Flanged censer based with the god K'awiil, Mexico, Tabasco, Late Classic Maya, 600-850 AD, earthenware and pigment - De Young Museum - DSC00616.JPG", "Incensário com K'awiil, De Young Museum", "Deus do relâmpago e dos reis, com uma perna de serpente."],
+ ["B7","Deus do Milho",  [8,7,6,5,2,6,9],  "Maya Corn God sculpture from Copan, photographed at the Museum of Mankind, London, 1974.jpg", "Deus do Milho de Copán, British Museum", "Hun Hunahpú, que morre e renasce todo ano como o milho."],
+ ["B8","Deus L",         [8,9,5,3,5,10,6], "Mayan priest smoking.jpg", "Relevo maia do Deus L fumando", "O velho senhor dos mercadores, que fuma charuto no submundo."],
+ ["B9","Ah Puch",        [9,5,6,4,9,6,5],  "Relief column of Ah Puch - 71.1967.37.1 - original.jpg", "Coluna em relevo de Ah Puch", "Deus da morte, de corpo de esqueleto e guizos que tocam."],
+ ["B10","Buluc Chabtan", [7,4,8,7,9,4,9], "Maya vase Branly 70-1998-5-1 n2.jpg", "Vaso maia, Museu do Quai Branly", "Deus da guerra e das batalhas."],
+ ["B11","Ixquic",        [6,8,3,6,2,9,9],  "Jarron Maya 2 - Ixquic y los Señores de Xibalbá.jpg", "Vaso maia: Ixquic e os senhores de Xibalbá", "Mãe dos Gêmeos Heróis, que fugiu dos senhores da morte."],
+ ["B12","Pauahtun",      [8,8,9,2,3,6,7],  "Pauahtun head, Copán (Honduras).jpg", "Cabeça de Pauahtun, Copán", "Velho deus que sustenta um canto do céu."],
+
+ // ---------- C · HERÓIS E REIS ----------
+ ["C1","Hunahpú",        [5,9,7,8,6,10,9], "Jarron Maya 1 - Hunahpú e Ixbalanqué.jpg", "Vaso maia com os Gêmeos Heróis", "Gêmeo Herói do Popol Vuh, que venceu os senhores da morte no jogo de bola."],
+ ["C2","Xbalanqué",      [5,8,8,9,7,9,9],  "God L with the Hero Twins.jpg", "Vaso maia: o Deus L e os Gêmeos Heróis", "O irmão gêmeo de Hunahpú, que no fim virou a Lua."],
+ ["C3","Pacal",          [8,9,4,3,4,9,7],  "Maya Jade Mask of Kinich Hanab Pakal, Ruler of Palenque, 615-683 AD.jpg", "Máscara de jade de Pacal, Palenque", "O grande rei de Palenque, que reinou por 68 anos."],
+ ["C4","Senhora Xoc",    [5,8,2,4,3,9,9],  "Yaxchilan (Maya) Lintel 24 Depicting Autosacrifice of Lady Xoc (9817545535).jpg", "Lintel 24 de Yaxchilan, British Museum", "Rainha de Yaxchilan, que invocava a Serpente da Visão."],
+ ["C5","Escudo-Jaguar",  [6,7,8,7,9,7,9],  "Ridpath's Universal history - an account of the origin, primitive condition and ethnic development of the great races of mankind, and of the principal events in the evolution and progress of the (14583759069).jpg", "Gravura de lintel de Yaxchilan", "Rei guerreiro de Yaxchilan, marido da Senhora Xoc."],
+ ["C6","Senhora Seis Céu",[6,9,4,5,8,9,9], "MUNAE Stela depicting a maya queen trampling a captive.jpg", "Estela de Naranjo, Museu Nacional da Guatemala", "Rainha guerreira que refundou a cidade de Naranjo."],
+ ["C7","Moctezuma II",   [9,8,4,4,6,8,6],  "Moctezuma Xocoyotzin.png", "Retrato de Moctezuma II", "O último grande imperador asteca, que recebeu os espanhóis."],
+ ["C8","Cuauhtémoc",     [5,7,8,8,9,6,10], "Relieve de Cuauhtémoc (Jesús F. Contreras) 09.jpg", "Jesús F. Contreras, relevo de Cuauhtémoc", "A 'Águia que Desce', último imperador, que defendeu Tenochtitlan até o fim."],
+ ["C9","Nezahualcóyotl", [6,10,5,6,4,9,7], "Codex Ixtlilxochitl - folio 106r.png", "Códice Ixtlilxóchitl, fólio 106", "O rei-poeta de Texcoco, engenheiro e sábio."],
+ ["C10","Cuitláhuac",    [5,7,8,7,9,7,9],  "Cuitlahuac2.jpg", "Cuitláhuac em códice", "O imperador que expulsou os espanhóis na Noite Triste."],
+ ["C11","Tlacaélel",     [6,10,5,4,7,10,7],"Tlacochcalcatl.jpg", "Códice Mendoza", "O conselheiro que transformou os astecas num império."],
+ ["C12","Ahuitzotl",     [6,7,8,7,9,6,9], "Ahuitzotl.jpg", "Códice Mendoza", "Imperador conquistador, que dobrou o tamanho do império."],
+
+ // ---------- D · CRIATURAS ----------
+ ["D1","Cipactli",       [9,3,9,6,9,4,8],"Cipactli.jpg", "Cipactli em códice", "O monstro-crocodilo primordial, de cujo corpo os deuses fizeram a terra."],
+ ["D2","Camazotz",       [7,4,7,9,9,5,7], "Zotz en Guate.jpg", "Figura maia de morcego, Guatemala", "O deus-morcego da Casa dos Morcegos de Xibalbá."],
+ ["D3","Ahuízotl",       [6,5,7,9,9,8,6],  "AhuitzotlGlyphHarvard.jpg", "Glifo do ahuízotl, Harvard", "Cão-d'água com uma mão na cauda, que puxa pescadores para o fundo do lago."],
+ ["D4","Xiuhcóatl",      [8,4,8,8,9,3,7], "Xiuhcoatl British Museum.jpg", "Xiuhcóatl em pedra, British Museum", "A serpente de fogo, arma de Huitzilopochtli."],
+ ["D5","Tzitzimime",     [8,6,5,8,9,7,6],  "Tzitzimitl.jpg", "Códice Magliabechiano", "Demônios das estrelas que atacam o Sol durante os eclipses."],
+ ["D6","Vucub Caquix",   [8,5,8,9,8,8,6],  "Europeana.eu-750-item QRRXT7EKLW4FL34Z7DQOAQ7ORO4IG7PW-95a98e65a2f78a3611e45ccc2d2db7ef.jpg", "Relevo mesoamericano", "A arara gigante e vaidosa que fingia ser o Sol, derrubada pelos Gêmeos."],
+ ["D7","Tlaltecuhtli",   [8,4,9,2,9,3,7],"Tlaltecuhtli monolith.jpg", "Monólito de Tlaltecuhtli, Templo Maior", "O monstro da terra, que engole o Sol todo fim de tarde."],
+ ["D8","Itzpapálotl",    [8,6,5,9,9,8,7],  "Itzpapalotl 1.jpg", "Códice Borgia", "A Borboleta de Obsidiana, deusa guerreira com asas de facas."],
+ ["D9","Serpente da Visão",[9,9,6,6,6,8,6],"Yaxchilan lintel 25.jpg", "Lintel 25 de Yaxchilan, British Museum", "A serpente que surge das oferendas e traz os ancestrais para falar."],
+ ["D10","Nahual",        [6,7,7,9,8,9,7],  "Jaguar warrior.jpg", "Guerreiro-jaguar no Códice Magliabechiano", "Feiticeiro que vira jaguar; os guerreiros-jaguar herdaram sua força."],
+ ["D11","Águia do Nopal",[7,6,6,9,7,5,8], "Codex Mendoza folio 2r book scan.jpg", "Códice Mendoza, fólio 2 (fundação de Tenochtitlan)", "A águia sobre o cacto que mostrou aos astecas onde fundar Tenochtitlan."],
+ ["D12","Xólotl",        [7,5,5,8,6,7,7],  "Xolotl from Codex Borgia.jpg", "Códice Borgia", "O deus-cão que guia os mortos e acompanhou Quetzalcóatl ao submundo."],
+  ],
+};

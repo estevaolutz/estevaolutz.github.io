@@ -1,0 +1,78 @@
+/* Super Trunfo · Mitologia Brasileira e Indígena — 48 cartas
+   Atributos: poder, inteligência, força, velocidade, agressividade, astúcia, coragem (1 a 10)
+   Cada carta: [código, nome, [atributos], arquivo no Wikimedia Commons, obra, mito] */
+const BARALHO = {
+  id: "brasileira",
+  subtitulo: "Mitologia Brasileira e Indígena",
+  grupos: {
+    A:{n:"Deuses e Astros",      cor:"#4f8ff7", escura:"#1f4fa8", clara:"#dbe8ff"},
+    B:{n:"Encantados",           cor:"#5aae3a", escura:"#2f6b1c", clara:"#e0f2d6"},
+    C:{n:"Heróis e Lendas",      cor:"#d23a22", escura:"#8a1d0e", clara:"#fbe0da"},
+    D:{n:"Assombrações",         cor:"#8a1a66", escura:"#4f0a39", clara:"#f3dcec"},
+  },
+  superTrunfo: "A1",
+  desafiantes: ["A7","D1","D2"],
+  bots: {facil:"Curumim", medio:"Pajé", dificil:"Cacique"},
+  temas: { faixa:{n:"Marajoara", classe:"tema-marajoara"}, nobre:{n:"Xilogravura", classe:"tema-xilo"} },
+  verso: { simbolo:"☀" },
+  versoCor: "#7a2a14",
+  leque: ["A1","B3","C6","D1"],
+  enquadramento: {A2:"50% 30%", A7:"50% 30%", B3:"50% 35%", C3:"50% 20%", C4:"50% 20%", C8:"50% 30%", C10:"50% 25%", C7:"28% 40%", D10:"50% 30%"},
+  cartas: [
+ // ---------- A · DEUSES E ASTROS ----------
+ ["A1","Tupã",      [10,8,9,8,8,6,9], "Funerary vessel Collection H Law 172 n2.jpg", "Vaso funerário marajoara (400–1400 d.C.)", "O trovão: voz e força do céu para os povos tupi-guarani."],
+ ["A2","Nhanderu",  [10,9,5,3,2,8,8], "Cultura Marajoara - Urna funerária (13).jpg", "Urna funerária marajoara, Museu Nacional", "O 'Nosso Pai' dos guaranis, criador da terra e das pessoas."],
+ ["A3","Guaraci",   [9,6,6,9,6,4,7],  "Frans Post - 'Landscape by the river Senhor de Engenho, Brazil'.jpg", "Frans Post, paisagem do Brasil (séc. XVII)", "O Sol, que aquece a terra e faz as plantas crescerem."],
+ ["A4","Jaci",      [8,7,3,6,2,7,6],  "Cultura Santarém - Muiraquitã MN 01.jpg", "Muiraquitã da cultura Santarém, Museu Nacional", "A Lua, protetora das plantas e dos amores; deu os muiraquitãs às icamiabas."],
+ ["A5","Rudá",      [8,6,4,7,3,8,6],  "Cultura Marajoara - Urna funerária (12).jpg", "Urna funerária marajoara, Museu Nacional", "Deus do amor, que vive nas nuvens e manda saudade a quem está longe."],
+ ["A6","Sumé",      [7,10,5,6,2,8,8], "Pedra do Ingá Ingá PB BR.jpg", "Itacoatiaras da Pedra do Ingá (Paraíba)", "O sábio que ensinou o plantio e deixou marcas nas pedras."],
+ ["A7","Jurupari",  [9,9,7,6,7,9,8],  "Cultura Marajoara - Urna funerária (14).jpg", "Urna funerária marajoara, Museu Nacional", "O legislador da floresta, filho de Ceuci, que deu leis aos homens."],
+ ["A8","Anhangá",   [8,6,7,9,7,9,6],  "Lery(1580)-p235-Aygnan.jpg", "Gravura do livro de Jean de Léry (1580)", "Protetor dos bichos: aparece como veado de olhos de fogo para castigar caçadores."],
+ ["A9","Ceuci",     [8,7,3,4,2,8,7],  "Pleiades Sidereus Nuncius (cropped).png", "As Plêiades no Sidereus Nuncius de Galileu (1610)", "A mãe de Jurupari, que virou as estrelas das Plêiades."],
+ ["A10","Tamandaré",[6,8,7,6,4,8,9],  "Frans Post - A Brazilian Landscape.jpg", "Frans Post, paisagem brasileira (séc. XVII)", "Sobrevivente do grande dilúvio, que se salvou no alto de uma palmeira."],
+ ["A11","Poronominare",[7,9,5,7,5,9,7],"Cultura Santarém - Muiraquitã MN 02.jpg", "Muiraquitã da cultura Santarém, Museu Nacional", "Herói-deus dos barés do rio Negro, que pôs ordem no mundo."],
+ ["A12","Akuanduba",[8,8,4,6,3,8,7],  "Cultura Santarém - Muiraquitã MN 04.jpg", "Muiraquitã da cultura Santarém, Museu Nacional", "Deus dos araras que, tocando sua flauta, devolveu a ordem ao mundo."],
+
+ // ---------- B · ENCANTADOS ----------
+ ["B1","Iara",      [8,7,3,9,6,10,5], "Iara lenda.jpg", "Ilustração da lenda da Iara", "A sereia dos rios, que encanta os pescadores com seu canto."],
+ ["B2","Boto",      [7,7,5,9,4,9,6],  "Inia geoffrensis1.jpg", "Gravura do boto-cor-de-rosa (séc. XIX)", "O golfinho do rio que vira um moço de chapéu branco nas festas."],
+ ["B3","Curupira",  [8,8,6,10,8,9,9], "O Curupira - Manoel Santiago, 1926.jpg", "Manoel Santiago, O Curupira (1926)", "Protetor das matas, com os pés virados para trás para enganar caçadores."],
+ ["B4","Caipora",   [8,7,7,8,8,8,8],  "Caipora Festival.jpg", "Ilustração da Caipora", "Guardiã dos bichos, que monta um porco-do-mato e confunde os caçadores."],
+ ["B5","Saci",      [6,8,3,10,5,10,7],"Saci Pererê.jpg", "Ilustração do Saci-Pererê", "Menino de uma perna só e gorro vermelho, que vive aprontando."],
+ ["B6","Matinta Perera",[7,7,3,7,6,9,5],"Matinta Perera.png", "Ilustração da Matinta Perera", "Bruxa que vira pássaro e assobia de noite pedindo tabaco."],
+ ["B7","Naiá",      [8,6,2,3,1,5,9],  "Giant water lily (Victoria amazonica); an expanded flower wi Wellcome V0044540.jpg", "Vitória-régia, litografia botânica (séc. XIX)", "A moça que quis tocar a Lua e virou a vitória-régia."],
+ ["B8","Mani",      [8,8,2,2,1,5,7],  "Manihot esculenta - Köhler–s Medizinal-Pflanzen-090.jpg", "Mandioca, prancha botânica de Köhler (1887)", "A menina de cuja sepultura nasceu a mandioca."],
+ ["B9","Uirapuru",  [8,6,1,10,2,8,5], "Cyphorhinus arada 1841.jpg", "Uirapuru, ilustração de 1841", "O pássaro encantado cujo canto faz a floresta inteira silenciar."],
+ ["B10","Negrinho do Pastoreio",[6,6,4,8,2,6,10],"Negrinho do pastoreio - piratini.jpg", "Negrinho do Pastoreio, Palácio Piratini", "Menino escravizado que virou protetor de quem perde as coisas."],
+ ["B11","Mãe do Ouro",[8,6,4,8,7,8,6],"Rugendas - Lavage du Mineral d'Or - pres de la Montagne Itacolumi.jpg", "Rugendas, lavagem do ouro perto do Itacolomi (1835)", "Bola de fogo que mostra onde há ouro e castiga os gananciosos."],
+ ["B12","Cobra Norato",[7,6,9,7,8,6,8],"Scott-anaconda.jpg", "Gravura de uma sucuri (séc. XIX)", "Rapaz encantado em cobra grande, que lutava contra o mal nos rios."],
+
+ // ---------- C · HERÓIS E LENDAS ----------
+ ["C1","Macunaíma", [6,7,5,7,4,10,3], "Capa de Macunaíma 2.jpg", "Capa da 1ª edição de Macunaíma (1928)", "O 'herói sem nenhum caráter', preguiçoso e esperto, de Mário de Andrade."],
+ ["C2","Sepé Tiaraju",[5,8,8,8,8,7,10],"Memorial da Epopeia Riograndense 80a.jpg", "Painel de azulejos, Memorial da Epopeia Rio-Grandense", "Líder guarani das Missões: 'Esta terra tem dono!'."],
+ ["C3","Arariboia", [5,7,8,7,8,7,9],  "Martim Affonso, Ararygboia (cobra feroz), chefe dos Trimininós.jpg", "Gravura de Arariboia (séc. XIX)", "Chefe temiminó que ajudou a fundar o Rio de Janeiro e Niterói."],
+ ["C4","Cunhambebe",[6,6,9,6,10,6,9], "Quoniambec.jpg", "Retrato de Cunhambebe por André Thevet (1584)", "O temido chefe tupinambá, aliado dos franceses na baía de Guanabara."],
+ ["C5","Felipe Camarão",[5,7,8,8,8,8,9],"Victor Meirelles - ESTUDO PARA BATALHA DOS GUARARAPES - 1874-1878.jpg", "Victor Meirelles, estudo para a Batalha dos Guararapes", "O Poti, herói potiguar da Batalha dos Guararapes."],
+ ["C6","Zumbi",     [6,8,8,8,8,9,10], "Antônio Parreiras - Zumbi 2.jpg", "Antônio Parreiras, Zumbi (1927)", "Último líder do Quilombo dos Palmares, símbolo da liberdade."],
+ ["C7","Dandara",   [5,8,8,8,8,8,9],  "Zumbi e Dandara dos Palmares.png", "Ilustração de Zumbi e Dandara (UFSC)", "Guerreira de Palmares, que lutou ao lado de Zumbi."],
+ ["C8","Iracema",   [5,7,3,9,4,8,8],  "Iracema.jpg", "José Maria de Medeiros, Iracema (1881)", "A 'virgem dos lábios de mel' do romance de José de Alencar."],
+ ["C9","Peri",      [4,6,9,9,7,7,9],  "Horácio Hora - Peri e Ceci.jpg", "Horácio Hora, Peri e Ceci (1882)", "O índio goitacá que salvou Ceci no romance O Guarani."],
+ ["C10","Paraguaçu",[5,9,3,6,3,9,8],  "Manoel Lopes Rodrigues - Sonho de Catarina Paraguaçu.JPG", "Manoel Lopes Rodrigues, Sonho de Catarina Paraguaçu", "Filha de chefe tupinambá que se casou com o Caramuru, na Bahia."],
+ ["C11","Juca Pirama",[4,6,8,7,7,5,9],"Índios guarani \"civilizados\" - 36461470036.jpg", "Debret, retratos de guerreiros (1834)", "O guerreiro tupi do poema de Gonçalves Dias: 'Meninos, eu vi!'."],
+ ["C12","Aimberê",  [5,6,8,7,9,6,9],  "Rodolfo Amoedo - O último tamoio.JPG", "Rodolfo Amoedo, O último tamoio (1883)", "Chefe da Confederação dos Tamoios, que lutou contra os portugueses."],
+
+ // ---------- D · ASSOMBRAÇÕES ----------
+ ["D1","Boitatá",   [10,4,8,9,10,5,8],"Boitatá.jpg", "Ilustração do Boitatá", "Cobra de fogo que protege os campos contra as queimadas."],
+ ["D2","Mapinguari",[9,2,10,4,10,2,8],"Megatherium americanum.jpg", "Preguiça-gigante, gravura do séc. XIX", "Gigante peludo de um olho só e boca na barriga, que pode vir das preguiças-gigantes."],
+ ["D3","Boiuna",    [9,4,9,6,9,5,7], "Alegoriaboiuna.jpg", "Alegoria da Boiuna", "A Cobra Grande dos rios da Amazônia, que afunda canoas."],
+ ["D4","Mula sem Cabeça",[7,1,8,10,9,2,7],"Mulasemcabeca.JPG", "Ilustração da Mula sem Cabeça", "Mula que solta fogo pelo pescoço e galopa nas noites de quinta para sexta."],
+ ["D5","Lobisomem", [7,3,9,8,10,3,7], "WeirdTalesv36n2pg038 The Werewolf Howls.png", "Ilustração de revista (1941)", "Homem que vira lobo nas noites de lua cheia."],
+ ["D6","Cuca",      [8,9,4,3,7,10,5], "Goya - Que viene el Coco, bdh0000066336, 1799.jpg", "Goya, Que viene el Coco (1799)", "A bruxa que pega as crianças que não querem dormir."],
+ ["D7","Corpo-Seco",[8,2,6,3,9,6,4],  "Hans Holbein - Dance of Death- The Creation - 1929.144 - Cleveland Museum of Art.jpg", "Holbein, A Dança da Morte (1538)", "Homem tão ruim que nem a terra quis enterrar."],
+ ["D8","Capelobo",  [6,3,8,7,9,4,6],  "Capelobo illustration.png", "Ilustração do Capelobo", "Monstro com focinho de tamanduá que ronda as matas do Maranhão."],
+ ["D9","Ipupiara",  [7,3,8,8,9,3,6],  "Nelli(1565)-Nel bresil di san Vincenzo-monstro.jpg", "Gravura de Nelli (1565)", "O monstro marinho que apareceu em São Vicente em 1564."],
+ ["D10","Caboclo d'Água",[7,5,8,8,8,7,6],"Carranca do rio são Francisco, o velho Chico em Minas gerais. - panoramio.jpg", "Carranca do rio São Francisco", "Guardião do rio São Francisco, que as carrancas dos barcos espantam."],
+ ["D11","Mãe-da-Lua",[6,6,2,8,2,10,4],"Urutau transparency.png", "O urutau, ilustração", "O urutau, ave fantasma de canto triste que se disfarça de galho seco."],
+ ["D12","Cabeça de Cuia",[6,4,7,7,8,5,5],"Cabeça de cuia.jpg", "Monumento ao Cabeça de Cuia, Teresina", "Pescador do rio Parnaíba amaldiçoado com uma cabeça enorme."],
+  ],
+};

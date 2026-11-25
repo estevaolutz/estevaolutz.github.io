@@ -1,0 +1,78 @@
+/* Super Trunfo · Mitologia Romana — 48 cartas
+   Atributos: poder, inteligência, força, velocidade, agressividade, astúcia, coragem (1 a 10)
+   Cada carta: [código, nome, [atributos], arquivo no Wikimedia Commons, obra, mito] */
+const BARALHO = {
+  id: "romana",
+  subtitulo: "Mitologia Romana",
+  grupos: {
+    A:{n:"Deuses do Capitólio",  cor:"#4f8ff7", escura:"#1f4fa8", clara:"#dbe8ff"},
+    B:{n:"Deuses de Roma",       cor:"#5aae3a", escura:"#2f6b1c", clara:"#e0f2d6"},
+    C:{n:"Heróis e Reis",        cor:"#d23a22", escura:"#8a1d0e", clara:"#fbe0da"},
+    D:{n:"Criaturas e Prodígios",cor:"#8a1a66", escura:"#4f0a39", clara:"#f3dcec"},
+  },
+  superTrunfo: "A1",
+  desafiantes: ["B1","D3","A2"],
+  bots: {facil:"Legionário", medio:"Centurião", dificil:"Imperador"},
+  temas: { faixa:{n:"Mosaico", classe:"tema-mosaico"}, nobre:{n:"Púrpura Imperial", classe:"tema-purpura"} },
+  verso: { simbolo:"SPQR" },
+  versoCor: "#5a1420",
+  leque: ["A1","C1","D1","D11"],
+  enquadramento: {A4:"50% 20%", A5:"50% 12%", A6:"50% 15%", A10:"50% 20%", A11:"50% 15%", B4:"50% 12%", B5:"50% 20%", B7:"50% 20%", B11:"50% 25%", B9:"50% 20%"},
+  cartas: [
+ // ---------- A · DEUSES DO CAPITÓLIO ----------
+ ["A1","Júpiter",   [10,8,9,7,8,7,9], "House of the Dioscuri (Pompeii) Jupiter enthroned being crowned by Wilhelm Zahn 1828 desaturated and colors adjusted to match original fresco.jpg", "Júpiter entronizado, afresco da Casa dos Dióscuros, Pompeia", "Rei dos deuses e senhor do raio, protetor de Roma no Capitólio."],
+ ["A2","Juno",      [9,8,5,5,8,9,7],  "Hera Ludovisi Altemps Inv8631.jpg", "Juno Ludovisi, Palazzo Altemps, Roma", "Rainha dos deuses, protetora das mulheres e de Roma; perseguiu Eneias."],
+ ["A3","Netuno",    [9,5,9,6,8,4,7],  "Sousse neptune.jpg", "Mosaico de Netuno, Sousse (Tunísia)", "Deus dos mares e dos cavalos, com seu tridente."],
+ ["A4","Plutão",    [9,7,7,4,5,7,7],  "Pluto Serapis and Persephone Isis Heraklion museum.jpg", "Plutão e Prosérpina, Museu de Heraclião", "Senhor do mundo dos mortos e das riquezas da terra."],
+ ["A5","Minerva",   [8,10,6,6,5,9,8], "Athena van Velletri Athena von Velletri (titel op object), RP-F-00-8166.jpg", "Minerva de Velletri, Louvre", "Deusa da sabedoria, das artes e da estratégia."],
+ ["A6","Marte",     [8,4,9,7,10,3,9], "Colossal statue of Mars (Pyrrhus)-2.jpg", "Estátua colossal de Marte, Museus Capitolinos", "Deus da guerra e pai de Rômulo; o mais honrado dos deuses romanos."],
+ ["A7","Vênus",     [8,7,2,5,3,9,4],  "Frescos in the House of Venus in Shell, Pompeii 04.jpg", "Vênus na concha, afresco de Pompeia", "Deusa do amor e mãe de Eneias, antepassada dos romanos."],
+ ["A8","Vulcano",   [7,9,8,1,5,7,6],  "Casa di sirico, triclinium, 09 teti e vulcano.jpg", "Vulcano e Tétis, afresco da Casa de Sirico, Pompeia", "O ferreiro dos deuses, que forjou as armas de Eneias."],
+ ["A9","Mercúrio",  [7,8,4,10,3,10,6],"Pompeii Ruins Fresco (48443481596).jpg", "Mercúrio com o caduceu, afresco de Pompeia", "Mensageiro dos deuses e protetor dos comerciantes."],
+ ["A10","Diana",    [7,7,6,9,7,6,8],  "Detail Diana Versailles Louvre Ma589.jpg", "Diana de Versalhes, Louvre", "Deusa da caça, da lua e das florestas."],
+ ["A11","Ceres",    [8,7,5,4,3,4,6],  "Portrait statue restored as Ceres, Roman, 2nd century AD, marble - Galleria Borghese - Rome, Italy - DSC04764.jpg", "Estátua de Ceres, Galleria Borghese", "Deusa do trigo e das colheitas; deu nome ao cereal."],
+ ["A12","Baco",     [7,6,5,5,7,8,6],  "Bacchus by Caravaggio-Uffizi Gallery.jpg", "Caravaggio, Baco (c. 1596), Uffizi", "Deus do vinho, da festa e do teatro."],
+
+ // ---------- B · DEUSES DE ROMA ----------
+ ["B1","Saturno",   [9,8,8,4,8,8,6],  "Saturn with head protected by winter cloak, holding a scythe in his right hand, fresco from the House of the Dioscuri at Pompeii, Naples Archaeological Museum (23497733210).jpg", "Saturno com a foice, afresco de Pompeia", "Rei da Idade de Ouro; na Saturnália, senhores e escravos trocavam de lugar."],
+ ["B2","Jano",      [8,9,5,5,3,8,7],  "Janus coin.png", "Moeda romana com Jano de duas faces", "Deus de duas caras, dos começos e das portas; deu nome a janeiro."],
+ ["B3","Vesta",     [8,7,3,2,1,5,7],  "Fresco of Vesta-Hestia from Pompeii.jpg", "Vesta, afresco de Pompeia", "Deusa do fogo sagrado de Roma, guardado pelas Vestais."],
+ ["B4","Fortuna",   [9,6,3,7,4,9,5],  "Fortuna, inv. 2244 - Braccio Nuovo, Museo Chiaramonti - Vatican Museums - DSC00920.jpg", "Fortuna, Museus Vaticanos", "Deusa da sorte, com a roda que gira o destino."],
+ ["B5","Vitória",   [8,6,6,10,7,6,9], "4879 - Brescia - S. Giulia - Vittoria di Brescia - Foto Giovanni Dall'Orto, 25 Giu 2011.jpg", "Vitória de Bréscia, bronze romano", "A deusa alada que coroa os vencedores."],
+ ["B6","Belona",    [7,5,8,7,10,5,9], "Rodin Bellona p1070045.jpg", "Rodin, Belona (1879)", "Deusa da guerra, que conduz o carro de Marte."],
+ ["B7","Fauno",     [6,5,6,8,6,7,6],  "Dancing Faun, after Roman sculpture discovered at Pompeii, by G. Tommei Naples manufacturer, c. 1900, bronze - Leighton House Museum - London - DSC01660.jpg", "Fauno dançante, cópia da estátua de Pompeia", "Deus dos bosques e dos rebanhos, com chifres e pernas de bode."],
+ ["B8","Flora",     [8,7,2,7,1,7,5],  "Wall painting - Flora - Stabiae (villa di Arianna) - Napoli MAN 8834.jpg", "Flora, afresco de Estábia", "Deusa das flores e da primavera."],
+ ["B9","Pomona",    [7,8,3,4,2,8,5],  "Naples Archaeology Museum (5914785482).jpg", "Estátua romana, Museu Arqueológico de Nápoles", "Deusa dos pomares e das frutas."],
+ ["B10","Aurora",   [7,6,3,10,2,5,6], "Guido Reni - L'Aurora di Guido Reni nelle arti decorative.jpg", "Guido Reni, Aurora (1614)", "A deusa do amanhecer, que abre as portas do céu para o Sol."],
+ ["B11","Cibele",   [9,7,7,4,6,6,8],  "Statue of Cybele.jpg", "Estátua de Cibele entronizada", "A Grande Mãe dos deuses, que viaja num carro puxado por leões."],
+ ["B12","Mitra",    [8,8,8,6,8,7,9],  "Le Mystère Mithra - 2022-07-02 10-38-22 - Tauroctony - 7351.jpg", "Mitra mata o touro, relevo romano", "Deus dos soldados romanos, que venceu o touro sagrado."],
+
+ // ---------- C · HERÓIS E REIS ----------
+ ["C1","Eneias",    [5,7,8,7,7,7,9],  "Iapyx removing arrowhead from Aeneas.jpg", "Eneias ferido, afresco de Pompeia", "Herói troiano que fugiu de Troia e foi antepassado dos romanos."],
+ ["C2","Rômulo",    [6,7,8,7,9,7,9],  "Brogi, Carlo (1850-1925) - n. 8226 - Certosa di Pavia - Medaglione sullo zoccolo della facciata.jpg", "Medalhão da Certosa de Pavia", "Fundador e primeiro rei de Roma."],
+ ["C3","Remo",      [5,5,8,9,9,5,9],  "Peter Paul Rubens - Romulus and Remus - Google Art Project.jpg", "Rubens, Rômulo e Remo (c. 1615)", "Gêmeo de Rômulo, criado pela loba; pulou o muro da nova cidade."],
+ ["C4","Numa",      [6,10,3,3,1,9,6], "Numapisocng6371obverse.jpg", "Moeda romana com Numa Pompílio", "O rei sábio que deu a Roma as leis e o calendário."],
+ ["C5","Horácio Cocles",[3,6,9,5,8,6,10],"Le Brun, Charles - Horatius Cocles defending the Bridge - Google Art Project.jpg", "Charles Le Brun, Horácio Cocles defende a ponte", "Defendeu sozinho a ponte do Tibre contra o exército etrusco."],
+ ["C6","Múcio Cévola",[3,6,6,6,7,7,10],"Ca' Rezzonico - Mucius Scaevola before Porsenna - Giovanni Antonio Pellegrini.jpg", "Pellegrini, Múcio Cévola diante de Porsena", "Pôs a mão no fogo diante do rei inimigo para mostrar a coragem romana."],
+ ["C7","Clélia",    [3,8,5,9,4,8,9],  "Cloelia before Porsenna - Melchior Feselen.jpg", "Feselen, Clélia e as reféns (1529)", "Fugiu dos etruscos atravessando o Tibre a nado com as outras reféns."],
+ ["C8","Os Horácios",[4,6,9,7,9,7,9], "Jacques-Louis David - Oath of the Horatii - Google Art Project.jpg", "David, O Juramento dos Horácios (1784)", "Três irmãos que lutaram por Roma contra os três Curiácios."],
+ ["C9","Cincinato", [5,9,6,4,5,8,8],  "Juan Antonio Ribera - Cincinato abandona el arado para dictar leyes a Roma, 1806.jpg", "Ribera, Cincinato deixa o arado (1806)", "Largou o arado para salvar Roma e depois voltou para a roça."],
+ ["C10","Coriolano",[4,6,8,7,9,5,9],  "Coriolanus at the Walls of Rome Hermitage.jpg", "Coriolano diante das muralhas de Roma, Hermitage", "General que se voltou contra Roma e foi detido pela própria mãe."],
+ ["C11","Camilo",   [5,9,7,6,7,9,8],  "Sebastiano Ricci - Camillus Rescuing Rome from Brennus - 27.537 - Detroit Institute of Arts.jpg", "Sebastiano Ricci, Camilo salva Roma de Breno", "O 'segundo fundador de Roma', que expulsou os gauleses."],
+ ["C12","Turno",    [4,5,9,8,9,4,9],  "Aeneas and Turnus.jpg", "Eneias e Turno em combate", "Rei dos rútulos e grande rival de Eneias pela Itália."],
+
+ // ---------- D · CRIATURAS E PRODÍGIOS ----------
+ ["D1","Loba Capitolina",[6,6,7,8,6,6,8],"Lupa Capitolina, Rome.jpg", "Loba Capitolina, Museus Capitolinos", "A loba que amamentou Rômulo e Remo às margens do Tibre."],
+ ["D2","Caco",      [6,4,9,5,10,6,6], "Hercules killing Cacus at his Cave.jpg", "Hércules mata Caco em sua caverna, gravura", "Gigante que cuspia fogo e roubou o gado de Hércules."],
+ ["D3","Tifeu",     [10,4,10,6,10,4,9],"Giulio-romano-fall-of-the-giants-fresco-in-the-sala-dei-giganti-palazzo-del-te-1530-1532.jpg", "Giulio Romano, A Queda dos Gigantes (1532)", "Gigante de cem cabeças que ousou enfrentar Júpiter."],
+ ["D4","Fúrias",    [8,6,5,8,10,7,8], "Klytaimnestra Erinyes Louvre Cp710.jpg", "As Fúrias, vaso grego, Louvre", "Deusas da vingança, com cabelos de serpente."],
+ ["D5","Celeno",    [5,6,4,10,8,7,5], "DossoDossiHarpie.jpg", "Dosso Dossi, Eneias e as Harpias", "A harpia que profetizou fome aos troianos de Eneias."],
+ ["D6","Cérbero",   [6,2,8,8,10,1,7], "Herakles Kerberos Eurystheus Louvre E701.jpg", "Hídria de Cere, Louvre", "O cão de três cabeças, que Eneias fez dormir com um bolo de mel."],
+ ["D7","Polifemo",  [5,2,10,3,8,1,7], "Greek vase painting, archaic or geometric, Polyphemus, Odysseus, AM Argos, Argm09.jpg", "Vaso arcaico de Argos", "O ciclope que os troianos de Eneias avistaram na Sicília."],
+ ["D8","Gansos do Capitólio",[4,6,1,8,6,7,7],"JUST IN TIME TO HURL DOWN THE FOREMOST OF THE ATTACKING PARTY.gif", "Gravura: os gansos acordam Mânlio", "Os gansos sagrados de Juno que acordaram Roma no ataque dos gauleses."],
+ ["D9","Sibila de Cumas",[8,10,1,3,1,9,7],"CumaeanSibylByMichelangelo.jpg", "Michelangelo, a Sibila de Cumas, Capela Sistina", "A profetisa que guiou Eneias ao mundo dos mortos."],
+ ["D10","Águia de Júpiter",[7,6,6,10,8,6,9],"Roman sculpture from Augustus to Constantine (1907) (14594733517).jpg", "Relevo romano com a águia", "A águia que carrega os raios de Júpiter e virou símbolo das legiões."],
+ ["D11","Serpentes Marinhas",[7,3,9,8,10,4,6],"Laocoön and his sons group.jpg", "Laocoonte e seus filhos, Museus Vaticanos", "As serpentes que saíram do mar para calar o sacerdote Laocoonte."],
+ ["D12","Cavalo de Troia",[6,10,8,1,4,10,5],"Giovanni Domenico Tiepolo - The Procession of the Trojan Horse in Troy - WGA22382.jpg", "Tiepolo, A procissão do Cavalo de Troia", "O cavalo de madeira que fez Troia cair, como conta Eneias."],
+  ],
+};

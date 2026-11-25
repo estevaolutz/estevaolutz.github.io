@@ -241,7 +241,21 @@ Responda SOMENTE com JSON, sem texto fora dele, neste formato:
 Use o nome do álbum como ele aparece nas plataformas de streaming. "confianca" vai de 0 a 1. Se não reconhecer a capa, use os textos visíveis e deixe a confiança baixa. Até 3 alternativas.`;
 const pegaJSON=t=>{const m=String(t||'').match(/\{[\s\S]*\}/);if(!m)throw new Error('a IA não devolveu JSON');return JSON.parse(m[0])};
 const OCUPADO=[408,429,500,502,503,504,529];
+function motivoIA(st,d){const msg=d.error?.message||d.error?.status||('erro '+st);const t=msg+' '+JSON.stringify(d.error?.details||'');let p;
+  if(/leaked/i.test(t))p='o Google bloqueou essa chave por segurança — crie uma nova em aistudio.google.com/apikey e cole em Ajustes';
+  else if(/expired/i.test(t))p='a chave expirou — crie uma nova e cole em Ajustes';
+  else if(/SERVICE_DISABLED|has not been used|is disabled/i.test(t))p='a API do Gemini não está ativada no projeto dessa chave — crie a chave pelo aistudio.google.com/apikey';
+  else if(/API_KEY_INVALID|not valid|invalid x-api-key|invalid api key/i.test(t))p='a chave não é válida (pode ter sido apagada ou colada pela metade) — cole de novo em Ajustes';
+  else if(/credit balance|billing|insufficient/i.test(t))p='a conta da IA está sem crédito';
+  else if(/location is not supported|region/i.test(t))p='o serviço de IA não está disponível nesta região';
+  else if(st===401||st===403)p='a chave não foi aceita — confira em Ajustes';
+  else return msg;
+  return p+' ['+st+': '+String(msg).slice(0,120)+']'}
+async function testarChave(){const G=AJ.ia==='gemini';
+  const r=await timeoutFetch(G?'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1':'https://api.anthropic.com/v1/models?limit=1',{headers:G?{'x-goog-api-key':AJ.chave}:{'x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'}},15000);
+  const d=await r.json().catch(()=>({}));return r.ok?null:motivoIA(r.status,d)}
 async function identificarIA(b64,aviso=()=>{},sinal){const fim=Date.now()+45000;
+  if(/^AIza/.test(AJ.chave))AJ.ia='gemini';else if(/^sk-ant-/.test(AJ.chave))AJ.ia='anthropic';
   const G=AJ.ia==='gemini';if(!G&&AJ.ia!=='anthropic')return null;
   const modelos=[...new Set((G?[AJ.modelo,'gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash','gemini-2.5-flash','gemini-flash-lite-latest']:[AJ.modelo,'claude-haiku-5-5','claude-sonnet-5-5']).filter(Boolean))];
   let ult='',ocupado=false;
@@ -255,7 +269,7 @@ async function identificarIA(b64,aviso=()=>{},sinal){const fim=Date.now()+45000;
         d=await r.json().catch(()=>({}))}catch(e){if(sinal?.aborted)throw new Error('parado');ult='o serviço demorou a responder';ocupado=true;aviso('Sem resposta desse modelo — tentando outro…');continue}
       if(r.status===404||d.error?.type==='not_found_error'){ult='modelo não encontrado';continue}
       if(OCUPADO.includes(r.status)||d.error?.type==='overloaded_error'||/high demand|overloaded|try again later/i.test(d.error?.message||'')){ult='os modelos de IA estão sobrecarregados agora';ocupado=true;aviso('Modelo ocupado — tentando outro…');continue}
-      if(!r.ok){const msg=d.error?.message||('erro '+r.status);throw new Error(/api key|API_KEY|invalid x-api-key|authentication/i.test(msg)?'a chave não foi aceita — confira em Ajustes':msg)}
+      if(!r.ok)throw new Error(motivoIA(r.status,d))
       const txt=G?(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join(''):(d.content||[]).map(p=>p.text||'').join('');
       return pegaJSON(txt)}
     if(!ocupado)break}
@@ -384,9 +398,8 @@ function render(){
     $('#aKey').addEventListener('input',e=>kSet(e.target.value));
     $('#kCol').onclick=async()=>{try{const t=await navigator.clipboard.readText();if(!t.trim())return $('#kSt').textContent='A área de transferência está vazia. Copie a chave primeiro.';kSet(t);toast('Chave colada')}
       catch(e){$('#kSt').textContent='O navegador não deixou colar por botão. Toque e segure dentro do campo Chave e escolha “Colar”.';$('#aKey').focus()}};
-    $('#kTes').onclick=async e=>{sv();const st=$('#kSt');if(!AJ.chave)return st.textContent='Cole a chave primeiro.';if(AJ.ia!=='gemini'){st.textContent=AJ.ia?'O teste rápido é só para o Gemini; para a Anthropic, teste fotografando um disco.':'Escolha o serviço acima.';return}
-      e.target.disabled=true;st.textContent='Testando…';try{const r=await timeoutFetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',{headers:{'x-goog-api-key':AJ.chave}});const d=await r.json().catch(()=>({}));
-        st.textContent=r.ok?'✓ Chave funcionando. Já dá para reconhecer capas pela foto.':'A chave não funcionou: '+(d.error?.message||('erro '+r.status))}catch(err){st.textContent='Sem resposta do Google. Confira a internet.'}e.target.disabled=false};
+    $('#kTes').onclick=async e=>{sv();const st=$('#kSt');if(!AJ.chave)return st.textContent='Cole a chave primeiro.';if(!AJ.ia)return st.textContent='Escolha o serviço acima.';
+      e.target.disabled=true;st.textContent='Testando…';try{const m=await testarChave();st.textContent=m?'A chave não funcionou: '+m:'✓ Chave funcionando. Já dá para reconhecer capas pela foto.'}catch(err){st.textContent='Sem resposta do serviço. Confira a internet.'}e.target.disabled=false};
     M.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(TD.redirect()).then(()=>toast('Endereço copiado'),()=>{}));
     $('#tdP').onclick=()=>{$('#aTd').value=TIDAL_ID_PADRAO;sv();if(TD.on){TD.tok=null;TD.save()}render();toast('Client ID padrão')};
     $('#tdC').onclick=()=>{sv();if(TD.on){TD.tok=null;TD.save();render();return}if(!AJ.tidalId)return toast('Cole o Client ID primeiro');TD.conectar()};

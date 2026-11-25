@@ -229,7 +229,15 @@ async function buscaDiscogs(d,q){const t=(AJ.discogsToken||'').trim();if(!t){con
   let l=q?await um(new URLSearchParams({q})):await um(new URLSearchParams({artist:d.artista||'',release_title:d.album||''}));
   if(!q&&!l.length)l=await um(new URLSearchParams({q:`${d.artista||''} ${d.album||''}`.trim()}));
   return l.map(x=>({id:x.id,titulo:x.title||'',ano:String(x.year||''),pais:x.country||'',gravadora:(x.label||[])[0]||'',catno:x.catno&&x.catno!=='none'?x.catno:'',
-    formato:[...new Set(x.format||[])].join(', '),capa:safeUrl(x.thumb)||safeUrl(x.cover_image)||'',url:'https://www.discogs.com'+(x.uri||('/release/'+x.id))}))}
+    formato:[...new Set(x.format||[])].join(', '),capa:safeUrl(x.thumb)||safeUrl(x.cover_image)||'',capaG:safeUrl(x.cover_image)||'',url:'https://www.discogs.com'+(x.uri||('/release/'+x.id))}))}
+/* troca a capa pela do Discogs nos discos que já tinham a prensagem escolhida */
+async function capasDiscogs(){const t=(AJ.discogsToken||'').trim();if(!t)return;
+  for(const d of DISCOS.filter(d=>d.discogs&&d.discogs.id&&!d.discogs.capaG)){
+    try{const r=await timeoutFetch('https://api.discogs.com/releases/'+d.discogs.id,{headers:{Authorization:'Discogs token='+t}},15000);if(r.status===429){await new Promise(ok=>setTimeout(ok,60000));continue}if(!r.ok)continue;const j=await r.json();
+      const im=(j.images||[]).find(i=>i.type==='primary')||(j.images||[])[0];const u=safeUrl(im?.uri)||safeUrl(d.discogs.capa);if(!u)continue;
+      d.discogs.capaG=u;d.capa=u;await DB.put('discos',d)}catch(e){}
+    await new Promise(ok=>setTimeout(ok,1500))}
+  await load();render()}
 const prensagemTxt=g=>[g.pais,g.ano,g.gravadora,g.catno,g.formato].filter(Boolean).join(' · ');
 const linkFor=(d,p)=>{const L=d.links||{};if(L[p[0]])return{url:L[p[0]],direto:true};return{url:p[3](`${d.artista} ${d.album}`),direto:false}};
 
@@ -567,7 +575,7 @@ function detalhe(id){const d=DISCOS.find(x=>x.id===id);if(!d)return;const pri=PL
     $('#dgQb').onclick=()=>dgBusca($('#dgQ').value.trim());$('#dgQ').onkeydown=ev=>{if(ev.key==='Enter')$('#dgQb').click()};
     $('#dgN').onclick=async()=>{d.discogs={nenhum:true};await DB.put('discos',d);render();proximo()};
     $('#dgL').onclick=async ev=>{const b=ev.target.closest('[data-dg]');if(!b)return;const c=l[+b.dataset.dg];
-      d.discogs=c;d.links={...(d.links||{}),discogs:c.url};if(!d.gravadora&&c.gravadora)d.gravadora=c.gravadora;await DB.put('discos',d);render();toast('Prensagem guardada');proximo()}};
+      d.discogs=c;d.links={...(d.links||{}),discogs:c.url};if(c.capaG||c.capa)d.capa=c.capaG||c.capa;if(!d.gravadora&&c.gravadora)d.gravadora=c.gravadora;await DB.put('discos',d);render();toast('Prensagem guardada');proximo()}};
   dgMostra();if(semVersao(d)&&!d.discogs&&AJ.discogsToken)dgBusca();
   $('#detBody').onclick=e=>{if(e.target.closest('[data-dgbusca]'))dgBusca();if(e.target.closest('[data-revprox]'))proximo();if(e.target.closest('[data-revfim]')){REV=null;detalhe(id)}};
   $('#dL').onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-nl')){const n=await perguntar('Nome da nova lista');if(!n)return;const l={id:uid(),nome:n,criado:Date.now()};await DB.put('listas',l);d.listas=[...(d.listas||[]),l.id];await DB.put('discos',d);await load();return detalhe(id)}
@@ -700,7 +708,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#camV').hidden)
 $('#fab').onclick=()=>camera('capa');
 ['q','ord','flt'].forEach(i=>$('#'+i).addEventListener('input',render));
 
-(async()=>{try{await DB.open();await load()}catch(e){toast('Este navegador não deixou guardar dados',5000)}try{SYNC=window.ColecoesSync.criar({app:'vinis',DB,itens:'discos',listas:'listas',aviso:toast,aoMudar:async()=>{await load();render()}});SYNC.painel(document.getElementById('syncBox'))}catch(e){}
+(async()=>{try{await DB.open();await load()}catch(e){toast('Este navegador não deixou guardar dados',5000)}setTimeout(capasDiscogs,4000);try{SYNC=window.ColecoesSync.criar({app:'vinis',DB,itens:'discos',listas:'listas',aviso:toast,aoMudar:async()=>{await load();render()}});SYNC.painel(document.getElementById('syncBox'))}catch(e){}
   const st=new URLSearchParams(location.search).get('state');if(st==='tidal')await TD.retorno();else await SP.retorno();render();
   if(location.hash==='#novo')novo()})();
 }

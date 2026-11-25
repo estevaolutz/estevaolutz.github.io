@@ -242,9 +242,21 @@ async function codigoDeBarras(c){if(!('BarcodeDetector' in window))return null;t
 /* ---------- IA ---------- */
 const PROMPT=`Esta é a foto de um disco de vinil (pode ser a capa, a contracapa ou o selo do disco). Identifique o lançamento.
 Responda SOMENTE com JSON, sem texto fora dele, neste formato:
-{"artista":"","album":"","ano":"","gravadora":"","confianca":0.0,"texto_visivel":"","alternativas":[{"artista":"","album":""}]}
-Use o nome do álbum como ele aparece nas plataformas de streaming. "confianca" vai de 0 a 1. Se não reconhecer a capa, use os textos visíveis e deixe a confiança baixa. Até 3 alternativas.`;
-const pegaJSON=t=>{const m=String(t||'').match(/\{[\s\S]*\}/);if(!m)throw new Error('a IA não devolveu JSON');return JSON.parse(m[0])};
+{"artista":"","album":"","ano":"","gravadora":"","confianca":0.0,"alternativas":[{"artista":"","album":""}]}
+Use o nome do álbum como ele aparece nas plataformas de streaming. "confianca" vai de 0 a 1. Se não reconhecer a capa, use os nomes impressos nela para deduzir artista e álbum e deixe a confiança baixa. Não transcreva os textos da capa: devolva só os campos pedidos. Até 3 alternativas.`;
+const CAMPOS_IA=['artista','album','ano','gravadora','confianca'];
+function pegaJSON(t){t=String(t||'').replace(/```(?:json)?/gi,'').trim();
+  const a=t.indexOf('['),i=t.indexOf('{');if(i<0)return null;
+  if(a>=0&&a<i){const f=t.lastIndexOf(']');if(f>a){try{const v=JSON.parse(t.slice(a,f+1));if(Array.isArray(v)&&v[0]&&typeof v[0]==='object')return v[0]}catch(e){}}}
+  const s=t.slice(i),j=s.lastIndexOf('}');if(j>=0){try{return JSON.parse(s.slice(0,j+1))}catch(e){}}
+  /* resposta cortada no meio: resgata os campos que vieram inteiros */
+  const o={};for(const k of CAMPOS_IA){const m=s.match(new RegExp('"'+k+'"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*"|-?[0-9.]+)'));if(m){try{o[k]=JSON.parse(m[1])}catch(e){}}}
+  return Object.keys(o).length?o:null}
+function motivoVazio(d){const f=d.candidates?.[0]?.finishReason||d.promptFeedback?.blockReason||d.stop_reason||'';
+  if(/RECITATION/i.test(f))return 'o Gemini se recusou a transcrever a capa (bloqueio de “recitação”)';
+  if(/SAFETY|PROHIBITED|BLOCK|refusal/i.test(f))return 'o filtro de segurança da IA bloqueou essa foto';
+  if(/MAX_TOKENS|max_tokens/i.test(f))return 'a resposta da IA veio cortada';
+  return 'a IA respondeu sem os dados do disco'+(f?' ('+f+')':'')}
 const OCUPADO=[408,429,500,502,503,504,529];
 function motivoIA(st,d){const msg=d.error?.message||d.error?.status||('erro '+st);const t=msg+' '+JSON.stringify(d.error?.details||'');let p;
   if(/leaked/i.test(t))p='o Google bloqueou essa chave por segurança — crie uma nova em aistudio.google.com/apikey e cole em Ajustes';
@@ -276,7 +288,8 @@ async function identificarIA(b64,aviso=()=>{},sinal){const fim=Date.now()+45000;
       if(OCUPADO.includes(r.status)||d.error?.type==='overloaded_error'||/high demand|overloaded|try again later/i.test(d.error?.message||'')){ult='os modelos de IA estão sobrecarregados agora';ocupado=true;aviso('Modelo ocupado — tentando outro…');continue}
       if(!r.ok)throw new Error(motivoIA(r.status,d))
       const txt=G?(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join(''):(d.content||[]).map(p=>p.text||'').join('');
-      return pegaJSON(txt)}
+      const j=pegaJSON(txt);if(j&&(j.artista||j.album))return j;
+      ult=motivoVazio(d);aviso('Esse modelo não respondeu direito — tentando outro…')}
     if(!ocupado)break}
   throw new Error(ult||'não consegui falar com a IA')}
 

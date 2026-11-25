@@ -320,21 +320,33 @@ const P_ESTANTE=`Esta é a foto de uma estante, prateleira ou pilha de livros. L
 Responda SOMENTE com JSON, sem texto fora dele, neste formato:
 {"livros":[{"titulo":"","autor":""}]}
 Siga a ordem da esquerda para a direita, de cima para baixo. Escreva o título como está impresso. Se não der para ler o autor, deixe vazio. Não invente livros que não dá para ler.`;
-const pegaJSON=t=>{const m=String(t||'').match(/\{[\s\S]*\}/);if(!m)throw new Error('a IA não devolveu JSON');return JSON.parse(m[0])};
+const CAMPOS_IA=['titulo','subtitulo','autor','editora','ano','isbn','idioma','confianca'];
+function pegaJSON(t){t=String(t||'').replace(/```(?:json)?/gi,'').trim();
+  const a=t.indexOf('['),i=t.indexOf('{');if(i<0)return null;
+  if(a>=0&&a<i){const f=t.lastIndexOf(']');if(f>a){try{const v=JSON.parse(t.slice(a,f+1));if(Array.isArray(v)&&v[0]&&typeof v[0]==='object')return v[0]}catch(e){}}}
+  const s=t.slice(i),j=s.lastIndexOf('}');if(j>=0){try{return JSON.parse(s.slice(0,j+1))}catch(e){}}
+  /* resposta cortada no meio: resgata os campos que vieram inteiros */
+  const o={};for(const k of CAMPOS_IA){const m=s.match(new RegExp('"'+k+'"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*"|-?[0-9.]+)'));if(m){try{o[k]=JSON.parse(m[1])}catch(e){}}}
+  return Object.keys(o).length?o:null}
+function motivoVazio(d){const f=d.candidates?.[0]?.finishReason||d.promptFeedback?.blockReason||d.stop_reason||'';
+  if(/RECITATION/i.test(f))return 'o Gemini se recusou a transcrever a capa ou as lombadas (bloqueio de “recitação”)';
+  if(/SAFETY|PROHIBITED|BLOCK|refusal/i.test(f))return 'o filtro de segurança da IA bloqueou essa foto';
+  if(/MAX_TOKENS|max_tokens/i.test(f))return 'a resposta da IA veio cortada';
+  return 'a IA respondeu sem os dados do livro'+(f?' ('+f+')':'')}
 async function identificarIA(b64,prompt,max=800){
   if(AJ.ia==='gemini'){const modelos=[AJ.modelo,'gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash','gemini-2.5-flash'].filter(Boolean);let ult='';
     for(const m of [...new Set(modelos)]){const r=await timeoutFetch(`https://generativelanguage.googleapis.com/v1beta/models/${E(m)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':AJ.chave},
       body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:prompt}]}],generationConfig:{responseMimeType:'application/json',temperature:.2}})},60000);
       if(r.status===404){ult='modelo '+m+' não encontrado';continue}
       const d=await r.json();if(!r.ok)throw new Error(d.error?.message||('erro '+r.status));
-      return pegaJSON((d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join(''))}
+      const j=pegaJSON((d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join(''));if(j)return j;ult=motivoVazio(d)}
     throw new Error(ult)}
   if(AJ.ia==='anthropic'){const modelos=[AJ.modelo,'claude-haiku-5-5','claude-sonnet-5-5'].filter(Boolean);let ult='';
     for(const m of [...new Set(modelos)]){const r=await timeoutFetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:m,max_tokens:max,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:prompt}]}]})},60000);
       const d=await r.json();if(r.status===404||d.error?.type==='not_found_error'){ult='modelo '+m+' não encontrado';continue}
       if(!r.ok)throw new Error(d.error?.message||('erro '+r.status));
-      return pegaJSON((d.content||[]).map(p=>p.text||'').join(''))}
+      const j=pegaJSON((d.content||[]).map(p=>p.text||'').join(''));if(j)return j;ult=motivoVazio(d)}
     throw new Error(ult)}
   return null}
 

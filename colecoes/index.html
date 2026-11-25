@@ -378,7 +378,7 @@ const TD={key:'colecoes-tidal-v1',tok:null,nome:'Tidal',campo:'tidal',API:'https
     const r=await fetch(url,{...opt,headers:{Authorization:'Bearer '+this.tok.a,accept:'application/vnd.api+json','content-type':'application/vnd.api+json'}});if(r.status===204||r.status===201&&!r.headers.get('content-length'))return{};
     const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.errors?.[0]?.detail||d.errors?.[0]?.title||('erro '+r.status));e.status=r.status;throw e}return d},
   albumId:u=>(String(u||'').match(/album\/(\d+)/)||[])[1],
-  async acharAlbum(d){let id=this.albumId(d.links?.tidal);if(id)return id;
+  async acharAlbum(d){let id=this.albumId(d.links?.tidal);if(id)return id;if(d.semDigital)return null;
     try{const r=await this.api('/searchResults?'+new URLSearchParams({'filter[query]':`${d.artista} ${d.album}`.trim(),countryCode:AJ.pais||'BR',include:'albums'}));
       const ordem=((r.data||[])[0]?.relationships?.albums?.data||[]).map(x=>x.id);const porId=new Map((r.included||[]).filter(x=>x.type==='albums').map(a=>[a.id,a]));
       const inc=(ordem.length?ordem:[...porId.keys()]).map(i=>porId.get(i)).filter(Boolean);const alvo=norm(d.album);
@@ -524,12 +524,24 @@ function detalhe(id){const d=DISCOS.find(x=>x.id===id);if(!d)return;const pri=PL
     <label class="f">Formato<select class="in" id="eF">${['LP 12"','Duplo','Compacto 7"','EP','10"','Box'].map(x=>`<option ${x===d.formato?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
     <label class="f">Estado<select class="in" id="eE">${['','Novo / lacrado','Ótimo','Bom','Regular','Ruim'].map(x=>`<option ${x===(d.estado||'')?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
     <label class="f w">Observações<textarea class="in" id="eO" rows="2" placeholder="prensagem, onde comprou, quanto pagou…">${esc(d.obs)}</textarea></label></div>
-    <div class="row"><button class="btn pri" id="eS">Salvar</button><button class="btn" id="eR">Buscar links de novo</button>${TD.on?'<button class="btn" id="eT">Guardar no Tidal</button>':''}<span style="margin-left:auto"></span><button class="btn lk" id="eD" style="color:var(--ac)">Tirar da coleção</button></div>`;
+    <div class="row"><button class="btn pri" id="eS">Salvar</button><button class="btn" id="eR">Escolher a versão digital</button>${TD.on?'<button class="btn" id="eT">Guardar no Tidal</button>':''}<span style="margin-left:auto"></span><button class="btn lk" id="eD" style="color:var(--ac)">Tirar da coleção</button></div><div id="eRes"></div>`;
   abrir('sDet');
   $('#dL').onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-nl')){const n=await perguntar('Nome da nova lista');if(!n)return;const l={id:uid(),nome:n,criado:Date.now()};await DB.put('listas',l);d.listas=[...(d.listas||[]),l.id];await DB.put('discos',d);await load();return detalhe(id)}
     const lid=b.dataset.l;d.listas=(d.listas||[]).includes(lid)?d.listas.filter(x=>x!==lid):[...(d.listas||[]),lid];b.classList.toggle('on');await DB.put('discos',d);render();if(d.listas.includes(lid))autoPlaylist(d,lid)};
   $('#eS').onclick=async()=>{Object.assign(d,{artista:$('#eA').value.trim(),album:$('#eB').value.trim(),ano:$('#eY').value.trim(),gravadora:$('#eG').value.trim(),formato:$('#eF').value,estado:$('#eE').value,obs:$('#eO').value.trim()});await DB.put('discos',d);render();fechar($('#sDet'));toast('Salvo')};
-  $('#eR').onclick=async e=>{e.target.disabled=true;e.target.textContent='Buscando…';const c=(await buscar(`${$('#eA').value} ${$('#eB').value}`))[0];const L=c?await odesli(c.urls):{};if(Object.keys(L).length){d.links=L;if(!d.capa&&c.capa)d.capa=c.capa;await DB.put('discos',d);toast('Links atualizados');detalhe(id)}else{toast('Nenhum link novo encontrado');e.target.disabled=false;e.target.textContent='Buscar links de novo'}};
+  /* procura em todas as plataformas e deixa escolher a versão certa — ou nenhuma */
+  const escolher=async q=>{const box=$('#eRes');box.innerHTML='<div class="st"><span class="spin"></span><span>Buscando em todas as plataformas…</span></div>';box.scrollIntoView({behavior:'smooth',block:'nearest'});
+    let l=[];try{l=await buscar(q)}catch(e){}
+    box.innerHTML=`<h3 style="font-size:20px;margin:14px 0 6px">Qual é a versão digital deste disco?</h3>
+      <div class="row" style="margin-bottom:8px"><input class="in grow" id="eQ" value="${esc(q)}"><button class="btn" id="eQb">Buscar</button></div>
+      <div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span><span class="onde">${esc(Object.keys(c.links||{}).map(p=>NOME_PLAT[p]||p).join(' · '))}</span></div></button>`).join('')||'<p class="note">Nada encontrado. Mude o nome acima e busque de novo.</p>'}</div>
+      <div class="nenhum"><button class="btn pri" id="eN">Nenhum desses</button><span class="note">${Object.keys(d.links||{}).length?'Tira os links que estão ligados agora e deixa o disco sem versão digital.':'Deixa o disco sem versão digital.'} Os botões das plataformas abrem a busca pelo nome.</span></div>`;
+    $('#eQb').onclick=()=>escolher($('#eQ').value.trim()||q);$('#eQ').onkeydown=ev=>{if(ev.key==='Enter')$('#eQb').click()};
+    $('#eN').onclick=async()=>{d.links={};d.semDigital=true;await DB.put('discos',d);render();toast('Disco sem versão digital');detalhe(id)};
+    box.querySelector('.cands').onclick=async ev=>{const b=ev.target.closest('[data-c]');if(!b)return;const c=l[+b.dataset.c];box.innerHTML='<div class="st"><span class="spin"></span><span>Ligando esta versão em todas as plataformas…</span></div>';
+      const L=c.urls.length?await odesli(c.urls):{};for(const[k,v]of Object.entries(c.links||{}))if(!L[k]&&safeUrl(v))L[k]=v;
+      d.links=L;delete d.semDigital;if(!d.capa&&c.capa)d.capa=safeUrl(c.capa);if(!d.ano&&c.ano)d.ano=c.ano;await DB.put('discos',d);render();toast('Versão digital escolhida');detalhe(id)}};
+  $('#eR').onclick=()=>escolher(`${$('#eA').value} ${$('#eB').value}`.trim());
   if($('#eT'))$('#eT').onclick=async e=>{e.target.disabled=true;try{toast(await TD.colecao(d)?'Guardado na sua coleção do Tidal':'Não achei esse disco no Tidal')}catch(err){toast('Tidal: '+err.message,5000)}e.target.disabled=false};
   $('#eD').onclick=async e=>{if(e.target.dataset.ok){await DB.del('discos',id);await load();render();fechar($('#sDet'));toast('Disco removido')}else{e.target.dataset.ok=1;e.target.textContent='Toque de novo para confirmar'}}}
 async function autoPlaylist(d,lid){const S=SERV();const l=LISTAS.find(x=>x.id===lid);if(!l?.[S.campo]||!S.on)return;try{if(await S.addDisco(d,l))toast(`Adicionado à playlist “${l.nome}” no ${S.nome}`)}catch(e){}}
@@ -587,7 +599,7 @@ async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” no '+['T
    <div class="nenhum"><button class="btn pri" id="manual">Nenhum desses</button><span class="note">Guarda o disco com ${ia?"o que a IA reconheceu":"o nome digitado"} e a sua foto, sem ligar a nenhuma versão digital errada. Os botões das plataformas abrem a busca pelo nome.</span></div>`;
   $('#res').onclick=e=>{const b=e.target.closest('[data-c],[data-alt],#manual');if(!b)return;if(b.id==='manual')return confirmar(null);if(b.dataset.alt!=null){const a=alt[+b.dataset.alt];$('#nome').value=`${a.artista} ${a.album}`;return procurar($('#nome').value,prev,ia)}confirmar(l[+b.dataset.c])}}
 async function confirmar(c){const p=ADD.palpite||{};semDigital=!c;const t=$('#nome').value.trim();
-  const d={id:uid(),criado:Date.now(),tipo:'vinil',artista:c?.artista||p.artista||'',album:c?.album||p.album||t,ano:c?.ano||p.ano||'',gravadora:p.gravadora||'',genero:c?.genero||'',faixas:c?.faixas||'',capa:safeUrl(c?.capa),foto:ADD.foto||'',formato:'LP 12"',estado:'',obs:'',listas:[],links:{}};
+  const d={id:uid(),criado:Date.now(),tipo:'vinil',...(c?{}:{semDigital:true}),artista:c?.artista||p.artista||'',album:c?.album||p.album||t,ano:c?.ano||p.ano||'',gravadora:p.gravadora||'',genero:c?.genero||'',faixas:c?.faixas||'',capa:safeUrl(c?.capa),foto:ADD.foto||'',formato:'LP 12"',estado:'',obs:'',listas:[],links:{}};
   if(c){status('Encontrando o disco no Tidal, Spotify, YouTube Music…');d.links=c.urls.length?await odesli(c.urls):{};for(const[k,v]of Object.entries(c.links||{}))if(!d.links[k]&&safeUrl(v))d.links[k]=v}
   const achou=PLAT.slice(0,6).filter(p=>d.links[p[0]]).map(p=>p[1]);
   $('#addBody').innerHTML=`<div class="det"><div class="slv">${capaHTML(d)}</div><div><h2>${esc(d.album)}</h2><p class="who">${esc(d.artista)}</p><p class="note">${achou.length?'Encontrado em: '+esc(achou.join(', ')):'Sem links diretos — os botões vão abrir a busca em cada plataforma.'}</p></div></div>

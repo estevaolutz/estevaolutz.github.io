@@ -96,7 +96,7 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .cand:hover{border-color:var(--ac)}
 .cand img{width:64px;height:64px;border-radius:4px;object-fit:cover;flex:none;background:#222}
 .cand b{display:block;line-height:1.25}
-.cand span{color:var(--mut);font-size:14px}.dg h3{font-size:20px;margin:14px 0 6px}.dg{margin-top:8px}.nenhum{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;border:1px dashed var(--line);border-radius:12px}.nenhum .btn{flex:none}.cand span.onde{display:block;font-size:12px;margin-top:2px;color:var(--ac2,var(--mut))}
+.cand span{color:var(--mut);font-size:14px}.dg h3{font-size:20px;margin:14px 0 6px}.dg{margin-top:8px}.nenhum{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;border:1px dashed var(--line);border-radius:12px}.nenhum .btn{flex:none}.cand .igual{display:inline;color:#1a9b4b;font-size:12px;margin:0}.cand span.onde{display:block;font-size:12px;margin-top:2px;color:var(--ac2,var(--mut))}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:14px;min-height:36px}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -270,14 +270,30 @@ async function buscaMB(q){const r=await timeoutFetch(`https://musicbrainz.org/ws
     capa:`https://coverartarchive.org/release-group/${x.id}/front-250`,url:`https://musicbrainz.org/release-group/${x.id}`}))}
 const NOME_PLAT={tidal:'Tidal',spotify:'Spotify',appleMusic:'Apple Music',deezer:'Deezer',musicbrainz:'MusicBrainz'};
 /* procura em todas as plataformas ao mesmo tempo e junta o mesmo álbum vindo de lugares diferentes */
-async function buscar(q){const fontes=[buscaTidal(q),buscaSpotify(q),buscaItunes(q).then(l=>l.map(r=>({...r,plat:'appleMusic'}))),buscaDeezer(q).then(l=>l.map(r=>({...r,plat:'deezer'}))),buscaMB(q)];
-  const res=await Promise.allSettled(fontes);const out=[],vis=new Map();
+/* semelhança de nomes (0 a 1) e de capas (correlação de miniaturas 12×12 em cor) */
+function simTxt(a,b){a=norm(a);b=norm(b);if(!a||!b)return 0;if(a===b)return 1;if(a.includes(b)||b.includes(a))return .8;const A=new Set(a.split(' ')),B=new Set(b.split(' '));return[...A].filter(x=>B.has(x)).length/Math.max(A.size,B.size)}
+const _assin=new Map();
+function assinatura(src){if(!src)return Promise.resolve(null);if(_assin.has(src))return _assin.get(src);
+  const p=new Promise(ok=>{const im=new Image();im.crossOrigin='anonymous';const t=setTimeout(()=>ok(null),5000);
+    im.onload=()=>{clearTimeout(t);try{const N=12,c=document.createElement('canvas');c.width=c.height=N;const x=c.getContext('2d',{willReadFrequently:true});const w=im.naturalWidth,hh=im.naturalHeight,m=Math.min(w,hh)*(src.startsWith('data:')?.86:1);
+      x.drawImage(im,(w-m)/2,(hh-m)/2,m,m,0,0,N,N);const d=x.getImageData(0,0,N,N).data,v=[];for(let i=0;i<d.length;i+=4)v.push(d[i],d[i+1],d[i+2]);ok(v)}catch(e){ok(null)}};
+    im.onerror=()=>{clearTimeout(t);ok(null)};im.src=src});_assin.set(src,p);return p}
+function correl(a,b){const n=a.length;let ma=0,mb=0;for(let i=0;i<n;i++){ma+=a[i];mb+=b[i]}ma/=n;mb/=n;let s=0,sa=0,sb=0;for(let i=0;i<n;i++){const x=a[i]-ma,y=b[i]-mb;s+=x*y;sa+=x*x;sb+=y*y}return sa&&sb?s/Math.sqrt(sa*sb):0}
+/* Procura em todas as plataformas com várias buscas ao mesmo tempo: o nome completo, só o título do álbum e o álbum com outros nomes do artista
+   (ex.: na capa "Salvador Trio", no streaming "Dom Salvador"). Depois ordena pela semelhança do título, do artista e da capa com a sua foto. */
+async function buscar(q,dica=null){const alb=(dica?.album||'').trim(),arts=[dica?.artista,...(dica?.artistas_alternativos||[])].map(a=>String(a||'').trim()).filter(Boolean);
+  const qs=[...new Set([q,...(alb?[alb,...arts.slice(1).map(a=>`${a} ${alb}`)]:[])].map(s=>String(s||'').trim()).filter(Boolean))].slice(0,4);
+  const ap=l=>l.map(r=>({...r,plat:'appleMusic'})),dz=l=>l.map(r=>({...r,plat:'deezer'}));const tarefas=[];
+  qs.forEach((x,i)=>{tarefas.push(buscaItunes(x).then(ap),buscaDeezer(x).then(dz));if(i<2)tarefas.push(buscaTidal(x),buscaSpotify(x));if(i===0)tarefas.push(buscaMB(x))});
+  const res=await Promise.allSettled(tarefas);const out=[],vis=new Map();
   for(const r of res.flatMap(x=>x.value||[])){if(!r.album)continue;const k=norm(r.artista)+'|'+norm(r.album.replace(/\s*[\(\[][^)\]]*(remaster|edition|edição|deluxe|version|versão)[^)\]]*[\)\]]/ig,''));
-    if(vis.has(k)){const o=vis.get(k);if(r.plat!=='musicbrainz')o.urls.push(r.url);o.links[r.plat]=o.links[r.plat]||r.url;if(!o.ano&&r.ano)o.ano=r.ano;if((!o.capa||o.plat==='musicbrainz')&&r.capa&&r.plat!=='musicbrainz')o.capa=r.capa;if(!o.faixas&&r.faixas)o.faixas=r.faixas;continue}
+    if(vis.has(k)){const o=vis.get(k);if(r.plat!=='musicbrainz'&&!o.urls.includes(r.url))o.urls.push(r.url);o.links[r.plat]=o.links[r.plat]||r.url;if(!o.ano&&r.ano)o.ano=r.ano;if((!o.capa||o.plat==='musicbrainz')&&r.capa&&r.plat!=='musicbrainz')o.capa=r.capa;if(!o.faixas&&r.faixas)o.faixas=r.faixas;continue}
     r.urls=r.plat==='musicbrainz'?[]:[r.url];r.links={[r.plat]:r.url};vis.set(k,r);out.push(r)}
-  /* primeiro o que está em mais plataformas; os só-MusicBrainz (fora do streaming) por último */
-  const ord=c=>Object.keys(c.links).filter(p=>p!=='musicbrainz').length;
-  return out.map((c,i)=>[c,i]).sort((a,b)=>(ord(b[0])>0)-(ord(a[0])>0)||ord(b[0])-ord(a[0])||a[1]-b[1]).map(x=>x[0])}
+  const nPlat=c=>Object.keys(c.links).filter(p=>p!=='musicbrainz').length;
+  for(const c of out){c.nota=0;if(alb)c.nota+=2*simTxt(c.album,alb);if(arts.length)c.nota+=Math.max(...arts.map(a=>simTxt(c.artista,a)));if(!alb&&!arts.length)c.nota+=simTxt(`${c.artista} ${c.album}`,q)}
+  out.sort((a,b)=>b.nota-a.nota);
+  if(dica?.foto){const ref=await assinatura(dica.foto);if(ref)await Promise.all(out.slice(0,16).map(async c=>{const s=await assinatura(safeUrl(c.capa));if(s){c.capaSim=correl(ref,s);c.nota+=3*Math.max(0,c.capaSim)}}))}
+  return out.sort((a,b)=>(nPlat(b)>0)-(nPlat(a)>0)||b.nota-a.nota||nPlat(b)-nPlat(a)).slice(0,20)}
 async function odesli(urls){for(const u of urls){try{const r=await timeoutFetch(`https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(u)}&userCountry=${AJ.pais||'BR'}`);if(!r.ok)continue;const d=await r.json();const L={};
   for(const [k,v] of Object.entries(d.linksByPlatform||{}))if(safeUrl(v.url))L[k]=v.url;if(d.pageUrl)L.songlink=d.pageUrl;return L}catch(e){}}return {}}
 async function musicbrainzBarcode(code){const r=await timeoutFetch(`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(code)}&fmt=json&limit=3`,{headers:{Accept:'application/json'}});const d=await r.json();const x=(d.releases||[])[0];if(!x)return null;
@@ -292,8 +308,8 @@ async function codigoDeBarras(c){if(!('BarcodeDetector' in window))return null;t
 /* ---------- IA ---------- */
 const PROMPT=`Esta é a foto de um disco de vinil (pode ser a capa, a contracapa ou o selo do disco). Identifique o lançamento.
 Responda SOMENTE com JSON, sem texto fora dele, neste formato:
-{"artista":"","album":"","ano":"","gravadora":"","confianca":0.0,"alternativas":[{"artista":"","album":""}]}
-Use o nome do álbum como ele aparece nas plataformas de streaming. "confianca" vai de 0 a 1. Se não reconhecer a capa, use os nomes impressos nela para deduzir artista e álbum e deixe a confiança baixa. Não transcreva os textos da capa: devolva só os campos pedidos. Até 3 alternativas.`;
+{"artista":"","album":"","ano":"","gravadora":"","confianca":0.0,"artistas_alternativos":[""],"alternativas":[{"artista":"","album":""}]}
+Use o nome do álbum como ele aparece nas plataformas de streaming. "confianca" vai de 0 a 1. Se não reconhecer a capa, use os nomes impressos nela para deduzir artista e álbum e deixe a confiança baixa. Não transcreva os textos da capa: devolva só os campos pedidos. "artistas_alternativos": outros nomes com que esse artista aparece nas plataformas de streaming — o nome do líder de um trio ou grupo (ex.: Salvador Trio → Dom Salvador), o nome solo, outra grafia. Até 3 alternativas.`;
 const CAMPOS_IA=['artista','album','ano','gravadora','confianca'];
 function pegaJSON(t){t=String(t||'').replace(/```(?:json)?/gi,'').trim();
   const a=t.indexOf('['),i=t.indexOf('{');if(i<0)return null;
@@ -322,7 +338,7 @@ async function testarChave(){const G=AJ.ia==='gemini';
   const r=await timeoutFetch(G?'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1':'https://api.anthropic.com/v1/models?limit=1',{headers:G?{'x-goog-api-key':AJ.chave}:{'x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'}},15000);
   const d=await r.json().catch(()=>({}));return r.ok?null:motivoIA(r.status,d)}
 const PROMPT_LINHA=`Foto de um disco de vinil (capa, contracapa ou selo). Quem é o artista e qual é o álbum? Responda numa linha só, exatamente assim: ARTISTA ||| ÁLBUM — sem mais nada. Se não tiver certeza, dê o seu melhor palpite.`;
-const SCHEMA={type:'OBJECT',properties:{artista:{type:'STRING'},album:{type:'STRING'},ano:{type:'STRING'},gravadora:{type:'STRING'},confianca:{type:'NUMBER'},
+const SCHEMA={type:'OBJECT',properties:{artista:{type:'STRING'},album:{type:'STRING'},ano:{type:'STRING'},gravadora:{type:'STRING'},confianca:{type:'NUMBER'},artistas_alternativos:{type:'ARRAY',items:{type:'STRING'}},
   alternativas:{type:'ARRAY',items:{type:'OBJECT',properties:{artista:{type:'STRING'},album:{type:'STRING'}}}}},required:['artista','album']};
 const SEGURO=['HARM_CATEGORY_HARASSMENT','HARM_CATEGORY_HATE_SPEECH','HARM_CATEGORY_SEXUALLY_EXPLICIT','HARM_CATEGORY_DANGEROUS_CONTENT'].map(category=>({category,threshold:'BLOCK_NONE'}));
 function pegaLinha(t){t=String(t||'').replace(/```\w*/g,'').trim().split('\n').find(l=>l.includes('|||'))||'';const [ar,al]=t.split('|||').map(s=>s.replace(/^[\s*"“]+|[\s*"”.]+$/g,''));return ar&&al?{artista:ar,album:al,confianca:.5}:null}
@@ -583,10 +599,10 @@ function detalhe(id){const d=DISCOS.find(x=>x.id===id);if(!d)return;const pri=PL
   $('#eS').onclick=async()=>{Object.assign(d,{artista:$('#eA').value.trim(),album:$('#eB').value.trim(),ano:$('#eY').value.trim(),gravadora:$('#eG').value.trim(),formato:$('#eF').value,estado:$('#eE').value,obs:$('#eO').value.trim()});await DB.put('discos',d);render();fechar($('#sDet'));toast('Salvo')};
   /* procura em todas as plataformas e deixa escolher a versão certa — ou nenhuma */
   const escolher=async q=>{const box=$('#eRes');box.innerHTML='<div class="st"><span class="spin"></span><span>Buscando em todas as plataformas…</span></div>';box.scrollIntoView({behavior:'smooth',block:'nearest'});
-    let l=[];try{l=await buscar(q)}catch(e){}
+    let l=[];try{l=await buscar(q,{artista:d.artista,album:d.album,foto:/^data:image\//.test(d.foto||'')?d.foto:''})}catch(e){}
     box.innerHTML=`<h3 style="font-size:20px;margin:14px 0 6px">Qual é a versão digital deste disco?</h3>
       <div class="row" style="margin-bottom:8px"><input class="in grow" id="eQ" value="${esc(q)}"><button class="btn" id="eQb">Buscar</button></div>
-      <div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span><span class="onde">${esc(Object.keys(c.links||{}).map(p=>NOME_PLAT[p]||p).join(' · '))}</span></div></button>`).join('')||'<p class="note">Nada encontrado. Mude o nome acima e busque de novo.</p>'}</div>
+      <div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span><span class="onde">${c.capaSim>.7?'<b class="igual">capa igual à foto</b> · ':''}${esc(Object.keys(c.links||{}).map(p=>NOME_PLAT[p]||p).join(' · '))}</span></div></button>`).join('')||'<p class="note">Nada encontrado. Mude o nome acima e busque de novo.</p>'}</div>
       <div class="nenhum"><button class="btn pri" id="eN">Nenhum desses</button><span class="note">${Object.keys(d.links||{}).length?'Tira os links que estão ligados agora e deixa o disco sem versão digital.':'Deixa o disco sem versão digital.'} Os botões das plataformas abrem a busca pelo nome.</span></div>`;
     $('#eQb').onclick=()=>escolher($('#eQ').value.trim()||q);$('#eQ').onkeydown=ev=>{if(ev.key==='Enter')$('#eQb').click()};
     $('#eN').onclick=async()=>{d.links={};d.semDigital=true;await DB.put('discos',d);render();toast('Disco sem versão digital');detalhe(id)};
@@ -643,11 +659,11 @@ async function foto(file,lado){let c;try{c=await lerImagem(file,1400)}catch(e){r
   $('#res').insertAdjacentHTML('afterbegin',prev);if(!$('#deNovo'))$('#nome').focus()}
 function deNovo(file,lado){const st=$('#res .st');if(!st)return;st.insertAdjacentHTML('afterend','<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 0"><button class="btn" id="deNovo">Tentar de novo com esta foto</button></div><p class="note" style="margin-top:8px">Dica: foto de frente, sem reflexo do plástico, pegando a capa inteira. Digitar o nome fica como último recurso.</p>');
   $('#deNovo').onclick=()=>foto(file,lado)}
-async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” no '+['Tidal','Spotify','Apple Music','Deezer','MusicBrainz'].filter(n=>n==='Tidal'?TD.on:n==='Spotify'?SP.on:true).join(', ')+'…');let l=[];try{l=await buscar(q)}catch(e){}
+async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” no '+['Tidal','Spotify','Apple Music','Deezer','MusicBrainz'].filter(n=>n==='Tidal'?TD.on:n==='Spotify'?SP.on:true).join(', ')+'…');let l=[];try{l=await buscar(q,ia?{...ia,foto:ADD.foto}:(ADD.foto?{foto:ADD.foto}:null))}catch(e){}
   ADD.cands=l;const alt=(ia?.alternativas||[]).filter(a=>a&&a.album);
   $('#res').innerHTML=prev+(ia?`<p class="note">A IA acha que é <b>${esc(ia.album)}</b> — ${esc(ia.artista)}${ia.ano?' ('+esc(ia.ano)+')':''}${typeof ia.confianca==='number'?` · certeza ${Math.round(ia.confianca*100)}%`:''}. Escolha a versão certa:</p>`:'<p class="note">Escolha a versão certa:</p>')+
    (alt.length?`<div class="chips">${alt.map((a,i)=>`<button class="chip" data-alt="${i}">${esc(a.artista)} — ${esc(a.album)}</button>`).join('')}</div>`:'')+
-   `<div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span><span class="onde">${esc(Object.keys(c.links||{}).map(p=>NOME_PLAT[p]||p).join(' · '))}</span></div></button>`).join('')||'<p class="note">Nada encontrado em nenhuma plataforma. Confira o nome acima ou salve assim mesmo.</p>'}</div>
+   `<div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span><span class="onde">${c.capaSim>.7?'<b class="igual">capa igual à foto</b> · ':''}${esc(Object.keys(c.links||{}).map(p=>NOME_PLAT[p]||p).join(' · '))}</span></div></button>`).join('')||'<p class="note">Nada encontrado em nenhuma plataforma. Confira o nome acima ou salve assim mesmo.</p>'}</div>
    <div class="nenhum"><button class="btn pri" id="manual">Nenhum desses</button><span class="note">Guarda o disco com ${ia?"o que a IA reconheceu":"o nome digitado"} e a sua foto, sem ligar a nenhuma versão digital errada. Os botões das plataformas abrem a busca pelo nome.</span></div>`;
   $('#res').onclick=e=>{const b=e.target.closest('[data-c],[data-alt],#manual');if(!b)return;if(b.id==='manual')return confirmar(null);if(b.dataset.alt!=null){const a=alt[+b.dataset.alt];$('#nome').value=`${a.artista} ${a.album}`;return procurar($('#nome').value,prev,ia)}confirmar(l[+b.dataset.c])}}
 async function confirmar(c){const p=ADD.palpite||{};semDigital=!c;const t=$('#nome').value.trim();

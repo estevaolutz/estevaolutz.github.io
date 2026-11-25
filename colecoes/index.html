@@ -92,7 +92,7 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .cand:hover{border-color:var(--ac)}
 .cand img{width:64px;height:64px;border-radius:4px;object-fit:cover;flex:none;background:#222}
 .cand b{display:block;line-height:1.25}
-.cand span{color:var(--mut);font-size:14px}.cand span.onde{display:block;font-size:12px;margin-top:2px;color:var(--ac2,var(--mut))}
+.cand span{color:var(--mut);font-size:14px}.nenhum{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;border:1px dashed var(--line);border-radius:12px}.nenhum .btn{flex:none}.cand span.onde{display:block;font-size:12px;margin-top:2px;color:var(--ac2,var(--mut))}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:14px;min-height:36px}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -537,7 +537,7 @@ function perguntar(titulo,val=''){return new Promise(ok=>{const S=document.creat
   const fim=v=>{S.remove();ok(v)};S.querySelector('form').onsubmit=e=>{e.preventDefault();fim(i.value.trim())};S.querySelector('[type=button]').onclick=()=>fim('')})}
 
 /* ---------- adicionar ---------- */
-let SYNC=null;let ADD={};
+let SYNC=null,semDigital=false;let ADD={};
 function novo(){ADD={};abrir('sAdd');passo1()}
 let STREAM=null,LADO='capa';
 const camMsg=t=>$('#camMsg').textContent=t;
@@ -584,9 +584,9 @@ async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” no '+['T
   $('#res').innerHTML=prev+(ia?`<p class="note">A IA acha que é <b>${esc(ia.album)}</b> — ${esc(ia.artista)}${ia.ano?' ('+esc(ia.ano)+')':''}${typeof ia.confianca==='number'?` · certeza ${Math.round(ia.confianca*100)}%`:''}. Escolha a versão certa:</p>`:'<p class="note">Escolha a versão certa:</p>')+
    (alt.length?`<div class="chips">${alt.map((a,i)=>`<button class="chip" data-alt="${i}">${esc(a.artista)} — ${esc(a.album)}</button>`).join('')}</div>`:'')+
    `<div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span><span class="onde">${esc(Object.keys(c.links||{}).map(p=>NOME_PLAT[p]||p).join(' · '))}</span></div></button>`).join('')||'<p class="note">Nada encontrado em nenhuma plataforma. Confira o nome acima ou salve assim mesmo.</p>'}</div>
-   <button class="btn" id="manual">Salvar sem versão digital</button>`;
+   <div class="nenhum"><button class="btn pri" id="manual">Nenhum desses</button><span class="note">Guarda o disco com ${ia?"o que a IA reconheceu":"o nome digitado"} e a sua foto, sem ligar a nenhuma versão digital errada. Os botões das plataformas abrem a busca pelo nome.</span></div>`;
   $('#res').onclick=e=>{const b=e.target.closest('[data-c],[data-alt],#manual');if(!b)return;if(b.id==='manual')return confirmar(null);if(b.dataset.alt!=null){const a=alt[+b.dataset.alt];$('#nome').value=`${a.artista} ${a.album}`;return procurar($('#nome').value,prev,ia)}confirmar(l[+b.dataset.c])}}
-async function confirmar(c){const p=ADD.palpite||{};const t=$('#nome').value.trim();
+async function confirmar(c){const p=ADD.palpite||{};semDigital=!c;const t=$('#nome').value.trim();
   const d={id:uid(),criado:Date.now(),tipo:'vinil',artista:c?.artista||p.artista||'',album:c?.album||p.album||t,ano:c?.ano||p.ano||'',gravadora:p.gravadora||'',genero:c?.genero||'',faixas:c?.faixas||'',capa:safeUrl(c?.capa),foto:ADD.foto||'',formato:'LP 12"',estado:'',obs:'',listas:[],links:{}};
   if(c){status('Encontrando o disco no Tidal, Spotify, YouTube Music…');d.links=c.urls.length?await odesli(c.urls):{};for(const[k,v]of Object.entries(c.links||{}))if(!d.links[k]&&safeUrl(v))d.links[k]=v}
   const achou=PLAT.slice(0,6).filter(p=>d.links[p[0]]).map(p=>p[1]);
@@ -599,7 +599,7 @@ async function confirmar(c){const p=ADD.palpite||{};const t=$('#nome').value.tri
   $('#cL').onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-nl')){const n=await perguntar('Nome da nova lista');if(!n)return;const l={id:uid(),nome:n,criado:Date.now()};await DB.put('listas',l);await load();sel.add(l.id);b.insertAdjacentHTML('beforebegin',`<button class="chip on" data-l="${esc(l.id)}">${esc(n)}</button>`);return}const id=b.dataset.l;sel.has(id)?sel.delete(id):sel.add(id);b.classList.toggle('on')};
   $('#nV').onclick=passo1;
   $('#nS').onclick=async()=>{d.formato=$('#nF').value;d.estado=$('#nE').value;d.obs=$('#nO').value.trim();d.listas=[...sel];if($('#nP')?.checked)d.capa='';
-    await DB.put('discos',d);await load();fechar($('#sAdd'));VISTA='estante';render();toast(`“${d.album}” entrou na coleção`);if(TD.on&&AJ.tidalColecao!==false){try{toast(await TD.colecao(d)?`“${d.album}” entrou na coleção e no Tidal`:'Guardado aqui — não achei esse disco no Tidal',3500)}catch(e){toast('Tidal: '+e.message,5000)}}
+    await DB.put('discos',d);await load();fechar($('#sAdd'));VISTA='estante';render();toast(`“${d.album}” entrou na coleção`);if(TD.on&&AJ.tidalColecao!==false&&!semDigital){try{toast(await TD.colecao(d)?`“${d.album}” entrou na coleção e no Tidal`:'Guardado aqui — não achei esse disco no Tidal',3500)}catch(e){toast('Tidal: '+e.message,5000)}}
     for(const l of d.listas)autoPlaylist(d,l)}}
 
 /* ---------- listas: ações ---------- */

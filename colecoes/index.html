@@ -206,8 +206,8 @@ const DB={db:null,
   put(s,v){return new Promise((ok,no)=>{const t=this.db.transaction(s,'readwrite');t.objectStore(s).put(v);t.oncomplete=ok;t.onerror=()=>no(t.error)})},
   del(s,k){return new Promise((ok,no)=>{const t=this.db.transaction(s,'readwrite');t.objectStore(s).delete(k);t.oncomplete=ok;t.onerror=()=>no(t.error)})}
 };
-let DISCOS=[],LISTAS=[];
-const load=async()=>{DISCOS=await DB.all('discos');LISTAS=await DB.all('listas');LISTAS.sort((a,b)=>a.nome.localeCompare(b.nome))};
+let DISCOS=[],LISTAS=[],TODOS=null;const ID_TODOS='__colecao',NOME_TODOS='Minha coleção de vinis';
+const load=async()=>{DISCOS=await DB.all('discos');const LL=await DB.all('listas');TODOS=LL.find(l=>l.id===ID_TODOS)||null;LISTAS=LL.filter(l=>l.id!==ID_TODOS);LISTAS.sort((a,b)=>a.nome.localeCompare(b.nome))};
 
 /* ---------- plataformas ---------- */
 const PLAT=[
@@ -393,7 +393,7 @@ const SP={key:'colecoes-spotify-v1',tok:null,nome:'Spotify',campo:'spotify',
     try{await this.api(`/playlists/${pid}/items`,{method:metodo,body:JSON.stringify({uris:lote})})}catch(e){if(e.status!==404&&e.status!==403)throw e;await this.api(`/playlists/${pid}/tracks`,{method:metodo,body:JSON.stringify({uris:lote})})}}},
   async criar(nome){const corpo=JSON.stringify({name:nome,public:false,description:'Discos de vinil da minha coleção — app Coleções'});
     try{return await this.api('/me/playlists',{method:'POST',body:corpo})}catch(e){const me=await this.api('/me');return this.api(`/users/${encodeURIComponent(me.id)}/playlists`,{method:'POST',body:corpo})}},
-  async sincronizar(lista){const discos=DISCOS.filter(d=>(d.listas||[]).includes(lista.id));let uris=[],sem=0;
+  async sincronizar(lista){const discos=discosDaLista(lista);let uris=[],sem=0;
     for(const d of discos){const u=await this.faixas(d);if(!u.length)sem++;uris.push(...u)}
     if(!lista.spotify){const p=await this.criar(lista.nome);lista.spotify={id:p.id,url:p.external_urls?.spotify||''};await DB.put('listas',lista)}
     try{await this.adicionar(lista.spotify.id,uris,true)}catch(e){if(e.status===404){lista.spotify=null;return this.sincronizar(lista)}throw e}
@@ -429,7 +429,7 @@ const TD={key:'colecoes-tidal-v1',tok:null,nome:'Tidal',campo:'tidal',API:'https
     for(let i=0;i<10&&url;i++){const r=await this.api(url);out.push(...(r.data||[]).filter(x=>x.type==='tracks').map(x=>x.id));url=r.links?.next||null}return out},
   async adicionar(pid,ids){for(let i=0;i<ids.length;i+=50)await this.api(`/playlists/${pid}/relationships/items`,{method:'POST',body:JSON.stringify({data:ids.slice(i,i+50).map(id=>({type:'tracks',id})),meta:{onDuplicates:'SKIP'}})})},
   async criar(nome){const r=await this.api('/playlists',{method:'POST',body:JSON.stringify({data:{type:'playlists',attributes:{name:nome,description:'Discos de vinil da minha coleção — app Coleções',accessType:'UNLISTED'}}})});return r.data},
-  async sincronizar(lista){const discos=DISCOS.filter(d=>(d.listas||[]).includes(lista.id));const ids=[];let sem=0;
+  async sincronizar(lista){const discos=discosDaLista(lista);const ids=[];let sem=0;
     for(const d of discos){const u=await this.faixas(d);if(!u.length)sem++;ids.push(...u)}
     if(!lista.tidal){const p=await this.criar(lista.nome);lista.tidal={id:p.id,url:`https://tidal.com/browse/playlist/${p.id}`};await DB.put('listas',lista)}
     try{await this.adicionar(lista.tidal.id,ids)}catch(e){if(e.status===404){lista.tidal=null;await DB.put('listas',lista);return this.sincronizar(lista)}throw e}
@@ -438,6 +438,7 @@ const TD={key:'colecoes-tidal-v1',tok:null,nome:'Tidal',campo:'tidal',API:'https
   async colecao(d){const id=await this.acharAlbum(d);if(!id)return false;await this.api('/userCollectionAlbums/me/relationships/items',{method:'POST',body:JSON.stringify({data:[{type:'albums',id}]})});return true}
 };
 TD.load();
+const discosDaLista=l=>l.id===ID_TODOS?[...DISCOS].sort((a,b)=>(a.artista||'').localeCompare(b.artista||'')||String(a.ano||'').localeCompare(String(b.ano||''))||(a.album||'').localeCompare(b.album||'')):DISCOS.filter(d=>(d.listas||[]).includes(l.id));
 const SERV=()=>AJ.servico==='spotify'?SP:TD;
 
 /* ---------- vistas ---------- */
@@ -476,6 +477,7 @@ function render(){setTimeout(barraSel);
   else if(VISTA==='listas'){const S=SERV();
     M.innerHTML=`<div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">Listas</h2><input class="in grow" id="novaL" placeholder="Nome da nova lista" style="max-width:320px"><button class="btn pri" id="addL">Criar</button></div>
     <p class="note" style="margin-top:0">Separe os discos em listas — por gênero, para uma festa, os que estão na vitrola esta semana. Cada lista pode virar uma playlist no ${S.nome}.</p>
+    ${(()=>{const l=TODOS||{id:ID_TODOS,nome:NOME_TODOS};const n=DISCOS.length;return`<div class="list" style="margin-bottom:18px"><div class="stack4">${DISCOS.slice(0,4).map(d=>capaHTML(d)).join('')}</div><div style="flex:1"><h3>Toda a coleção</h3><span>${n} ${n===1?'disco':'discos'} · ${l[S.campo]?'playlist “'+esc(l.nome)+'” no '+S.nome+' — cada disco novo entra sozinho':'uma playlist com todos os discos que existem no '+S.nome}</span><div class="row" style="margin-top:8px;gap:6px"><button class="chip" data-spl="${ID_TODOS}">${l[S.campo]?'Atualizar playlist':'Criar playlist no '+S.nome}</button>${l[S.campo]&&safeUrl(l[S.campo].url)?`<a class="chip" href="${esc(l[S.campo].url)}" target="_blank" rel="noopener">Abrir playlist</a>`:''}</div></div></div>`})()}
     <div class="lists">${LISTAS.map(l=>{const ds=DISCOS.filter(d=>(d.listas||[]).includes(l.id));return`<div class="list"><div class="stack4">${ds.slice(0,4).map(d=>capaHTML(d)).join('')}</div><div style="flex:1"><h3>${esc(l.nome)}</h3><span>${ds.length} ${ds.length===1?'disco':'discos'}${l[S.campo]?' · playlist no '+S.nome:''}</span><div class="row" style="margin-top:8px;gap:6px"><button class="chip" data-verl="${esc(l.id)}">Ver discos</button><button class="chip" data-copl="${esc(l.id)}">Copiar links</button><button class="chip" data-spl="${esc(l.id)}">${l[S.campo]?'Atualizar playlist':'Criar playlist no '+S.nome}</button>${l[S.campo]&&safeUrl(l[S.campo].url)?`<a class="chip" href="${esc(l[S.campo].url)}" target="_blank" rel="noopener">Abrir playlist</a>`:''}<button class="chip" data-renl="${esc(l.id)}">Renomear</button><button class="chip" data-dell="${esc(l.id)}">Apagar</button></div></div></div>`}).join('')||'<p class="note">Nenhuma lista ainda.</p>'}</div>`}
   else{
     M.innerHTML=`<div class="set">
@@ -556,7 +558,7 @@ function render(){setTimeout(barraSel);
     $('#tdP').onclick=()=>{$('#aTd').value=TIDAL_ID_PADRAO;sv();if(TD.on){TD.tok=null;TD.save()}render();toast('Client ID padrão')};
     $('#tdC').onclick=()=>{sv();if(TD.on){TD.tok=null;TD.save();render();return}if(!AJ.tidalId)return toast('Cole o Client ID primeiro');TD.conectar()};
     $('#spC').onclick=()=>{sv();if(SP.on){SP.tok=null;SP.save();render();return}if(!AJ.spotifyId)return toast('Cole o Client ID primeiro');SP.conectar()};
-    $('#exp').onclick=()=>{const b=new Blob([JSON.stringify({app:'colecoes',tipo:'vinil',versao:1,discos:DISCOS,listas:LISTAS},null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`colecao-vinis-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
+    $('#exp').onclick=()=>{const b=new Blob([JSON.stringify({app:'colecoes',tipo:'vinil',versao:1,discos:DISCOS,listas:[...LISTAS,...(TODOS?[TODOS]:[])]},null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`colecao-vinis-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
     $('#imp').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());let n=0;for(const x of d.discos||[]){if(x&&x.id){await DB.put('discos',x);n++}}for(const x of d.listas||[])if(x&&x.id)await DB.put('listas',x);await load();render();toast(`${n} discos importados`)}catch(err){toast('Arquivo inválido')}}}
 }
 
@@ -612,7 +614,7 @@ function detalhe(id){const d=DISCOS.find(x=>x.id===id);if(!d)return;const pri=PL
   $('#eR').onclick=()=>escolher(`${$('#eA').value} ${$('#eB').value}`.trim());
   if($('#eT'))$('#eT').onclick=async e=>{e.target.disabled=true;try{toast(await TD.colecao(d)?'Guardado na sua coleção do Tidal':'Não achei esse disco no Tidal')}catch(err){toast('Tidal: '+err.message,5000)}e.target.disabled=false};
   $('#eD').onclick=async e=>{if(e.target.dataset.ok){await DB.del('discos',id);await load();render();fechar($('#sDet'));toast('Disco removido')}else{e.target.dataset.ok=1;e.target.textContent='Toque de novo para confirmar'}}}
-async function autoPlaylist(d,lid){const S=SERV();const l=LISTAS.find(x=>x.id===lid);if(!l?.[S.campo]||!S.on)return;try{if(await S.addDisco(d,l))toast(`Adicionado à playlist “${l.nome}” no ${S.nome}`)}catch(e){}}
+async function autoPlaylist(d,lid){const S=SERV();const l=lid===ID_TODOS?TODOS:LISTAS.find(x=>x.id===lid);if(!l?.[S.campo]||!S.on)return;try{if(await S.addDisco(d,l))toast(`Adicionado à playlist “${l.nome}” no ${S.nome}`)}catch(e){}}
 function perguntar(titulo,val=''){return new Promise(ok=>{const S=document.createElement('div');S.className='sheet on';S.innerHTML=`<div class="pan" style="max-width:460px"><h2 style="font-size:24px;margin-bottom:12px">${esc(titulo)}</h2><form class="row"><input class="in grow" value="${esc(val)}" required><button class="btn pri">OK</button><button type="button" class="btn">Cancelar</button></form></div>`;document.body.appendChild(S);const i=S.querySelector('input');i.focus();
   const fim=v=>{S.remove();ok(v)};S.querySelector('form').onsubmit=e=>{e.preventDefault();fim(i.value.trim())};S.querySelector('[type=button]').onclick=()=>fim('')})}
 
@@ -680,17 +682,17 @@ async function confirmar(c){const p=ADD.palpite||{};semDigital=!c;const t=$('#no
   $('#nV').onclick=passo1;
   $('#nS').onclick=async()=>{d.formato=$('#nF').value;d.estado=$('#nE').value;d.obs=$('#nO').value.trim();d.listas=[...sel];if($('#nP')?.checked)d.capa='';
     await DB.put('discos',d);await load();fechar($('#sAdd'));VISTA='estante';render();toast(`“${d.album}” entrou na coleção`);if(TD.on&&AJ.tidalColecao!==false&&!semDigital){try{toast(await TD.colecao(d)?`“${d.album}” entrou na coleção e no Tidal`:'Guardado aqui — não achei esse disco no Tidal',3500)}catch(e){toast('Tidal: '+e.message,5000)}}
-    for(const l of d.listas)autoPlaylist(d,l)}}
+    for(const l of d.listas)autoPlaylist(d,l);autoPlaylist(d,ID_TODOS)}}
 
 /* ---------- listas: ações ---------- */
-async function acaoLista(e){const b=e.target.closest('button');if(!b)return;const g=k=>LISTAS.find(l=>l.id===b.dataset[k]);
+async function acaoLista(e){const b=e.target.closest('button');if(!b)return;const g=k=>b.dataset[k]===ID_TODOS?(TODOS||{id:ID_TODOS,nome:NOME_TODOS,criado:Date.now()}):LISTAS.find(l=>l.id===b.dataset[k]);
   if(b.id==='addL'){const n=$('#novaL').value.trim();if(!n)return;await DB.put('listas',{id:uid(),nome:n,criado:Date.now()});await load();return render()}
   if(b.dataset.verl){VISTA='estante';render();$('#flt').value=b.dataset.verl;return render()}
   if(b.dataset.copl){const l=g('copl');const t=DISCOS.filter(d=>(d.listas||[]).includes(l.id)).map(d=>`${d.artista} — ${d.album}${d.ano?' ('+d.ano+')':''}\n${linkFor(d,PLAT.find(p=>p[0]===AJ.plataforma)||PLAT[0]).url}`).join('\n\n');
     return navigator.clipboard.writeText(`${l.nome}\n\n${t}`).then(()=>toast('Lista copiada com os links'),()=>toast('Não deu para copiar'))}
   if(b.dataset.renl){const l=g('renl');const n=await perguntar('Novo nome',l.nome);if(n){l.nome=n;await DB.put('listas',l);await load();render()}return}
   if(b.dataset.dell){if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmar?';return}const l=g('dell');for(const d of DISCOS)if((d.listas||[]).includes(l.id)){d.listas=d.listas.filter(x=>x!==l.id);await DB.put('discos',d)}await DB.del('listas',l.id);await load();return render()}
-  if(b.dataset.spl){const S=SERV();if(!S.on){toast(`Conecte o ${S.nome} em Ajustes primeiro`,3500);VISTA='ajustes';return render()}const l=g('spl');b.disabled=true;b.textContent='Enviando…';
+  if(b.dataset.spl){const S=SERV();if(!S.on){toast(`Conecte o ${S.nome} em Ajustes primeiro`,3500);VISTA='ajustes';return render()}const l=g('spl');b.disabled=true;b.textContent=l.id===ID_TODOS?`Enviando ${DISCOS.length} discos…`:'Enviando…';
     try{const r=await S.sincronizar(l);await load();render();toast(`Playlist “${l.nome}”: ${r.faixas} faixas${r.sem?` · ${r.sem} disco(s) não achado(s) no ${S.nome}`:''}`,4500)}catch(err){b.disabled=false;b.textContent='Tentar de novo';toast(S.nome+': '+err.message,5000)}}}
 
 /* ---------- eventos ---------- */

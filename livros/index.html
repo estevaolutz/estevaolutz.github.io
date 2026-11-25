@@ -372,6 +372,25 @@ async function arquivoBlob(a){const r=await DB.get('arquivos',a.id);if(!r)return
 /* ---------- livro novo ---------- */
 function novoLivro(c,extra={}){return{id:uid(),criado:Date.now(),titulo:c.titulo||'',subtitulo:c.subtitulo||'',autor:c.autor||'',editora:c.editora||'',ano:String(c.ano||''),isbn:c.isbn||'',paginas:c.paginas||'',idioma:c.idioma||'',assuntos:c.assuntos||'',sinopse:c.sinopse||'',
   capa:safeUrl(c.capa),foto:'',formato:'Capa comum',estado:'',leitura:'',nota:0,emprestado:'',local:'',obs:'',listas:[],links:c.links||{},kindle:null,destaques:[],arquivos:[],...extra}}
+const DIGITAL=['Só digital','Kindle'];
+const ehDigital=x=>DIGITAL.includes(x.formato);
+const palavras=t=>new Set(tituloBase(t).split(' ').filter(w=>w.length>3));
+const pareceMesmo=(x,b)=>{if(x===b||x.id&&x.id===b.id)return false;if(b.isbn&&x.isbn&&x.isbn===b.isbn)return true;const ta=tituloBase(x.titulo),tb=tituloBase(b.titulo);if(!ta||!tb)return false;
+  const aut=!autorChave(b.autor)||!autorChave(x.autor)||autorChave(x.autor)===autorChave(b.autor);if(!aut)return false;if(ta===tb)return true;const nums=t=>(t.match(/\d+/g)||[]).join(',');if(nums(ta)!==nums(tb))return false;
+  const [cu,lo]=ta.length<tb.length?[ta,tb]:[tb,ta];if(cu.length>=5&&cu.length/lo.length>=.6&&lo.includes(cu))return true;const A=palavras(x.titulo),B=palavras(b.titulo);if(!A.size||!B.size)return false;
+  const com=[...A].filter(w=>B.has(w)).length;return com/Math.max(A.size,B.size)>=.75&&autorChave(x.autor)===autorChave(b.autor)};
+/* junta o livro b dentro de a (a fica, b some) — arquivos, destaques, listas, Kindle e os dados que faltam; a edição de papel prevalece */
+async function fundir(a,b){const fis=x=>!ehDigital(x);
+  if(fis(b)&&!fis(a)){for(const k of ['editora','ano','isbn','paginas'])if(b[k])a[k]=b[k];a.formato=b.formato;if(b.estado)a.estado=b.estado;if(safeUrl(b.capa)&&!b.usarFoto){a.capa=b.capa;a.usarFoto=false}if(b.usarFoto&&b.foto){a.foto=b.foto;a.usarFoto=true}}
+  for(const k of [...CAMPOS,'local','emprestado'])if(!a[k]&&b[k])a[k]=b[k];if(!a.foto&&b.foto)a.foto=b.foto;
+  if(b.obs&&!(a.obs||'').includes(b.obs))a.obs=[a.obs,b.obs].filter(Boolean).join(' · ');
+  a.listas=[...new Set([...(a.listas||[]),...(b.listas||[])])];a.links={...(b.links||{}),...(a.links||{})};if(!a.kindle&&b.kindle)a.kindle=b.kindle;
+  if(!a.leitura&&b.leitura)a.leitura=b.leitura;a.nota=a.nota||b.nota||0;
+  const ja=new Set((a.destaques||[]).map(x=>x.texto));a.destaques=[...(a.destaques||[]),...(b.destaques||[]).filter(x=>!ja.has(x.texto))];
+  for(const f of b.arquivos||[]){const r=await DB.get('arquivos',f.id);if(r){r.livroId=a.id;await DB.put('arquivos',r)}}
+  a.arquivos=[...(a.arquivos||[]),...(b.arquivos||[])];if(b.criado&&b.criado<a.criado)a.criado=b.criado;
+  await salvar(a);if(LIVROS.some(x=>x.id===b.id))await DB.del('livros',b.id)}
+const pares=()=>{const out=[],usado=new Set();for(const x of LIVROS){if(usado.has(x.id))continue;const g=LIVROS.filter(y=>!usado.has(y.id)&&pareceMesmo(y,x));if(g.length){g.forEach(y=>usado.add(y.id));usado.add(x.id);out.push([x,...g])}}return out};
 const acharExistente=b=>LIVROS.find(x=>(b.isbn&&x.isbn&&x.isbn===b.isbn)||(tituloBase(x.titulo)&&tituloBase(x.titulo)===tituloBase(b.titulo)&&(!autorChave(b.autor)||!autorChave(x.autor)||autorChave(x.autor)===autorChave(b.autor))));
 
 /* ---------- vistas ---------- */
@@ -498,12 +517,16 @@ function vistaAjustes(M){
       <details><summary>Onde a chave fica guardada</summary>
         <p>Só neste aparelho e neste navegador. O app manda as fotos direto para o Google ou a Anthropic, sem passar por nenhum outro servidor. Em outro aparelho (celular e computador, por exemplo), cole a mesma chave nos Ajustes de lá. Para cancelar, apague a chave no site onde ela foi criada.</p></details>
     </section>
+  <section><h3>Papel + digital</h3><p>Procura livros que ficaram em duas fichas — por exemplo, o de papel e o .epub — e junta numa só.</p><div class="row"><button class="btn" id="pPar">Procurar livros repetidos</button></div><div id="pRes"></div></section>
   <section><h3>Loja</h3><label class="f">Amazon e Kindle de<select class="in" id="aLj"><option value="amazon.com.br">Brasil (amazon.com.br)</option><option value="amazon.com">Estados Unidos (amazon.com)</option><option value="amazon.co.uk">Reino Unido</option><option value="amazon.es">Espanha</option></select></label></section>
   <section id="syncBox"></section>
     <section><h3>Cópia de segurança</h3><p>A coleção e os arquivos .epub/.pdf ficam guardados neste aparelho. <span id="uso"></span></p>
     <div class="row"><button class="btn" id="exp">Exportar coleção (.json)</button><button class="btn" id="expZ">Exportar com os arquivos (.zip)</button><label class="btn" style="position:relative">Importar<input type="file" accept=".json,.zip,application/json,application/zip" id="imp" style="position:absolute;inset:0;opacity:0"></label></div>
     <p class="note">O .json leva só os dados (leve, bom para levar ao celular). O .zip leva também os livros digitais.</p></section></div>`;
   setTimeout(()=>SYNC&&SYNC.painel(document.getElementById('syncBox')));$('#aIa').value=AJ.ia;$('#aLj').value=AJ.loja;
+  const mostraPares=()=>{const P=pares();$('#pRes').innerHTML=P.length?`<p class="note">${P.length} ${P.length===1?'grupo parece':'grupos parecem'} o mesmo livro. Os que têm papel + digital já vêm marcados; confira os outros (podem ser edições ou traduções diferentes):</p><div class="lote">${P.map((g,i)=>`<label><input type="checkbox" data-p="${i}" ${g.some(x=>!ehDigital(x))?'checked':''}><span>${g.map(x=>`${esc(x.titulo)} <small style="display:inline">(${esc(x.formato)}${(x.arquivos||[]).length?' · '+x.arquivos.map(a=>extDe(a.nome)).join(', '):''})</small>`).join('<br>+ ')}</span></label>`).join('')}</div><button class="btn ac" id="pJun">Juntar os marcados</button>`:'<p class="note">Nenhum livro repetido. ✓</p>';
+    if($('#pJun'))$('#pJun').onclick=async e=>{e.target.disabled=true;let n=0;for(const c of $('#pRes').querySelectorAll('input:checked')){const g=P[+c.dataset.p];const a=g.find(x=>!ehDigital(x))||g[0];for(const b of g)if(b!==a){await fundir(a,b);n++}}await load();render();toast(`${n} ${n===1?'ficha juntada':'fichas juntadas'}`);mostraPares()}};
+  $('#pPar').onclick=mostraPares;
   navigator.storage?.estimate?.().then(e=>{if(e&&$('#uso'))$('#uso').textContent=`Ocupando ${tam(e.usage||0)} de ${tam(e.quota||0)} disponíveis.`}).catch(()=>{});
   M.querySelector('[data-guia]')?.addEventListener('click',e=>{e.preventDefault();const g=$('#guiaChave');g.querySelectorAll('details')[1].open=true;g.scrollIntoView({behavior:'smooth',block:'start'})});
     const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.loja=$('#aLj').value;saveAJ()};
@@ -552,7 +575,7 @@ function detalhe(id){const d=LIVROS.find(x=>x.id===id);if(!d)return;const arqs=d
     <label class="f">Estado<select class="in" id="eS">${ESTADOS.map(x=>`<option ${x===(d.estado||'')?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
     <label class="f">Onde está<input class="in" id="eL" placeholder="sala, 2ª prateleira…" value="${esc(d.local)}"></label><label class="f">Emprestado para<input class="in" id="eM" placeholder="ninguém" value="${esc(d.emprestado)}"></label>
     <label class="f w">Observações<textarea class="in" id="eO" rows="2" placeholder="onde comprou, dedicatória, edição…">${esc(d.obs)}</textarea></label></div>
-    <div class="row"><button class="btn pri" id="eSv">Salvar</button><button class="btn" id="eR">Buscar dados de novo</button>${d.foto&&d.capa?`<label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="eUF" ${d.usarFoto?'checked':''}> usar a minha foto como capa</label>`:''}<span style="margin-left:auto"></span><button class="btn lk" id="eD" style="color:var(--ac)">Tirar da coleção</button></div>`;
+    <div class="row"><button class="btn pri" id="eSv">Salvar</button><button class="btn" id="eR">Buscar dados de novo</button>${d.foto&&d.capa?`<label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="eUF" ${d.usarFoto?'checked':''}> usar a minha foto como capa</label>`:''}<button class="btn" id="eJ">Juntar com outro livro…</button><span style="margin-left:auto"></span><button class="btn lk" id="eD" style="color:var(--ac)">Tirar da coleção</button></div><div id="jBox"></div>`;
   if(!$('#sDet').classList.contains('on'))abrir('sDet');
   const B=$('#detBody');
   B.onclick=async e=>{const b=e.target.closest('button');if(!b)return;const ds=b.dataset;const arq=k=>arqs.find(a=>a.id===ds[k]);
@@ -568,8 +591,15 @@ function detalhe(id){const d=LIVROS.find(x=>x.id===id);if(!d)return;const arqs=d
     if(b.id==='eR'){b.disabled=true;b.textContent='Buscando…';const i=isbn13($('#eI').value);let c=i?await porISBN(i):null;if(!c)c=melhor(await buscarTexto(`${$('#eT').value} ${$('#eA').value.split(',')[0]}`),{titulo:$('#eT').value,autor:$('#eA').value});
       if(c){for(const k of CAMPOS)if(c[k]&&(!d[k]||k==='capa'&&!safeUrl(d.capa)))d[k]=k==='capa'?safeUrl(c[k]):c[k];d.links={...(d.links||{}),...(c.links||{})};await salvar(d);render();toast('Dados completados');return detalhe(id)}
       b.disabled=false;b.textContent='Buscar dados de novo';return toast('Não achei mais nada sobre este livro')}
+    if(b.id==='eJ')return escolherJuncao(d);
+    if(ds.ju){const o=LIVROS.find(x=>x.id===ds.ju);if(!o)return;if(!ds.ok){ds.ok=1;b.querySelector('b').textContent='Juntar “'+o.titulo+'” nesta ficha? Toque de novo';return}await fundir(d,o);await load();render();toast('Livros juntados numa ficha só');return detalhe(id)}
     if(b.id==='eD'){if(!ds.ok){ds.ok=1;b.textContent='Toque de novo para confirmar';return}for(const a of arqs)await DB.del('arquivos',a.id);await DB.del('livros',id);await load();render();fechar($('#sDet'));return toast('Livro removido')}};
   $('#dArq').onchange=async e=>{const fs=[...e.target.files];if(!fs.length)return;await anexar(d,fs);await load();render();toast(fs.length===1?'Arquivo guardado':`${fs.length} arquivos guardados`);detalhe(id)}}
+function escolherJuncao(d){const box=$('#jBox');const lista=q=>{const n=norm(q);const l=LIVROS.filter(x=>x.id!==d.id&&(!n||norm(x.titulo+' '+x.autor).includes(n)));
+    const pt=x=>(pareceMesmo(x,d)?2:0)+(autorChave(x.autor)&&autorChave(x.autor)===autorChave(d.autor)?1:0);l.sort((a,b)=>pt(b)-pt(a));
+    $('#jL').innerHTML=l.slice(0,12).map(x=>`<button class="cand" data-ju="${esc(x.id)}"><span class="mini">${capaHTML(x,false)}</span><div><b>${esc(x.titulo)}</b><span>${esc(x.autor)}</span><span>${esc(x.formato)}${(x.arquivos||[]).length?' · '+x.arquivos.map(a=>extDe(a.nome)).join(', '):''}</span></div></button>`).join('')||'<p class="note">Nada encontrado.</p>'};
+  box.innerHTML=`<div class="blk"><h3>Juntar com…</h3></div><p class="note" style="margin-top:0">Escolha o outro livro (por exemplo, o .epub em outra língua deste livro de papel). Arquivos, destaques e listas dele vêm para esta ficha, e a outra some.</p><input class="in" id="jQ" placeholder="Buscar título ou autor" style="width:100%"><div class="cands" id="jL"></div>`;
+  $('#jQ').oninput=e=>lista(e.target.value);lista('');box.scrollIntoView({behavior:'smooth',block:'start'})}
 async function enviarKindle(a){const f=await arquivoBlob(a);if(!f)return toast('Arquivo não está neste aparelho');
   if(navigator.canShare?.({files:[f]})){try{await navigator.share({files:[f],title:f.name});return}catch(e){if(e.name==='AbortError')return}}
   baixar(f,f.name);window.open('https://www.amazon.com/sendtokindle','_blank','noopener');toast(AJ.kindleEmail?`Arquivo baixado. Solte na página Send to Kindle ou mande para ${AJ.kindleEmail}`:'Arquivo baixado — solte na página Send to Kindle',6000)}
@@ -606,13 +636,15 @@ const IC={cod:'<path d="M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14"/>',cam:'
 const svg=k=>`<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${IC[k]}</svg>`;
 function passo1(){pararCam();$('#tAdd').textContent='Novo livro';$('#addBody').innerHTML=`<div class="pick">
   <button class="drop" id="oCod" type="button">${svg('cod')}<b>Código de barras</b><span>Aponte a câmera para o ISBN no verso do livro</span></button>
-  <label class="drop"><input type="file" accept="image/*" id="fCapa">${svg('cam')}<b>Foto da capa</b><span>${AJ.ia?'A IA reconhece o livro':'Precisa de chave de IA — ou lê o código se aparecer na foto'}</span></label>
-  <label class="drop"><input type="file" accept="image/*" id="fEst">${svg('est')}<b>Foto da estante</b><span>Vários livros de uma vez, pelas lombadas${AJ.ia?'':' (precisa de chave de IA)'}</span></label>
+  <label class="drop"><input type="file" accept="image/*" capture="environment" id="fCapa">${svg('cam')}<b>Foto da capa</b><span>${AJ.ia?'A IA reconhece o livro':'Precisa de chave de IA — ou lê o código se aparecer na foto'}</span></label>
+  <label class="drop"><input type="file" accept="image/*" capture="environment" id="fEst">${svg('est')}<b>Foto da estante</b><span>Vários livros de uma vez, pelas lombadas${AJ.ia?'':' (precisa de chave de IA)'}</span></label>
   <label class="drop"><input type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" multiple id="fArq">${svg('arq')}<b>Arquivo .epub ou .pdf</b><span>Vira a cópia digital do livro na coleção</span></label></div>
+  <div class="row note" style="margin-top:8px;gap:6px">Já tem a foto no aparelho? <label class="chip" style="position:relative">Capa da galeria<input type="file" accept="image/*" id="gCapa" style="position:absolute;inset:0;opacity:0"></label><label class="chip" style="position:relative">Estante da galeria<input type="file" accept="image/*" id="gEst" style="position:absolute;inset:0;opacity:0"></label></div>
   <div class="row" style="margin-top:14px"><input class="in grow" id="nome" placeholder="Ou digite: ISBN, título ou autor" enterkeyhint="search"><button class="btn pri" id="bus">Buscar</button></div>
   ${AJ.ia?'':'<p class="note">Dica: com uma chave de IA (grátis no Gemini) o app reconhece capas e prateleiras inteiras. <a href="#" data-goto="ajustes">Configurar</a></p>'}<div id="res"></div>`;
   $('#oCod').onclick=scanner;
   $('#fCapa').onchange=e=>e.target.files[0]&&foto(e.target.files[0]);
+  $('#gCapa').onchange=e=>e.target.files[0]&&foto(e.target.files[0]);$('#gEst').onchange=e=>e.target.files[0]&&fotoEstante(e.target.files[0]);
   $('#fEst').onchange=e=>e.target.files[0]&&fotoEstante(e.target.files[0]);
   $('#fArq').onchange=e=>{const fs=[...e.target.files];if(fs.length===1)return umArquivo(fs[0]);if(fs.length)variosArquivos(fs)};
   const go=()=>{const q=$('#nome').value.trim();if(q)procurar(q)};$('#bus').onclick=go;$('#nome').onkeydown=e=>{if(e.key==='Enter')go()}}
@@ -660,38 +692,48 @@ async function procurar(q,prev='',ia=null){
 async function confirmar(c){const p=ADD.palpite||{};const t=$('#nome')?.value.trim()||'';
   const base=c||{titulo:p.titulo||(pareceISBN(t)?'':t),subtitulo:p.subtitulo,autor:p.autor,editora:p.editora,ano:p.ano,isbn:isbn13(p.isbn)||(pareceISBN(t)?isbn13(t):''),idioma:p.idioma};
   const arqs=ADD.arquivos||[];const d=novoLivro(base,{foto:ADD.foto||'',formato:arqs.length?'Só digital':'Capa comum'});if(!d.capa&&d.foto)d.usarFoto=true;
-  const ex=acharExistente(d);$('#tAdd').textContent='Confirmar';
+  const ex=acharExistente(d)||LIVROS.find(x=>pareceMesmo(x,d));$('#tAdd').textContent='Confirmar';
+  const juntaFis=ex&&!arqs.length&&ehDigital(ex);
+  const sug=!ex&&!arqs.length&&autorChave(d.autor)?LIVROS.filter(x=>ehDigital(x)&&autorChave(x.autor)===autorChave(d.autor)).slice(0,8):[];
   $('#addBody').innerHTML=`<div class="det"><div>${capaHTML(d,false)}</div><div><h2>${esc(d.titulo||'Sem título')}</h2>${d.subtitulo?`<p class="sub">${esc(d.subtitulo)}</p>`:''}<p class="who">${esc(d.autor)}</p><p class="note">${[d.editora,d.ano,d.paginas?d.paginas+' páginas':'',d.isbn?'ISBN '+d.isbn:''].filter(Boolean).map(esc).join(' · ')}</p>
     ${arqs.length?`<p class="note">Cópia digital: ${arqs.map(f=>esc(f.name)+' ('+tam(f.size)+')').join(', ')}</p>`:''}
-    ${ex?`<div class="st err">Você já tem <b>&nbsp;${esc(ex.titulo)}&nbsp;</b> na coleção.</div><div class="row">${arqs.length?'<button class="btn ac" id="nJ">Juntar o arquivo ao que já está lá</button>':''}<button class="btn" id="nAb">Abrir o que já está lá</button></div>`:''}</div></div>
+    ${juntaFis?`<div class="st"><span>Este livro já está na coleção em versão digital (<b>&nbsp;${esc(ex.titulo)}&nbsp;</b> · ${(ex.arquivos||[]).map(a=>extDe(a.nome)).join(', ')||esc(ex.formato)}). Ao guardar, o livro de papel e o digital ficam numa ficha só.</span></div>`
+      :ex?`<div class="st err">Você já tem <b>&nbsp;${esc(ex.titulo)}&nbsp;</b> na coleção.</div><div class="row">${arqs.length?'<button class="btn ac" id="nJ">Juntar o arquivo ao que já está lá</button>':''}<button class="btn" id="nAb">Abrir o que já está lá</button></div>`:''}
+    ${sug.length?`<p class="note" style="margin-bottom:0">Este livro de papel é a mesma obra de algum destes digitais? (útil quando o .epub está em outra língua)</p><div class="chips" id="cJ">${sug.map(x=>`<button class="chip" data-jf="${esc(x.id)}">${esc(x.titulo)} · ${(x.arquivos||[]).map(a=>extDe(a.nome)).join(', ')||esc(x.formato)}</button>`).join('')}</div>`:''}</div></div>
    <div class="blk"><h3>Listas</h3></div><div class="chips" id="cL">${LISTAS.map(l=>`<button class="chip" data-l="${esc(l.id)}">${esc(l.nome)}</button>`).join('')}<button class="chip" data-nl>+ nova lista</button></div>
    <div class="chips" id="cS">${Object.entries(LEIT).map(([k,v])=>`<button class="chip" data-s="${k}">${v}</button>`).join('')}</div>
    <div class="form"><label class="f">Formato<select class="in" id="nF">${FORMATOS.map(x=>`<option ${x===d.formato?'selected':''}>${esc(x)}</option>`).join('')}</select></label><label class="f">Estado<select class="in" id="nE">${ESTADOS.map(x=>`<option>${esc(x)}</option>`).join('')}</select></label>
    <label class="f">Onde está<input class="in" id="nL" placeholder="sala, 2ª prateleira…"></label><label class="f">Observações<input class="in" id="nO" placeholder="onde comprou, edição…"></label></div>
-   <div class="row"><button class="btn ac" id="nS">${ex?'Guardar mesmo assim':'Guardar na coleção'}</button>${d.capa&&d.foto?'<label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="nP"> usar a minha foto como capa</label>':''}<button class="btn lk" id="nV">Voltar</button></div>`;
+   <div class="row">${juntaFis?'<button class="btn ac" id="nJF">Juntar ao digital e guardar</button><button class="btn" id="nS">Guardar como livro separado</button>':`<button class="btn ac" id="nS">${ex?'Guardar mesmo assim':'Guardar na coleção'}</button>`}${d.capa&&d.foto?'<label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="nP"> usar a minha foto como capa</label>':''}<button class="btn lk" id="nV">Voltar</button></div>`;
   const sel=new Set();let leit='';
   $('#cL').onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-nl')){const n=await perguntar('Nome da nova lista');if(!n)return;const l={id:uid(),nome:n,criado:Date.now()};await DB.put('listas',l);await load();sel.add(l.id);b.insertAdjacentHTML('beforebegin',`<button class="chip on" data-l="${esc(l.id)}">${esc(n)}</button>`);return}const id=b.dataset.l;sel.has(id)?sel.delete(id):sel.add(id);b.classList.toggle('on')};
   $('#cS').onclick=e=>{const b=e.target.closest('button');if(!b)return;leit=leit===b.dataset.s?'':b.dataset.s;$('#cS').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.s===leit))};
   $('#nV').onclick=passo1;
   if($('#nAb'))$('#nAb').onclick=()=>{fechar($('#sAdd'));detalhe(ex.id)};
   if($('#nJ'))$('#nJ').onclick=async()=>{await anexar(ex,arqs);await load();fechar($('#sAdd'));render();toast(`Arquivo guardado em “${ex.titulo}”`);detalhe(ex.id)};
-  $('#nS').onclick=async e=>{e.target.disabled=true;Object.assign(d,{formato:$('#nF').value,estado:$('#nE').value,local:$('#nL').value.trim(),obs:$('#nO').value.trim(),listas:[...sel],leitura:leit});if($('#nP')?.checked)d.usarFoto=true;
+  const preencher=()=>{Object.assign(d,{formato:$('#nF').value,estado:$('#nE').value,local:$('#nL').value.trim(),obs:$('#nO').value.trim(),listas:[...sel],leitura:leit});if($('#nP')?.checked)d.usarFoto=true;else if(d.capa)d.usarFoto=false};
+  const juntar=async alvo=>{preencher();if(ehDigital(d))d.formato='Capa comum';await fundir(alvo,d);await load();fechar($('#sAdd'));VISTA='estante';render();toast(`Papel e digital juntos em “${alvo.titulo}”`,3500);detalhe(alvo.id)};
+  if($('#nJF'))$('#nJF').onclick=e=>{e.target.disabled=true;juntar(ex)};
+  if($('#cJ'))$('#cJ').onclick=e=>{const b=e.target.closest('[data-jf]');if(!b)return;const alvo=LIVROS.find(x=>x.id===b.dataset.jf);if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Juntar com “'+alvo.titulo+'”? Toque de novo';return}juntar(alvo)};
+  $('#nS').onclick=async e=>{e.target.disabled=true;preencher();
     await salvar(d);if(arqs.length)await anexar(d,arqs);await load();fechar($('#sAdd'));VISTA='estante';render();toast(`“${d.titulo}” entrou na coleção`)}}
 function lote(itens,origem){$('#tAdd').textContent=origem==='Arquivos'?`${itens.length} arquivos`:`${itens.length} livros na foto`;
-  $('#addBody').innerHTML=`<p class="note">${origem==='Arquivos'?'Cada arquivo vira a cópia digital do livro. Se o livro já estiver na coleção, o arquivo é guardado nele.':'Confira a lista: desmarque o que a IA leu errado. Os que já estão na coleção são pulados.'}</p>
-   <div class="lote">${itens.map((x,i)=>{const ex=acharExistente(x);return`<label><input type="checkbox" data-i="${i}" ${ex&&!x.arquivo?'':'checked'}><span>${esc(x.titulo)}<small>${esc(x.autor||'')}${x.arquivo?' · '+esc(x.arquivo.name):''}</small></span><em id="lt${i}">${ex?(x.arquivo?'vai para o que já existe':'já na coleção'):''}</em></label>`}).join('')}</div>
+  $('#addBody').innerHTML=`<p class="note">${origem==='Arquivos'?'Cada arquivo vira a cópia digital do livro. Se o livro já estiver na coleção, o arquivo é guardado nele.':'Confira a lista: desmarque o que a IA leu errado. Os que já estão na coleção são pulados; os que só existiam em .epub/.pdf ganham a versão de papel na mesma ficha.'}</p>
+   <div class="lote">${itens.map((x,i)=>{const ex=acharExistente(x);return`<label><input type="checkbox" data-i="${i}" ${ex&&!x.arquivo&&!ehDigital(ex)?'':'checked'}><span>${esc(x.titulo)}<small>${esc(x.autor||'')}${x.arquivo?' · '+esc(x.arquivo.name):''}</small></span><em id="lt${i}">${ex?(x.arquivo?'vai para o que já existe':ehDigital(ex)?'junta ao digital':'já na coleção'):''}</em></label>`}).join('')}</div>
    <div class="blk"><h3>Listas</h3></div><div class="chips" id="cL">${LISTAS.map(l=>`<button class="chip" data-l="${esc(l.id)}">${esc(l.nome)}</button>`).join('')}</div>
    <div class="row"><button class="btn ac" id="lAdd">Adicionar os marcados</button><button class="btn lk" id="nV">Voltar</button></div>`;
   const sel=new Set();$('#cL').onclick=e=>{const b=e.target.closest('button');if(!b)return;const id=b.dataset.l;sel.has(id)?sel.delete(id):sel.add(id);b.classList.toggle('on')};
   $('#nV').onclick=passo1;
-  $('#lAdd').onclick=async e=>{e.target.disabled=true;let n=0,j=0;const marc=[...$('#addBody').querySelectorAll('.lote input:checked')].map(c=>+c.dataset.i);
+  $('#lAdd').onclick=async e=>{e.target.disabled=true;let n=0,j=0,jf=0;const marc=[...$('#addBody').querySelectorAll('.lote input:checked')].map(c=>+c.dataset.i);
     for(const i of marc){const x=itens[i];const st=$('#lt'+i);st.textContent='buscando…';
       try{let c=x.isbn?await porISBN(isbn13(x.isbn)):null;if(!c)c=melhor(await buscarTexto([x.titulo,(x.autor||'').split(',')[0]].filter(Boolean).join(' ')),x);
         const base=c||{titulo:x.titulo,autor:x.autor,isbn:x.isbn};const ex=acharExistente(base)||acharExistente(x);
-        if(ex){if(x.arquivo){await anexar(ex,[x.arquivo]);j++;st.textContent='✓ arquivo guardado'}else st.textContent='já estava';continue}
+        const ex2=ex||LIVROS.find(y=>pareceMesmo(y,base)||pareceMesmo(y,x));
+        if(ex2){if(x.arquivo){await anexar(ex2,[x.arquivo]);j++;st.textContent='✓ arquivo guardado no livro que já estava'}
+          else if(ehDigital(ex2)){const d=novoLivro(base,{formato:'Capa comum',listas:[...sel]});await fundir(ex2,d);await load();jf++;st.textContent='✓ juntado ao digital'}else st.textContent='já estava';continue}
         const d=novoLivro(base,{formato:x.arquivo?'Só digital':'Capa comum',foto:x.capaLocal||'',listas:[...sel]});if(!d.capa&&d.foto)d.usarFoto=true;
         await salvar(d);LIVROS.push(d);if(x.arquivo)await anexar(d,[x.arquivo]);n++;st.textContent=c?'✓':'✓ sem dados do catálogo'}catch(err){st.textContent='erro: '+err.message}}
-    await load();render();toast(`${n} ${n===1?'livro novo':'livros novos'}${j?` · ${j} ${j===1?'arquivo guardado num livro que já estava':'arquivos em livros que já estavam'}`:''}`,4000);e.target.textContent='Pronto — fechar';e.target.disabled=false;e.target.onclick=()=>fechar($('#sAdd'))}}
+    await load();render();toast(`${n} ${n===1?'livro novo':'livros novos'}${jf?` · ${jf} ${jf===1?'juntado ao digital':'juntados aos digitais'}`:''}${j?` · ${j} ${j===1?'arquivo guardado num livro que já estava':'arquivos em livros que já estavam'}`:''}`,4000);e.target.textContent='Pronto — fechar';e.target.disabled=false;e.target.onclick=()=>fechar($('#sAdd'))}}
 
 /* ---------- listas: ações ---------- */
 async function acaoLista(e){const b=e.target.closest('button');if(!b)return;const g=k=>LISTAS.find(l=>l.id===b.dataset[k]);

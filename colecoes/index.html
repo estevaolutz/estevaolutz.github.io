@@ -45,6 +45,10 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .ph{display:grid;place-items:center;color:#fff;font:800 22px/1 Archivo,sans-serif;font-stretch:75%;padding:10px;text-align:center;background:linear-gradient(135deg,#2b2b2e,#151517)}
 .rec b{display:block;margin-top:9px;font-size:15px;line-height:1.25}
 .rec span{display:block;color:var(--mut);font-size:14px;line-height:1.3}
+.rec .ck{position:absolute;top:8px;left:8px;z-index:3;width:30px;height:30px;border-radius:50%;background:rgb(0 0 0/.5);border:2px solid #fff;color:#fff;display:grid;place-items:center;font-weight:800;font-size:16px;line-height:1}
+.rec.sel .ck{background:var(--ac);border-color:var(--ac)}.rec.sel .slv{outline:3px solid var(--ac);outline-offset:3px}
+.selbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));z-index:8;display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 6px 6px 18px;box-shadow:var(--sh);white-space:nowrap;max-width:94vw}
+.selbar .lixo{display:flex;gap:8px;align-items:center;border:0;background:var(--ac);color:#fff;border-radius:999px;min-height:48px;padding:0 18px;font-weight:700}.selbar .lixo:disabled{opacity:.4}
 .empty{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:30px;align-items:center;padding:30px 0}
 .empty h2{font-size:clamp(34px,6vw,52px)}
 .empty p{color:var(--mut);max-width:44ch}
@@ -149,6 +153,7 @@ code{overflow-wrap:anywhere;font-size:14px}
       <option value="ano">Ano</option>
     </select>
     <select class="in" id="flt" aria-label="Lista"><option value="">Todas as listas</option></select>
+    <button class="btn" id="selB" type="button">Selecionar</button>
   </div>
 </header>
 
@@ -400,7 +405,13 @@ TD.load();
 const SERV=()=>AJ.servico==='spotify'?SP:TD;
 
 /* ---------- vistas ---------- */
-let VISTA='estante',ARTISTA=null;
+let VISTA='estante',ARTISTA=null;let SEL=null;
+const LIXO='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>';
+function selecao(on){SEL=on?(SEL||new Set()):null;render()}
+function barraSel(){let b=$('#selbar');const vis=SEL&&(VISTA==='estante'||VISTA==='artistas');
+  $('#fab').style.visibility=$('#fab2').style.visibility=vis?'hidden':'';$('#selB')&&($('#selB').textContent=SEL?'Cancelar':'Selecionar');
+  if(!vis){b&&b.remove();return}if(!b){b=document.createElement('div');b.id='selbar';b.className='selbar';document.body.appendChild(b)}const n=SEL.size;
+  b.innerHTML=`<span>${n?n+(n===1?' disco selecionado':' discos selecionados'):'Toque nos discos'}</span><button class="btn lk" data-selx>Cancelar</button><button class="lixo" data-lixo ${n?'':'disabled'} aria-label="Tirar da coleção">${LIXO}<span>Tirar</span></button>`}
 /* pastas automáticas por artista: "The Beatles" e "Beatles", com ou sem acento, caem na mesma pasta */
 const chaveArt=a=>norm(a).replace(/^(the|os|as|o|a|los|las|le|les) /,'')||'sem artista';
 function artistas(){const m=new Map();
@@ -409,7 +420,7 @@ function artistas(){const m=new Map();
 const capaHTML=d=>{const src=safeUrl(d.capa)||(/^data:image\//.test(d.foto||'')?d.foto:'');return src?`<img src="${esc(src)}" alt="" loading="lazy">`:`<div class="ph">${esc(d.album||'?')}</div>`};
 function filtrados(){const q=norm($('#q').value);const f=$('#flt').value;let l=DISCOS.filter(d=>(!f||(d.listas||[]).includes(f))&&(!q||norm([d.artista,d.album,d.ano,d.gravadora,d.genero,d.obs].join(' ')).includes(q)));
   const o=$('#ord').value;const cmp={recentes:(a,b)=>b.criado-a.criado,artista:(a,b)=>(a.artista||'').localeCompare(b.artista||'')||(a.ano||'').localeCompare(b.ano||''),album:(a,b)=>(a.album||'').localeCompare(b.album||''),ano:(a,b)=>(a.ano||'9999').localeCompare(b.ano||'9999')}[o];return l.sort(cmp)}
-function render(){
+function render(){setTimeout(barraSel);
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===VISTA));
   $('#tools').style.display=VISTA==='estante'?'':'none';$('#fab').style.display=$('#fab2').style.display=VISTA==='ajustes'?'none':'';
   $('#sub').textContent=`Coleções · ${DISCOS.length} ${DISCOS.length===1?'disco':'discos'}`;
@@ -417,9 +428,9 @@ function render(){
   const M=$('#main');
   if(VISTA==='estante'){
     if(!DISCOS.length){M.innerHTML=`<section class="empty"><div><h2>Sua estante está vazia</h2><p>Tire uma foto da capa de um disco. O app reconhece o álbum, encontra a versão digital no Tidal, Spotify, Apple Music, YouTube Music e Deezer, e guarda na sua coleção.</p>${AJ.ia?'':'<p class="note">Para reconhecer pela foto, cole uma chave de IA em <a href="#" data-goto="ajustes">Ajustes</a>. Sem chave dá para usar o código de barras do verso ou digitar o nome.</p>'}<div class="row"><button class="btn ac" data-add>Fotografar o primeiro disco</button><button class="btn" data-nome>Digitar o nome</button></div></div><div class="disc" aria-hidden="true"></div></section>`;return}
-    const l=filtrados();M.innerHTML=`<p class="cnt">${l.length===DISCOS.length?'':l.length+' de '}${DISCOS.length} discos</p><div class="shelf">${l.map(d=>`<button class="rec" data-id="${esc(d.id)}"><div class="slv">${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${esc(d.artista)}${d.ano?' · '+esc(d.ano):''}</span></button>`).join('')||'<p class="note">Nada encontrado.</p>'}</div>`}
+    const l=filtrados();M.innerHTML=`<p class="cnt">${l.length===DISCOS.length?'':l.length+' de '}${DISCOS.length} discos</p><div class="shelf">${l.map(d=>`<button class="rec${SEL&&SEL.has(d.id)?' sel':''}" data-id="${esc(d.id)}"><div class="slv">${SEL?`<span class="ck">${SEL.has(d.id)?'✓':''}</span>`:''}${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${esc(d.artista)}${d.ano?' · '+esc(d.ano):''}</span></button>`).join('')||'<p class="note">Nada encontrado.</p>'}</div>`}
   else if(VISTA==='artistas'){const G=artistas();const g=ARTISTA&&G.find(x=>x.k===ARTISTA);
-    if(g){M.innerHTML=`<div class="row" style="margin-bottom:6px"><button class="btn lk" data-voltart>← Todos os artistas</button></div><div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">${esc(g.nome)}</h2><button class="chip" data-copart>Copiar links</button></div><p class="cnt">${g.discos.length} ${g.discos.length===1?'disco':'discos'}, do mais antigo ao mais novo</p><div class="shelf">${g.discos.map(d=>`<button class="rec" data-id="${esc(d.id)}"><div class="slv">${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${d.ano?esc(d.ano):'&nbsp;'}</span></button>`).join('')}</div>`;return}
+    if(g){M.innerHTML=`<div class="row" style="margin-bottom:6px"><button class="btn lk" data-voltart>← Todos os artistas</button></div><div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">${esc(g.nome)}</h2><button class="chip" data-copart>Copiar links</button></div><p class="cnt">${g.discos.length} ${g.discos.length===1?'disco':'discos'}, do mais antigo ao mais novo</p><div class="shelf">${g.discos.map(d=>`<button class="rec${SEL&&SEL.has(d.id)?' sel':''}" data-id="${esc(d.id)}"><div class="slv">${SEL?`<span class="ck">${SEL.has(d.id)?'✓':''}</span>`:''}${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${d.ano?esc(d.ano):'&nbsp;'}</span></button>`).join('')}</div>`;return}
     ARTISTA=null;
     M.innerHTML=`<div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">Artistas</h2><input class="in grow" id="qArt" type="search" placeholder="Buscar artista" style="max-width:320px" aria-label="Buscar artista"></div>
     <p class="note" style="margin-top:0">Cada artista tem a sua pasta, montada sozinha: todo disco novo entra direto na pasta do artista.</p><div id="artL"></div>`;
@@ -626,14 +637,25 @@ async function acaoLista(e){const b=e.target.closest('button');if(!b)return;cons
     try{const r=await S.sincronizar(l);await load();render();toast(`Playlist “${l.nome}”: ${r.faixas} faixas${r.sem?` · ${r.sem} disco(s) não achado(s) no ${S.nome}`:''}`,4500)}catch(err){b.disabled=false;b.textContent='Tentar de novo';toast(S.nome+': '+err.message,5000)}}}
 
 /* ---------- eventos ---------- */
+/* segurar o dedo num disco liga a seleção já com ele marcado */
+let PRESSAO=false,_tp=null;
+document.addEventListener('pointerdown',e=>{PRESSAO=false;const r=e.target.closest('.rec');if(!r||SEL)return;clearTimeout(_tp);const x=e.clientX,y=e.clientY;
+  _tp=setTimeout(()=>{PRESSAO=true;SEL=new Set([r.dataset.id]);render();navigator.vibrate?.(30)},550);
+  const fim=ev=>{if(ev.type!=='pointermove'||Math.hypot(ev.clientX-x,ev.clientY-y)>10){clearTimeout(_tp);removeEventListener('pointermove',fim);removeEventListener('pointerup',fim);removeEventListener('pointercancel',fim)}};
+  addEventListener('pointermove',fim);addEventListener('pointerup',fim);addEventListener('pointercancel',fim)});
+document.addEventListener('contextmenu',e=>{if(e.target.closest('.rec'))e.preventDefault()});
 document.addEventListener('click',e=>{const t=e.target;
   if(t.closest('[data-close]'))return fechar(t.closest('.sheet'));
   if(t.classList.contains('sheet')&&(t.id==='sAdd'||t.id==='sDet'))return fechar(t);
   const g=t.closest('[data-goto]');if(g){e.preventDefault();fechar($('#sAdd'));VISTA=g.dataset.goto;return render()}
   if(t.closest('[data-add]'))return camera();
   if(t.closest('[data-nome]'))return $('#fab2').click();
-  const r=t.closest('.rec');if(r)return detalhe(r.dataset.id);
-  const tab=t.closest('.tabs button');if(tab){VISTA=tab.dataset.v;ARTISTA=null;return render()}
+  if(t.closest('#selB'))return selecao(!SEL);
+  if(t.closest('[data-selx]'))return selecao(false);
+  const lx=t.closest('[data-lixo]');if(lx&&SEL&&SEL.size){if(!lx.dataset.ok){lx.dataset.ok=1;lx.querySelector('span').textContent=`Tirar ${SEL.size}? Toque de novo`;return}
+    (async()=>{const ids=[...SEL];for(const id of ids)await DB.del('discos',id);SEL=null;await load();render();toast(ids.length===1?'Disco tirado da coleção':ids.length+' discos tirados da coleção')})();return}
+  const r=t.closest('.rec');if(r){if(PRESSAO){PRESSAO=false;return}if(SEL){const id=r.dataset.id;SEL.has(id)?SEL.delete(id):SEL.add(id);return render()}return detalhe(r.dataset.id)}
+  const tab=t.closest('.tabs button');if(tab){VISTA=tab.dataset.v;ARTISTA=null;SEL=null;return render()}
   if(VISTA==='artistas'&&t.closest('#main')){const a=t.closest('[data-art]');if(a){ARTISTA=a.dataset.art;scrollTo(0,0);return render()}
     if(t.closest('[data-voltart]')){ARTISTA=null;return render()}
     if(t.closest('[data-copart]')){const g=artistas().find(x=>x.k===ARTISTA);if(!g)return;const tx=g.discos.map(d=>`${d.album}${d.ano?' ('+d.ano+')':''}\n${linkFor(d,PLAT.find(p=>p[0]===AJ.plataforma)||PLAT[0]).url}`).join('\n\n');

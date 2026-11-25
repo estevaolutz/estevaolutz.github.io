@@ -51,6 +51,8 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .disc{aspect-ratio:1;border-radius:50%;max-width:380px;width:100%;margin:auto;background:radial-gradient(circle,var(--bg) 0 3%,var(--ac) 3.5% 17%,#000 17.5% 19%,#1d1d1d 19.5%,#0a0a0a 32%,#242424 33%,#0a0a0a 47%,#222 48%,#080808 66%,#1a1a1a 67%,#080808 70%);box-shadow:0 20px 50px rgb(0 0 0/.35);animation:gira 9s linear infinite}
 @keyframes gira{to{transform:rotate(360deg)}}
 .fab{position:fixed;right:max(4vw,16px);bottom:calc(18px + env(safe-area-inset-bottom));z-index:6;border:0;background:var(--ac);color:#fff;border-radius:999px;padding:16px 24px;font:800 18px/1 Archivo,sans-serif;font-stretch:85%;box-shadow:0 10px 30px rgb(255 75 31/.45);display:flex;gap:10px;align-items:center;min-height:56px}
+.fab2{position:fixed;right:calc(max(4vw,16px) + 76px);bottom:calc(24px + env(safe-area-inset-bottom));z-index:6;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:12px 16px;min-height:44px;font-weight:600;box-shadow:var(--sh)}
+@media(min-width:601px){.fab2{right:calc(max(4vw,16px) + 230px)}}
 .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 16px;min-height:44px;font-weight:600}
 .btn.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .btn.ac{background:var(--ac);color:#fff;border-color:var(--ac)}
@@ -139,6 +141,8 @@ code{overflow-wrap:anywhere;font-size:14px}
 <main id="main"></main>
 
 <button class="fab" id="fab" type="button" aria-label="Adicionar disco"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg><span>Fotografar disco</span></button>
+<input type="file" accept="image/*" capture="environment" id="cam" hidden>
+<button class="fab2" id="fab2" type="button" aria-label="Adicionar digitando o nome">Digitar</button>
 
 <!-- Adicionar -->
 <div class="sheet" id="sAdd" role="dialog" aria-modal="true" aria-labelledby="tAdd"><div class="pan">
@@ -320,12 +324,12 @@ function filtrados(){const q=norm($('#q').value);const f=$('#flt').value;let l=D
   const o=$('#ord').value;const cmp={recentes:(a,b)=>b.criado-a.criado,artista:(a,b)=>(a.artista||'').localeCompare(b.artista||'')||(a.ano||'').localeCompare(b.ano||''),album:(a,b)=>(a.album||'').localeCompare(b.album||''),ano:(a,b)=>(a.ano||'9999').localeCompare(b.ano||'9999')}[o];return l.sort(cmp)}
 function render(){
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===VISTA));
-  $('#tools').style.display=VISTA==='estante'?'':'none';$('#fab').style.display=VISTA==='ajustes'?'none':'';
+  $('#tools').style.display=VISTA==='estante'?'':'none';$('#fab').style.display=$('#fab2').style.display=VISTA==='ajustes'?'none':'';
   $('#sub').textContent=`Coleções · ${DISCOS.length} ${DISCOS.length===1?'disco':'discos'}`;
   const f=$('#flt'),fv=f.value;f.innerHTML='<option value="">Todas as listas</option>'+LISTAS.map(l=>`<option value="${esc(l.id)}">${esc(l.nome)}</option>`).join('');f.value=LISTAS.some(l=>l.id===fv)?fv:'';
   const M=$('#main');
   if(VISTA==='estante'){
-    if(!DISCOS.length){M.innerHTML=`<section class="empty"><div><h2>Sua estante está vazia</h2><p>Tire uma foto da capa de um disco. O app reconhece o álbum, encontra a versão digital no Tidal, Spotify, Apple Music, YouTube Music e Deezer, e guarda na sua coleção.</p>${AJ.ia?'':'<p class="note">Para reconhecer pela foto, cole uma chave de IA em <a href="#" data-goto="ajustes">Ajustes</a>. Sem chave dá para usar o código de barras do verso ou digitar o nome.</p>'}<button class="btn ac" data-add>Fotografar o primeiro disco</button></div><div class="disc" aria-hidden="true"></div></section>`;return}
+    if(!DISCOS.length){M.innerHTML=`<section class="empty"><div><h2>Sua estante está vazia</h2><p>Tire uma foto da capa de um disco. O app reconhece o álbum, encontra a versão digital no Tidal, Spotify, Apple Music, YouTube Music e Deezer, e guarda na sua coleção.</p>${AJ.ia?'':'<p class="note">Para reconhecer pela foto, cole uma chave de IA em <a href="#" data-goto="ajustes">Ajustes</a>. Sem chave dá para usar o código de barras do verso ou digitar o nome.</p>'}<div class="row"><button class="btn ac" data-add>Fotografar o primeiro disco</button><button class="btn" data-nome>Digitar o nome</button></div></div><div class="disc" aria-hidden="true"></div></section>`;return}
     const l=filtrados();M.innerHTML=`<p class="cnt">${l.length===DISCOS.length?'':l.length+' de '}${DISCOS.length} discos</p><div class="shelf">${l.map(d=>`<button class="rec" data-id="${esc(d.id)}"><div class="slv">${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${esc(d.artista)}${d.ano?' · '+esc(d.ano):''}</span></button>`).join('')||'<p class="note">Nada encontrado.</p>'}</div>`}
   else if(VISTA==='listas'){const S=SERV();
     M.innerHTML=`<div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">Listas</h2><input class="in grow" id="novaL" placeholder="Nome da nova lista" style="max-width:320px"><button class="btn pri" id="addL">Criar</button></div>
@@ -404,6 +408,9 @@ function perguntar(titulo,val=''){return new Promise(ok=>{const S=document.creat
 /* ---------- adicionar ---------- */
 let ADD={};
 function novo(){ADD={};abrir('sAdd');passo1()}
+function camera(){const c=$('#cam');c.value='';c.click()}
+$('#cam').onchange=e=>{const f=e.target.files[0];if(!f)return;novo();foto(f,'capa')};
+$('#fab2').onclick=()=>{novo();setTimeout(()=>$('#nome')?.focus(),50)};
 function passo1(){$('#addBody').innerHTML=`<div class="pick">
   <label class="drop"><input type="file" accept="image/*" capture="environment" id="fCapa"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg><b>Foto da capa</b><span>${AJ.ia?'A IA reconhece o disco':'Sem chave de IA: digite o nome depois'}</span></label>
   <label class="drop"><input type="file" accept="image/*" capture="environment" id="fVerso"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14"/></svg><b>Código de barras</b><span>Foto do verso, onde tem o código</span></label></div>
@@ -462,12 +469,13 @@ document.addEventListener('click',e=>{const t=e.target;
   if(t.closest('[data-close]'))return fechar(t.closest('.sheet'));
   if(t.classList.contains('sheet')&&(t.id==='sAdd'||t.id==='sDet'))return fechar(t);
   const g=t.closest('[data-goto]');if(g){e.preventDefault();fechar($('#sAdd'));VISTA=g.dataset.goto;return render()}
-  if(t.closest('[data-add]'))return novo();
+  if(t.closest('[data-add]'))return camera();
+  if(t.closest('[data-nome]'))return $('#fab2').click();
   const r=t.closest('.rec');if(r)return detalhe(r.dataset.id);
   const tab=t.closest('.tabs button');if(tab){VISTA=tab.dataset.v;return render()}
   if(VISTA==='listas'&&t.closest('#main'))acaoLista(e)});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.sheet.on').forEach(fechar)});
-$('#fab').onclick=novo;
+$('#fab').onclick=camera;
 ['q','ord','flt'].forEach(i=>$('#'+i).addEventListener('input',render));
 
 (async()=>{try{await DB.open();await load()}catch(e){toast('Este navegador não deixou guardar dados',5000)}

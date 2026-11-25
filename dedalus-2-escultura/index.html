@@ -97,6 +97,8 @@ video{display:none}
       <label>A <input id="ldA" type="range" min="0.001" max="2" step="0.001" value="0.1"></label><label>D <input id="ldD" type="range" min="0.01" max="6" step="0.01" value="0.1"></label><label>S <input id="ldS" type="range" min="0" max="1" step="0.01" value="0.1"></label><label>R <input id="ldR" type="range" min="0.01" max="4" step="0.01" value="0.1"></label>
     </span>
     <span class="grp"><b>ARPEJO</b>
+      <label title="Sequência de acordes da mão direita (cada uma fixa o seu modo)">Progressão <select id="sProg"></select></label>
+      <label title="Como os acordes mudam">Troca <select id="sTroca"><option value="0">pela altura da mão</option><option value="1">a cada compasso</option><option value="2">a cada 2 compassos</option></select></label>
       <label>Tônica <select id="sRoot"></select></label>
       <label>Escala <select id="sScale"><option value="dorian">Dórico</option><option value="aeolian">Eólio (menor)</option><option value="ionian">Jônico (maior)</option><option value="mixolydian">Mixolídio</option><option value="lydian">Lídio</option><option value="phrygian">Frígio</option><option value="harmonicMinor">Menor harmônica</option><option value="pentMinor">Pentatônica menor</option></select></label>
       <label>BPM <input id="sBpm" type="range" min="40" max="160" step="1" value="90"><span id="vBpm">90</span></label>
@@ -650,11 +652,36 @@ function initLead() {
 function aplicaTimbre(i) { BX.timbre = i; syncPainelBaixo(); }
 
 /* ---------- harmonia: acorde pela altura da mão direita (com histerese) ---------- */
-let curDeg = 0, chordSel = 0;
+/* PROGRESSÕES: a mão direita escolhe só entre os acordes da progressão (de baixo para cima, na ordem da lista),
+   ou a progressão anda sozinha a cada 1 ou 2 compassos ("Troca"). Cada progressão fixa o seu modo. "Livre" = todos os graus. */
+const PROGS = [
+  { n: 'Livre — todos os graus da escala', s: null, g: null },
+  { n: 'Eólio · i – VI – III – VII', s: 'aeolian', g: [0, 5, 2, 6] },
+  { n: 'Eólio · i – iv – VII – III', s: 'aeolian', g: [0, 3, 6, 2] },
+  { n: 'Dórico · i – IV – VII', s: 'dorian', g: [0, 3, 6] },
+  { n: 'Jônico · I – V – vi – IV', s: 'ionian', g: [0, 4, 5, 3] },
+  { n: 'Jônico · ii – V – I – vi', s: 'ionian', g: [1, 4, 0, 5] },
+  { n: 'Mixolídio · I – VII – IV', s: 'mixolydian', g: [0, 6, 3] },
+  { n: 'Menor harmônica · i – iv – V', s: 'harmonicMinor', g: [0, 3, 4] },
+  { n: 'Lídio · I – II', s: 'lydian', g: [0, 1] }
+];
+Object.assign(MUS, { prog: 6, troca: 0 });
+if (PROGS[MUS.prog].s) MUS.scale = PROGS[MUS.prog].s;
+$('sProg').innerHTML = PROGS.map((p, i) => `<option value="${i}">${p.n}</option>`).join('');
+$('sProg').addEventListener('change', e => { const p = PROGS[+e.target.value]; if (p && p.s) { MUS.scale = p.s; $('sScale').value = p.s; } });
+$('sScale').addEventListener('change', e => { const p = PROGS[+$('sProg').value]; if (p && p.s && p.s !== e.target.value) { $('sProg').value = 0; MUS.prog = 0; } });
+let curDeg = 0, chordSel = 0, progSel = 0;
 function acordeDaMao() {
-  const n = sc().length, yp = Math.min(.999, CTRL.maos[1].altura) * n;
-  if (chordSel >= n || Math.abs(yp - (chordSel + .5)) > .65) chordSel = Math.min(n - 1, Math.floor(yp));
-  return chordSel;
+  const P = PROGS[MUS.prog] || PROGS[0];
+  if (!P.g) {
+    const n = sc().length, yp = Math.min(.999, CTRL.maos[1].altura) * n;
+    if (chordSel >= n || Math.abs(yp - (chordSel + .5)) > .65) chordSel = Math.min(n - 1, Math.floor(yp));
+    return chordSel;
+  }
+  if (MUS.troca > 0) return P.g[Math.floor(passo / (16 * MUS.troca)) % P.g.length];   // anda sozinha, no compasso
+  const k = P.g.length, yp = Math.min(.999, CTRL.maos[1].altura) * k;
+  if (progSel >= k || Math.abs(yp - (progSel + .5)) > .65) progSel = Math.min(k - 1, Math.floor(yp));
+  return P.g[progSel];
 }
 const tomAcorde = (i, base) => degMidi(ladderDeg(curDeg, i), base);   // i: 0 tônica · 1 terça · 2 quinta · 3 sétima · 4 oitava…
 let arpIdx = 0;
@@ -694,10 +721,10 @@ function somAoVivo() {
 }
 /* ---------- mão esquerda: nota pela altura (2 oitavas da mesma escala), com histerese ---------- */
 const LEAD_HIST = .2;
-// Com a mão direita tocando, a esquerda só alcança as NOTAS DO ACORDE atual (tônica, terça, quinta e, com "7ª", a sétima),
+// Com a mão direita tocando, a esquerda só alcança as NOTAS DA TRÍADE do acorde atual (tônica, terça e quinta),
 // em duas oitavas: o lead fica preso à harmonia. Sem a mão direita (ou em escala pentatônica), vale a escala inteira.
 function listaLead() {
-  const n = sc().length, L = [], tons = MUS.sev ? [0, 2, 4, 6] : [0, 2, 4], acorde = n === 7 && CTRL.maos[1].ativa;
+  const n = sc().length, L = [], tons = [0, 2, 4], acorde = n === 7 && CTRL.maos[1].ativa;   // só a tríade do acorde
   for (let d = 0; d <= 2 * n; d++) if (!acorde || tons.includes((((d - curDeg) % n) + n) % n)) L.push(d);
   return L;
 }
@@ -1074,7 +1101,7 @@ function syncPainelBaixo() { Object.entries(BX_IDS).forEach(([id, [k, i]]) => { 
 Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).oninput = e => { const v = +e.target.value; if (i === undefined) BX[k] = v; else BX[k][i] = v; salvaSom(); }; });
 $('bxTimbre').onchange = e => aplicaTimbre(+e.target.value);
 $('sRoot').innerHTML = NOTES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
-const MUS_IDS = { bxOit: 'bxOit', sRoot: 'root', sScale: 'scale', sBpm: 'bpm', arpPat: 'pat', arpRate: 'rate', arpOct: 'oct', arpGate: 'gate' };
+const MUS_IDS = { sProg: 'prog', sTroca: 'troca', bxOit: 'bxOit', sRoot: 'root', sScale: 'scale', sBpm: 'bpm', arpPat: 'pat', arpRate: 'rate', arpOct: 'oct', arpGate: 'gate' };
 $('arpSev').onchange = e => { MUS.sev = e.target.checked ? 1 : 0; salvaSom(); };
 Object.entries(MUS_IDS).forEach(([id, k]) => { const el = $(id); el.oninput = el.onchange = () => { MUS[k] = (k === 'scale' || k === 'pat') ? el.value : +el.value; if (k === 'bpm') $('vBpm').textContent = MUS.bpm; salvaSom(); }; });
 const LD_IDS = { ldTimbre: ['timbre'], ldOit: ['oit'], ldVol: ['vol'], ldCut: ['cut'], ldGlide: ['glide'], ldVib: ['vib'], ldVibR: ['vibR'], ldRev: ['rev'], ldA: ['adsr', 0], ldD: ['adsr', 1], ldS: ['adsr', 2], ldR: ['adsr', 3] };
@@ -1112,6 +1139,7 @@ addEventListener('keydown', e => {
 /* ---------- INÍCIO AUTOMÁTICO: câmera e som ligados, painel escondido (☰ ou tecla H mostra) ----------
    O navegador só libera o áudio depois de um gesto: se ele começar suspenso, o primeiro clique ou tecla religa. */
 $('ui').classList.add('hide');
+{ const p = PROGS[MUS.prog]; if (p && p.s && MUS.scale !== p.s) { MUS.scale = p.s; $('sScale').value = p.s; } }   // modo da progressão vale mesmo com ajustes antigos salvos
 $('rCamA').value = '0';   // câmera invisível ao abrir (mesmo que o navegador restaure o controle)
 addEventListener('pageshow', () => { $('rCamA').value = '0'; });
 (() => {

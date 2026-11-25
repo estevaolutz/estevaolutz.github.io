@@ -92,7 +92,7 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .cand:hover{border-color:var(--ac)}
 .cand img{width:64px;height:64px;border-radius:4px;object-fit:cover;flex:none;background:#222}
 .cand b{display:block;line-height:1.25}
-.cand span{color:var(--mut);font-size:14px}
+.cand span{color:var(--mut);font-size:14px}.cand span.onde{display:block;font-size:12px;margin-top:2px;color:var(--ac2,var(--mut))}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:14px;min-height:36px}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -226,9 +226,33 @@ async function buscaItunes(q){const d=await jsonp(`https://itunes.apple.com/sear
   return (d.results||[]).map(r=>({fonte:'Apple',artista:r.artistName,album:r.collectionName,ano:(r.releaseDate||'').slice(0,4),genero:r.primaryGenreName||'',faixas:r.trackCount||'',capa:(r.artworkUrl100||'').replace('100x100bb','600x600bb'),url:r.collectionViewUrl}))}
 async function buscaDeezer(q){const d=await jsonp(`https://api.deezer.com/search/album?q=${encodeURIComponent(q)}&limit=10&output=jsonp`);
   return (d.data||[]).map(r=>({fonte:'Deezer',artista:r.artist?.name,album:r.title,ano:'',genero:'',faixas:r.nb_tracks||'',capa:r.cover_xl||r.cover_big||'',url:r.link}))}
-async function buscar(q){const [a,b]=await Promise.allSettled([buscaItunes(q),buscaDeezer(q)]);const out=[],vis=new Map();
-  for(const r of [...(a.value||[]),...(b.value||[])]){const k=norm(r.artista)+'|'+norm(r.album);if(vis.has(k)){const o=vis.get(k);o.urls.push(r.url);if(!o.ano&&r.ano)o.ano=r.ano;continue}r.urls=[r.url];vis.set(k,r);out.push(r)}
-  return out}
+/* Tidal e Spotify só respondem com a conta conectada (Ajustes); sem conexão ficam de fora da busca, mas os links deles vêm depois pelo song.link. */
+async function buscaTidal(q){if(!TD.on)return[];const C=AJ.pais||'BR';
+  const r=await TD.api('/searchResults?'+new URLSearchParams({'filter[query]':q,countryCode:C,include:'albums'}));
+  const ordem=((r.data||[])[0]?.relationships?.albums?.data||[]).map(x=>x.id);const inc=new Map((r.included||[]).filter(x=>x.type==='albums').map(a=>[a.id,a]));
+  const ids=(ordem.length?ordem:[...inc.keys()]).slice(0,10);if(!ids.length)return[];
+  let det=null;try{det=await TD.api('/albums?'+new URLSearchParams({'filter[id]':ids.join(','),countryCode:C,include:'artists,coverArt'}))}catch(e){}
+  const extra=new Map((det?.included||[]).map(x=>[x.type+':'+x.id,x])),alb=new Map((det?.data||[]).map(a=>[a.id,a]));
+  return ids.map(id=>{const a=alb.get(id)||inc.get(id);if(!a)return null;const at=a.attributes||{};const rel=a.relationships||{};
+    const artista=(rel.artists?.data||[]).map(x=>extra.get('artists:'+x.id)?.attributes?.name).filter(Boolean).join(', ');
+    const art=extra.get('artworks:'+(rel.coverArt?.data||[])[0]?.id);const fs=(art?.attributes?.files||[]).sort((x,y)=>(x.meta?.width||0)-(y.meta?.width||0));
+    const capa=(fs.find(f=>(f.meta?.width||0)>=600)||fs[fs.length-1])?.href||'';
+    return{fonte:'Tidal',plat:'tidal',artista:artista||'',album:at.title||'',ano:(at.releaseDate||'').slice(0,4),genero:'',faixas:at.numberOfItems||'',capa,url:`https://tidal.com/browse/album/${id}`}}).filter(x=>x&&x.album)}
+async function buscaSpotify(q){if(!SP.on)return[];const d=await SP.api('/search?'+new URLSearchParams({q,type:'album',limit:'10',market:AJ.pais||'BR'}));
+  return(d.albums?.items||[]).filter(Boolean).map(r=>({fonte:'Spotify',plat:'spotify',artista:(r.artists||[]).map(a=>a.name).join(', '),album:r.name,ano:(r.release_date||'').slice(0,4),genero:'',faixas:r.total_tracks||'',capa:r.images?.[0]?.url||'',url:r.external_urls?.spotify||''}))}
+async function buscaMB(q){const r=await timeoutFetch(`https://musicbrainz.org/ws/2/release-group/?query=${encodeURIComponent(q)}&fmt=json&limit=8`,{headers:{Accept:'application/json'}},9000);const d=await r.json();
+  return(d['release-groups']||[]).filter(x=>(x.score||0)>=70&&x['primary-type']!=='Single').map(x=>({fonte:'MusicBrainz',plat:'musicbrainz',artista:(x['artist-credit']||[]).map(a=>a.name+(a.joinphrase||'')).join(''),album:x.title,ano:(x['first-release-date']||'').slice(0,4),genero:'',faixas:'',
+    capa:`https://coverartarchive.org/release-group/${x.id}/front-250`,url:`https://musicbrainz.org/release-group/${x.id}`}))}
+const NOME_PLAT={tidal:'Tidal',spotify:'Spotify',appleMusic:'Apple Music',deezer:'Deezer',musicbrainz:'MusicBrainz'};
+/* procura em todas as plataformas ao mesmo tempo e junta o mesmo álbum vindo de lugares diferentes */
+async function buscar(q){const fontes=[buscaTidal(q),buscaSpotify(q),buscaItunes(q).then(l=>l.map(r=>({...r,plat:'appleMusic'}))),buscaDeezer(q).then(l=>l.map(r=>({...r,plat:'deezer'}))),buscaMB(q)];
+  const res=await Promise.allSettled(fontes);const out=[],vis=new Map();
+  for(const r of res.flatMap(x=>x.value||[])){if(!r.album)continue;const k=norm(r.artista)+'|'+norm(r.album.replace(/\s*[\(\[][^)\]]*(remaster|edition|edição|deluxe|version|versão)[^)\]]*[\)\]]/ig,''));
+    if(vis.has(k)){const o=vis.get(k);if(r.plat!=='musicbrainz')o.urls.push(r.url);o.links[r.plat]=o.links[r.plat]||r.url;if(!o.ano&&r.ano)o.ano=r.ano;if((!o.capa||o.plat==='musicbrainz')&&r.capa&&r.plat!=='musicbrainz')o.capa=r.capa;if(!o.faixas&&r.faixas)o.faixas=r.faixas;continue}
+    r.urls=r.plat==='musicbrainz'?[]:[r.url];r.links={[r.plat]:r.url};vis.set(k,r);out.push(r)}
+  /* primeiro o que está em mais plataformas; os só-MusicBrainz (fora do streaming) por último */
+  const ord=c=>Object.keys(c.links).filter(p=>p!=='musicbrainz').length;
+  return out.map((c,i)=>[c,i]).sort((a,b)=>(ord(b[0])>0)-(ord(a[0])>0)||ord(b[0])-ord(a[0])||a[1]-b[1]).map(x=>x[0])}
 async function odesli(urls){for(const u of urls){try{const r=await timeoutFetch(`https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(u)}&userCountry=${AJ.pais||'BR'}`);if(!r.ok)continue;const d=await r.json();const L={};
   for(const [k,v] of Object.entries(d.linksByPlatform||{}))if(safeUrl(v.url))L[k]=v.url;if(d.pageUrl)L.songlink=d.pageUrl;return L}catch(e){}}return {}}
 async function musicbrainzBarcode(code){const r=await timeoutFetch(`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(code)}&fmt=json&limit=3`,{headers:{Accept:'application/json'}});const d=await r.json();const x=(d.releases||[])[0];if(!x)return null;
@@ -555,16 +579,16 @@ async function foto(file,lado){let c;try{c=await lerImagem(file,1400)}catch(e){r
   $('#res').insertAdjacentHTML('afterbegin',prev);if(!$('#deNovo'))$('#nome').focus()}
 function deNovo(file,lado){const st=$('#res .st');if(!st)return;st.insertAdjacentHTML('afterend','<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 0"><button class="btn" id="deNovo">Tentar de novo com esta foto</button></div><p class="note" style="margin-top:8px">Dica: foto de frente, sem reflexo do plástico, pegando a capa inteira. Digitar o nome fica como último recurso.</p>');
   $('#deNovo').onclick=()=>foto(file,lado)}
-async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” nas plataformas…');let l=[];try{l=await buscar(q)}catch(e){}
+async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” no '+['Tidal','Spotify','Apple Music','Deezer','MusicBrainz'].filter(n=>n==='Tidal'?TD.on:n==='Spotify'?SP.on:true).join(', ')+'…');let l=[];try{l=await buscar(q)}catch(e){}
   ADD.cands=l;const alt=(ia?.alternativas||[]).filter(a=>a&&a.album);
   $('#res').innerHTML=prev+(ia?`<p class="note">A IA acha que é <b>${esc(ia.album)}</b> — ${esc(ia.artista)}${ia.ano?' ('+esc(ia.ano)+')':''}${typeof ia.confianca==='number'?` · certeza ${Math.round(ia.confianca*100)}%`:''}. Escolha a versão certa:</p>`:'<p class="note">Escolha a versão certa:</p>')+
    (alt.length?`<div class="chips">${alt.map((a,i)=>`<button class="chip" data-alt="${i}">${esc(a.artista)} — ${esc(a.album)}</button>`).join('')}</div>`:'')+
-   `<div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span></div></button>`).join('')||'<p class="note">Nada encontrado nas plataformas. Confira o nome acima ou salve assim mesmo.</p>'}</div>
+   `<div class="cands">${l.map((c,i)=>`<button class="cand" data-c="${i}"><img src="${esc(safeUrl(c.capa))}" alt="" loading="lazy"><div><b>${esc(c.album)}</b><span>${esc(c.artista)}${c.ano?' · '+esc(c.ano):''}${c.faixas?' · '+esc(c.faixas)+' faixas':''}</span><span class="onde">${esc(Object.keys(c.links||{}).map(p=>NOME_PLAT[p]||p).join(' · '))}</span></div></button>`).join('')||'<p class="note">Nada encontrado em nenhuma plataforma. Confira o nome acima ou salve assim mesmo.</p>'}</div>
    <button class="btn" id="manual">Salvar sem versão digital</button>`;
   $('#res').onclick=e=>{const b=e.target.closest('[data-c],[data-alt],#manual');if(!b)return;if(b.id==='manual')return confirmar(null);if(b.dataset.alt!=null){const a=alt[+b.dataset.alt];$('#nome').value=`${a.artista} ${a.album}`;return procurar($('#nome').value,prev,ia)}confirmar(l[+b.dataset.c])}}
 async function confirmar(c){const p=ADD.palpite||{};const t=$('#nome').value.trim();
   const d={id:uid(),criado:Date.now(),tipo:'vinil',artista:c?.artista||p.artista||'',album:c?.album||p.album||t,ano:c?.ano||p.ano||'',gravadora:p.gravadora||'',genero:c?.genero||'',faixas:c?.faixas||'',capa:safeUrl(c?.capa),foto:ADD.foto||'',formato:'LP 12"',estado:'',obs:'',listas:[],links:{}};
-  if(c){status('Encontrando o disco no Tidal, Spotify, YouTube Music…');d.links=await odesli(c.urls);if(!d.links.appleMusic&&c.fonte==='Apple')d.links.appleMusic=c.url;if(!d.links.deezer&&c.fonte==='Deezer')d.links.deezer=c.url}
+  if(c){status('Encontrando o disco no Tidal, Spotify, YouTube Music…');d.links=c.urls.length?await odesli(c.urls):{};for(const[k,v]of Object.entries(c.links||{}))if(!d.links[k]&&safeUrl(v))d.links[k]=v}
   const achou=PLAT.slice(0,6).filter(p=>d.links[p[0]]).map(p=>p[1]);
   $('#addBody').innerHTML=`<div class="det"><div class="slv">${capaHTML(d)}</div><div><h2>${esc(d.album)}</h2><p class="who">${esc(d.artista)}</p><p class="note">${achou.length?'Encontrado em: '+esc(achou.join(', ')):'Sem links diretos — os botões vão abrir a busca em cada plataforma.'}</p></div></div>
    <h3 style="font-size:20px;margin:14px 0 4px">Adicionar às listas</h3><div class="chips" id="cL">${LISTAS.map(l=>`<button class="chip" data-l="${esc(l.id)}">${esc(l.nome)}</button>`).join('')}<button class="chip" data-nl>+ nova lista</button></div>

@@ -96,7 +96,7 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .cand:hover{border-color:var(--ac)}
 .cand img{width:64px;height:64px;border-radius:4px;object-fit:cover;flex:none;background:#222}
 .cand b{display:block;line-height:1.25}
-.cand span{color:var(--mut);font-size:14px}.nenhum{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;border:1px dashed var(--line);border-radius:12px}.nenhum .btn{flex:none}.cand span.onde{display:block;font-size:12px;margin-top:2px;color:var(--ac2,var(--mut))}
+.cand span{color:var(--mut);font-size:14px}.dg h3{font-size:20px;margin:14px 0 6px}.dg{margin-top:8px}.nenhum{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;border:1px dashed var(--line);border-radius:12px}.nenhum .btn{flex:none}.cand span.onde{display:block;font-size:12px;margin-top:2px;color:var(--ac2,var(--mut))}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:14px;min-height:36px}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -219,6 +219,18 @@ const PLAT=[
   ['amazonMusic','Amazon Music','#25d1da',q=>`https://music.amazon.com.br/search/${encodeURIComponent(q)}`],
   ['discogs','Discogs (prensagens)','#e8e8e8',q=>`https://www.discogs.com/search/?q=${encodeURIComponent(q)}&type=all&format_exact=Vinyl`]
 ];
+const DIGITAIS=['tidal','spotify','appleMusic','deezer','youtubeMusic','amazonMusic'];
+const semVersao=d=>!DIGITAIS.some(k=>(d.links||{})[k]);
+/* Discogs: busca de prensagens em vinil (precisa de um token pessoal grátis, em Ajustes) */
+async function buscaDiscogs(d,q){const t=(AJ.discogsToken||'').trim();if(!t){const e=new Error('sem token');e.semToken=true;throw e}
+  const um=async P=>{P.set('type','release');P.set('format','Vinyl');P.set('per_page','25');
+    const r=await timeoutFetch('https://api.discogs.com/database/search?'+P,{headers:{Authorization:'Discogs token='+t}},15000);const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(r.status===401?'o token do Discogs não foi aceito — confira em Ajustes':r.status===429?'o Discogs pediu uma pausa, tente em 1 minuto':(j.message||'erro '+r.status));return j.results||[]};
+  let l=q?await um(new URLSearchParams({q})):await um(new URLSearchParams({artist:d.artista||'',release_title:d.album||''}));
+  if(!q&&!l.length)l=await um(new URLSearchParams({q:`${d.artista||''} ${d.album||''}`.trim()}));
+  return l.map(x=>({id:x.id,titulo:x.title||'',ano:String(x.year||''),pais:x.country||'',gravadora:(x.label||[])[0]||'',catno:x.catno&&x.catno!=='none'?x.catno:'',
+    formato:[...new Set(x.format||[])].join(', '),capa:safeUrl(x.thumb)||safeUrl(x.cover_image)||'',url:'https://www.discogs.com'+(x.uri||('/release/'+x.id))}))}
+const prensagemTxt=g=>[g.pais,g.ano,g.gravadora,g.catno,g.formato].filter(Boolean).join(' · ');
 const linkFor=(d,p)=>{const L=d.links||{};if(L[p[0]])return{url:L[p[0]],direto:true};return{url:p[3](`${d.artista} ${d.album}`),direto:false}};
 
 /* ---------- rede ---------- */
@@ -405,7 +417,7 @@ TD.load();
 const SERV=()=>AJ.servico==='spotify'?SP:TD;
 
 /* ---------- vistas ---------- */
-let VISTA='estante',ARTISTA=null;let SEL=null;
+let VISTA='estante',ARTISTA=null;let SEL=null,REV=null;
 const LIXO='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>';
 function selecao(on){SEL=on?(SEL||new Set()):null;render()}
 function barraSel(){let b=$('#selbar');const vis=SEL&&(VISTA==='estante'||VISTA==='artistas');
@@ -418,17 +430,17 @@ function artistas(){const m=new Map();
   for(const d of DISCOS){const k=chaveArt(d.artista);if(!m.has(k))m.set(k,{k,nomes:{},discos:[]});const g=m.get(k);g.discos.push(d);const n=(d.artista||'Sem artista').trim();g.nomes[n]=(g.nomes[n]||0)+1}
   return[...m.values()].map(g=>({...g,nome:Object.entries(g.nomes).sort((a,b)=>b[1]-a[1])[0][0],discos:g.discos.sort((a,b)=>(a.ano||'9999').localeCompare(b.ano||'9999')||(a.album||'').localeCompare(b.album||''))})).sort((a,b)=>a.k.localeCompare(b.k))}
 const capaHTML=d=>{const src=safeUrl(d.capa)||(/^data:image\//.test(d.foto||'')?d.foto:'');return src?`<img src="${esc(src)}" alt="" loading="lazy">`:`<div class="ph">${esc(d.album||'?')}</div>`};
-function filtrados(){const q=norm($('#q').value);const f=$('#flt').value;let l=DISCOS.filter(d=>(!f||(d.listas||[]).includes(f))&&(!q||norm([d.artista,d.album,d.ano,d.gravadora,d.genero,d.obs].join(' ')).includes(q)));
+function filtrados(){const q=norm($('#q').value);const f=$('#flt').value;let l=DISCOS.filter(d=>(!f||(f==='__sem'?semVersao(d):(d.listas||[]).includes(f)))&&(!q||norm([d.artista,d.album,d.ano,d.gravadora,d.genero,d.obs].join(' ')).includes(q)));
   const o=$('#ord').value;const cmp={recentes:(a,b)=>b.criado-a.criado,artista:(a,b)=>(a.artista||'').localeCompare(b.artista||'')||(a.ano||'').localeCompare(b.ano||''),album:(a,b)=>(a.album||'').localeCompare(b.album||''),ano:(a,b)=>(a.ano||'9999').localeCompare(b.ano||'9999')}[o];return l.sort(cmp)}
 function render(){setTimeout(barraSel);
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===VISTA));
   $('#tools').style.display=VISTA==='estante'?'':'none';$('#fab').style.display=$('#fab2').style.display=VISTA==='ajustes'?'none':'';
   $('#sub').textContent=`Coleções · ${DISCOS.length} ${DISCOS.length===1?'disco':'discos'}`;
-  const f=$('#flt'),fv=f.value;f.innerHTML='<option value="">Todas as listas</option>'+LISTAS.map(l=>`<option value="${esc(l.id)}">${esc(l.nome)}</option>`).join('');f.value=LISTAS.some(l=>l.id===fv)?fv:'';
+  const f=$('#flt'),fv=f.value;const nSem=DISCOS.filter(semVersao).length;f.innerHTML='<option value="">Todas as listas</option>'+(nSem?`<option value="__sem">Sem versão digital (${nSem})</option>`:'')+LISTAS.map(l=>`<option value="${esc(l.id)}">${esc(l.nome)}</option>`).join('');f.value=(fv==='__sem'&&nSem)||LISTAS.some(l=>l.id===fv)?fv:'';
   const M=$('#main');
   if(VISTA==='estante'){
     if(!DISCOS.length){M.innerHTML=`<section class="empty"><div><h2>Sua estante está vazia</h2><p>Tire uma foto da capa de um disco. O app reconhece o álbum, encontra a versão digital no Tidal, Spotify, Apple Music, YouTube Music e Deezer, e guarda na sua coleção.</p>${AJ.ia?'':'<p class="note">Para reconhecer pela foto, cole uma chave de IA em <a href="#" data-goto="ajustes">Ajustes</a>. Sem chave dá para usar o código de barras do verso ou digitar o nome.</p>'}<div class="row"><button class="btn ac" data-add>Fotografar o primeiro disco</button><button class="btn" data-nome>Digitar o nome</button></div></div><div class="disc" aria-hidden="true"></div></section>`;return}
-    const l=filtrados();M.innerHTML=`<p class="cnt">${l.length===DISCOS.length?'':l.length+' de '}${DISCOS.length} discos</p><div class="shelf">${l.map(d=>`<button class="rec${SEL&&SEL.has(d.id)?' sel':''}" data-id="${esc(d.id)}"><div class="slv">${SEL?`<span class="ck">${SEL.has(d.id)?'✓':''}</span>`:''}${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${esc(d.artista)}${d.ano?' · '+esc(d.ano):''}</span></button>`).join('')||'<p class="note">Nada encontrado.</p>'}</div>`}
+    const l=filtrados();M.innerHTML=($('#flt').value==='__sem'&&l.length?`<div class="nenhum" style="margin:0 0 14px"><button class="btn pri" data-revdg>Procurar as prensagens no Discogs</button><span class="note">Passa por estes ${l.length} discos um por um e mostra as prensagens em vinil do Discogs para você escolher a sua.</span></div>`:'')+`<p class="cnt">${l.length===DISCOS.length?'':l.length+' de '}${DISCOS.length} discos</p><div class="shelf">${l.map(d=>`<button class="rec${SEL&&SEL.has(d.id)?' sel':''}" data-id="${esc(d.id)}"><div class="slv">${SEL?`<span class="ck">${SEL.has(d.id)?'✓':''}</span>`:''}${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${esc(d.artista)}${d.ano?' · '+esc(d.ano):''}</span></button>`).join('')||'<p class="note">Nada encontrado.</p>'}</div>`}
   else if(VISTA==='artistas'){const G=artistas();const g=ARTISTA&&G.find(x=>x.k===ARTISTA);
     if(g){M.innerHTML=`<div class="row" style="margin-bottom:6px"><button class="btn lk" data-voltart>← Todos os artistas</button></div><div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">${esc(g.nome)}</h2><button class="chip" data-copart>Copiar links</button></div><p class="cnt">${g.discos.length} ${g.discos.length===1?'disco':'discos'}, do mais antigo ao mais novo</p><div class="shelf">${g.discos.map(d=>`<button class="rec${SEL&&SEL.has(d.id)?' sel':''}" data-id="${esc(d.id)}"><div class="slv">${SEL?`<span class="ck">${SEL.has(d.id)?'✓':''}</span>`:''}${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${d.ano?esc(d.ano):'&nbsp;'}</span></button>`).join('')}</div>`;return}
     ARTISTA=null;
@@ -499,10 +511,13 @@ function render(){setTimeout(barraSel);
     <details style="margin-top:10px"><summary class="note" style="cursor:pointer">Spotify (se precisar)</summary><p>Para o app criar playlists na sua conta: em <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> crie um app, marque “Web API”, adicione este endereço como Redirect URI e cole o Client ID abaixo.</p>
       <p><code>${esc(SP.redirect())}</code> <button class="btn lk" data-cp>Copiar</button></p>
       <div class="row"><input class="in grow" id="aSp" placeholder="Client ID do Spotify" value="${esc(AJ.spotifyId)}"><button class="btn ${SP.on?'':'pri'}" id="spC">${SP.on?'Desconectar':'Conectar'}</button></div></details>    </section>
+    <section><h3>Discogs (prensagens)</h3><p>Para o app procurar as prensagens em vinil dos discos que não têm versão digital. É grátis:</p>
+      <ol class="note" style="padding-left:20px;display:grid;gap:4px"><li>Abra <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener">https://www.discogs.com/settings/developers</a> e entre (ou crie uma conta, é grátis).</li><li>Toque em <b>Generate new token</b> e copie o código.</li><li>Cole aqui embaixo — salva sozinho.</li></ol>
+      <input class="in" id="aDg" style="width:100%;font-family:ui-monospace,monospace" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="token do Discogs" value="${esc(AJ.discogsToken||'')}"><p class="note" id="dgSt"></p></section>
     <section id="syncBox"></section>
     <section><h3>Cópia de segurança</h3><p>A coleção fica guardada neste aparelho. Exporte um arquivo para levar para outro aparelho ou guardar.</p>
       <div class="row"><button class="btn" id="exp">Exportar coleção (.json)</button><label class="btn" style="position:relative">Importar<input type="file" accept=".json,application/json" id="imp" style="position:absolute;inset:0;opacity:0"></label></div></section></div>`;
-    setTimeout(()=>SYNC&&SYNC.painel(document.getElementById('syncBox')));$('#aIa').value=AJ.ia;$('#aSv').value=AJ.servico;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
+    setTimeout(()=>SYNC&&SYNC.painel(document.getElementById('syncBox')));$('#aDg').addEventListener('input',e=>{AJ.discogsToken=e.target.value.replace(/\s+/g,'');saveAJ();$('#dgSt').textContent=AJ.discogsToken?'Token guardado. Abra um disco sem versão digital para ver as prensagens.':''});$('#aIa').value=AJ.ia;$('#aSv').value=AJ.servico;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
     M.querySelector('[data-guia]')?.addEventListener('click',e=>{e.preventDefault();const g=$('#guiaChave');g.querySelectorAll('details')[1].open=true;g.scrollIntoView({behavior:'smooth',block:'start'})});
     const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.plataforma=$('#aPl').value;AJ.pais=$('#aPa').value;AJ.spotifyId=$('#aSp').value.trim();AJ.tidalId=$('#aTd').value.trim()||TIDAL_ID_PADRAO;AJ.tidalColecao=$('#aTc').checked;AJ.servico=$('#aSv').value;saveAJ()};
     M.querySelectorAll('input,select').forEach(e=>e.addEventListener('change',()=>{sv();if(e.id!=='imp')toast('Ajuste salvo')}));
@@ -523,11 +538,13 @@ function render(){setTimeout(barraSel);
 
 /* ---------- detalhe ---------- */
 function abrir(id){const S=$('#'+id);S.classList.add('on');document.body.style.overflow='hidden'}
-function fechar(S){S.classList.remove('on');document.body.style.overflow=''}
+function fechar(S){if(S.id==='sDet')REV=null;S.classList.remove('on');document.body.style.overflow=''}
 function detalhe(id){const d=DISCOS.find(x=>x.id===id);if(!d)return;const pri=PLAT.find(p=>p[0]===AJ.plataforma)||PLAT[0];const lp=linkFor(d,pri);
   $('#detBody').innerHTML=`<div class="det"><div class="slv">${capaHTML(d)}</div><div>
     <h2>${esc(d.album)}</h2><p class="who">${esc(d.artista)}</p><p class="note" style="margin:0">${[d.ano,d.gravadora,d.genero,d.formato,d.estado].filter(Boolean).map(esc).join(' · ')}</p>
     <div class="row" style="margin-top:14px"><a class="btn ac" href="${esc(lp.url)}" target="_blank" rel="noopener">Ouvir no ${esc(pri[1])}</a>${d.links?.songlink&&safeUrl(d.links.songlink)?`<a class="btn" href="${esc(d.links.songlink)}" target="_blank" rel="noopener">Todas as plataformas</a>`:''}</div></div></div>
+    ${REV&&REV.includes(d.id)?`<div class="row" style="margin:10px 0 0"><span class="note">Revisando ${REV.indexOf(d.id)+1} de ${REV.length}</span><span style="margin-left:auto"></span><button class="btn lk" data-revprox>Pular →</button><button class="btn lk" data-revfim>Parar</button></div>`:''}
+    <div class="dg" id="dgBox"></div>
     <div class="plats">${PLAT.map(p=>{const l=linkFor(d,p);return`<a class="plat" href="${esc(l.url)}" target="_blank" rel="noopener"><i style="background:${p[2]}"></i>${esc(p[1])}<small>${l.direto?'álbum':'busca'}</small></a>`}).join('')}</div>
     <h3 style="font-size:20px;margin:6px 0">Listas</h3><div class="chips" id="dL">${LISTAS.map(l=>`<button class="chip ${(d.listas||[]).includes(l.id)?'on':''}" data-l="${esc(l.id)}">${esc(l.nome)}</button>`).join('')}<button class="chip" data-nl>+ nova lista</button></div>
     <div class="form"><label class="f">Artista<input class="in" id="eA" value="${esc(d.artista)}"></label><label class="f">Disco<input class="in" id="eB" value="${esc(d.album)}"></label>
@@ -537,6 +554,22 @@ function detalhe(id){const d=DISCOS.find(x=>x.id===id);if(!d)return;const pri=PL
     <label class="f w">Observações<textarea class="in" id="eO" rows="2" placeholder="prensagem, onde comprou, quanto pagou…">${esc(d.obs)}</textarea></label></div>
     <div class="row"><button class="btn pri" id="eS">Salvar</button><button class="btn" id="eR">Escolher a versão digital</button>${TD.on?'<button class="btn" id="eT">Guardar no Tidal</button>':''}<span style="margin-left:auto"></span><button class="btn lk" id="eD" style="color:var(--ac)">Tirar da coleção</button></div><div id="eRes"></div>`;
   abrir('sDet');
+  const proximo=()=>{if(!REV)return detalhe(id);const i=REV.indexOf(id);const nx=REV[i+1];if(nx&&DISCOS.some(x=>x.id===nx))return detalhe(nx);REV=null;fechar($('#sDet'));toast('Revisão terminada')};
+  const dgMostra=()=>{const g=d.discogs,B=$('#dgBox');if(!B)return;
+    if(g&&g.id)B.innerHTML=`<h3>Prensagem</h3><div class="cand" style="cursor:default">${g.capa?`<img src="${esc(g.capa)}" alt="">`:''}<div><b>${esc(g.titulo)}</b><span>${esc(prensagemTxt(g))}</span></div></div><div class="row" style="margin-top:6px"><a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener">Ver no Discogs</a><button class="btn lk" data-dgbusca>Trocar prensagem</button></div>`;
+    else B.innerHTML=`<div class="row"><button class="btn" data-dgbusca>${semVersao(d)?'Procurar a prensagem no Discogs':'Prensagem no Discogs'}</button>${g&&g.nenhum?'<span class="note">nenhuma prensagem escolhida</span>':''}</div>`};
+  const dgBusca=async q=>{const B=$('#dgBox');B.innerHTML='<div class="st"><span class="spin"></span><span>Procurando as prensagens em vinil no Discogs…</span></div>';let l;
+    try{l=await buscaDiscogs(d,q)}catch(e){B.innerHTML=e.semToken?`<div class="nenhum"><span class="note">Para buscar no Discogs, cole o seu token do Discogs em Ajustes (é grátis, leva 1 minuto).</span><a class="btn" href="#" data-goto="ajustes">Ajustes</a></div>`:`<p class="note">Discogs: ${esc(e.message)}.</p><button class="btn lk" data-dgbusca>Tentar de novo</button>`;return}
+    B.innerHTML=`<h3>Qual é a sua prensagem?</h3><p class="note" style="margin:0 0 8px">Confira o país, a gravadora e o número de catálogo no selo ou na contracapa do seu disco.</p>
+      <div class="row" style="margin-bottom:8px"><input class="in grow" id="dgQ" value="${esc(q||`${d.artista||''} ${d.album||''}`.trim())}"><button class="btn" id="dgQb">Buscar</button></div>
+      <div class="cands" id="dgL">${l.map((c,i)=>`<button class="cand" data-dg="${i}">${c.capa?`<img src="${esc(c.capa)}" alt="" loading="lazy">`:'<img alt="">'}<div><b>${esc(c.titulo)}</b><span>${esc(prensagemTxt(c))}</span></div></button>`).join('')||'<p class="note">Nenhuma prensagem em vinil encontrada. Mude o nome acima e busque de novo.</p>'}</div>
+      <div class="nenhum"><button class="btn pri" id="dgN">Nenhum desses</button><span class="note">Deixa o disco sem prensagem escolhida${REV?' e passa para o próximo':''}.</span></div>`;
+    $('#dgQb').onclick=()=>dgBusca($('#dgQ').value.trim());$('#dgQ').onkeydown=ev=>{if(ev.key==='Enter')$('#dgQb').click()};
+    $('#dgN').onclick=async()=>{d.discogs={nenhum:true};await DB.put('discos',d);render();proximo()};
+    $('#dgL').onclick=async ev=>{const b=ev.target.closest('[data-dg]');if(!b)return;const c=l[+b.dataset.dg];
+      d.discogs=c;d.links={...(d.links||{}),discogs:c.url};if(!d.gravadora&&c.gravadora)d.gravadora=c.gravadora;await DB.put('discos',d);render();toast('Prensagem guardada');proximo()}};
+  dgMostra();if(semVersao(d)&&!d.discogs&&AJ.discogsToken)dgBusca();
+  $('#detBody').onclick=e=>{if(e.target.closest('[data-dgbusca]'))dgBusca();if(e.target.closest('[data-revprox]'))proximo();if(e.target.closest('[data-revfim]')){REV=null;detalhe(id)}};
   $('#dL').onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-nl')){const n=await perguntar('Nome da nova lista');if(!n)return;const l={id:uid(),nome:n,criado:Date.now()};await DB.put('listas',l);d.listas=[...(d.listas||[]),l.id];await DB.put('discos',d);await load();return detalhe(id)}
     const lid=b.dataset.l;d.listas=(d.listas||[]).includes(lid)?d.listas.filter(x=>x!==lid):[...(d.listas||[]),lid];b.classList.toggle('on');await DB.put('discos',d);render();if(d.listas.includes(lid))autoPlaylist(d,lid)};
   $('#eS').onclick=async()=>{Object.assign(d,{artista:$('#eA').value.trim(),album:$('#eB').value.trim(),ano:$('#eY').value.trim(),gravadora:$('#eG').value.trim(),formato:$('#eF').value,estado:$('#eE').value,obs:$('#eO').value.trim()});await DB.put('discos',d);render();fechar($('#sDet'));toast('Salvo')};
@@ -647,9 +680,10 @@ document.addEventListener('contextmenu',e=>{if(e.target.closest('.rec'))e.preven
 document.addEventListener('click',e=>{const t=e.target;
   if(t.closest('[data-close]'))return fechar(t.closest('.sheet'));
   if(t.classList.contains('sheet')&&(t.id==='sAdd'||t.id==='sDet'))return fechar(t);
-  const g=t.closest('[data-goto]');if(g){e.preventDefault();fechar($('#sAdd'));VISTA=g.dataset.goto;return render()}
+  const g=t.closest('[data-goto]');if(g){e.preventDefault();fechar($('#sAdd'));fechar($('#sDet'));REV=null;VISTA=g.dataset.goto;return render()}
   if(t.closest('[data-add]'))return camera();
   if(t.closest('[data-nome]'))return $('#fab2').click();
+  if(t.closest('[data-revdg]')){REV=filtrados().map(d=>d.id);return REV.length&&detalhe(REV[0])}
   if(t.closest('#selB'))return selecao(!SEL);
   if(t.closest('[data-selx]'))return selecao(false);
   const lx=t.closest('[data-lixo]');if(lx&&SEL&&SEL.size){if(!lx.dataset.ok){lx.dataset.ok=1;lx.querySelector('span').textContent=`Tirar ${SEL.size}? Toque de novo`;return}

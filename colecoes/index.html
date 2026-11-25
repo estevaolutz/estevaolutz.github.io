@@ -161,9 +161,11 @@ const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const toast=(t,ms=2600)=>{const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',ms)};
 const AJ_KEY='colecoes-ajustes-v1';
-let AJ={ia:'',chave:'',modelo:'',pais:'BR',plataforma:'tidal',servico:'tidal',tidalId:'',tidalColecao:true,spotifyId:''};
+const TIDAL_ID_PADRAO='j0HQzvMChBaLAKlO';
+let AJ={ia:'',chave:'',modelo:'',pais:'BR',plataforma:'tidal',servico:'tidal',tidalId:TIDAL_ID_PADRAO,tidalColecao:true,spotifyId:''};
 try{Object.assign(AJ,JSON.parse(localStorage.getItem(AJ_KEY)||'{}'))}catch(e){}
 const saveAJ=()=>{try{localStorage.setItem(AJ_KEY,JSON.stringify(AJ))}catch(e){}};
+if(!AJ.tidalId){AJ.tidalId=TIDAL_ID_PADRAO;saveAJ()}
 if(!AJ.v){AJ.plataforma='tidal';AJ.servico='tidal';if(AJ.tidalColecao==null)AJ.tidalColecao=true;AJ.v=2;saveAJ()}
 
 /* ---------- banco (IndexedDB) ---------- */
@@ -335,9 +337,12 @@ function render(){
     <section><h3>Plataformas</h3><div class="form"><label class="f">Botão principal “Ouvir”<select class="in" id="aPl">${PLAT.slice(0,6).map(p=>`<option value="${p[0]}">${p[1]}</option>`).join('')}</select></label>
       <label class="f">País das lojas<select class="in" id="aPa"><option value="BR">Brasil</option><option value="US">Estados Unidos</option><option value="PT">Portugal</option><option value="GB">Reino Unido</option></select></label></div></section>
     <section><h3>Tidal</h3><p>Conectando sua conta do Tidal, cada disco novo também é guardado na sua coleção de lá (Minha Coleção → Álbuns), e as listas viram playlists no Tidal.</p>
-      <p>Uma vez só: em <a href="https://developer.tidal.com/dashboard" target="_blank" rel="noopener">developer.tidal.com/dashboard</a> entre com a sua conta do Tidal, crie um app, adicione este endereço como Redirect URI, ligue os acessos de coleção, playlists e busca (collection, playlists, search) e cole o Client ID abaixo.</p>
+      ${TD.on?'<p><b>Conectado.</b></p>':'<p>Toque em <b>Conectar</b> e entre com a sua conta do Tidal.</p>'}
+      <div class="row"><button class="btn ${TD.on?'':'pri'}" id="tdC">${TD.on?'Desconectar':'Conectar'}</button></div>
+      <details style="margin-top:10px"><summary class="note" style="cursor:pointer">Usar outro app do Tidal (avançado)</summary>
+      <p>Para usar um app de desenvolvedor próprio: em <a href="https://developer.tidal.com/dashboard" target="_blank" rel="noopener">developer.tidal.com/dashboard</a> crie um app, adicione este endereço como Redirect URI, ligue os acessos collection, playlists e search.read, e cole o Client ID abaixo.</p>
       <p><code>${esc(TD.redirect())}</code> <button class="btn lk" data-cp>Copiar</button></p>
-      <div class="row"><input class="in grow" id="aTd" placeholder="Client ID do Tidal" value="${esc(AJ.tidalId)}"><button class="btn ${TD.on?'':'pri'}" id="tdC">${TD.on?'Desconectar':'Conectar'}</button></div>
+      <div class="row"><input class="in grow" id="aTd" placeholder="Client ID do Tidal" value="${esc(AJ.tidalId)}"><button class="btn" id="tdP">Voltar ao padrão</button></div></details>
       <label class="note" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="aTc" ${AJ.tidalColecao!==false?'checked':''}> Guardar cada disco novo na Minha Coleção do Tidal</label></section>
     <section><h3>Playlists</h3><label class="f">As listas viram playlists no<select class="in" id="aSv"><option value="tidal">Tidal</option><option value="spotify">Spotify</option></select></label>
     <details style="margin-top:10px"><summary class="note" style="cursor:pointer">Spotify (se precisar)</summary><p>Para o app criar playlists na sua conta: em <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> crie um app, marque “Web API”, adicione este endereço como Redirect URI e cole o Client ID abaixo.</p>
@@ -346,9 +351,10 @@ function render(){
     <section><h3>Cópia de segurança</h3><p>A coleção fica guardada neste aparelho. Exporte um arquivo para levar para outro aparelho ou guardar.</p>
       <div class="row"><button class="btn" id="exp">Exportar coleção (.json)</button><label class="btn" style="position:relative">Importar<input type="file" accept=".json,application/json" id="imp" style="position:absolute;inset:0;opacity:0"></label></div></section></div>`;
     $('#aIa').value=AJ.ia;$('#aSv').value=AJ.servico;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
-    const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.plataforma=$('#aPl').value;AJ.pais=$('#aPa').value;AJ.spotifyId=$('#aSp').value.trim();AJ.tidalId=$('#aTd').value.trim();AJ.tidalColecao=$('#aTc').checked;AJ.servico=$('#aSv').value;saveAJ()};
+    const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.plataforma=$('#aPl').value;AJ.pais=$('#aPa').value;AJ.spotifyId=$('#aSp').value.trim();AJ.tidalId=$('#aTd').value.trim()||TIDAL_ID_PADRAO;AJ.tidalColecao=$('#aTc').checked;AJ.servico=$('#aSv').value;saveAJ()};
     M.querySelectorAll('input,select').forEach(e=>e.addEventListener('change',()=>{sv();if(e.id!=='imp')toast('Ajuste salvo')}));
     M.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(TD.redirect()).then(()=>toast('Endereço copiado'),()=>{}));
+    $('#tdP').onclick=()=>{$('#aTd').value=TIDAL_ID_PADRAO;sv();if(TD.on){TD.tok=null;TD.save()}render();toast('Client ID padrão')};
     $('#tdC').onclick=()=>{sv();if(TD.on){TD.tok=null;TD.save();render();return}if(!AJ.tidalId)return toast('Cole o Client ID primeiro');TD.conectar()};
     $('#spC').onclick=()=>{sv();if(SP.on){SP.tok=null;SP.save();render();return}if(!AJ.spotifyId)return toast('Cole o Client ID primeiro');SP.conectar()};
     $('#exp').onclick=()=>{const b=new Blob([JSON.stringify({app:'colecoes',tipo:'vinil',versao:1,discos:DISCOS,listas:LISTAS},null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`colecao-vinis-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};

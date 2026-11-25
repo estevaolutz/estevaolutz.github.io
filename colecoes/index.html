@@ -53,6 +53,16 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .fab{position:fixed;right:max(4vw,16px);bottom:calc(18px + env(safe-area-inset-bottom));z-index:6;border:0;background:var(--ac);color:#fff;border-radius:999px;padding:16px 24px;font:800 18px/1 Archivo,sans-serif;font-stretch:85%;box-shadow:0 10px 30px rgb(255 75 31/.45);display:flex;gap:10px;align-items:center;min-height:56px}
 .fab2{position:fixed;right:calc(max(4vw,16px) + 76px);bottom:calc(24px + env(safe-area-inset-bottom));z-index:6;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:12px 16px;min-height:44px;font-weight:600;box-shadow:var(--sh)}
 @media(min-width:601px){.fab2{right:calc(max(4vw,16px) + 230px)}}
+.camv{position:fixed;inset:0;z-index:30;background:#000;display:flex;flex-direction:column;color:#fff}
+.camv[hidden]{display:none}
+.camv video{flex:1;width:100%;min-height:0;object-fit:cover;background:#000}
+.guia{position:absolute;left:50%;top:calc(45% - 40px);width:min(82vw,62vh);aspect-ratio:1;transform:translate(-50%,-50%);border:2px solid rgb(255 255 255/.85);border-radius:6px;box-shadow:0 0 0 100vmax rgb(0 0 0/.35);pointer-events:none}
+.cmsg{z-index:1;position:absolute;left:0;right:0;top:calc(14px + env(safe-area-inset-top));margin:0;text-align:center;font-weight:600;text-shadow:0 1px 3px #000;padding:0 16px}
+.camb{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px calc(20px + env(safe-area-inset-bottom));background:#000}
+.cbt{background:none;border:1px solid rgb(255 255 255/.4);color:#fff;border-radius:999px;padding:10px 16px;min-height:44px;font-weight:600;cursor:pointer}
+.cbt.alt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--ac);border:0}
+.shut{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:var(--ac);flex:none}
+.shut:active{transform:scale(.94)}
 .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 16px;min-height:44px;font-weight:600}
 .btn.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .btn.ac{background:var(--ac);color:#fff;border-color:var(--ac)}
@@ -67,7 +77,7 @@ main{padding:18px max(4vw,14px);max-width:1240px;margin:0 auto}
 .ph-h h2{font-size:28px;margin-right:auto}
 .x{border:0;background:var(--card);border-radius:50%;width:44px;height:44px;font-size:22px;line-height:1}
 .pick{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.drop{border:2px dashed var(--line);border-radius:14px;padding:22px 14px;text-align:center;display:grid;gap:6px;place-items:center;min-height:150px;background:var(--card);position:relative}
+.drop{color:inherit;font:inherit;width:100%;cursor:pointer;border:2px dashed var(--line);border-radius:14px;padding:22px 14px;text-align:center;display:grid;gap:6px;place-items:center;min-height:150px;background:var(--card);position:relative}
 .drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .drop b{font-family:Archivo,sans-serif;font-stretch:80%;font-size:20px}
 .drop span{color:var(--mut);font-size:14px}
@@ -141,7 +151,13 @@ code{overflow-wrap:anywhere;font-size:14px}
 <main id="main"></main>
 
 <button class="fab" id="fab" type="button" aria-label="Adicionar disco"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg><span>Fotografar disco</span></button>
-<input type="file" accept="image/*" capture="environment" id="cam" hidden>
+<div class="camv" id="camV" hidden role="dialog" aria-label="Câmera">
+  <video id="camVid" playsinline muted autoplay></video><div class="guia" id="camGuia"></div>
+  <p class="cmsg" id="camMsg">Enquadre a capa no quadrado</p>
+  <div class="camb"><button type="button" class="cbt" id="camX">Fechar</button><button type="button" class="shut" id="camS" aria-label="Tirar foto"></button>
+  <label class="cbt">Galeria<input type="file" accept="image/*" id="camG" hidden></label></div>
+  <label class="cbt alt" id="camAlt" hidden>Usar a câmera do celular<input type="file" accept="image/*" capture="environment" id="cam" hidden></label>
+</div>
 <button class="fab2" id="fab2" type="button" aria-label="Adicionar digitando o nome">Digitar</button>
 
 <!-- Adicionar -->
@@ -408,15 +424,31 @@ function perguntar(titulo,val=''){return new Promise(ok=>{const S=document.creat
 /* ---------- adicionar ---------- */
 let ADD={};
 function novo(){ADD={};abrir('sAdd');passo1()}
-function camera(){const c=$('#cam');c.value='';c.click()}
-$('#cam').onchange=e=>{const f=e.target.files[0];if(!f)return;novo();foto(f,'capa')};
+let STREAM=null,LADO='capa';
+const camMsg=t=>$('#camMsg').textContent=t;
+function fecharCam(){if(STREAM){STREAM.getTracks().forEach(t=>t.stop());STREAM=null}$('#camVid').srcObject=null;$('#camV').hidden=true;document.body.style.overflow=$('.sheet.on')?'hidden':''}
+function entregar(f,lado){fecharCam();if(!$('#sAdd').classList.contains('on'))novo();foto(f,lado)}
+async function camera(lado='capa'){LADO=lado;$('#camV').hidden=false;document.body.style.overflow='hidden';$('#camAlt').hidden=true;$('#camS').hidden=false;$('#camGuia').hidden=false;
+  camMsg(lado==='verso'?'Enquadre o código de barras':'Enquadre a capa no quadrado');
+  if(!navigator.mediaDevices?.getUserMedia)return semCam('Este navegador não abre a câmera dentro do app.');
+  try{STREAM=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    if($('#camV').hidden){fecharCam();return}const v=$('#camVid');v.srcObject=STREAM;await v.play().catch(()=>{})}
+  catch(e){semCam(e.name==='NotAllowedError'?'O acesso à câmera foi negado. Libere a câmera para este site nas configurações do Chrome, ou use as opções abaixo.':'Não consegui abrir a câmera aqui.')}}
+function semCam(t){camMsg(t);$('#camS').hidden=true;$('#camGuia').hidden=true;$('#camAlt').hidden=false}
+$('#camX').onclick=fecharCam;
+$('#camS').onclick=()=>{const v=$('#camVid');if(!v.videoWidth)return;const m=Math.min(v.videoWidth,v.videoHeight);const c=document.createElement('canvas');const lado=Math.min(m,1600);c.width=c.height=lado;
+  c.getContext('2d').drawImage(v,(v.videoWidth-m)/2,(v.videoHeight-m)/2,m,m,0,0,lado,lado);
+  c.toBlob(b=>{if(b)entregar(new File([b],'foto.jpg',{type:'image/jpeg'}),LADO)},'image/jpeg',.9)};
+$('#camG').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)entregar(f,LADO)};
+$('#cam').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)entregar(f,LADO)};
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&STREAM)fecharCam()});
 $('#fab2').onclick=()=>{novo();setTimeout(()=>$('#nome')?.focus(),50)};
 function passo1(){$('#addBody').innerHTML=`<div class="pick">
-  <label class="drop"><input type="file" accept="image/*" capture="environment" id="fCapa"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg><b>Foto da capa</b><span>${AJ.ia?'A IA reconhece o disco':'Sem chave de IA: digite o nome depois'}</span></label>
-  <label class="drop"><input type="file" accept="image/*" capture="environment" id="fVerso"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14"/></svg><b>Código de barras</b><span>Foto do verso, onde tem o código</span></label></div>
+  <button type="button" class="drop" data-cam="capa"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg><b>Foto da capa</b><span>${AJ.ia?'A IA reconhece o disco':'Sem chave de IA: digite o nome depois'}</span></button>
+  <button type="button" class="drop" data-cam="verso"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14"/></svg><b>Código de barras</b><span>Foto do verso, onde tem o código</span></button></div>
   <div class="row" style="margin-top:14px"><input class="in grow" id="nome" placeholder="Ou digite: artista e nome do disco"><button class="btn pri" id="bus">Buscar</button></div>
   ${AJ.ia?'':'<p class="note">Dica: com uma chave de IA (grátis no Gemini) o app reconhece a capa sozinho. <a href="#" data-goto="ajustes">Configurar</a></p>'}<div id="res"></div>`;
-  $('#fCapa').onchange=e=>e.target.files[0]&&foto(e.target.files[0],'capa');$('#fVerso').onchange=e=>e.target.files[0]&&foto(e.target.files[0],'verso');
+  $('#addBody').querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>camera(b.dataset.cam));
   const go=()=>{const q=$('#nome').value.trim();if(q)procurar(q)};$('#bus').onclick=go;$('#nome').onkeydown=e=>{if(e.key==='Enter')go()}}
 const status=(t,tipo='')=>{$('#res').innerHTML=`<div class="st ${tipo}">${tipo?'':'<span class="spin"></span>'}<span>${esc(t)}</span></div>`};
 async function foto(file,lado){let c;try{c=await lerImagem(file,1400)}catch(e){return status('Não consegui abrir essa foto.','err')}
@@ -474,8 +506,8 @@ document.addEventListener('click',e=>{const t=e.target;
   const r=t.closest('.rec');if(r)return detalhe(r.dataset.id);
   const tab=t.closest('.tabs button');if(tab){VISTA=tab.dataset.v;return render()}
   if(VISTA==='listas'&&t.closest('#main'))acaoLista(e)});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.sheet.on').forEach(fechar)});
-$('#fab').onclick=camera;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#camV').hidden)return fecharCam();if(e.key==='Escape')document.querySelectorAll('.sheet.on').forEach(fechar)});
+$('#fab').onclick=()=>camera('capa');
 ['q','ord','flt'].forEach(i=>$('#'+i).addEventListener('input',render));
 
 (async()=>{try{await DB.open();await load()}catch(e){toast('Este navegador não deixou guardar dados',5000)}

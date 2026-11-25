@@ -271,26 +271,35 @@ function motivoIA(st,d){const msg=d.error?.message||d.error?.status||('erro '+st
 async function testarChave(){const G=AJ.ia==='gemini';
   const r=await timeoutFetch(G?'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1':'https://api.anthropic.com/v1/models?limit=1',{headers:G?{'x-goog-api-key':AJ.chave}:{'x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'}},15000);
   const d=await r.json().catch(()=>({}));return r.ok?null:motivoIA(r.status,d)}
-async function identificarIA(b64,aviso=()=>{},sinal){const fim=Date.now()+45000;
+const PROMPT_LINHA=`Foto de um disco de vinil (capa, contracapa ou selo). Quem é o artista e qual é o álbum? Responda numa linha só, exatamente assim: ARTISTA ||| ÁLBUM — sem mais nada. Se não tiver certeza, dê o seu melhor palpite.`;
+const SCHEMA={type:'OBJECT',properties:{artista:{type:'STRING'},album:{type:'STRING'},ano:{type:'STRING'},gravadora:{type:'STRING'},confianca:{type:'NUMBER'},
+  alternativas:{type:'ARRAY',items:{type:'OBJECT',properties:{artista:{type:'STRING'},album:{type:'STRING'}}}}},required:['artista','album']};
+const SEGURO=['HARM_CATEGORY_HARASSMENT','HARM_CATEGORY_HATE_SPEECH','HARM_CATEGORY_SEXUALLY_EXPLICIT','HARM_CATEGORY_DANGEROUS_CONTENT'].map(category=>({category,threshold:'BLOCK_NONE'}));
+function pegaLinha(t){t=String(t||'').replace(/```\w*/g,'').trim().split('\n').find(l=>l.includes('|||'))||'';const [ar,al]=t.split('|||').map(s=>s.replace(/^[\s*"“]+|[\s*"”.]+$/g,''));return ar&&al?{artista:ar,album:al,confianca:.5}:null}
+async function pedirIA(G,m,b64,json,sinal){const prompt=json?PROMPT:PROMPT_LINHA;
+  return G?timeoutFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':AJ.chave},
+      body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:prompt}]}],safetySettings:SEGURO,
+        generationConfig:json?{responseMimeType:'application/json',responseSchema:SCHEMA,temperature:.2}:{temperature:.3}})},25000,sinal)
+    :timeoutFetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:m,max_tokens:1000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:prompt}]}]})},25000,sinal)}
+/* Insiste de várias formas antes de desistir: cada modelo recebe o pedido em JSON e, se não vier, um pedido simples de uma linha. */
+async function identificarIA(b64,aviso=()=>{},sinal){const fim=Date.now()+90000;
   if(/^AIza/.test(AJ.chave))AJ.ia='gemini';else if(/^sk-ant-/.test(AJ.chave))AJ.ia='anthropic';
   const G=AJ.ia==='gemini';if(!G&&AJ.ia!=='anthropic')return null;
   const modelos=[...new Set((G?[AJ.modelo,'gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash','gemini-2.5-flash','gemini-flash-lite-latest']:[AJ.modelo,'claude-haiku-5-5','claude-sonnet-5-5']).filter(Boolean))];
-  let ult='',ocupado=false;
-  for(let volta=0;volta<2;volta++){
-    if(volta){aviso('Os modelos estão ocupados — tentando de novo…');await new Promise(ok=>setTimeout(ok,2500))}
-    for(const m of modelos){let r,d;if(sinal?.aborted)throw new Error('parado');if(Date.now()>fim){ult=ult||'a IA demorou demais';ocupado=false;break}
-      try{r=G?await timeoutFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':AJ.chave},
-          body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:PROMPT}]}],generationConfig:{responseMimeType:'application/json',temperature:.2}})},18000,sinal)
-        :await timeoutFetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-          body:JSON.stringify({model:m,max_tokens:700,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:PROMPT}]}]})},18000,sinal);
-        d=await r.json().catch(()=>({}))}catch(e){if(sinal?.aborted)throw new Error('parado');ult='o serviço demorou a responder';ocupado=true;aviso('Sem resposta desse modelo — tentando outro…');continue}
-      if(r.status===404||d.error?.type==='not_found_error'){ult='modelo não encontrado';continue}
-      if(OCUPADO.includes(r.status)||d.error?.type==='overloaded_error'||/high demand|overloaded|try again later/i.test(d.error?.message||'')){ult='os modelos de IA estão sobrecarregados agora';ocupado=true;aviso('Modelo ocupado — tentando outro…');continue}
-      if(!r.ok)throw new Error(motivoIA(r.status,d))
-      const txt=G?(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join(''):(d.content||[]).map(p=>p.text||'').join('');
-      const j=pegaJSON(txt);if(j&&(j.artista||j.album))return j;
-      ult=motivoVazio(d);aviso('Esse modelo não respondeu direito — tentando outro…')}
-    if(!ocupado)break}
+  let ult='';
+  for(let volta=0;volta<3;volta++){let ocupado=false;
+    if(volta){aviso('Tentando de novo com a mesma foto…');await new Promise(ok=>setTimeout(ok,2500*volta))}
+    for(const m of modelos){for(const json of [true,false]){let r,d;if(sinal?.aborted)throw new Error('parado');if(Date.now()>fim)throw new Error(ult||'a IA demorou demais');
+      try{r=await pedirIA(G,m,b64,json,sinal);d=await r.json().catch(()=>({}))}catch(e){if(sinal?.aborted)throw new Error('parado');ult='o serviço demorou a responder';ocupado=true;aviso('Sem resposta desse modelo — tentando outro…');break}
+      if(r.status===404||d.error?.type==='not_found_error'){ult='modelo não encontrado';break}
+      if(OCUPADO.includes(r.status)||d.error?.type==='overloaded_error'||/high demand|overloaded|try again later/i.test(d.error?.message||'')){ult='os modelos de IA estão sobrecarregados agora';ocupado=true;aviso('Modelo ocupado — tentando outro…');break}
+      if(r.status===400&&json&&G&&/schema|safety|field/i.test(d.error?.message||'')){continue}
+      if(!r.ok)throw new Error(motivoIA(r.status,d));
+      const txt=G?(d.candidates?.[0]?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join(''):(d.content||[]).map(p=>p.text||'').join('');
+      const j=json?pegaJSON(txt):pegaLinha(txt);if(j&&(j.artista||j.album))return j;
+      ult=motivoVazio(d);aviso(json?'Pedindo de outro jeito para a IA…':'Tentando outro modelo…')}}
+    if(!ocupado&&volta>=1)break}
   throw new Error(ult||'não consegui falar com a IA')}
 
 /* ---------- PKCE comum ---------- */
@@ -539,9 +548,11 @@ async function foto(file,lado){let c;try{c=await lerImagem(file,1400)}catch(e){r
   if(AJ.ia&&AJ.chave){status('A IA está olhando a foto…');try{const b64=c.toDataURL('image/jpeg',.85).split(',')[1];const ctl=new AbortController();const st=t=>{status(t);const bt=document.createElement('button');bt.className='btn lk';bt.textContent='Parar e digitar o nome';bt.onclick=()=>ctl.abort();$('#res .st').appendChild(bt)};st('A IA está olhando a foto…');ADD.ctl=ctl;
       const r=await identificarIA(b64,st,ctl.signal);if(ADD.ctl!==ctl)return;
       if(r&&(r.album||r.artista)){ADD.palpite=r;$('#nome').value=[r.artista,r.album].filter(Boolean).join(' ');return procurar($('#nome').value,prev,r)}
-      status('A IA não reconheceu. Digite o nome do disco acima.','err')}catch(e){if(e.message==='parado')status('Digite o artista e o nome do disco acima e toque em Buscar.','err');else status('IA: '+e.message+'. Tente a foto de novo daqui a pouco, ou digite o nome acima.','err')}}
+      status('A IA não conseguiu ler essa foto.','err');deNovo(file,lado)}catch(e){if(e.message==='parado')status('Digite o artista e o nome do disco acima e toque em Buscar.','err');else{status('A IA não conseguiu agora: '+e.message+'.','err');deNovo(file,lado)}}}
   else status(lado==='verso'&&!('BarcodeDetector' in window)?'Este navegador não lê código de barras (funciona no Chrome do Android). Digite o nome acima.':'Digite o artista e o nome do disco acima e toque em Buscar.','err');
-  $('#res').insertAdjacentHTML('afterbegin',prev);$('#nome').focus()}
+  $('#res').insertAdjacentHTML('afterbegin',prev);if(!$('#deNovo'))$('#nome').focus()}
+function deNovo(file,lado){const st=$('#res .st');if(!st)return;st.insertAdjacentHTML('afterend','<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 0"><button class="btn" id="deNovo">Tentar de novo com esta foto</button></div><p class="note" style="margin-top:8px">Dica: foto de frente, sem reflexo do plástico, pegando a capa inteira. Digitar o nome fica como último recurso.</p>');
+  $('#deNovo').onclick=()=>foto(file,lado)}
 async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” nas plataformas…');let l=[];try{l=await buscar(q)}catch(e){}
   ADD.cands=l;const alt=(ia?.alternativas||[]).filter(a=>a&&a.album);
   $('#res').innerHTML=prev+(ia?`<p class="note">A IA acha que é <b>${esc(ia.album)}</b> — ${esc(ia.artista)}${ia.ano?' ('+esc(ia.ano)+')':''}${typeof ia.confianca==='number'?` · certeza ${Math.round(ia.confianca*100)}%`:''}. Escolha a versão certa:</p>`:'<p class="note">Escolha a versão certa:</p>')+

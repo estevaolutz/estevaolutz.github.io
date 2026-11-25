@@ -71,7 +71,7 @@ video{display:none}
       <label>Timbre <select id="bxTimbre"><option value="0">1 · Rhodes macio</option><option value="1">2 · Wurlitzer</option><option value="2">3 · Celesta</option></select></label>
       <label title="Registro da mão direita">Oitava <select id="bxOit"><option value="-2">−2</option><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option><option value="2">+2</option></select></label>
       <label>Volume <input id="bxVol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
-      <label title="Brilho máximo (mão direita toda para fora); para dentro escurece até 2,5 oitavas">Brilho <input id="bxCut" type="range" min="800" max="14000" step="10" value="0"></label>
+      <label title="Brilho máximo (mão direita toda para fora); para dentro escurece até 1,2 oitava">Brilho <input id="bxCut" type="range" min="800" max="14000" step="10" value="0"></label>
       <label title="Tremolo e autopan máximos — a mão aberta traz, a fechada tira">Tremolo <input id="bxRes" type="range" min="0" max="1" step="0.01" value="0"></label>
       <label title="Dureza do martelo (índice de FM); a mão para fora soma brilho">Martelo <input id="bxEnv" type="range" min="0" max="2.5" step="0.01" value="0"></label>
       
@@ -733,13 +733,13 @@ const TIMBRES = [
   { n: 'Wurlitzer', r1: 1, i1: 3, r2: 7, i2: .45, oct: 0, dec: .7 },
   { n: 'Celesta', r1: 4, i1: 1.1, r2: 9, i2: .5, oct: 1, dec: .8 }
 ];
-const BX = { timbre: 0, vol: .8, cut: 6500, res: .4, env: 1, amp: [.002, 2.6, 0, .9], flt: [.001, .8, .12, .5] };
+const BX = { timbre: 0, vol: .8, cut: 12000, res: .4, env: 1, amp: [.002, 2.6, 0, .9], flt: [.001, .8, .12, .5] };
 const LTIMBRES = [
-  { n: 'Flauta', ar: .32, tri: .22, oct: 0, vAtr: .4 },
-  { n: 'Flauta baixo (mais ar)', ar: .5, tri: .35, oct: -1, vAtr: .55 },
-  { n: 'Ocarina (pura)', ar: .1, tri: .05, oct: 0, vAtr: .25 }
+  { n: 'Flauta', ar: .22, tri: .4, oct: 0, vAtr: .4 },
+  { n: 'Flauta baixo (mais ar)', ar: .35, tri: .5, oct: -1, vAtr: .55 },
+  { n: 'Ocarina (pura)', ar: .08, tri: .18, oct: 0, vAtr: .25 }
 ];
-const LD = { timbre: 0, oit: 0, vol: .7, cut: 4200, glide: .04, vib: 16, vibR: 5, rev: .45, adsr: [.09, .3, .85, .35] };
+const LD = { timbre: 0, oit: 0, vol: .7, cut: 10000, glide: .04, vib: 16, vibR: 5, rev: .45, adsr: [.09, .3, .85, .35] };
 const BASE_D = 45;   // Lá 1 + tônica
 const PZFX_D = { 0: { pedal: 1 }, 1: { bloco: 1 }, 2: { meio: 1 }, 3: { cascata: 1 } };
 const VOZ_D = {
@@ -753,13 +753,13 @@ const VOZ_D = {
   },
   nota(t, midi, dur, vel) {
     const T = TIMBRES[BX.timbre], f = mtof(midi + 12 * T.oct), [A, D, S, R] = BX.amp, [iA, iD, iS, iR] = BX.flt;
-    const duro = (.35 + 1.3 * this.fora) * BX.env, kt = clamp(1.35 - (midi - 45) / 50, .5, 1.4);   // notas graves soam mais
+    const duro = (.75 + 1.1 * this.fora) * BX.env, kt = clamp(1.35 - (midi - 45) / 50, .5, 1.4);   // notas graves soam mais
     const c1 = osc('sine', f), m1 = osc('sine', f * T.r1), m1g = ganho(0), m2 = osc('sine', f * T.r2), m2g = ganho(0), g = ganho(0);
     m1.connect(m1g); m1g.connect(c1.frequency); m2.connect(m2g); m2g.connect(c1.frequency);
     c1.connect(g); g.connect(BUS.dIn);
     const fim = t + dur, stop = adsr(g.gain, t, .2 * vel, A, D * T.dec * kt, S, fim, R);
     adsr(m1g.gain, t, f * T.r1 * T.i1 * duro, iA, iD, iS, fim, iR);
-    m2g.gain.setValueAtTime(f * T.r2 * T.i2 * duro * .25, t); m2g.gain.setTargetAtTime(0, t, .025);   // "tine": o estalo do martelo
+    m2g.gain.setValueAtTime(f * T.r2 * T.i2 * duro * .12, t); m2g.gain.setTargetAtTime(0, t, .025);   // "tine": o estalo do martelo
     [c1, m1, m2].forEach(o => { o.start(t); o.stop(stop); });
   },
   passo(pos, t, s16, m1, P) {
@@ -778,7 +778,7 @@ const VOZ_D = {
   vivo(m1, c, P) {
     const n = this.n, fx = PZFX_D[P] || {}, d = BX.res * m1.aberta;
     this.fora = m1.fora;
-    n.tone.frequency.setTargetAtTime(BX.cut * 2 ** (-2.5 * (1 - m1.fora)), c, .05);
+    n.tone.frequency.setTargetAtTime(BX.cut * 2 ** (-1.2 * (1 - m1.fora)), c, .05);
     n.lG.gain.setTargetAtTime(d * .5, c, .08); n.base.offset.setTargetAtTime(1 - d * .5, c, .08); n.pG.gain.setTargetAtTime(d * .85, c, .08);
     BUS.bxDly.gain.setTargetAtTime(fx.cascata ? .5 : fx.pedal ? .18 : 0, c, .08);
   }
@@ -798,7 +798,7 @@ const VOZ_E = {
   },
   vivo(m, c, on, P) {
     const T = LTIMBRES[LD.timbre] || LTIMBRES[0];
-    ld.lp.frequency.setTargetAtTime(LD.cut * 2 ** (-2 * (1 - m.fora)), c, .05);
+    ld.lp.frequency.setTargetAtTime(LD.cut * 2 ** (-1 * (1 - m.fora)), c, .05);
     ld.ng.gain.setTargetAtTime(T.ar * (.25 + 1.1 * m.fora) * (P === 2 ? 2.2 : 1), c, .05);
     ld.g2.gain.setTargetAtTime(T.tri, c, .1);
     ld.lfo.frequency.setTargetAtTime(LD.vibR, c, .1); ld.lG.gain.setTargetAtTime(LD.vib * m.aberta, c, T.vAtr);   // vibrato chega devagar, como na flauta
@@ -813,7 +813,6 @@ const VOZ_E = {
       glideA(ld.o1.frequency, f, c, novo ? 0 : gl); glideA(ld.o2.frequency, f, c, novo ? 0 : gl);
       glideA(ld.o3.frequency, mtof(degMidi(d - 2, base) + (P === 0 ? 12 : 0)), c, novo ? 0 : gl); ld.bp.frequency.setTargetAtTime(f * 1.5, c, .02);
       atacaLead(ld.env, c, .17, !novo);
-      if (P !== 3) { const g = ld.chG.gain; g.cancelScheduledValues(c); g.setValueAtTime(0, c); g.linearRampToValueAtTime(novo ? .16 : .07, c + .008); g.setTargetAtTime(0, c + .008, .03); }   // "chiff": o ataque do sopro
       if (novo) ld.lG.gain.setValueAtTime(0, c);
       if (deg !== ldDeg || novo) notaVisE(c, midi);
       ld.midi = midi; ldDeg = deg; ldSoando = true;
@@ -1092,9 +1091,9 @@ $('arpSev').onchange = e => { MUS.sev = e.target.checked ? 1 : 0; salvaSom(); };
 Object.entries(MUS_IDS).forEach(([id, k]) => { const el = $(id); el.oninput = el.onchange = () => { MUS[k] = (k === 'scale' || k === 'pat') ? el.value : +el.value; if (k === 'bpm') $('vBpm').textContent = MUS.bpm; salvaSom(); }; });
 const LD_IDS = { ldTimbre: ['timbre'], ldOit: ['oit'], ldVol: ['vol'], ldCut: ['cut'], ldGlide: ['glide'], ldVib: ['vib'], ldVibR: ['vibR'], ldRev: ['rev'], ldA: ['adsr', 0], ldD: ['adsr', 1], ldS: ['adsr', 2], ldR: ['adsr', 3] };
 Object.entries(LD_IDS).forEach(([id, [k, i]]) => { const el = $(id); el.oninput = el.onchange = () => { const v = +el.value; if (i === undefined) LD[k] = v; else LD[k][i] = v; salvaSom(); }; });
-function salvaSom() { try { localStorage.setItem('dedalus2_som_' + PROJ + '_v2', JSON.stringify({ BX, MUS, LD, LDv2: 1 })); } catch (e) {} }
+function salvaSom() { try { localStorage.setItem('dedalus2_som_' + PROJ + '_v3', JSON.stringify({ BX, MUS, LD, LDv2: 1 })); } catch (e) {} }
 (function carregaSom() {
-  try { const c = JSON.parse(localStorage.getItem('dedalus2_som_' + PROJ + '_v2') || 'null'); if (c) { Object.assign(BX, c.BX || {}); Object.assign(MUS, c.MUS || {}); if (c.LD) Object.assign(LD, c.LD); if (!c.LDv2) LD.glide = 0; } } catch (e) {}
+  try { const c = JSON.parse(localStorage.getItem('dedalus2_som_' + PROJ + '_v3') || 'null'); if (c) { Object.assign(BX, c.BX || {}); Object.assign(MUS, c.MUS || {}); if (c.LD) Object.assign(LD, c.LD); if (!c.LDv2) LD.glide = 0; } } catch (e) {}
   Object.entries(LD_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? LD[k] : LD[k][i]; });
   Object.entries(BX_IDS).forEach(([id, [k, i]]) => { $(id).value = i === undefined ? BX[k] : BX[k][i]; }); $('bxTimbre').value = BX.timbre;
   Object.entries(MUS_IDS).forEach(([id, k]) => { $(id).value = MUS[k]; }); $('vBpm').textContent = MUS.bpm; $('arpSev').checked = !!MUS.sev;

@@ -220,22 +220,26 @@ Responda SOMENTE com JSON, sem texto fora dele, neste formato:
 {"artista":"","album":"","ano":"","gravadora":"","confianca":0.0,"texto_visivel":"","alternativas":[{"artista":"","album":""}]}
 Use o nome do álbum como ele aparece nas plataformas de streaming. "confianca" vai de 0 a 1. Se não reconhecer a capa, use os textos visíveis e deixe a confiança baixa. Até 3 alternativas.`;
 const pegaJSON=t=>{const m=String(t||'').match(/\{[\s\S]*\}/);if(!m)throw new Error('a IA não devolveu JSON');return JSON.parse(m[0])};
-async function identificarIA(b64){
-  if(AJ.ia==='gemini'){const modelos=[AJ.modelo,'gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash','gemini-2.5-flash'].filter(Boolean);let ult='';
-    for(const m of [...new Set(modelos)]){const r=await timeoutFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':AJ.chave},
-      body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:PROMPT}]}],generationConfig:{responseMimeType:'application/json',temperature:.2}})},40000);
-      if(r.status===404){ult='modelo '+m+' não encontrado';continue}
-      const d=await r.json();if(!r.ok)throw new Error(d.error?.message||('erro '+r.status));
-      return pegaJSON((d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join(''))}
-    throw new Error(ult)}
-  if(AJ.ia==='anthropic'){const modelos=[AJ.modelo,'claude-haiku-5-5','claude-sonnet-5-5'].filter(Boolean);let ult='';
-    for(const m of [...new Set(modelos)]){const r=await timeoutFetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:m,max_tokens:700,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:PROMPT}]}]})},40000);
-      const d=await r.json();if(r.status===404||d.error?.type==='not_found_error'){ult='modelo '+m+' não encontrado';continue}
-      if(!r.ok)throw new Error(d.error?.message||('erro '+r.status));
-      return pegaJSON((d.content||[]).map(p=>p.text||'').join(''))}
-    throw new Error(ult)}
-  return null}
+const OCUPADO=[408,429,500,502,503,504,529];
+async function identificarIA(b64,aviso=()=>{}){
+  const G=AJ.ia==='gemini';if(!G&&AJ.ia!=='anthropic')return null;
+  const modelos=[...new Set((G?[AJ.modelo,'gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash','gemini-2.5-flash','gemini-flash-lite-latest']:[AJ.modelo,'claude-haiku-5-5','claude-sonnet-5-5']).filter(Boolean))];
+  let ult='',ocupado=false;
+  for(let volta=0;volta<3;volta++){
+    if(volta){aviso(`Os modelos estão ocupados — tentando de novo (${volta+1}ª vez)…`);await new Promise(ok=>setTimeout(ok,2500*volta))}
+    for(const m of modelos){let r,d;
+      try{r=G?await timeoutFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':AJ.chave},
+          body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:PROMPT}]}],generationConfig:{responseMimeType:'application/json',temperature:.2}})},40000)
+        :await timeoutFetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':AJ.chave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+          body:JSON.stringify({model:m,max_tokens:700,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:PROMPT}]}]})},40000);
+        d=await r.json().catch(()=>({}))}catch(e){ult='sem resposta do serviço';ocupado=true;continue}
+      if(r.status===404||d.error?.type==='not_found_error'){ult='modelo não encontrado';continue}
+      if(OCUPADO.includes(r.status)||d.error?.type==='overloaded_error'||/high demand|overloaded|try again later/i.test(d.error?.message||'')){ult='os modelos de IA estão sobrecarregados agora';ocupado=true;aviso('Modelo ocupado — tentando outro…');continue}
+      if(!r.ok){const msg=d.error?.message||('erro '+r.status);throw new Error(/api key|API_KEY|invalid x-api-key|authentication/i.test(msg)?'a chave não foi aceita — confira em Ajustes':msg)}
+      const txt=G?(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join(''):(d.content||[]).map(p=>p.text||'').join('');
+      return pegaJSON(txt)}
+    if(!ocupado)break}
+  throw new Error(ult||'não consegui falar com a IA')}
 
 /* ---------- PKCE comum ---------- */
 async function pkce(chave){const b=crypto.getRandomValues(new Uint8Array(48));const v=btoa(String.fromCharCode(...b)).replace(/[+/=]/g,'').slice(0,64);sessionStorage.setItem(chave,v);
@@ -413,9 +417,9 @@ async function foto(file,lado){let c;try{c=await lerImagem(file,1400)}catch(e){r
   const prev=`<div class="prev"><img src="${ADD.foto}" alt=""><span class="note">Foto ${lado==='capa'?'da capa':'do verso'}</span></div>`;
   status('Procurando código de barras…');const code=await codigoDeBarras(c);
   if(code){status('Código '+code+' — consultando o MusicBrainz…');try{const m=await musicbrainzBarcode(code);if(m){ADD.palpite=m;$('#nome').value=`${m.artista} ${m.album}`;return procurar(`${m.artista} ${m.album}`,prev)}}catch(e){}}
-  if(AJ.ia&&AJ.chave){status('A IA está olhando a foto…');try{const b64=c.toDataURL('image/jpeg',.85).split(',')[1];const r=await identificarIA(b64);
+  if(AJ.ia&&AJ.chave){status('A IA está olhando a foto…');try{const b64=c.toDataURL('image/jpeg',.85).split(',')[1];const r=await identificarIA(b64,t=>status(t));
       if(r&&(r.album||r.artista)){ADD.palpite=r;$('#nome').value=[r.artista,r.album].filter(Boolean).join(' ');return procurar($('#nome').value,prev,r)}
-      status('A IA não reconheceu. Digite o nome do disco acima.','err')}catch(e){status('IA: '+e.message+' — digite o nome acima.','err')}}
+      status('A IA não reconheceu. Digite o nome do disco acima.','err')}catch(e){status('IA: '+e.message+'. Tente a foto de novo daqui a pouco, ou digite o nome acima.','err')}}
   else status(lado==='verso'&&!('BarcodeDetector' in window)?'Este navegador não lê código de barras (funciona no Chrome do Android). Digite o nome acima.':'Digite o artista e o nome do disco acima e toque em Buscar.','err');
   $('#res').insertAdjacentHTML('afterbegin',prev);$('#nome').focus()}
 async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” nas plataformas…');let l=[];try{l=await buscar(q)}catch(e){}

@@ -114,6 +114,8 @@ label.f .in{color:var(--ink)}
 .stack4{display:grid;grid-template-columns:1fr 1fr;width:76px;height:76px;flex:none;border-radius:4px;overflow:hidden;background:#222}
 .stack4 img{width:100%;height:100%;object-fit:cover}
 .list h3{font-size:22px}
+.list.art{cursor:pointer}.list.art:hover{border-color:var(--ink)}
+.alfa{font-family:inherit;font-size:13px;letter-spacing:.12em;color:var(--mut);margin:18px 0 6px}
 .list span{color:var(--mut);font-size:14px}
 .set{display:grid;gap:14px;max-width:640px}
 .set section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
@@ -133,6 +135,7 @@ code{overflow-wrap:anywhere;font-size:14px}
     <div class="brand"><h1>Vinis</h1><small id="sub">Coleções</small><a href="../livros/" title="Coleção de livros" style="font-size:13px;color:var(--mut);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:2px 9px">Livros ↗</a></div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-v="estante" aria-selected="true">Estante</button>
+      <button role="tab" data-v="artistas" aria-selected="false">Artistas</button>
       <button role="tab" data-v="listas" aria-selected="false">Listas</button>
       <button role="tab" data-v="ajustes" aria-selected="false">Ajustes</button>
     </nav>
@@ -350,7 +353,12 @@ TD.load();
 const SERV=()=>AJ.servico==='spotify'?SP:TD;
 
 /* ---------- vistas ---------- */
-let VISTA='estante';
+let VISTA='estante',ARTISTA=null;
+/* pastas automáticas por artista: "The Beatles" e "Beatles", com ou sem acento, caem na mesma pasta */
+const chaveArt=a=>norm(a).replace(/^(the|os|as|o|a|los|las|le|les) /,'')||'sem artista';
+function artistas(){const m=new Map();
+  for(const d of DISCOS){const k=chaveArt(d.artista);if(!m.has(k))m.set(k,{k,nomes:{},discos:[]});const g=m.get(k);g.discos.push(d);const n=(d.artista||'Sem artista').trim();g.nomes[n]=(g.nomes[n]||0)+1}
+  return[...m.values()].map(g=>({...g,nome:Object.entries(g.nomes).sort((a,b)=>b[1]-a[1])[0][0],discos:g.discos.sort((a,b)=>(a.ano||'9999').localeCompare(b.ano||'9999')||(a.album||'').localeCompare(b.album||''))})).sort((a,b)=>a.k.localeCompare(b.k))}
 const capaHTML=d=>{const src=safeUrl(d.capa)||(/^data:image\//.test(d.foto||'')?d.foto:'');return src?`<img src="${esc(src)}" alt="" loading="lazy">`:`<div class="ph">${esc(d.album||'?')}</div>`};
 function filtrados(){const q=norm($('#q').value);const f=$('#flt').value;let l=DISCOS.filter(d=>(!f||(d.listas||[]).includes(f))&&(!q||norm([d.artista,d.album,d.ano,d.gravadora,d.genero,d.obs].join(' ')).includes(q)));
   const o=$('#ord').value;const cmp={recentes:(a,b)=>b.criado-a.criado,artista:(a,b)=>(a.artista||'').localeCompare(b.artista||'')||(a.ano||'').localeCompare(b.ano||''),album:(a,b)=>(a.album||'').localeCompare(b.album||''),ano:(a,b)=>(a.ano||'9999').localeCompare(b.ano||'9999')}[o];return l.sort(cmp)}
@@ -363,6 +371,14 @@ function render(){
   if(VISTA==='estante'){
     if(!DISCOS.length){M.innerHTML=`<section class="empty"><div><h2>Sua estante está vazia</h2><p>Tire uma foto da capa de um disco. O app reconhece o álbum, encontra a versão digital no Tidal, Spotify, Apple Music, YouTube Music e Deezer, e guarda na sua coleção.</p>${AJ.ia?'':'<p class="note">Para reconhecer pela foto, cole uma chave de IA em <a href="#" data-goto="ajustes">Ajustes</a>. Sem chave dá para usar o código de barras do verso ou digitar o nome.</p>'}<div class="row"><button class="btn ac" data-add>Fotografar o primeiro disco</button><button class="btn" data-nome>Digitar o nome</button></div></div><div class="disc" aria-hidden="true"></div></section>`;return}
     const l=filtrados();M.innerHTML=`<p class="cnt">${l.length===DISCOS.length?'':l.length+' de '}${DISCOS.length} discos</p><div class="shelf">${l.map(d=>`<button class="rec" data-id="${esc(d.id)}"><div class="slv">${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${esc(d.artista)}${d.ano?' · '+esc(d.ano):''}</span></button>`).join('')||'<p class="note">Nada encontrado.</p>'}</div>`}
+  else if(VISTA==='artistas'){const G=artistas();const g=ARTISTA&&G.find(x=>x.k===ARTISTA);
+    if(g){M.innerHTML=`<div class="row" style="margin-bottom:6px"><button class="btn lk" data-voltart>← Todos os artistas</button></div><div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">${esc(g.nome)}</h2><button class="chip" data-copart>Copiar links</button></div><p class="cnt">${g.discos.length} ${g.discos.length===1?'disco':'discos'}, do mais antigo ao mais novo</p><div class="shelf">${g.discos.map(d=>`<button class="rec" data-id="${esc(d.id)}"><div class="slv">${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${d.ano?esc(d.ano):'&nbsp;'}</span></button>`).join('')}</div>`;return}
+    ARTISTA=null;
+    M.innerHTML=`<div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">Artistas</h2><input class="in grow" id="qArt" type="search" placeholder="Buscar artista" style="max-width:320px" aria-label="Buscar artista"></div>
+    <p class="note" style="margin-top:0">Cada artista tem a sua pasta, montada sozinha: todo disco novo entra direto na pasta do artista.</p><div id="artL"></div>`;
+    const desenha=()=>{const q=norm($('#qArt').value);let ult='';$('#artL').innerHTML=G.filter(g=>!q||g.k.includes(q)||norm(g.nome).includes(q)).map(g=>{const L=(g.k[0]||'#').toUpperCase(),let_=/[A-Z]/.test(L)?L:'#';const h=let_!==ult?`<p class="alfa">${let_}</p>`:'';ult=let_;
+      return h+`<div class="list art" role="button" tabindex="0" data-art="${esc(g.k)}" style="margin-bottom:10px"><div class="stack4">${g.discos.slice(0,4).map(d=>capaHTML(d)).join('')}</div><div style="flex:1"><h3>${esc(g.nome)}</h3><span>${g.discos.length} ${g.discos.length===1?'disco':'discos'}${g.discos.length>1&&g.discos[0].ano?' · '+esc(g.discos[0].ano)+'–'+esc(g.discos[g.discos.length-1].ano||'?'):''}</span></div></div>`}).join('')||'<p class="note">'+(DISCOS.length?'Nenhum artista com esse nome.':'Nenhum disco ainda. Fotografe o primeiro e ele já entra na pasta do artista.')+'</p>'};
+    desenha();$('#qArt').oninput=desenha}
   else if(VISTA==='listas'){const S=SERV();
     M.innerHTML=`<div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">Listas</h2><input class="in grow" id="novaL" placeholder="Nome da nova lista" style="max-width:320px"><button class="btn pri" id="addL">Criar</button></div>
     <p class="note" style="margin-top:0">Separe os discos em listas — por gênero, para uma festa, os que estão na vitrola esta semana. Cada lista pode virar uma playlist no ${S.nome}.</p>
@@ -555,8 +571,13 @@ document.addEventListener('click',e=>{const t=e.target;
   if(t.closest('[data-add]'))return camera();
   if(t.closest('[data-nome]'))return $('#fab2').click();
   const r=t.closest('.rec');if(r)return detalhe(r.dataset.id);
-  const tab=t.closest('.tabs button');if(tab){VISTA=tab.dataset.v;return render()}
+  const tab=t.closest('.tabs button');if(tab){VISTA=tab.dataset.v;ARTISTA=null;return render()}
+  if(VISTA==='artistas'&&t.closest('#main')){const a=t.closest('[data-art]');if(a){ARTISTA=a.dataset.art;scrollTo(0,0);return render()}
+    if(t.closest('[data-voltart]')){ARTISTA=null;return render()}
+    if(t.closest('[data-copart]')){const g=artistas().find(x=>x.k===ARTISTA);if(!g)return;const tx=g.discos.map(d=>`${d.album}${d.ano?' ('+d.ano+')':''}\n${linkFor(d,PLAT.find(p=>p[0]===AJ.plataforma)||PLAT[0]).url}`).join('\n\n');
+      return navigator.clipboard.writeText(`${g.nome}\n\n${tx}`).then(()=>toast('Discos copiados com os links'),()=>toast('Não deu para copiar'))}}
   if(VISTA==='listas'&&t.closest('#main'))acaoLista(e)});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset?.art){ARTISTA=e.target.dataset.art;render()}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#camV').hidden)return fecharCam();if(e.key==='Escape')document.querySelectorAll('.sheet.on').forEach(fechar)});
 $('#fab').onclick=()=>camera('capa');
 ['q','ord','flt'].forEach(i=>$('#'+i).addEventListener('input',render));

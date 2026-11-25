@@ -175,6 +175,7 @@ code{overflow-wrap:anywhere;font-size:14px}
 
 <div class="toast" id="toast" role="status"></div>
 
+<script src="../lib/colecoes-sync.js"></script>
 <script>
 {
 /* ---------- utilidades ---------- */
@@ -463,9 +464,10 @@ function render(){
     <details style="margin-top:10px"><summary class="note" style="cursor:pointer">Spotify (se precisar)</summary><p>Para o app criar playlists na sua conta: em <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> crie um app, marque “Web API”, adicione este endereço como Redirect URI e cole o Client ID abaixo.</p>
       <p><code>${esc(SP.redirect())}</code> <button class="btn lk" data-cp>Copiar</button></p>
       <div class="row"><input class="in grow" id="aSp" placeholder="Client ID do Spotify" value="${esc(AJ.spotifyId)}"><button class="btn ${SP.on?'':'pri'}" id="spC">${SP.on?'Desconectar':'Conectar'}</button></div></details>    </section>
+    <section id="syncBox"></section>
     <section><h3>Cópia de segurança</h3><p>A coleção fica guardada neste aparelho. Exporte um arquivo para levar para outro aparelho ou guardar.</p>
       <div class="row"><button class="btn" id="exp">Exportar coleção (.json)</button><label class="btn" style="position:relative">Importar<input type="file" accept=".json,application/json" id="imp" style="position:absolute;inset:0;opacity:0"></label></div></section></div>`;
-    $('#aIa').value=AJ.ia;$('#aSv').value=AJ.servico;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
+    setTimeout(()=>SYNC&&SYNC.painel(document.getElementById('syncBox')));$('#aIa').value=AJ.ia;$('#aSv').value=AJ.servico;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
     M.querySelector('[data-guia]')?.addEventListener('click',e=>{e.preventDefault();const g=$('#guiaChave');g.querySelectorAll('details')[1].open=true;g.scrollIntoView({behavior:'smooth',block:'start'})});
     const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.plataforma=$('#aPl').value;AJ.pais=$('#aPa').value;AJ.spotifyId=$('#aSp').value.trim();AJ.tidalId=$('#aTd').value.trim()||TIDAL_ID_PADRAO;AJ.tidalColecao=$('#aTc').checked;AJ.servico=$('#aSv').value;saveAJ()};
     M.querySelectorAll('input,select').forEach(e=>e.addEventListener('change',()=>{sv();if(e.id!=='imp')toast('Ajuste salvo')}));
@@ -511,7 +513,7 @@ function perguntar(titulo,val=''){return new Promise(ok=>{const S=document.creat
   const fim=v=>{S.remove();ok(v)};S.querySelector('form').onsubmit=e=>{e.preventDefault();fim(i.value.trim())};S.querySelector('[type=button]').onclick=()=>fim('')})}
 
 /* ---------- adicionar ---------- */
-let ADD={};
+let SYNC=null;let ADD={};
 function novo(){ADD={};abrir('sAdd');passo1()}
 let STREAM=null,LADO='capa';
 const camMsg=t=>$('#camMsg').textContent=t;
@@ -606,7 +608,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#camV').hidden)
 $('#fab').onclick=()=>camera('capa');
 ['q','ord','flt'].forEach(i=>$('#'+i).addEventListener('input',render));
 
-(async()=>{try{await DB.open();await load()}catch(e){toast('Este navegador não deixou guardar dados',5000)}
+(async()=>{try{await DB.open();await load()}catch(e){toast('Este navegador não deixou guardar dados',5000)}try{SYNC=window.ColecoesSync.criar({app:'vinis',DB,itens:'discos',listas:'listas',aviso:toast,aoMudar:async()=>{await load();render()}});SYNC.painel(document.getElementById('syncBox'))}catch(e){}
   const st=new URLSearchParams(location.search).get('state');if(st==='tidal')await TD.retorno();else await SP.retorno();render();
   if(location.hash==='#novo')novo()})();
 }

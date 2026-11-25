@@ -287,8 +287,10 @@ const TD={key:'colecoes-tidal-v1',tok:null,nome:'Tidal',campo:'tidal',API:'https
     const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.errors?.[0]?.detail||d.errors?.[0]?.title||('erro '+r.status));e.status=r.status;throw e}return d},
   albumId:u=>(String(u||'').match(/album\/(\d+)/)||[])[1],
   async acharAlbum(d){let id=this.albumId(d.links?.tidal);if(id)return id;
-    try{const r=await this.api(`/searchResults/${encodeURIComponent(`${d.artista} ${d.album}`)}/relationships/albums?countryCode=${AJ.pais||'BR'}&include=albums`);const inc=(r.included||[]).filter(x=>x.type==='albums');const alvo=norm(d.album);
-      const hit=inc.find(a=>norm(a.attributes?.title)===alvo)||inc.find(a=>norm(a.attributes?.title).includes(alvo))||(r.data||[])[0];id=hit?.id;
+    try{const r=await this.api('/searchResults?'+new URLSearchParams({'filter[query]':`${d.artista} ${d.album}`.trim(),countryCode:AJ.pais||'BR',include:'albums'}));
+      const ordem=((r.data||[])[0]?.relationships?.albums?.data||[]).map(x=>x.id);const porId=new Map((r.included||[]).filter(x=>x.type==='albums').map(a=>[a.id,a]));
+      const inc=(ordem.length?ordem:[...porId.keys()]).map(i=>porId.get(i)).filter(Boolean);const alvo=norm(d.album);
+      const hit=inc.find(a=>norm(a.attributes?.title)===alvo)||inc.find(a=>norm(a.attributes?.title).startsWith(alvo))||inc.find(a=>norm(a.attributes?.title).includes(alvo));id=hit?.id;
       if(id){d.links={...(d.links||{}),tidal:`https://tidal.com/browse/album/${id}`};if(DISCOS.some(x=>x.id===d.id))await DB.put('discos',d)}return id||null}catch(e){if(e.status===401)throw e;return null}},
   async faixas(d){const id=await this.acharAlbum(d);if(!id)return[];const out=[];let url=`/albums/${id}/relationships/items?countryCode=${AJ.pais||'BR'}`;
     for(let i=0;i<10&&url;i++){const r=await this.api(url);out.push(...(r.data||[]).filter(x=>x.type==='tracks').map(x=>x.id));url=r.links?.next||null}return out},

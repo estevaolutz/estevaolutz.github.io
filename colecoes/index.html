@@ -161,9 +161,10 @@ const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const toast=(t,ms=2600)=>{const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',ms)};
 const AJ_KEY='colecoes-ajustes-v1';
-let AJ={ia:'',chave:'',modelo:'',pais:'BR',plataforma:'spotify',spotifyId:''};
+let AJ={ia:'',chave:'',modelo:'',pais:'BR',plataforma:'tidal',servico:'tidal',tidalId:'',tidalColecao:true,spotifyId:''};
 try{Object.assign(AJ,JSON.parse(localStorage.getItem(AJ_KEY)||'{}'))}catch(e){}
 const saveAJ=()=>{try{localStorage.setItem(AJ_KEY,JSON.stringify(AJ))}catch(e){}};
+if(!AJ.v){AJ.plataforma='tidal';AJ.servico='tidal';if(AJ.tidalColecao==null)AJ.tidalColecao=true;AJ.v=2;saveAJ()}
 
 /* ---------- banco (IndexedDB) ---------- */
 const DB={db:null,
@@ -177,11 +178,11 @@ const load=async()=>{DISCOS=await DB.all('discos');LISTAS=await DB.all('listas')
 
 /* ---------- plataformas ---------- */
 const PLAT=[
+  ['tidal','Tidal','#888888',q=>`https://listen.tidal.com/search/albums?q=${encodeURIComponent(q)}`],
   ['spotify','Spotify','#1db954',q=>`https://open.spotify.com/search/${encodeURIComponent(q)}/albums`],
   ['appleMusic','Apple Music','#fa2d48',q=>`https://music.apple.com/br/search?term=${encodeURIComponent(q)}`],
   ['youtubeMusic','YouTube Music','#ff0033',q=>`https://music.youtube.com/search?q=${encodeURIComponent(q)}`],
   ['deezer','Deezer','#a238ff',q=>`https://www.deezer.com/search/${encodeURIComponent(q)}/album`],
-  ['tidal','Tidal','#888888',q=>`https://listen.tidal.com/search/albums?q=${encodeURIComponent(q)}`],
   ['amazonMusic','Amazon Music','#25d1da',q=>`https://music.amazon.com.br/search/${encodeURIComponent(q)}`],
   ['discogs','Discogs (prensagens)','#e8e8e8',q=>`https://www.discogs.com/search/?q=${encodeURIComponent(q)}&type=all&format_exact=Vinyl`]
 ];
@@ -234,15 +235,19 @@ async function identificarIA(b64){
     throw new Error(ult)}
   return null}
 
+/* ---------- PKCE comum ---------- */
+async function pkce(chave){const b=crypto.getRandomValues(new Uint8Array(48));const v=btoa(String.fromCharCode(...b)).replace(/[+/=]/g,'').slice(0,64);sessionStorage.setItem(chave,v);
+  const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));return btoa(String.fromCharCode(...new Uint8Array(h))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+
 /* ---------- Spotify (opcional) ---------- */
-const SP={key:'colecoes-spotify-v1',tok:null,
+const SP={key:'colecoes-spotify-v1',tok:null,nome:'Spotify',campo:'spotify',
   redirect:()=>location.origin+location.pathname,
   load(){try{this.tok=JSON.parse(localStorage.getItem(this.key)||'null')}catch(e){}},
   save(){try{this.tok?localStorage.setItem(this.key,JSON.stringify(this.tok)):localStorage.removeItem(this.key)}catch(e){}},
   get on(){return !!(this.tok&&AJ.spotifyId)},
   async conectar(){const b=crypto.getRandomValues(new Uint8Array(48));const v=btoa(String.fromCharCode(...b)).replace(/[+/=]/g,'').slice(0,64);sessionStorage.setItem('sp-ver',v);
     const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));const ch=btoa(String.fromCharCode(...new Uint8Array(h))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    location.href='https://accounts.spotify.com/authorize?'+new URLSearchParams({client_id:AJ.spotifyId,response_type:'code',redirect_uri:this.redirect(),code_challenge_method:'S256',code_challenge:ch,scope:'playlist-modify-private playlist-modify-public'})},
+    location.href='https://accounts.spotify.com/authorize?'+new URLSearchParams({client_id:AJ.spotifyId,response_type:'code',redirect_uri:this.redirect(),code_challenge_method:'S256',code_challenge:ch,scope:'playlist-modify-private playlist-modify-public',state:'spotify'})},
   async token(body){const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:AJ.spotifyId,...body})});const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.error||'falha no Spotify');
     this.tok={a:d.access_token,r:d.refresh_token||this.tok?.r,exp:Date.now()+(d.expires_in-60)*1000};this.save()},
   async retorno(){const p=new URLSearchParams(location.search);const code=p.get('code');if(!code&&!p.get('error'))return;history.replaceState(null,'',this.redirect());
@@ -261,7 +266,44 @@ const SP={key:'colecoes-spotify-v1',tok:null,
     try{await this.adicionar(lista.spotify.id,uris,true)}catch(e){if(e.status===404){lista.spotify=null;return this.sincronizar(lista)}throw e}
     return{faixas:uris.length,sem}}
 };
+SP.addDisco=async function(d,l){const u=await this.faixas(d);if(u.length)await this.adicionar(l.spotify.id,u,false);return u.length};
 SP.load();
+
+/* ---------- Tidal ---------- */
+const TD={key:'colecoes-tidal-v1',tok:null,nome:'Tidal',campo:'tidal',API:'https://openapi.tidal.com/v2',
+  redirect:()=>location.origin+location.pathname,
+  load(){try{this.tok=JSON.parse(localStorage.getItem(this.key)||'null')}catch(e){}},
+  save(){try{this.tok?localStorage.setItem(this.key,JSON.stringify(this.tok)):localStorage.removeItem(this.key)}catch(e){}},
+  get on(){return !!(this.tok&&AJ.tidalId)},
+  async conectar(){const ch=await pkce('td-ver');
+    location.href='https://login.tidal.com/authorize?'+new URLSearchParams({response_type:'code',client_id:AJ.tidalId,redirect_uri:this.redirect(),scope:'collection.read collection.write playlists.read playlists.write search.read',code_challenge_method:'S256',code_challenge:ch,state:'tidal'})},
+  async token(body){const r=await fetch('https://auth.tidal.com/v1/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded; charset=UTF-8'},body:new URLSearchParams({client_id:AJ.tidalId,...body})});const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error_description||d.error||('erro '+r.status));this.tok={a:d.access_token,r:d.refresh_token||this.tok?.r,exp:Date.now()+((d.expires_in||3600)-60)*1000};this.save()},
+  async retorno(){const p=new URLSearchParams(location.search);history.replaceState(null,'',this.redirect());const code=p.get('code');
+    if(code){try{await this.token({grant_type:'authorization_code',code,redirect_uri:this.redirect(),code_verifier:sessionStorage.getItem('td-ver')||''});toast('Tidal conectado')}catch(e){toast('Tidal: '+e.message,5000)}}else toast('Tidal: conexão cancelada')},
+  async api(path,opt={}){if(Date.now()>this.tok.exp){if(!this.tok.r)throw new Error('reconecte o Tidal em Ajustes');await this.token({grant_type:'refresh_token',refresh_token:this.tok.r})}
+    const url=/^https:/.test(path)?path:this.API+(path.startsWith('/')?'':'/')+path.replace(/^\/v2/,'');
+    const r=await fetch(url,{...opt,headers:{Authorization:'Bearer '+this.tok.a,accept:'application/vnd.api+json','content-type':'application/vnd.api+json'}});if(r.status===204||r.status===201&&!r.headers.get('content-length'))return{};
+    const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.errors?.[0]?.detail||d.errors?.[0]?.title||('erro '+r.status));e.status=r.status;throw e}return d},
+  albumId:u=>(String(u||'').match(/album\/(\d+)/)||[])[1],
+  async acharAlbum(d){let id=this.albumId(d.links?.tidal);if(id)return id;
+    try{const r=await this.api(`/searchResults/${encodeURIComponent(`${d.artista} ${d.album}`)}/relationships/albums?countryCode=${AJ.pais||'BR'}&include=albums`);const inc=(r.included||[]).filter(x=>x.type==='albums');const alvo=norm(d.album);
+      const hit=inc.find(a=>norm(a.attributes?.title)===alvo)||inc.find(a=>norm(a.attributes?.title).includes(alvo))||(r.data||[])[0];id=hit?.id;
+      if(id){d.links={...(d.links||{}),tidal:`https://tidal.com/browse/album/${id}`};if(DISCOS.some(x=>x.id===d.id))await DB.put('discos',d)}return id||null}catch(e){if(e.status===401)throw e;return null}},
+  async faixas(d){const id=await this.acharAlbum(d);if(!id)return[];const out=[];let url=`/albums/${id}/relationships/items?countryCode=${AJ.pais||'BR'}`;
+    for(let i=0;i<10&&url;i++){const r=await this.api(url);out.push(...(r.data||[]).filter(x=>x.type==='tracks').map(x=>x.id));url=r.links?.next||null}return out},
+  async adicionar(pid,ids){for(let i=0;i<ids.length;i+=50)await this.api(`/playlists/${pid}/relationships/items`,{method:'POST',body:JSON.stringify({data:ids.slice(i,i+50).map(id=>({type:'tracks',id})),meta:{onDuplicates:'SKIP'}})})},
+  async criar(nome){const r=await this.api('/playlists',{method:'POST',body:JSON.stringify({data:{type:'playlists',attributes:{name:nome,description:'Discos de vinil da minha coleção — app Coleções',accessType:'UNLISTED'}}})});return r.data},
+  async sincronizar(lista){const discos=DISCOS.filter(d=>(d.listas||[]).includes(lista.id));const ids=[];let sem=0;
+    for(const d of discos){const u=await this.faixas(d);if(!u.length)sem++;ids.push(...u)}
+    if(!lista.tidal){const p=await this.criar(lista.nome);lista.tidal={id:p.id,url:`https://tidal.com/browse/playlist/${p.id}`};await DB.put('listas',lista)}
+    try{await this.adicionar(lista.tidal.id,ids)}catch(e){if(e.status===404){lista.tidal=null;await DB.put('listas',lista);return this.sincronizar(lista)}throw e}
+    return{faixas:ids.length,sem}},
+  async addDisco(d,l){const u=await this.faixas(d);if(u.length)await this.adicionar(l.tidal.id,u);return u.length},
+  async colecao(d){const id=await this.acharAlbum(d);if(!id)return false;await this.api('/userCollectionAlbums/me/relationships/items',{method:'POST',body:JSON.stringify({data:[{type:'albums',id}]})});return true}
+};
+TD.load();
+const SERV=()=>AJ.servico==='spotify'?SP:TD;
 
 /* ---------- vistas ---------- */
 let VISTA='estante';
@@ -275,12 +317,12 @@ function render(){
   const f=$('#flt'),fv=f.value;f.innerHTML='<option value="">Todas as listas</option>'+LISTAS.map(l=>`<option value="${esc(l.id)}">${esc(l.nome)}</option>`).join('');f.value=LISTAS.some(l=>l.id===fv)?fv:'';
   const M=$('#main');
   if(VISTA==='estante'){
-    if(!DISCOS.length){M.innerHTML=`<section class="empty"><div><h2>Sua estante está vazia</h2><p>Tire uma foto da capa de um disco. O app reconhece o álbum, encontra a versão digital no Spotify, Apple Music, YouTube Music, Deezer e Tidal, e guarda na sua coleção.</p>${AJ.ia?'':'<p class="note">Para reconhecer pela foto, cole uma chave de IA em <a href="#" data-goto="ajustes">Ajustes</a>. Sem chave dá para usar o código de barras do verso ou digitar o nome.</p>'}<button class="btn ac" data-add>Fotografar o primeiro disco</button></div><div class="disc" aria-hidden="true"></div></section>`;return}
+    if(!DISCOS.length){M.innerHTML=`<section class="empty"><div><h2>Sua estante está vazia</h2><p>Tire uma foto da capa de um disco. O app reconhece o álbum, encontra a versão digital no Tidal, Spotify, Apple Music, YouTube Music e Deezer, e guarda na sua coleção.</p>${AJ.ia?'':'<p class="note">Para reconhecer pela foto, cole uma chave de IA em <a href="#" data-goto="ajustes">Ajustes</a>. Sem chave dá para usar o código de barras do verso ou digitar o nome.</p>'}<button class="btn ac" data-add>Fotografar o primeiro disco</button></div><div class="disc" aria-hidden="true"></div></section>`;return}
     const l=filtrados();M.innerHTML=`<p class="cnt">${l.length===DISCOS.length?'':l.length+' de '}${DISCOS.length} discos</p><div class="shelf">${l.map(d=>`<button class="rec" data-id="${esc(d.id)}"><div class="slv">${capaHTML(d)}</div><b>${esc(d.album)}</b><span>${esc(d.artista)}${d.ano?' · '+esc(d.ano):''}</span></button>`).join('')||'<p class="note">Nada encontrado.</p>'}</div>`}
-  else if(VISTA==='listas'){
+  else if(VISTA==='listas'){const S=SERV();
     M.innerHTML=`<div class="row" style="margin-bottom:14px"><h2 style="font-size:32px;margin-right:auto">Listas</h2><input class="in grow" id="novaL" placeholder="Nome da nova lista" style="max-width:320px"><button class="btn pri" id="addL">Criar</button></div>
-    <p class="note" style="margin-top:0">Separe os discos em listas — por gênero, para uma festa, os que estão na vitrola esta semana. Cada lista pode virar uma playlist no Spotify.</p>
-    <div class="lists">${LISTAS.map(l=>{const ds=DISCOS.filter(d=>(d.listas||[]).includes(l.id));return`<div class="list"><div class="stack4">${ds.slice(0,4).map(d=>capaHTML(d)).join('')}</div><div style="flex:1"><h3>${esc(l.nome)}</h3><span>${ds.length} ${ds.length===1?'disco':'discos'}${l.spotify?' · playlist no Spotify':''}</span><div class="row" style="margin-top:8px;gap:6px"><button class="chip" data-verL="${esc(l.id)}">Ver discos</button><button class="chip" data-copL="${esc(l.id)}">Copiar links</button><button class="chip" data-spL="${esc(l.id)}">${l.spotify?'Atualizar playlist':'Criar playlist no Spotify'}</button>${l.spotify&&safeUrl(l.spotify.url)?`<a class="chip" href="${esc(l.spotify.url)}" target="_blank" rel="noopener">Abrir playlist</a>`:''}<button class="chip" data-renL="${esc(l.id)}">Renomear</button><button class="chip" data-delL="${esc(l.id)}">Apagar</button></div></div></div>`}).join('')||'<p class="note">Nenhuma lista ainda.</p>'}</div>`}
+    <p class="note" style="margin-top:0">Separe os discos em listas — por gênero, para uma festa, os que estão na vitrola esta semana. Cada lista pode virar uma playlist no ${S.nome}.</p>
+    <div class="lists">${LISTAS.map(l=>{const ds=DISCOS.filter(d=>(d.listas||[]).includes(l.id));return`<div class="list"><div class="stack4">${ds.slice(0,4).map(d=>capaHTML(d)).join('')}</div><div style="flex:1"><h3>${esc(l.nome)}</h3><span>${ds.length} ${ds.length===1?'disco':'discos'}${l[S.campo]?' · playlist no '+S.nome:''}</span><div class="row" style="margin-top:8px;gap:6px"><button class="chip" data-verl="${esc(l.id)}">Ver discos</button><button class="chip" data-copl="${esc(l.id)}">Copiar links</button><button class="chip" data-spl="${esc(l.id)}">${l[S.campo]?'Atualizar playlist':'Criar playlist no '+S.nome}</button>${l[S.campo]&&safeUrl(l[S.campo].url)?`<a class="chip" href="${esc(l[S.campo].url)}" target="_blank" rel="noopener">Abrir playlist</a>`:''}<button class="chip" data-renl="${esc(l.id)}">Renomear</button><button class="chip" data-dell="${esc(l.id)}">Apagar</button></div></div></div>`}).join('')||'<p class="note">Nenhuma lista ainda.</p>'}</div>`}
   else{
     M.innerHTML=`<div class="set">
     <section><h3>Reconhecimento pela foto</h3><p>A IA olha a foto da capa, do verso ou do selo e diz qual é o disco. A chave fica só neste aparelho e vai direto para o serviço escolhido.</p>
@@ -290,15 +332,22 @@ function render(){
       <p>Gemini: crie a chave grátis em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Claude: em <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p></section>
     <section><h3>Plataformas</h3><div class="form"><label class="f">Botão principal “Ouvir”<select class="in" id="aPl">${PLAT.slice(0,6).map(p=>`<option value="${p[0]}">${p[1]}</option>`).join('')}</select></label>
       <label class="f">País das lojas<select class="in" id="aPa"><option value="BR">Brasil</option><option value="US">Estados Unidos</option><option value="PT">Portugal</option><option value="GB">Reino Unido</option></select></label></div></section>
-    <section><h3>Playlists no Spotify</h3><p>Para o app criar playlists na sua conta: em <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> crie um app, marque “Web API”, adicione este endereço como Redirect URI e cole o Client ID abaixo.</p>
-      <p><code>${esc(SP.redirect())}</code> <button class="btn lk" id="cpR">Copiar</button></p>
-      <div class="row"><input class="in grow" id="aSp" placeholder="Client ID do Spotify" value="${esc(AJ.spotifyId)}"><button class="btn ${SP.on?'':'pri'}" id="spC">${SP.on?'Desconectar':'Conectar'}</button></div></section>
+    <section><h3>Tidal</h3><p>Conectando sua conta do Tidal, cada disco novo também é guardado na sua coleção de lá (Minha Coleção → Álbuns), e as listas viram playlists no Tidal.</p>
+      <p>Uma vez só: em <a href="https://developer.tidal.com/dashboard" target="_blank" rel="noopener">developer.tidal.com/dashboard</a> entre com a sua conta do Tidal, crie um app, adicione este endereço como Redirect URI, ligue os acessos de coleção, playlists e busca (collection, playlists, search) e cole o Client ID abaixo.</p>
+      <p><code>${esc(TD.redirect())}</code> <button class="btn lk" data-cp>Copiar</button></p>
+      <div class="row"><input class="in grow" id="aTd" placeholder="Client ID do Tidal" value="${esc(AJ.tidalId)}"><button class="btn ${TD.on?'':'pri'}" id="tdC">${TD.on?'Desconectar':'Conectar'}</button></div>
+      <label class="note" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="aTc" ${AJ.tidalColecao!==false?'checked':''}> Guardar cada disco novo na Minha Coleção do Tidal</label></section>
+    <section><h3>Playlists</h3><label class="f">As listas viram playlists no<select class="in" id="aSv"><option value="tidal">Tidal</option><option value="spotify">Spotify</option></select></label>
+    <details style="margin-top:10px"><summary class="note" style="cursor:pointer">Spotify (se precisar)</summary><p>Para o app criar playlists na sua conta: em <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> crie um app, marque “Web API”, adicione este endereço como Redirect URI e cole o Client ID abaixo.</p>
+      <p><code>${esc(SP.redirect())}</code> <button class="btn lk" data-cp>Copiar</button></p>
+      <div class="row"><input class="in grow" id="aSp" placeholder="Client ID do Spotify" value="${esc(AJ.spotifyId)}"><button class="btn ${SP.on?'':'pri'}" id="spC">${SP.on?'Desconectar':'Conectar'}</button></div></details>    </section>
     <section><h3>Cópia de segurança</h3><p>A coleção fica guardada neste aparelho. Exporte um arquivo para levar para outro aparelho ou guardar.</p>
       <div class="row"><button class="btn" id="exp">Exportar coleção (.json)</button><label class="btn" style="position:relative">Importar<input type="file" accept=".json,application/json" id="imp" style="position:absolute;inset:0;opacity:0"></label></div></section></div>`;
-    $('#aIa').value=AJ.ia;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
-    const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.plataforma=$('#aPl').value;AJ.pais=$('#aPa').value;AJ.spotifyId=$('#aSp').value.trim();saveAJ()};
+    $('#aIa').value=AJ.ia;$('#aSv').value=AJ.servico;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
+    const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.plataforma=$('#aPl').value;AJ.pais=$('#aPa').value;AJ.spotifyId=$('#aSp').value.trim();AJ.tidalId=$('#aTd').value.trim();AJ.tidalColecao=$('#aTc').checked;AJ.servico=$('#aSv').value;saveAJ()};
     M.querySelectorAll('input,select').forEach(e=>e.addEventListener('change',()=>{sv();if(e.id!=='imp')toast('Ajuste salvo')}));
-    $('#cpR').onclick=()=>navigator.clipboard.writeText(SP.redirect()).then(()=>toast('Endereço copiado'),()=>{});
+    M.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(TD.redirect()).then(()=>toast('Endereço copiado'),()=>{}));
+    $('#tdC').onclick=()=>{sv();if(TD.on){TD.tok=null;TD.save();render();return}if(!AJ.tidalId)return toast('Cole o Client ID primeiro');TD.conectar()};
     $('#spC').onclick=()=>{sv();if(SP.on){SP.tok=null;SP.save();render();return}if(!AJ.spotifyId)return toast('Cole o Client ID primeiro');SP.conectar()};
     $('#exp').onclick=()=>{const b=new Blob([JSON.stringify({app:'colecoes',tipo:'vinil',versao:1,discos:DISCOS,listas:LISTAS},null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`colecao-vinis-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
     $('#imp').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());let n=0;for(const x of d.discos||[]){if(x&&x.id){await DB.put('discos',x);n++}}for(const x of d.listas||[])if(x&&x.id)await DB.put('listas',x);await load();render();toast(`${n} discos importados`)}catch(err){toast('Arquivo inválido')}}}
@@ -318,14 +367,15 @@ function detalhe(id){const d=DISCOS.find(x=>x.id===id);if(!d)return;const pri=PL
     <label class="f">Formato<select class="in" id="eF">${['LP 12"','Duplo','Compacto 7"','EP','10"','Box'].map(x=>`<option ${x===d.formato?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
     <label class="f">Estado<select class="in" id="eE">${['','Novo / lacrado','Ótimo','Bom','Regular','Ruim'].map(x=>`<option ${x===(d.estado||'')?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
     <label class="f w">Observações<textarea class="in" id="eO" rows="2" placeholder="prensagem, onde comprou, quanto pagou…">${esc(d.obs)}</textarea></label></div>
-    <div class="row"><button class="btn pri" id="eS">Salvar</button><button class="btn" id="eR">Buscar links de novo</button><span style="margin-left:auto"></span><button class="btn lk" id="eD" style="color:var(--ac)">Tirar da coleção</button></div>`;
+    <div class="row"><button class="btn pri" id="eS">Salvar</button><button class="btn" id="eR">Buscar links de novo</button>${TD.on?'<button class="btn" id="eT">Guardar no Tidal</button>':''}<span style="margin-left:auto"></span><button class="btn lk" id="eD" style="color:var(--ac)">Tirar da coleção</button></div>`;
   abrir('sDet');
   $('#dL').onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-nl')){const n=await perguntar('Nome da nova lista');if(!n)return;const l={id:uid(),nome:n,criado:Date.now()};await DB.put('listas',l);d.listas=[...(d.listas||[]),l.id];await DB.put('discos',d);await load();return detalhe(id)}
-    const lid=b.dataset.l;d.listas=(d.listas||[]).includes(lid)?d.listas.filter(x=>x!==lid):[...(d.listas||[]),lid];b.classList.toggle('on');await DB.put('discos',d);render();if(d.listas.includes(lid))autoSpotify(d,lid)};
+    const lid=b.dataset.l;d.listas=(d.listas||[]).includes(lid)?d.listas.filter(x=>x!==lid):[...(d.listas||[]),lid];b.classList.toggle('on');await DB.put('discos',d);render();if(d.listas.includes(lid))autoPlaylist(d,lid)};
   $('#eS').onclick=async()=>{Object.assign(d,{artista:$('#eA').value.trim(),album:$('#eB').value.trim(),ano:$('#eY').value.trim(),gravadora:$('#eG').value.trim(),formato:$('#eF').value,estado:$('#eE').value,obs:$('#eO').value.trim()});await DB.put('discos',d);render();fechar($('#sDet'));toast('Salvo')};
   $('#eR').onclick=async e=>{e.target.disabled=true;e.target.textContent='Buscando…';const c=(await buscar(`${$('#eA').value} ${$('#eB').value}`))[0];const L=c?await odesli(c.urls):{};if(Object.keys(L).length){d.links=L;if(!d.capa&&c.capa)d.capa=c.capa;await DB.put('discos',d);toast('Links atualizados');detalhe(id)}else{toast('Nenhum link novo encontrado');e.target.disabled=false;e.target.textContent='Buscar links de novo'}};
+  if($('#eT'))$('#eT').onclick=async e=>{e.target.disabled=true;try{toast(await TD.colecao(d)?'Guardado na sua coleção do Tidal':'Não achei esse disco no Tidal')}catch(err){toast('Tidal: '+err.message,5000)}e.target.disabled=false};
   $('#eD').onclick=async e=>{if(e.target.dataset.ok){await DB.del('discos',id);await load();render();fechar($('#sDet'));toast('Disco removido')}else{e.target.dataset.ok=1;e.target.textContent='Toque de novo para confirmar'}}}
-async function autoSpotify(d,lid){const l=LISTAS.find(x=>x.id===lid);if(!l?.spotify||!SP.on)return;try{const u=await SP.faixas(d);if(u.length){await SP.adicionar(l.spotify.id,u,false);toast(`Adicionado à playlist “${l.nome}” no Spotify`)}}catch(e){}}
+async function autoPlaylist(d,lid){const S=SERV();const l=LISTAS.find(x=>x.id===lid);if(!l?.[S.campo]||!S.on)return;try{if(await S.addDisco(d,l))toast(`Adicionado à playlist “${l.nome}” no ${S.nome}`)}catch(e){}}
 function perguntar(titulo,val=''){return new Promise(ok=>{const S=document.createElement('div');S.className='sheet on';S.innerHTML=`<div class="pan" style="max-width:460px"><h2 style="font-size:24px;margin-bottom:12px">${esc(titulo)}</h2><form class="row"><input class="in grow" value="${esc(val)}" required><button class="btn pri">OK</button><button type="button" class="btn">Cancelar</button></form></div>`;document.body.appendChild(S);const i=S.querySelector('input');i.focus();
   const fim=v=>{S.remove();ok(v)};S.querySelector('form').onsubmit=e=>{e.preventDefault();fim(i.value.trim())};S.querySelector('[type=button]').onclick=()=>fim('')})}
 
@@ -359,7 +409,7 @@ async function procurar(q,prev='',ia=null){status('Buscando “'+q+'” nas plat
   $('#res').onclick=e=>{const b=e.target.closest('[data-c],[data-alt],#manual');if(!b)return;if(b.id==='manual')return confirmar(null);if(b.dataset.alt!=null){const a=alt[+b.dataset.alt];$('#nome').value=`${a.artista} ${a.album}`;return procurar($('#nome').value,prev,ia)}confirmar(l[+b.dataset.c])}}
 async function confirmar(c){const p=ADD.palpite||{};const t=$('#nome').value.trim();
   const d={id:uid(),criado:Date.now(),tipo:'vinil',artista:c?.artista||p.artista||'',album:c?.album||p.album||t,ano:c?.ano||p.ano||'',gravadora:p.gravadora||'',genero:c?.genero||'',faixas:c?.faixas||'',capa:safeUrl(c?.capa),foto:ADD.foto||'',formato:'LP 12"',estado:'',obs:'',listas:[],links:{}};
-  if(c){status('Encontrando o disco no Spotify, YouTube Music, Tidal…');d.links=await odesli(c.urls);if(!d.links.appleMusic&&c.fonte==='Apple')d.links.appleMusic=c.url;if(!d.links.deezer&&c.fonte==='Deezer')d.links.deezer=c.url}
+  if(c){status('Encontrando o disco no Tidal, Spotify, YouTube Music…');d.links=await odesli(c.urls);if(!d.links.appleMusic&&c.fonte==='Apple')d.links.appleMusic=c.url;if(!d.links.deezer&&c.fonte==='Deezer')d.links.deezer=c.url}
   const achou=PLAT.slice(0,6).filter(p=>d.links[p[0]]).map(p=>p[1]);
   $('#addBody').innerHTML=`<div class="det"><div class="slv">${capaHTML(d)}</div><div><h2>${esc(d.album)}</h2><p class="who">${esc(d.artista)}</p><p class="note">${achou.length?'Encontrado em: '+esc(achou.join(', ')):'Sem links diretos — os botões vão abrir a busca em cada plataforma.'}</p></div></div>
    <h3 style="font-size:20px;margin:14px 0 4px">Adicionar às listas</h3><div class="chips" id="cL">${LISTAS.map(l=>`<button class="chip" data-l="${esc(l.id)}">${esc(l.nome)}</button>`).join('')}<button class="chip" data-nl>+ nova lista</button></div>
@@ -370,18 +420,19 @@ async function confirmar(c){const p=ADD.palpite||{};const t=$('#nome').value.tri
   $('#cL').onclick=async e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-nl')){const n=await perguntar('Nome da nova lista');if(!n)return;const l={id:uid(),nome:n,criado:Date.now()};await DB.put('listas',l);await load();sel.add(l.id);b.insertAdjacentHTML('beforebegin',`<button class="chip on" data-l="${esc(l.id)}">${esc(n)}</button>`);return}const id=b.dataset.l;sel.has(id)?sel.delete(id):sel.add(id);b.classList.toggle('on')};
   $('#nV').onclick=passo1;
   $('#nS').onclick=async()=>{d.formato=$('#nF').value;d.estado=$('#nE').value;d.obs=$('#nO').value.trim();d.listas=[...sel];if($('#nP')?.checked)d.capa='';
-    await DB.put('discos',d);await load();fechar($('#sAdd'));VISTA='estante';render();toast(`“${d.album}” entrou na coleção`);for(const l of d.listas)autoSpotify(d,l)}}
+    await DB.put('discos',d);await load();fechar($('#sAdd'));VISTA='estante';render();toast(`“${d.album}” entrou na coleção`);if(TD.on&&AJ.tidalColecao!==false){try{toast(await TD.colecao(d)?`“${d.album}” entrou na coleção e no Tidal`:'Guardado aqui — não achei esse disco no Tidal',3500)}catch(e){toast('Tidal: '+e.message,5000)}}
+    for(const l of d.listas)autoPlaylist(d,l)}}
 
 /* ---------- listas: ações ---------- */
 async function acaoLista(e){const b=e.target.closest('button');if(!b)return;const g=k=>LISTAS.find(l=>l.id===b.dataset[k]);
   if(b.id==='addL'){const n=$('#novaL').value.trim();if(!n)return;await DB.put('listas',{id:uid(),nome:n,criado:Date.now()});await load();return render()}
-  if(b.dataset.verL){VISTA='estante';render();$('#flt').value=b.dataset.verL;return render()}
-  if(b.dataset.copL){const l=g('copL');const t=DISCOS.filter(d=>(d.listas||[]).includes(l.id)).map(d=>`${d.artista} — ${d.album}${d.ano?' ('+d.ano+')':''}\n${linkFor(d,PLAT.find(p=>p[0]===AJ.plataforma)||PLAT[0]).url}`).join('\n\n');
+  if(b.dataset.verl){VISTA='estante';render();$('#flt').value=b.dataset.verl;return render()}
+  if(b.dataset.copl){const l=g('copl');const t=DISCOS.filter(d=>(d.listas||[]).includes(l.id)).map(d=>`${d.artista} — ${d.album}${d.ano?' ('+d.ano+')':''}\n${linkFor(d,PLAT.find(p=>p[0]===AJ.plataforma)||PLAT[0]).url}`).join('\n\n');
     return navigator.clipboard.writeText(`${l.nome}\n\n${t}`).then(()=>toast('Lista copiada com os links'),()=>toast('Não deu para copiar'))}
-  if(b.dataset.renL){const l=g('renL');const n=await perguntar('Novo nome',l.nome);if(n){l.nome=n;await DB.put('listas',l);await load();render()}return}
-  if(b.dataset.delL){if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmar?';return}const l=g('delL');for(const d of DISCOS)if((d.listas||[]).includes(l.id)){d.listas=d.listas.filter(x=>x!==l.id);await DB.put('discos',d)}await DB.del('listas',l.id);await load();return render()}
-  if(b.dataset.spL){if(!SP.on){toast('Conecte o Spotify em Ajustes primeiro',3500);VISTA='ajustes';return render()}const l=g('spL');b.disabled=true;b.textContent='Enviando…';
-    try{const r=await SP.sincronizar(l);await load();render();toast(`Playlist “${l.nome}”: ${r.faixas} faixas${r.sem?` · ${r.sem} disco(s) sem link do Spotify`:''}`,4500)}catch(err){b.disabled=false;b.textContent='Tentar de novo';toast('Spotify: '+err.message,5000)}}}
+  if(b.dataset.renl){const l=g('renl');const n=await perguntar('Novo nome',l.nome);if(n){l.nome=n;await DB.put('listas',l);await load();render()}return}
+  if(b.dataset.dell){if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmar?';return}const l=g('dell');for(const d of DISCOS)if((d.listas||[]).includes(l.id)){d.listas=d.listas.filter(x=>x!==l.id);await DB.put('discos',d)}await DB.del('listas',l.id);await load();return render()}
+  if(b.dataset.spl){const S=SERV();if(!S.on){toast(`Conecte o ${S.nome} em Ajustes primeiro`,3500);VISTA='ajustes';return render()}const l=g('spl');b.disabled=true;b.textContent='Enviando…';
+    try{const r=await S.sincronizar(l);await load();render();toast(`Playlist “${l.nome}”: ${r.faixas} faixas${r.sem?` · ${r.sem} disco(s) não achado(s) no ${S.nome}`:''}`,4500)}catch(err){b.disabled=false;b.textContent='Tentar de novo';toast(S.nome+': '+err.message,5000)}}}
 
 /* ---------- eventos ---------- */
 document.addEventListener('click',e=>{const t=e.target;
@@ -397,7 +448,7 @@ $('#fab').onclick=novo;
 ['q','ord','flt'].forEach(i=>$('#'+i).addEventListener('input',render));
 
 (async()=>{try{await DB.open();await load()}catch(e){toast('Este navegador não deixou guardar dados',5000)}
-  await SP.retorno();render();
+  const st=new URLSearchParams(location.search).get('state');if(st==='tidal')await TD.retorno();else await SP.retorno();render();
   if(location.hash==='#novo')novo()})();
 }
 </script>

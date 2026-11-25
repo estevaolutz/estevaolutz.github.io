@@ -332,7 +332,9 @@ function render(){
     <section><h3>Reconhecimento pela foto</h3><p>A IA olha a foto da capa, do verso ou do selo e diz qual é o disco. A chave fica só neste aparelho e vai direto para o serviço escolhido.</p>
       <div class="form"><label class="f">Serviço<select class="in" id="aIa"><option value="">Nenhum (só código de barras e nome)</option><option value="gemini">Google Gemini — tem plano gratuito</option><option value="anthropic">Anthropic (Claude) — pago por uso</option></select></label>
       <label class="f">Modelo (opcional)<input class="in" id="aMod" placeholder="automático" value="${esc(AJ.modelo)}"></label>
-      <label class="f w">Chave<input class="in" id="aKey" type="password" autocomplete="off" placeholder="cole a chave aqui" value="${esc(AJ.chave)}"></label></div>
+      <label class="f w">Chave<input class="in" id="aKey" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="toque e segure aqui → Colar" value="${esc(AJ.chave)}" style="font-family:ui-monospace,monospace;font-size:15px"></label></div>
+      <div class="row"><button class="btn pri" id="kCol" type="button">Colar a chave</button><button class="btn" id="kTes" type="button">Testar a chave</button></div>
+      <p id="kSt" class="note" aria-live="polite"></p>
       <p>Gemini: crie a chave grátis em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Claude: em <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p></section>
     <section><h3>Plataformas</h3><div class="form"><label class="f">Botão principal “Ouvir”<select class="in" id="aPl">${PLAT.slice(0,6).map(p=>`<option value="${p[0]}">${p[1]}</option>`).join('')}</select></label>
       <label class="f">País das lojas<select class="in" id="aPa"><option value="BR">Brasil</option><option value="US">Estados Unidos</option><option value="PT">Portugal</option><option value="GB">Reino Unido</option></select></label></div></section>
@@ -353,6 +355,14 @@ function render(){
     $('#aIa').value=AJ.ia;$('#aSv').value=AJ.servico;$('#aPl').value=AJ.plataforma;$('#aPa').value=AJ.pais;
     const sv=()=>{AJ.ia=$('#aIa').value;AJ.modelo=$('#aMod').value.trim();AJ.chave=$('#aKey').value.trim();AJ.plataforma=$('#aPl').value;AJ.pais=$('#aPa').value;AJ.spotifyId=$('#aSp').value.trim();AJ.tidalId=$('#aTd').value.trim()||TIDAL_ID_PADRAO;AJ.tidalColecao=$('#aTc').checked;AJ.servico=$('#aSv').value;saveAJ()};
     M.querySelectorAll('input,select').forEach(e=>e.addEventListener('change',()=>{sv();if(e.id!=='imp')toast('Ajuste salvo')}));
+    const kSet=v=>{v=String(v||'').replace(/\s+/g,'');$('#aKey').value=v;if(/^AIza/.test(v))$('#aIa').value='gemini';else if(/^sk-ant-/.test(v))$('#aIa').value='anthropic';sv();
+      $('#kSt').textContent=v?(AJ.ia?`Chave salva (${v.length} caracteres, ${AJ.ia==='gemini'?'Gemini':'Anthropic'}). Toque em Testar.`:'Chave salva. Escolha o serviço acima.'):''};
+    $('#aKey').addEventListener('input',e=>kSet(e.target.value));
+    $('#kCol').onclick=async()=>{try{const t=await navigator.clipboard.readText();if(!t.trim())return $('#kSt').textContent='A área de transferência está vazia. Copie a chave primeiro.';kSet(t);toast('Chave colada')}
+      catch(e){$('#kSt').textContent='O navegador não deixou colar por botão. Toque e segure dentro do campo Chave e escolha “Colar”.';$('#aKey').focus()}};
+    $('#kTes').onclick=async e=>{sv();const st=$('#kSt');if(!AJ.chave)return st.textContent='Cole a chave primeiro.';if(AJ.ia!=='gemini'){st.textContent=AJ.ia?'O teste rápido é só para o Gemini; para a Anthropic, teste fotografando um disco.':'Escolha o serviço acima.';return}
+      e.target.disabled=true;st.textContent='Testando…';try{const r=await timeoutFetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',{headers:{'x-goog-api-key':AJ.chave}});const d=await r.json().catch(()=>({}));
+        st.textContent=r.ok?'✓ Chave funcionando. Já dá para reconhecer capas pela foto.':'A chave não funcionou: '+(d.error?.message||('erro '+r.status))}catch(err){st.textContent='Sem resposta do Google. Confira a internet.'}e.target.disabled=false};
     M.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(TD.redirect()).then(()=>toast('Endereço copiado'),()=>{}));
     $('#tdP').onclick=()=>{$('#aTd').value=TIDAL_ID_PADRAO;sv();if(TD.on){TD.tok=null;TD.save()}render();toast('Client ID padrão')};
     $('#tdC').onclick=()=>{sv();if(TD.on){TD.tok=null;TD.save();render();return}if(!AJ.tidalId)return toast('Cole o Client ID primeiro');TD.conectar()};

@@ -87,13 +87,18 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
   <div class="btns"><button id="launchBtn">Lançar nave agora</button></div>
 
   <h2>Cena</h2>
+  <label class="row">Estilo
+    <select id="mode">
+      <option value="1">Realista (mapas da NASA)</option>
+      <option value="0">Ilustrado</option>
+    </select><span></span></label>
   <label class="chk"><input type="checkbox" id="sunOn"> Sol no centro</label>
   <label class="row">Tamanho do sol <input type="range" id="sunR" min="0.02" max="0.2" step="0.002"><span class="v" id="sunRV"></span></label>
   <label class="row">Sol no grave <input type="range" id="sunPulse" min="0" max="1" step="0.01"><span class="v" id="sunPulseV"></span></label>
   <label class="chk"><input type="checkbox" id="starsOn"> Estrelas (somem perto da borda)</label>
   <label class="row">Densidade <input type="range" id="starDens" min="0.2" max="2.5" step="0.05"><span class="v" id="starDensV"></span></label>
   <label class="row">Nebulosa <input type="range" id="neb" min="0" max="1" step="0.01"><span class="v" id="nebV"></span></label>
-  <label class="row">Meteoros/min <input type="range" id="meteors" min="0" max="40" step="1"><span class="v" id="meteorsV"></span></label>
+  <label class="row"><span id="metLbl">Meteoros/min</span> <input type="range" id="meteors" min="0" max="40" step="1"><span class="v" id="meteorsV"></span></label>
   <label class="row">Tráfego ao longe <input type="range" id="traffic" min="0" max="1" step="0.01"><span class="v" id="trafficV"></span></label>
   <label class="row">Brilho geral <input type="range" id="bright" min="0.2" max="2" step="0.01"><span class="v" id="brightV"></span></label>
 
@@ -112,11 +117,11 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
   </div>
   <label class="row">Tipo
     <select id="kind">
-      <option value="0">Gasoso (faixas)</option>
+      <option value="0">Gasoso (Júpiter)</option>
       <option value="1">Lua rochosa</option>
-      <option value="2">Terra (oceanos e nuvens)</option>
-      <option value="3">Gelo</option>
-      <option value="4">Lava</option>
+      <option value="2">Terra (oceanos, nuvens, cidades)</option>
+      <option value="3">Gelo (Netuno)</option>
+      <option value="4">Lava / Marte</option>
     </select><span></span></label>
   <label class="row">Fase (acesa) <input type="range" id="phase" min="0.05" max="1" step="0.01"><span class="v" id="phaseV"></span></label>
   <label class="row">Terminador <input type="range" id="soft" min="0" max="0.5" step="0.01"><span class="v" id="softV"></span></label>
@@ -145,7 +150,7 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
 
   <h2>Como usar</h2>
   <div class="hint">
-    A posição inicial já vem estimada pela foto do teto. Ligue a calibração <b>Grade</b> e ajuste cada planeta: <b>arraste dentro</b> (fora da cruz) para mover, as <b>alças ●</b> mudam largura/rotação e altura, a <b>cruz ✛</b> marca o ápice. O planeta pode passar da borda da imagem; a parte de fora é o lado noturno. Ajuste a <b>Fase</b> até a linha dia/noite ficar antes da borda do projetor.<br>
+    <b>Estilo</b>: Realista usa mapas reais da NASA (Lua, Júpiter, Terra com luzes noturnas, Marte, Netuno), sol com brilho de foto, cometas e naves foscas que fazem órbita de transferência e viram no meio do caminho para frear; Ilustrado é a versão colorida anterior.<br>A posição inicial já vem estimada pela foto do teto. Ligue a calibração <b>Grade</b> e ajuste cada planeta: <b>arraste dentro</b> (fora da cruz) para mover, as <b>alças ●</b> mudam largura/rotação e altura, a <b>cruz ✛</b> marca o ápice. O planeta pode passar da borda da imagem; a parte de fora é o lado noturno. Ajuste a <b>Fase</b> até a linha dia/noite ficar antes da borda do projetor.<br>
     O <b>sol</b> (círculo amarelo) também se arrasta, e a luz dos planetas sempre vem dele.<br>
     Pelo som: <b>graves</b> lançam cruzadores e cargueiros do planeta 1; <b>agudos</b> lançam caças (em esquadrilha), ônibus e sondas do planeta 2.<br><br>
     iPad: no Mac clique em <b>Abrir sala</b>; no iPad abra esta página e digite o código.<br>
@@ -175,7 +180,7 @@ function defaults(){
       {x:.92, y:.50, rx:.41, ry:.41, rot:0, ax:0, ay:0, depth:.45, kind:0, phase:.64, soft:.12, spin:.25, atm:.5, civ:.6, stations:2},
     ],
     sun:{x:.47, y:.49, r:.065}, sunOn:true, sunPulse:.5,
-    sel:0, cal:1, feather:.03, bright:1, starsOn:true, starDens:1, neb:.35, meteors:6, traffic:.5,
+    sel:0, mode:1, cal:1, feather:.03, bright:1, starsOn:true, starDens:1, neb:.35, meteors:6, traffic:.5,
     gain:10, shipMode:2, rate:14, sens:.55, shipSize:1, speed:1, trail:.7
   };
 }
@@ -197,6 +202,8 @@ uniform vec2 uRes;
 uniform int uCount,uCal,uSel;
 uniform vec4 uGeo[4],uGeo2[4],uL[4],uP[4],uC[4];
 uniform float uTime,uFeather,uBright;
+uniform int uReal;
+uniform sampler2D tMoon,tJup,tEday,tEnight,tEsc,tMars,tNep;
 const float PI=3.14159265;
 float h31(vec3 p){p=fract(p*.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
 float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
@@ -231,6 +238,71 @@ vec3 surf(float k,vec3 n,float spin,out vec3 atmC){
     atmC=vec3(1.,.45,.15);return col+vec3(1.,.42,.1)*cr*1.4;
   }
 }
+vec3 aces(vec3 x){return clamp(x*(2.51*x+.03)/(x*(2.43*x+.59)+.14),0.,1.);}
+// modo realista: mapas reais (NASA) projetados na esfera + física de luz
+vec3 realPlanet(float k,vec3 n,vec3 L,vec4 P,vec4 C){
+  float lat=asin(clamp(-n.y,-1.,1.));
+  float lon=atan(n.x,n.z)+P.x;
+  vec2 uv=vec2(fract(lon/(2.*PI)+.5),.5-lat/PI);
+  vec3 q=vec3(cos(lat)*cos(lon),sin(lat),cos(lat)*sin(lon));
+  vec3 alb;vec3 emis=vec3(0.);vec3 atmC=vec3(0.);
+  float specM=0.,cloud=0.,atmA=0.,limb=0.,tw=P.z;bool moon=false,earth=false;
+  if(k<.5){
+    float w=fbm(q*vec3(5.,24.,5.)+vec3(uTime*.004))-.5;
+    float w2=fbm(q*vec3(16.,70.,16.)-vec3(uTime*.006))-.5;
+    alb=texture2D(tJup,vec2(uv.x+w*.007+w2*.003,uv.y+w*.0025)).rgb;
+    alb=mix(vec3(dot(alb,vec3(.3,.59,.11))),alb,.62);
+    alb=mix(vec3(.62,.55,.47),alb,.8);
+    alb*=.94+.16*w2;
+    atmC=vec3(1.,.86,.65);atmA=.18;limb=.7;
+  }else if(k<1.5){
+    alb=texture2D(tMoon,uv).rgb;
+    alb*=.9+.2*fbm(q*55.);
+    moon=true;tw*=.12;
+  }else if(k<2.5){
+    alb=texture2D(tEday,uv).rgb;
+    specM=texture2D(tEsc,uv).r;
+    float lonC=lon+P.x*.35;
+    cloud=texture2D(tEsc,vec2(fract(lonC/(2.*PI)+.5),uv.y)).g;
+    emis=texture2D(tEnight,uv).rgb;
+    atmC=vec3(.32,.56,1.);atmA=1.;limb=.1;earth=true;
+  }else if(k<3.5){
+    alb=texture2D(tNep,uv).rgb;atmC=vec3(.45,.68,1.);atmA=.7;limb=.5;
+  }else{
+    alb=texture2D(tMars,uv).rgb*vec3(1.08,.82,.66);atmC=vec3(1.,.72,.55);atmA=.22;limb=.05;
+  }
+  alb=pow(alb,vec3(2.2));
+  float mu=max(n.z,0.);
+  float nl=dot(n,L);
+  float lam=max(nl,0.);
+  float term=smoothstep(-tw*.5-.004,tw+.006,nl);
+  vec3 col;
+  if(moon){
+    float ls=min(2.*lam/(lam+mu+.05),1.25);
+    col=alb*term*mix(lam,ls*.7,.6);
+  }else{
+    if(earth) alb=mix(alb,vec3(.8),cloud*.92);
+    col=alb*term*lam*(1.-limb*(1.-mu));
+  }
+  if(earth){
+    vec3 h=normalize(L+vec3(0.,0.,1.));
+    col+=vec3(1.,.93,.82)*specM*(1.-cloud)*pow(max(dot(n,h),0.),140.)*.45*term;
+    col*=mix(vec3(1.,.55,.35),vec3(1.),smoothstep(0.,.22,nl));
+    vec3 cityL=max(emis-vec3(.16),0.)*1.25;
+    col+=cityL*cityL*(1.-term)*(1.-cloud*.75)*C.x*2.2;
+  }else if(C.x>0.){
+    vec3 pc=q+vec3(C.y);
+    float reg=smoothstep(.55,.7,fbm(pc*2.6));
+    float dots=step(.955,h31(floor(pc*300.)))+.6*step(.9,h31(floor(pc*160.)+5.))*smoothstep(.55,.75,fbm(pc*14.));
+    col+=vec3(1.,.72,.42)*reg*dots*(1.-term)*C.x*.5;
+  }
+  col+=atmC*atmA*pow(1.-mu,3.)*smoothstep(-.2,.35,nl)*.5;
+  col*=P.y*2.3;
+  col=aces(col);
+  col=pow(col,vec3(1./2.2));
+  col+=(h31(vec3(gl_FragCoord.xy,floor(uTime*24.)))-.5)*.025*dot(col,vec3(.33));
+  return col;
+}
 void main(){
   vec2 p=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y);
   vec3 col=vec3(0.);
@@ -256,8 +328,11 @@ void main(){
     float soft=P.z;
     float term=smoothstep(-soft*.6-.01,soft+.02,nl);
     float lam=max(nl,0.);
+    vec3 cc;
+    if(uReal==1){ cc=realPlanet(k,n,L,P,C); }
+    else {
     vec3 atmC;vec3 base=surf(k,n,P.x,atmC);
-    vec3 cc=base*term*(.3+.7*lam)*P.y;
+    cc=base*term*(.3+.7*lam)*P.y;
     if(k>3.5){cc+=base*(1.-term)*.55*step(.3,max(base.r-.3,0.));}
     // civilização: luzes no lado noturno e instalações no lado de dia
     if(C.x>0.){
@@ -277,6 +352,7 @@ void main(){
     float rim=pow(sin(thS),5.);
     cc+=atmC*rim*P.w*smoothstep(-.15,.45,nl)*P.y;
     cc=1.-exp(-cc*1.5);
+    }
     cc*=uBright;
     if(uCal==2)cc=vec3(1.);
     if(uCal==1){
@@ -300,8 +376,23 @@ gl.linkProgram(prog); gl.useProgram(prog);
 gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
 const ap = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
-const U = {}; ['uRes','uCount','uCal','uSel','uGeo','uGeo2','uL','uP','uC','uTime','uFeather','uBright'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+const U = {}; ['uRes','uCount','uCal','uSel','uGeo','uGeo2','uL','uP','uC','uTime','uFeather','uBright','uReal'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
 
+// mapas reais (NASA / three.js), em ./tex
+const TEXS = [['tMoon','lua.jpg'],['tJup','jupiter.jpg'],['tEday','terra_dia.jpg'],['tEnight','terra_noite.jpg'],['tEsc','terra_spec_nuvens.jpg'],['tMars','marte.jpg'],['tNep','netuno.jpg']];
+TEXS.forEach(([name, file], i) => {
+  const t = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([90,90,90]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.uniform1i(gl.getUniformLocation(prog, name), i);
+  const img = new Image();
+  img.onload = () => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img); };
+  img.src = 'tex/' + file;
+});
 const specBytes = new Uint8Array(NB), specSm = new Float32Array(NB);
 let dpr = 1;
 const fx = $('fx'), fctx = fx.getContext('2d');
@@ -359,7 +450,7 @@ function drawGL(t){
   gl.uniform1i(U.uCount, n); gl.uniform1i(U.uCal, +S.cal);
   gl.uniform1i(U.uSel, document.body.classList.contains('hidden') || isProj ? -1 : S.sel);
   gl.uniform4fv(U.uGeo, geo); gl.uniform4fv(U.uGeo2, geo2); gl.uniform4fv(U.uL, uL); gl.uniform4fv(U.uP, uP); gl.uniform4fv(U.uC, uC);
-  gl.uniform1f(U.uTime, t); gl.uniform1f(U.uFeather, +S.feather); gl.uniform1f(U.uBright, +S.bright);
+  gl.uniform1f(U.uTime, t); gl.uniform1i(U.uReal, S.mode == 1 ? 1 : 0); gl.uniform1f(U.uFeather, +S.feather); gl.uniform1f(U.uBright, +S.bright);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -481,7 +572,8 @@ function drawSky(now, dt){
 function cutPlanets(){
   fctx.globalCompositeOperation = 'destination-out';
   fctx.fillStyle = '#000';
-  for (const h of S.hemis){ const P = hPx(h); fctx.beginPath(); fctx.ellipse(P.cx, P.cy, P.rx, P.ry, h.rot, 0, Math.PI*2); fctx.fill(); }
+  const sh = 1 - S.feather*0.8;
+  for (const h of S.hemis){ const P = hPx(h); fctx.beginPath(); fctx.ellipse(P.cx, P.cy, P.rx*sh, P.ry*sh, h.rot, 0, Math.PI*2); fctx.fill(); }
 }
 
 // ---------- frota: naves desenhadas (sprites) ----------
@@ -626,10 +718,11 @@ function addShip(sh){
   ships.push(sh);
   if (bc && !isProj){
     const nz = p => [p[0]/VR.w, p[1]/VR.h];
-    bc.postMessage({t:'ship', s:{p0:nz(sh.p0), p1:nz(sh.p1), p2:nz(sh.p2), dur:sh.dur, size:sh.size, type:sh.type, acc:sh.acc, delay:sh.t0 - performance.now()/1000}});
+    bc.postMessage({t:'ship', s:{real:!!sh.real, p3:sh.p3 ? nz(sh.p3) : null, p0:nz(sh.p0), p1:nz(sh.p1), p2:nz(sh.p2), dur:sh.dur, size:sh.size, type:sh.type, acc:sh.acc, delay:sh.t0 - performance.now()/1000}});
   }
 }
 function launch(big, from){
+  if (S.mode == 1) return launchReal(big, from);
   if (S.hemis.length < 2 || ships.length > 50) return;
   const n = S.hemis.length;
   if (from == null) from = Math.floor(Math.random()*n);
@@ -658,6 +751,7 @@ function bez(s, u){ const a=1-u; return [a*a*s.p0[0]+2*a*u*s.p1[0]+u*u*s.p2[0], 
 function drawShips(now){
   const H = VR.h, B = S.bright;
   ships = ships.filter(s => {
+    if (s.real) return false;
     const raw = (now - s.t0)/s.dur;
     if (raw < 0) return true;
     if (raw >= 1){ flashes.push({x:s.p2[0], y:s.p2[1], t0:now, size:s.size*TYPES[s.type].len/30, col:s.acc}); return false; }
@@ -720,6 +814,7 @@ function drawShips(now){
 
 let lastFX = 0;
 function drawFX(now){
+  if (S.mode == 1) return drawFXReal(now);
   const W = VR.w, H = VR.h, dt = lastFX ? Math.min(0.1, now - lastFX) : 0; lastFX = now;
   fctx.setTransform(dpr,0,0,dpr,0,0);
   fctx.globalCompositeOperation = 'source-over';
@@ -751,6 +846,278 @@ function drawFX(now){
   fctx.globalCompositeOperation = 'source-over';
 }
 function hexA(hex, a){ const v = parseInt(hex.slice(1),16); return `rgba(${v>>16},${(v>>8)&255},${v&255},${Math.max(0,Math.min(1,a))})`; }
+
+// ================= MODO REALISTA (céu, sol, naves) =================
+let realStars = [], realDens = -1;
+function buildRealStars(){
+  const rnd = mkRnd(11); realStars = [];
+  const n = Math.round(520 * S.starDens);
+  const cols = ['170,195,255','205,220,255','255,252,245','255,240,215','255,214,178'];
+  for (let i=0;i<n;i++){ const b = Math.pow(rnd(), 4.5); realStars.push({x:rnd(), y:rnd(), b, c:cols[Math.floor(rnd()*cols.length)]}); }
+  realDens = S.starDens;
+}
+let galCanvas = null, galKey = '';
+function buildGalaxy(){
+  const w = Math.max(64, Math.round(VR.w/2)), h = Math.max(36, Math.round(VR.h/2));
+  const key = w+'x'+h; if (key === galKey) return; galKey = key;
+  galCanvas = document.createElement('canvas'); galCanvas.width = w; galCanvas.height = h;
+  const g = galCanvas.getContext('2d'), rnd = mkRnd(77);
+  const band = t => [(0.05 + 0.9*t)*w, (0.9 - 0.75*t)*h];
+  const gauss = () => (rnd()+rnd()+rnd()-1.5)/1.5;
+  g.globalCompositeOperation = 'lighter';
+  const cols = ['150,160,190','185,178,165','125,135,170','170,165,185'];
+  for (let i=0;i<70;i++){
+    const t = rnd(), [bx,by] = band(t), r = (0.05 + rnd()*0.12)*w;
+    const x = bx + gauss()*w*0.04, y = by + gauss()*h*0.08, c = cols[Math.floor(rnd()*cols.length)];
+    const gr = g.createRadialGradient(x,y,0,x,y,r); gr.addColorStop(0, `rgba(${c},${0.05+rnd()*0.06})`); gr.addColorStop(1, `rgba(${c},0)`);
+    g.fillStyle = gr; g.fillRect(x-r,y-r,2*r,2*r);
+  }
+  for (let i=0;i<4500;i++){
+    const t = rnd(), [bx,by] = band(t), x = bx + gauss()*w*0.06, y = by + gauss()*h*0.1;
+    g.fillStyle = `rgba(225,228,240,${0.08 + rnd()*0.3})`; g.fillRect(x, y, 0.7, 0.7);
+  }
+  g.globalCompositeOperation = 'destination-out';
+  for (let i=0;i<40;i++){
+    const t = rnd(), [bx,by] = band(t), r = (0.015 + rnd()*0.04)*w, x = bx + gauss()*w*0.012, y = by + gauss()*h*0.025;
+    const gr = g.createRadialGradient(x,y,0,x,y,r); gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(x-r,y-r,2*r,2*r);
+  }
+  const edge = (x0,y0,x1,y1) => { const gr = g.createLinearGradient(x0,y0,x1,y1); gr.addColorStop(0,'rgba(0,0,0,1)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0,0,w,h); };
+  edge(0,0,w*0.16,0); edge(w,0,w*0.84,0); edge(0,0,0,h*0.2); edge(0,h,0,h*0.8);
+}
+let comets = [], nextComet = 0;
+function drawSkyReal(now, dt){
+  const W = VR.w, H = VR.h, B = S.bright;
+  if (S.neb > 0){ buildGalaxy(); fctx.globalAlpha = Math.min(1, S.neb*B); fctx.drawImage(galCanvas, 0, 0, W, H); fctx.globalAlpha = 1; }
+  if (S.starsOn){
+    if (realDens !== S.starDens) buildRealStars();
+    for (const s of realStars){
+      const f = edgeFade(s.x, s.y); if (f <= 0) continue;
+      const a = f * (0.1 + 0.9*s.b) * B, px = s.x*W, py = s.y*H;
+      if (s.b < 0.3){ fctx.fillStyle = `rgba(${s.c},${a*0.8})`; fctx.fillRect(px, py, 1, 1); }
+      else if (s.b < 0.7){ fctx.fillStyle = `rgba(${s.c},${a})`; fctx.fillRect(px-0.4, py-0.4, 1.5, 1.5); }
+      else {
+        const r = 1.2 + 2.2*s.b, g = fctx.createRadialGradient(px,py,0,px,py,r);
+        g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.4, `rgba(${s.c},${a*0.45})`); g.addColorStop(1, `rgba(${s.c},0)`);
+        fctx.fillStyle = g; fctx.fillRect(px-r, py-r, 2*r, 2*r);
+      }
+    }
+  }
+  // tráfego ao longe: pontinhos com brilho de motor
+  if (S.traffic > 0 && now > nextTraffic){
+    if (nextTraffic && traffic.length < 4){
+      const ltr = Math.random() < .5;
+      traffic.push({x: ltr ? -0.02 : 1.02, y:.08+Math.random()*.84, vx:(ltr?1:-1)*(.004+Math.random()*.01), vy:(Math.random()-.5)*.003, ph:Math.random()*6, s:.5+Math.random()*.6});
+    }
+    nextTraffic = now + (16 / S.traffic) * (0.4 + Math.random()*1.2);
+  }
+  traffic = traffic.filter(t => {
+    t.x += t.vx*dt; t.y += t.vy*dt;
+    if (t.x < -0.05 || t.x > 1.05) return false;
+    const f = edgeFade(t.x, t.y); if (f <= 0) return true;
+    const px = t.x*W, py = t.y*H;
+    fctx.fillStyle = `rgba(190,200,215,${0.5*f*B*t.s})`; fctx.fillRect(px, py, 1, 1);
+    const tail = t.vx > 0 ? -1 : 1, g = fctx.createLinearGradient(px, py, px + tail*5, py);
+    g.addColorStop(0, `rgba(150,200,255,${0.6*f*B*t.s})`); g.addColorStop(1, 'rgba(150,200,255,0)');
+    fctx.fillStyle = g; fctx.fillRect(Math.min(px, px+tail*5), py-0.3, 5, 1.2);
+    if (((now*0.7 + t.ph) % 1) < 0.05){ fctx.fillStyle = `rgba(255,70,60,${0.8*f*B})`; fctx.fillRect(px-0.5, py-0.5, 1.4, 1.4); }
+    return true;
+  });
+  // cometas (no lugar dos meteoros: no espaço não há meteoros), cauda sempre oposta ao sol
+  if (S.meteors > 0 && now > nextComet){
+    if (nextComet && comets.length < 2){
+      const ltr = Math.random() < .5;
+      comets.push({x: ltr ? .08 : .92, y: .1 + Math.random()*.8, vx: (ltr?1:-1)*(.012+Math.random()*.012), vy: (Math.random()-.5)*.01, t0: now, life: 45, s: .7+Math.random()*.7});
+    }
+    nextComet = now + (240 / S.meteors) * (0.5 + Math.random());
+  }
+  const [sx, sy] = S.sunOn ? sunPx() : [W/2, -H];
+  comets = comets.filter(c => {
+    const age = now - c.t0; if (age > c.life) return false;
+    const x = (c.x + c.vx*age)*W, y = (c.y + c.vy*age)*H;
+    const f = edgeFade(x/W, y/H) * Math.min(1, age/4, (c.life-age)/4); if (f <= 0) return true;
+    let dx = x - sx, dy = y - sy; const dl = Math.hypot(dx,dy) || 1; dx/=dl; dy/=dl;
+    const len = H*(0.07 + 0.05*c.s), a = f*B;
+    // cauda de íons (reta, azulada)
+    let g = fctx.createLinearGradient(x, y, x+dx*len*1.3, y+dy*len*1.3);
+    g.addColorStop(0, `rgba(160,200,255,${0.45*a})`); g.addColorStop(1, 'rgba(160,200,255,0)');
+    fctx.strokeStyle = g; fctx.lineWidth = 1; fctx.beginPath(); fctx.moveTo(x,y); fctx.lineTo(x+dx*len*1.3, y+dy*len*1.3); fctx.stroke();
+    // cauda de poeira (curva, amarelada, larga)
+    const vx = c.vx*W, vy = c.vy*H, vl = Math.hypot(vx,vy) || 1;
+    const cx = x + dx*len*0.5 - vx/vl*len*0.25, cy = y + dy*len*0.5 - vy/vl*len*0.25;
+    const ex = x + dx*len - vx/vl*len*0.45, ey = y + dy*len - vy/vl*len*0.45;
+    for (let w2 = 5; w2 >= 1; w2 -= 2){
+      g = fctx.createLinearGradient(x, y, ex, ey);
+      g.addColorStop(0, `rgba(255,235,200,${0.18*a})`); g.addColorStop(1, 'rgba(255,225,180,0)');
+      fctx.strokeStyle = g; fctx.lineWidth = w2*c.s; fctx.lineCap = 'round';
+      fctx.beginPath(); fctx.moveTo(x,y); fctx.quadraticCurveTo(cx, cy, ex, ey); fctx.stroke();
+    }
+    const hg = fctx.createRadialGradient(x,y,0,x,y,4*c.s);
+    hg.addColorStop(0, `rgba(255,255,250,${a})`); hg.addColorStop(0.3, `rgba(200,235,255,${0.5*a})`); hg.addColorStop(1, 'rgba(180,220,255,0)');
+    fctx.fillStyle = hg; fctx.fillRect(x-4*c.s, y-4*c.s, 8*c.s, 8*c.s);
+    return true;
+  });
+}
+function drawSunReal(now){
+  const [sx, sy, sr0] = sunPx(), B = S.bright;
+  const r = sr0*0.5, boost = 1 + S.sunPulse*0.6*bass, R = r*16;
+  // brilho (glare) com queda ~1/r²
+  const f = r/R, g = fctx.createRadialGradient(sx,sy,0,sx,sy,R);
+  g.addColorStop(0, `rgba(255,255,255,${B})`); g.addColorStop(f, `rgba(255,246,232,${0.7*B})`);
+  g.addColorStop(f*1.6, `rgba(255,236,205,${Math.min(1,0.42*boost)*B})`); g.addColorStop(f*3, `rgba(255,225,190,${0.15*boost*B})`);
+  g.addColorStop(f*6, `rgba(255,215,175,${0.05*boost*B})`); g.addColorStop(1, 'rgba(255,210,170,0)');
+  fctx.fillStyle = g; fctx.beginPath(); fctx.arc(sx,sy,R,0,Math.PI*2); fctx.fill();
+  // halo largo e suave (espalhamento), varia levemente com o grave
+  const h2 = fctx.createRadialGradient(sx,sy,r,sx,sy,r*5);
+  h2.addColorStop(0, `rgba(255,240,215,${0.22*boost*B})`); h2.addColorStop(1, 'rgba(255,230,200,0)');
+  fctx.fillStyle = h2; fctx.beginPath(); fctx.arc(sx,sy,r*5,0,Math.PI*2); fctx.fill();
+  // disco com escurecimento de borda
+  fctx.globalCompositeOperation = 'source-over';
+  const d = fctx.createRadialGradient(sx,sy,0,sx,sy,r);
+  d.addColorStop(0, '#ffffff'); d.addColorStop(0.8, '#fffbf3'); d.addColorStop(1, '#fff0d8');
+  fctx.fillStyle = d; fctx.globalAlpha = Math.min(1, B); fctx.beginPath(); fctx.arc(sx,sy,r,0,Math.PI*2); fctx.fill(); fctx.globalAlpha = 1;
+  fctx.globalCompositeOperation = 'lighter';
+}
+
+// naves realistas: cinza fosco, iluminadas pelo sol, sem rastro, órbita de transferência com virada no meio
+const LENR = {cruzador:32, cargueiro:24, transporte:12, caca:8.5, sonda:10};
+const FLAMER = {cruzador:'150,190,255', cargueiro:'170,200,255', transporte:'255,210,170', caca:'160,200,255', sonda:'190,230,255'};
+const spritesR = {};
+function spriteR(type, acc){
+  const key = type + acc; if (spritesR[key]) return spritesR[key];
+  const src = sprite(type, acc), c = document.createElement('canvas'); c.width = c.height = 280;
+  const g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  const im = g.getImageData(0,0,280,280), d = im.data;
+  for (let i=0;i<d.length;i+=4){
+    if (!d[i+3]) continue;
+    const l = 0.3*d[i] + 0.59*d[i+1] + 0.11*d[i+2];
+    for (let j=0;j<3;j++) d[i+j] = Math.min(255, (l + (d[i+j]-l)*0.3) * 0.82 + 6);
+  }
+  g.putImageData(im, 0, 0);
+  return spritesR[key] = c;
+}
+function rimPointR(i, jitter){
+  const h = S.hemis[i], P = hPx(h), tg = lightTarget(i);
+  const ang = Math.atan2(tg[1]-P.cy, tg[0]-P.cx) + jitter;
+  const dx = Math.cos(ang), dy = Math.sin(ang);
+  const lx = (P.c*dx + P.s*dy)/P.rx, ly = (-P.s*dx + P.c*dy)/P.ry;
+  const s = 1.0 / Math.hypot(lx, ly);
+  return [P.cx + dx*s, P.cy + dy*s];
+}
+function launchReal(big, from){
+  if (S.hemis.length < 2 || ships.length > 40) return;
+  const n = S.hemis.length;
+  if (from == null) from = Math.floor(Math.random()*n);
+  const to = (from + 1 + Math.floor(Math.random()*(n-1))) % n;
+  const type = pickType(big), T = TYPES[type];
+  const A = hPx(S.hemis[from]), Bp = hPx(S.hemis[to]);
+  const st = rimPointR(from, (Math.random()-.5)*0.9), en = rimPointR(to, (Math.random()-.5)*0.9);
+  const ex = en[0]-st[0], ey = en[1]-st[1], el = Math.hypot(ex,ey) || 1, ux = ex/el, uy = ey/el;
+  const nrm = v => { const l = Math.hypot(v[0],v[1]) || 1; return [v[0]/l, v[1]/l]; };
+  const ra = nrm([st[0]-A.cx, st[1]-A.cy]), rb = nrm([en[0]-Bp.cx, en[1]-Bp.cy]);
+  let ta = [-ra[1], ra[0]]; if (ta[0]*ux + ta[1]*uy < 0) ta = [-ta[0], -ta[1]];
+  let tb = [-rb[1], rb[0]]; if (tb[0]*ux + tb[1]*uy < 0) tb = [-tb[0], -tb[1]];
+  // saída quase tangente à órbita, com um pouco de componente radial
+  const da = nrm([ta[0]*0.8 + ra[0]*0.6, ta[1]*0.8 + ra[1]*0.6]), db = nrm([tb[0]*0.8 - rb[0]*0.6, tb[1]*0.8 - rb[1]*0.6]);
+  const d = el*0.42;
+  let p1 = [st[0]+da[0]*d, st[1]+da[1]*d], p2 = [en[0]-db[0]*d, en[1]-db[1]*d];
+  // desvia do sol
+  const [sx, sy, sr] = S.sunOn ? sunPx() : [(st[0]+en[0])/2, (st[1]+en[1])/2, 0];
+  const px = -uy, py = ux;
+  const mid = [(st[0]+3*p1[0]+3*p2[0]+en[0])/8, (st[1]+3*p1[1]+3*p2[1]+en[1])/8];
+  const sd = (mid[0]-sx)*px + (mid[1]-sy)*py;
+  const side = Math.abs(sd) > 4 ? Math.sign(sd) : (Math.random() < .5 ? 1 : -1);
+  const clear = (S.sunOn ? sr*1.6 : 0) + VR.h*(0.03 + Math.random()*0.15);
+  const target = side*Math.max(Math.abs(sd), clear), shift = (target - sd)/0.75;
+  p1 = [p1[0]+px*shift, p1[1]+py*shift]; p2 = [p2[0]+px*shift, p2[1]+py*shift];
+  const dur = T.dur * 1.3 * (0.85 + Math.random()*0.3) / S.speed;
+  const size = S.shipSize * (0.9 + Math.random()*0.2);
+  const acc = ACCENT[S.hemis[from].kind] || '#fff';
+  const now = performance.now()/1000;
+  const wing = type === 'caca' ? (Math.random() < .5 ? 3 : 2) : 1;
+  const sp = VR.h/720 * 12 * size;
+  for (let k=0;k<wing;k++){
+    const off = k === 0 ? 0 : (k === 1 ? -1 : 1) * sp, back = k === 0 ? 0 : 0.18*k;
+    const o = p => [p[0] + px*off, p[1] + py*off];
+    addShip({real:true, p0:o(st), p1:o(p1), p2:o(p2), p3:o(en), dur, size, type, acc, t0:now + back, trail:[], ph:Math.random()*6});
+  }
+}
+function cub(s, u){ const a = 1-u, A = a*a*a, B1 = 3*a*a*u, C1 = 3*a*u*u, D = u*u*u;
+  return [A*s.p0[0]+B1*s.p1[0]+C1*s.p2[0]+D*s.p3[0], A*s.p0[1]+B1*s.p1[1]+C1*s.p2[1]+D*s.p3[1]]; }
+function cubD(s, u){ const a = 1-u;
+  return [3*a*a*(s.p1[0]-s.p0[0]) + 6*a*u*(s.p2[0]-s.p1[0]) + 3*u*u*(s.p3[0]-s.p2[0]),
+          3*a*a*(s.p1[1]-s.p0[1]) + 6*a*u*(s.p2[1]-s.p1[1]) + 3*u*u*(s.p3[1]-s.p2[1])]; }
+const shadeC = document.createElement('canvas'), shadeX = shadeC.getContext('2d');
+function drawShipsReal(now){
+  const H = VR.h, B = S.bright;
+  const [sunX, sunY] = S.sunOn ? sunPx() : [VR.w*0.3, -VR.h];
+  ships = ships.filter(s => {
+    if (!s.real) return false;
+    const raw = (now - s.t0)/s.dur;
+    if (raw < 0) return true;
+    if (raw >= 1) return false;
+    const u = raw < .5 ? 2*raw*raw : 1 - 2*(1-raw)*(1-raw);   // acelera, navega, desacelera
+    const pos = cub(s, u), vel = cubD(s, Math.max(0.001, Math.min(0.999, u)));
+    const flip = raw < .46 ? 0 : raw > .56 ? 1 : (raw-.46)/.1;
+    const ang = Math.atan2(vel[1], vel[0]) + Math.PI * (flip*flip*(3-2*flip));
+    const burn = raw < .32 ? 1 : raw < .4 ? (.4-raw)/.08 : raw > .6 ? Math.min(1, (raw-.6)/.04) : 0;
+    const vis = Math.min(1, raw/0.05, (1-raw)/0.05);
+    const scl = 0.35 + 0.65*vis;
+    const L = LENR[s.type] * s.size * H/720 * scl, k = L/256;
+    const T = TYPES[s.type];
+    // casco iluminado pelo sol: lado claro e lado na sombra
+    const D = Math.ceil(L*1.25) + 6, pr = dpr;
+    if (shadeC.width < D*pr){ shadeC.width = shadeC.height = Math.ceil(D*pr); }
+    shadeX.setTransform(pr,0,0,pr,0,0); shadeX.globalCompositeOperation = 'source-over'; shadeX.clearRect(0,0,D,D);
+    shadeX.save(); shadeX.translate(D/2, D/2); shadeX.rotate(ang); shadeX.scale(k, k);
+    shadeX.drawImage(spriteR(s.type, s.acc), -140, -140); shadeX.restore();
+    let lx = sunX - pos[0], ly = sunY - pos[1]; const ll = Math.hypot(lx,ly) || 1; lx/=ll; ly/=ll;
+    shadeX.globalCompositeOperation = 'source-atop';
+    const g = shadeX.createLinearGradient(D/2 - lx*L*0.35, D/2 - ly*L*0.35, D/2 + lx*L*0.35, D/2 + ly*L*0.35);
+    g.addColorStop(0, 'rgba(0,0,6,.85)'); g.addColorStop(0.55, 'rgba(0,0,0,.35)'); g.addColorStop(1, 'rgba(255,244,225,.14)');
+    shadeX.fillStyle = g; shadeX.fillRect(0,0,D,D);
+    fctx.globalCompositeOperation = 'source-over';
+    fctx.globalAlpha = Math.min(1, B) * vis;
+    fctx.drawImage(shadeC, 0, 0, D*pr, D*pr, pos[0]-D/2, pos[1]-D/2, D, D);
+    fctx.globalAlpha = 1;
+    // pluma do motor: fina, curta, só quando está queimando
+    fctx.globalCompositeOperation = 'lighter';
+    fctx.save(); fctx.translate(pos[0], pos[1]); fctx.rotate(ang); fctx.scale(k, k);
+    if (burn > 0.02){
+      for (const nz of T.noz){
+        const fl = (60 + 22*Math.sin(now*41 + s.ph + nz[1])) * burn * (nz[2]/8);
+        const pg = fctx.createLinearGradient(nz[0], 0, nz[0]-fl, 0);
+        pg.addColorStop(0, `rgba(255,255,255,${0.95*B*vis})`); pg.addColorStop(0.25, `rgba(${FLAMER[s.type]},${0.6*B*vis})`); pg.addColorStop(1, `rgba(${FLAMER[s.type]},0)`);
+        fctx.fillStyle = pg; fctx.beginPath(); fctx.ellipse(nz[0]-fl*0.5, nz[1], fl*0.5, nz[2]*0.42, 0, 0, Math.PI*2); fctx.fill();
+      }
+    }
+    // luzes de navegação: pontos minúsculos
+    const blink = (now*1.1 + s.ph) % 1, dot = 1.1/k;
+    T.nav.forEach((p, i) => {
+      const on = i === 0 ? blink < .5 : blink >= .5;
+      fctx.fillStyle = i === 0 ? `rgba(255,60,50,${(on?0.9:0.25)*B*vis})` : `rgba(70,255,130,${(on?0.9:0.25)*B*vis})`;
+      fctx.fillRect(p[0]-dot/2, p[1]-dot/2, dot, dot);
+    });
+    if (blink < 0.04){ fctx.fillStyle = `rgba(255,255,255,${B*vis})`; fctx.fillRect(-dot*0.7, -dot*0.7, dot*1.4, dot*1.4); }
+    fctx.restore();
+    return true;
+  });
+}
+function drawFXReal(now){
+  const W = VR.w, H = VR.h, dt = lastFX ? Math.min(0.1, now - lastFX) : 0; lastFX = now;
+  fctx.setTransform(dpr,0,0,dpr,0,0);
+  fctx.globalCompositeOperation = 'source-over';
+  fctx.clearRect(0,0,W,H);
+  if (S.cal == 2) return;
+  fctx.globalCompositeOperation = 'lighter';
+  drawSkyReal(now, dt);
+  cutPlanets();
+  fctx.globalCompositeOperation = 'lighter';
+  if (S.sunOn) drawSunReal(now);
+  drawStations(now);
+  drawShipsReal(now);
+  fctx.globalCompositeOperation = 'source-over';
+}
 
 // lançadores: automático e pelo som
 let nextAuto = 0, lastBass = 0, lastTreb = 0, avgB = 0, avgT = 0;
@@ -801,7 +1168,7 @@ function drawStations(now){
       fctx.save(); fctx.translate(x, y); fctx.rotate(now*0.25 + j); fctx.scale(k, k*0.55);
       fctx.globalCompositeOperation = 'source-over';
       fctx.globalAlpha = Math.min(1, B) * (lit ? 1 : 0.25);
-      fctx.drawImage(sprite('estacao', ACCENT[h.kind] || '#fff'), -140, -140);
+      fctx.drawImage((S.mode == 1 ? spriteR : sprite)('estacao', ACCENT[h.kind] || '#fff'), -140, -140);
       fctx.globalAlpha = 1;
       fctx.globalCompositeOperation = 'lighter';
       if (((now*0.9 + j + i) % 1) < 0.08){ const r = Math.max(4, 3/k); const gg = fctx.createRadialGradient(0,0,0,0,0,r*3); gg.addColorStop(0,`rgba(255,80,70,${B})`); gg.addColorStop(1,'rgba(255,80,70,0)'); fctx.fillStyle = gg; fctx.beginPath(); fctx.arc(0,0,r*3,0,Math.PI*2); fctx.fill(); }
@@ -820,7 +1187,7 @@ if (isProj){
       else if (e.data.t==='spec'){ for(let k=0;k<NB;k++) specSm[k] = e.data.d[k]/255; }
       else if (e.data.t==='ship'){
         const s = e.data.s, d = p => [p[0]*VR.w, p[1]*VR.h];
-        ships.push({p0:d(s.p0), p1:d(s.p1), p2:d(s.p2), dur:s.dur, size:s.size, type:s.type, acc:s.acc, t0:performance.now()/1000 + (s.delay||0), trail:[], ph:Math.random()*6});
+        ships.push({real:s.real, p3:s.p3 ? d(s.p3) : null, p0:d(s.p0), p1:d(s.p1), p2:d(s.p2), dur:s.dur, size:s.size, type:s.type, acc:s.acc, t0:performance.now()/1000 + (s.delay||0), trail:[], ph:Math.random()*6});
       }
     };
     bc.postMessage({t:'hello'});
@@ -1000,13 +1367,14 @@ const hemiKeys = ['phase','soft','spin','atm','civ','stations','depth','rx','ry'
 globalKeys.forEach(k => $(k).addEventListener('input', e => { S[k] = +e.target.value; syncUI(); save(); }));
 hemiKeys.forEach(k => $(k).addEventListener('input', e => { const h=S.hemis[S.sel]; if(h){ h[k] = +e.target.value; syncUI(); save(); } }));
 $('sunR').addEventListener('input', e => { S.sun.r = +e.target.value; syncUI(); save(); });
-['shipMode','cal'].forEach(k => $(k).addEventListener('change', e => { S[k] = +e.target.value; save(); }));
+['shipMode','cal','mode'].forEach(k => $(k).addEventListener('change', e => { S[k] = +e.target.value; syncUI(); save(); }));
 $('kind').addEventListener('change', e => { const h=S.hemis[S.sel]; if(h){ h.kind = +e.target.value; save(); } });
 ['sunOn','starsOn'].forEach(k => $(k).addEventListener('change', e => { S[k] = e.target.checked; save(); }));
 function syncUI(){
   globalKeys.forEach(k => { $(k).value = S[k]; $(k+'V').textContent = fmt[k](S[k]); });
   $('sunR').value = S.sun.r; $('sunRV').textContent = fmt.sunR(S.sun.r);
-  ['shipMode','cal'].forEach(k => $(k).value = S[k]);
+  ['shipMode','cal','mode'].forEach(k => $(k).value = S[k]);
+  $('metLbl').textContent = S.mode == 1 ? 'Cometas' : 'Meteoros/min';
   $('sunOn').checked = !!S.sunOn; $('starsOn').checked = !!S.starsOn;
   const h = S.hemis[S.sel];
   if (h){ hemiKeys.forEach(k => { $(k).value = h[k]; $(k+'V').textContent = fmt[k](h[k]); }); $('kind').value = h.kind; }

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grade</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100vw;height:100vh;touch-action:none}</style>
+</head><body>
+<canvas id="c"></canvas>
+<script>/* KIT — base comum das obras da coleção IDEIAS
+   áudio (microfone / arquivo / nenhum), análise, painel escondido (H),
+   projeção com 4 cantos, gravação de tela, tela cheia */
+(function(){
+const K = window.KIT = {};
+const css = `
+#kit-btn{position:fixed;right:12px;bottom:12px;z-index:20;width:34px;height:34px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffa;font:16px system-ui;cursor:pointer;opacity:.25;transition:opacity .3s}
+#kit-btn:hover{opacity:1}
+#kit-panel{position:fixed;right:12px;bottom:54px;z-index:21;width:270px;max-height:80vh;overflow:auto;background:#0a0a0fe8;border:1px solid #fff2;border-radius:10px;padding:12px 14px;color:#ddd;font:12px/1.4 system-ui;display:none;backdrop-filter:blur(6px)}
+#kit-panel.on{display:block}
+#kit-panel h3{margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#fff}
+#kit-panel .sec{margin:10px 0 4px;color:#888;font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+#kit-panel label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:5px 0}
+#kit-panel input[type=range]{width:130px}
+#kit-panel select,#kit-panel button{background:#1c1c24;color:#ddd;border:1px solid #fff2;border-radius:5px;padding:4px 6px;font:12px system-ui;cursor:pointer}
+#kit-panel .row{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+#kit-panel button.on{background:#c33;color:#fff}
+#kit-panel .help{color:#777;font-size:11px;margin-top:8px}
+#kit-hint{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:19;color:#fff9;font:13px system-ui;letter-spacing:.05em;pointer-events:none;transition:opacity 1s}
+#kit-rec{position:fixed;left:14px;top:14px;z-index:20;width:12px;height:12px;border-radius:50%;background:#e22;display:none;animation:kb 1s infinite}
+@keyframes kb{50%{opacity:.2}}`;
+const st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+
+/* ---------- áudio ---------- */
+const A = K.audio = {ctx:null,analyser:null,fft:null,wave:null,level:0,bass:0,mid:0,high:0,onset:false,flux:0,src:'mic',_prev:null,_fluxAvg:0,_lastOnset:0};
+A.ensure = function(){
+  if(A.ctx) return A.ctx;
+  const ctx = A.ctx = new (window.AudioContext||window.webkitAudioContext)();
+  A.analyser = ctx.createAnalyser(); A.analyser.fftSize=2048; A.analyser.smoothingTimeConstant=.6;
+  A.fft = new Uint8Array(A.analyser.frequencyBinCount); A.wave=new Uint8Array(A.analyser.fftSize);
+  A._prev = new Float32Array(A.analyser.frequencyBinCount);
+  A.inputGain = ctx.createGain(); A.inputGain.connect(A.analyser);
+  K.out = ctx.createGain(); K.out.gain.value=.8;               // som gerado pelas obras
+  A.master = ctx.createGain(); A.master.connect(ctx.destination);
+  K.out.connect(A.master);
+  A.recDest = ctx.createMediaStreamDestination(); A.master.connect(A.recDest);
+  A.genToAnalyser = ctx.createGain(); A.genToAnalyser.gain.value = 0; K.out.connect(A.genToAnalyser); A.genToAnalyser.connect(A.analyser);
+  return ctx;
+};
+A._node=null; A._stream=null; A._el=null;
+A.stop = function(){
+  if(A._node){try{A._node.disconnect()}catch(e){} A._node=null}
+  if(A._stream){A._stream.getTracks().forEach(t=>t.stop());A._stream=null}
+  if(A._el){A._el.pause();A._el=null}
+};
+A.useMic = async function(){
+  A.ensure(); A.stop(); A.src='mic';
+  try{
+    A._stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    A._node = A.ctx.createMediaStreamSource(A._stream); A._node.connect(A.inputGain);
+  }catch(e){ console.warn('mic',e); hint('Microfone não liberado'); }
+};
+A.useFile = function(file){
+  A.ensure(); A.stop(); A.src='file';
+  const el = A._el = new Audio(URL.createObjectURL(file)); el.loop=true; el.crossOrigin='anonymous';
+  A._node = A.ctx.createMediaElementSource(el); A._node.connect(A.inputGain); A._node.connect(A.master);
+  el.play();
+};
+A.useNone = function(){ A.ensure(); A.stop(); A.src='none'; };
+A.update = function(){
+  A.onset=false;
+  if(!A.analyser) return;
+  A.analyser.getByteFrequencyData(A.fft); A.analyser.getByteTimeDomainData(A.wave);
+  const n=A.fft.length, sr=A.ctx.sampleRate, bin=sr/2/n;
+  const band=(lo,hi)=>{let s=0,c=0;for(let i=Math.max(1,lo/bin|0);i<Math.min(n,hi/bin|0);i++){s+=A.fft[i];c++}return c?s/c/255:0};
+  const sm=(o,v,k)=>o+(v-o)*k;
+  A.bass=sm(A.bass,band(30,180),.4); A.mid=sm(A.mid,band(180,2000),.4); A.high=sm(A.high,band(2000,9000),.4);
+  let rms=0; for(let i=0;i<A.wave.length;i++){const v=(A.wave[i]-128)/128;rms+=v*v} rms=Math.sqrt(rms/A.wave.length);
+  A.level=sm(A.level,Math.min(1,rms*K.sens*3),.3);
+  let flux=0; for(let i=2;i<n/3;i++){const v=A.fft[i]/255;const d=v-A._prev[i];if(d>0)flux+=d;A._prev[i]=v}
+  flux*=K.sens; A.flux=flux;
+  A._fluxAvg = A._fluxAvg*.95 + flux*.05;
+  const now=performance.now();
+  if(flux>A._fluxAvg*1.8+1.2 && now-A._lastOnset>110){A.onset=true;A._lastOnset=now}
+};
+K.sens = 1;
+
+/* ---------- painel ---------- */
+let panel, body;
+K.init = function(opt){
+  K.canvas = opt.canvas; K.title=opt.title||document.title;
+  const b=document.createElement('button'); b.id='kit-btn'; b.textContent='⚙'; b.title='Controles (H)'; document.body.appendChild(b);
+  panel=document.createElement('div'); panel.id='kit-panel'; document.body.appendChild(panel);
+  panel.innerHTML=`<h3>${K.title}</h3>
+   <div class="sec">Entrada de áudio</div>
+   <label>Fonte <select id="kit-src"><option value="mic">Microfone</option><option value="file">Arquivo de áudio</option><option value="none">Nenhuma</option></select></label>
+   <input type="file" id="kit-file" accept="audio/*" style="display:none">
+   <label>Sensibilidade <input type="range" id="kit-sens" min=".2" max="4" step=".05" value="1"></label>
+   <label>Volume do som <input type="range" id="kit-vol" min="0" max="1.5" step=".01" value=".8"></label>
+   <div id="kit-body"></div>
+   <div class="sec">Saída</div>
+   <div class="row"><button id="kit-proj">Projeção</button><button id="kit-recb">● Gravar</button><button id="kit-fs">Tela cheia</button></div>
+   <div class="help">H: painel · F: tela cheia · P: projeção · R: gravar</div>`;
+  body=panel.querySelector('#kit-body');
+  const rec=document.createElement('div'); rec.id='kit-rec'; document.body.appendChild(rec);
+  const h=document.createElement('div'); h.id='kit-hint'; document.body.appendChild(h);
+  b.onclick=()=>panel.classList.toggle('on');
+  const srcSel=panel.querySelector('#kit-src'), fileIn=panel.querySelector('#kit-file');
+  srcSel.onchange=()=>{ if(srcSel.value==='mic')A.useMic(); else if(srcSel.value==='none')A.useNone(); else fileIn.click(); };
+  fileIn.onchange=()=>{ if(fileIn.files[0]) A.useFile(fileIn.files[0]); };
+  panel.querySelector('#kit-sens').oninput=e=>K.sens=+e.target.value;
+  panel.querySelector('#kit-vol').oninput=e=>{A.ensure();K.out.gain.value=+e.target.value};
+  panel.querySelector('#kit-proj').onclick=K.projection;
+  panel.querySelector('#kit-recb').onclick=K.toggleRec;
+  panel.querySelector('#kit-fs').onclick=K.fullscreen;
+  addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT'&&e.target.type!=='range')return;
+    const k=e.key.toLowerCase();
+    if(k==='h')panel.classList.toggle('on'); else if(k==='f')K.fullscreen(); else if(k==='p')K.projection(); else if(k==='r')K.toggleRec();
+  });
+  // arranque: câmera/som ligados; o navegador exige um gesto para o áudio
+  A.ensure();
+  if(opt.audio!==false) A.useMic(); else {A.src='none'; srcSel.value='none';}
+  const resume=()=>{ if(A.ctx.state!=='running'){A.ctx.resume();} if(A.ctx.state==='running'||true){hint('');} };
+  if(A.ctx.state!=='running') hint(opt.hint||'toque ou clique para ativar o som');
+  addEventListener('pointerdown',resume); addEventListener('keydown',resume);
+};
+function hint(t){const h=document.getElementById('kit-hint'); if(!h)return; h.textContent=t; h.style.opacity=t?1:0;}
+K.hint=hint;
+K.section=t=>{const d=document.createElement('div');d.className='sec';d.textContent=t;body.appendChild(d)};
+K.slider=(label,min,max,step,val,cb)=>{const l=document.createElement('label');l.innerHTML=`${label} <input type="range" min="${min}" max="${max}" step="${step}" value="${val}">`;const i=l.querySelector('input');i.oninput=()=>cb(+i.value);body.appendChild(l);cb(+val);return i};
+K.select=(label,opts,val,cb)=>{const l=document.createElement('label');l.innerHTML=`${label} <select>${opts.map(o=>`<option ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;const s=l.querySelector('select');s.onchange=()=>cb(s.value);body.appendChild(l);cb(val);return s};
+K.toggle=(label,val,cb)=>{const l=document.createElement('label');l.innerHTML=`${label} <input type="checkbox" ${val?'checked':''}>`;const i=l.querySelector('input');i.onchange=()=>cb(i.checked);body.appendChild(l);cb(val);return i};
+K.buttons=(list)=>{const r=document.createElement('div');r.className='row';list.forEach(([t,cb])=>{const b=document.createElement('button');b.textContent=t;b.onclick=cb;r.appendChild(b)});body.appendChild(r)};
+
+/* ---------- tela cheia ---------- */
+K.fullscreen=()=>{ if(document.fullscreenElement)document.exitFullscreen(); else document.documentElement.requestFullscreen(); };
+
+/* ---------- gravação ---------- */
+let rec=null, chunks=[];
+K.toggleRec=()=>{
+  const btn=document.getElementById('kit-recb'), dot=document.getElementById('kit-rec');
+  if(rec){rec.stop();return}
+  A.ensure();
+  const vs=K.canvas.captureStream(60);
+  const s=new MediaStream([...vs.getVideoTracks(),...A.recDest.stream.getAudioTracks()]);
+  const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m));
+  rec=new MediaRecorder(s,{mimeType:mime,videoBitsPerSecond:12e6}); chunks=[];
+  rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=()=>{const blob=new Blob(chunks,{type:mime});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=K.title.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+(mime.includes('mp4')?'.mp4':'.webm');a.click();rec=null;btn.classList.remove('on');btn.textContent='● Gravar';dot.style.display='none'};
+  rec.start(500); btn.classList.add('on'); btn.textContent='■ Parar'; dot.style.display='block';
+};
+
+/* ---------- projeção (janela separada, 4 cantos) ---------- */
+let projWin=null;
+K.projection=()=>{
+  if(projWin&&!projWin.closed){projWin.focus();return}
+  projWin=window.open('','projecao_'+K.title,'width=960,height=540');
+  if(!projWin){hint('Libere pop-ups para abrir a projeção');return}
+  const d=projWin.document;
+  d.write(`<!DOCTYPE html><html><head><title>Projeção — ${K.title}</title><style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
+  video{position:absolute;left:0;top:0;transform-origin:0 0;background:#000}
+  .h{position:absolute;width:22px;height:22px;margin:-11px;border:2px solid #0f8;border-radius:50%;cursor:move;display:none;z-index:2}
+  body.edit .h{display:block} body.edit{cursor:default}
+  #tip{position:fixed;top:10px;left:50%;transform:translateX(-50%);color:#0f8;font:13px system-ui;display:none;z-index:3;background:#000a;padding:6px 10px;border-radius:6px}
+  body.edit #tip{display:block}
+  </style></head><body><video autoplay muted playsinline></video>
+  <div class="h"></div><div class="h"></div><div class="h"></div><div class="h"></div>
+  <div id="tip">Arraste os 4 cantos · E: esconder cantos · F: tela cheia · 0: reiniciar</div></body></html>`);
+  d.close();
+  const v=d.querySelector('video'); v.srcObject=K.canvas.captureStream(60);
+  const hs=[...d.querySelectorAll('.h')];
+  const key='kitproj_'+K.title;
+  const W=()=>projWin.innerWidth, H=()=>projWin.innerHeight;
+  let pts; try{pts=JSON.parse(localStorage.getItem(key))}catch(e){}
+  const reset=()=>pts=[[0,0],[1,0],[1,1],[0,1]];
+  if(!pts)reset();
+  function apply(){
+    const w=W(),h=H(); v.style.width=w+'px'; v.style.height=h+'px'; v.style.objectFit='fill';
+    const P=pts.map(p=>[p[0]*w,p[1]*h]);
+    hs.forEach((e,i)=>{e.style.left=P[i][0]+'px';e.style.top=P[i][1]+'px'});
+    v.style.transform='matrix3d('+homography([[0,0],[w,0],[w,h],[0,h]],P).join(',')+')';
+    try{localStorage.setItem(key,JSON.stringify(pts))}catch(e){}
+  }
+  hs.forEach((e,i)=>{e.onpointerdown=ev=>{e.setPointerCapture(ev.pointerId);e.onpointermove=m=>{pts[i]=[m.clientX/W(),m.clientY/H()];apply()};e.onpointerup=()=>e.onpointermove=null}});
+  d.body.classList.add('edit');
+  projWin.addEventListener('keydown',e=>{const k=e.key.toLowerCase(); if(k==='e')d.body.classList.toggle('edit'); if(k==='f'){d.fullscreenElement?d.exitFullscreen():d.documentElement.requestFullscreen()} if(k==='0'){reset();apply()}});
+  projWin.addEventListener('resize',apply); apply();
+};
+function homography(s,d){
+  // resolve matriz 3x3 que leva s->d e devolve matrix3d (coluna-maior)
+  const A=[],b=[];
+  for(let i=0;i<4;i++){const [x,y]=s[i],[u,v]=d[i];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);}
+  const h=solve(A,b);
+  return [h[0],h[3],0,h[6], h[1],h[4],0,h[7], 0,0,1,0, h[2],h[5],0,1];
+}
+function solve(A,b){const n=b.length;for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;[A[i],A[m]]=[A[m],A[i]];[b[i],b[m]]=[b[m],b[i]];for(let r=i+1;r<n;r++){const f=A[r][i]/A[i][i];for(let c=i;c<n;c++)A[r][c]-=f*A[i][c];b[r]-=f*b[i]}}const x=new Array(n);for(let i=n-1;i>=0;i--){let s=b[i];for(let c=i+1;c<n;c++)s-=A[i][c]*x[c];x[i]=s/A[i][i]}return x}
+
+/* ---------- utilidades musicais ---------- */
+K.mtof=m=>440*Math.pow(2,(m-69)/12);
+K.scales={
+  'Pentatônica menor':[0,3,5,7,10],'Pentatônica maior':[0,2,4,7,9],'Dórico':[0,2,3,5,7,9,10],
+  'Lídio':[0,2,4,6,7,9,11],'Eólio':[0,2,3,5,7,8,10],'Hirajoshi':[0,2,3,7,8]};
+K.degree=(scale,i,root)=>{const s=K.scales[scale]||scale;const o=Math.floor(i/s.length);return root+o*12+s[((i%s.length)+s.length)%s.length]};
+K.reverb=function(sec=3,decay=2.5){const ctx=A.ensure();const c=ctx.createConvolver();const len=ctx.sampleRate*sec;const buf=ctx.createBuffer(2,len,ctx.sampleRate);for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay)}c.buffer=buf;return c};
+})();
+</script>
+<script>
+const cv=document.getElementById('c'), g=cv.getContext('2d');
+let W,H,DPR,cs,ox,oy;
+const COLS=16, ROWS=12, DR=3; // 3 linhas de baixo = bateria
+function size(){DPR=Math.min(devicePixelRatio,2);W=cv.width=innerWidth*DPR;H=cv.height=innerHeight*DPR;cs=Math.floor(Math.min(W/COLS,H/ROWS)*.96);ox=(W-cs*COLS)/2;oy=(H-cs*ROWS)/2}
+size(); addEventListener('resize',size);
+const A=KIT.audio;
+const P={bpm:112,swing:0,scale:'Pentatônica menor',root:45,palette:'Aroke',mesa:false,mesaTh:.18,cutoff:2400,decay:.35};
+const cell=[...Array(COLS)].map(()=>new Array(ROWS).fill(false));
+const glow=[...Array(COLS)].map(()=>new Float32Array(ROWS));
+const cam=[...Array(COLS)].map(()=>new Uint8Array(ROWS));
+const bits=[];
+const pal={
+  'Aroke':{bg:'#2b2a1f',dot:'#c7bfa7',on:'#7fd6a6',on2:'#1d5c43',hit:'#ff6fd0',hit2:'#ffd1f1',bits:['#ff6fd0','#ffffff','#7fd6a6']},
+  'Bandeira':{bg:'#000',dot:'#555',on:'#ffffff',on2:'#223',hit:'#ff3b2f',hit2:'#ffffff',bits:['#ff3b2f','#ffffff','#2f6bff']},
+  'Projeção (mesa)':{bg:'#000',dot:'#333',on:'#ffffff',on2:'#000',hit:'#00e5ff',hit2:'#ffffff',bits:['#00e5ff','#ffffff','#ffe600']},
+};
+function preset(name){
+  for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++)cell[c][r]=false;
+  if(name==='Aleatório'){for(let c=0;c<COLS;c++){if(c%4===0)cell[c][0]=true;if(c%8===4)cell[c][1]=true;if(Math.random()<.5)cell[c][2]=true;if(Math.random()<.35)cell[c][DR+((Math.random()*(ROWS-DR))|0)]=true}}
+  if(name==='Quebrado'){[0,3,6,10,11].forEach(c=>cell[c][0]=true);[4,12,15].forEach(c=>cell[c][1]=true);for(let c=0;c<COLS;c+=1)if(c%3)cell[c][2]=true;[[0,9],[2,7],[5,10],[7,8],[8,5],[11,9],[13,6],[14,11]].forEach(([c,r])=>cell[c][r]=true)}
+}
+preset('Quebrado');
+
+/* ---------- som ---------- */
+let delay, fb, rev;
+function chain(){
+  const ctx=A.ensure();
+  if(delay) return ctx;
+  delay=ctx.createDelay(2); fb=ctx.createGain(); fb.gain.value=.32; const dw=ctx.createGain(); dw.gain.value=.28;
+  delay.connect(fb); fb.connect(delay); delay.connect(dw); dw.connect(KIT.out);
+  rev=KIT.reverb(2.5,3); const rw=ctx.createGain(); rw.gain.value=.25; rev.connect(rw); rw.connect(KIT.out);
+  A.genToAnalyser.gain.value=1;
+  return ctx;
+}
+function noiseBuf(ctx){ if(noiseBuf.b) return noiseBuf.b; const b=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate); const d=b.getChannelData(0); for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1; return noiseBuf.b=b }
+function play(row,t){
+  const ctx=chain();
+  const out=ctx.createGain(); out.connect(KIT.out);
+  if(row===0){ // bumbo
+    const o=ctx.createOscillator(); o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(42,t+.12);
+    out.gain.setValueAtTime(1,t); out.gain.exponentialRampToValueAtTime(.001,t+.45); o.connect(out); o.start(t); o.stop(t+.5);
+  } else if(row===1){ // caixa
+    const n=ctx.createBufferSource(); n.buffer=noiseBuf(ctx); const hp=ctx.createBiquadFilter(); hp.type='bandpass'; hp.frequency.value=1800; hp.Q.value=.7;
+    out.gain.setValueAtTime(.5,t); out.gain.exponentialRampToValueAtTime(.001,t+.22); n.connect(hp); hp.connect(out); hp.connect(rev); n.start(t); n.stop(t+.25);
+    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(160,t+.08); const og=ctx.createGain(); og.gain.setValueAtTime(.35,t); og.gain.exponentialRampToValueAtTime(.001,t+.1); o.connect(og); og.connect(KIT.out); o.start(t); o.stop(t+.12);
+  } else if(row===2){ // chimbal
+    const n=ctx.createBufferSource(); n.buffer=noiseBuf(ctx); const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7500;
+    out.gain.setValueAtTime(.22,t); out.gain.exponentialRampToValueAtTime(.001,t+.05); n.connect(hp); hp.connect(out); n.start(t); n.stop(t+.07);
+  } else { // notas
+    const f=KIT.mtof(KIT.degree(P.scale,row-DR,P.root+12));
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.Q.value=4;
+    lp.frequency.setValueAtTime(P.cutoff*2,t); lp.frequency.exponentialRampToValueAtTime(Math.max(120,P.cutoff*.25),t+P.decay);
+    [-6,6].forEach(dt=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f; o.detune.value=dt; o.connect(lp); o.start(t); o.stop(t+P.decay+.3)});
+    const s=ctx.createOscillator(); s.type='sine'; s.frequency.value=f/2; const sg=ctx.createGain(); sg.gain.value=.5; s.connect(sg); sg.connect(lp); s.start(t); s.stop(t+P.decay+.3);
+    out.gain.setValueAtTime(0,t); out.gain.linearRampToValueAtTime(.16,t+.005); out.gain.exponentialRampToValueAtTime(.001,t+P.decay+.25);
+    lp.connect(out); out.connect(delay); out.connect(rev);
+  }
+}
+let step=0, nextT=0, playing=true;
+const visQ=[];
+function scheduler(){
+  if(!A.ctx||A.ctx.state!=='running'||!playing) return;
+  const ctx=A.ctx, sp=60/P.bpm/4;
+  delay.delayTime.value=sp*3;
+  if(nextT<ctx.currentTime) nextT=ctx.currentTime+.05;
+  while(nextT<ctx.currentTime+.12){
+    const t=nextT+(step%2?P.swing*sp*.5:0);
+    for(let r=0;r<ROWS;r++) if(cell[step][r]||(P.mesa&&cam[step][r])) play(r,t);
+    visQ.push([t,step]);
+    nextT+=sp; step=(step+1)%COLS;
+  }
+}
+setInterval(()=>{chain();scheduler()},25);
+let head=-1;
+
+/* ---------- câmera (modo Mesa) ---------- */
+const video=document.createElement('video'); video.muted=true; video.playsInline=true;
+const sm=document.createElement('canvas'); sm.width=COLS*4; sm.height=ROWS*4; const sx=sm.getContext('2d',{willReadFrequently:true});
+let bg=null;
+async function camOn(){ try{ video.srcObject=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}}); await video.play(); setTimeout(learn,1200);}catch(e){KIT.hint('Câmera não liberada')} }
+function grab(){ sx.drawImage(video,0,0,sm.width,sm.height); return sx.getImageData(0,0,sm.width,sm.height).data }
+function learn(){ if(video.readyState>=2) bg=grab().slice() }
+function readMesa(){
+  if(!P.mesa||!bg||video.readyState<2) return;
+  const d=grab();
+  for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++){
+    let s=0; for(let y=0;y<4;y++)for(let x=0;x<4;x++){const k=(((ROWS-1-r)*4+y)*sm.width + c*4+x)*4; s+=Math.abs(d[k]-bg[k])+Math.abs(d[k+1]-bg[k+1])+Math.abs(d[k+2]-bg[k+2])}
+    cam[c][r]= s/(16*3*255) > P.mesaTh ? 1:0;
+  }
+}
+
+/* ---------- toque ---------- */
+let paint=null;
+cv.addEventListener('pointerdown',e=>{const c=Math.floor((e.clientX*DPR-ox)/cs), r=ROWS-1-Math.floor((e.clientY*DPR-oy)/cs); if(c<0||c>=COLS||r<0||r>=ROWS)return; paint=!cell[c][r]; cell[c][r]=paint; cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(paint===null)return;const c=Math.floor((e.clientX*DPR-ox)/cs), r=ROWS-1-Math.floor((e.clientY*DPR-oy)/cs); if(c>=0&&c<COLS&&r>=0&&r<ROWS)cell[c][r]=paint});
+addEventListener('pointerup',()=>paint=null);
+addEventListener('keydown',e=>{if(e.code==='Space'){playing=!playing;e.preventDefault()}});
+
+function rr(x,y,w,h,r){g.beginPath();g.roundRect(x,y,w,h,r)}
+function frame(){
+  A.update(); readMesa();
+  if(A.ctx) while(visQ.length&&visQ[0][0]<=A.ctx.currentTime){ head=visQ.shift()[1];
+    for(let r=0;r<ROWS;r++) if(cell[head][r]||(P.mesa&&cam[head][r])){ glow[head][r]=1;
+      if(r===0||Math.random()<.5){ const pc=pal[P.palette]; const x=ox+head*cs+cs/2, y=oy+(ROWS-1-r)*cs+cs/2;
+        for(let k=0;k<(r===0?40:10);k++) bits.push({x,y,vx:(Math.random()-.5)*6*DPR,vy:(Math.random()-.7)*6*DPR,s:(2+Math.random()*4)*DPR,c:pc.bits[k%3],a:1}); } } }
+  const pc=pal[P.palette];
+  g.fillStyle=pc.bg; g.fillRect(0,0,W,H);
+  const fft=A.fft;
+  for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++){
+    const x=ox+c*cs, y=oy+(ROWS-1-r)*cs, cx=x+cs/2, cy=y+cs/2;
+    const on=cell[c][r]||(P.mesa&&cam[c][r]); const gl=glow[c][r]; glow[c][r]*=.9;
+    const band=fft? fft[2+Math.floor(Math.pow((r*COLS+c)/(COLS*ROWS),1.6)*300)]/255 : 0;
+    if(!on && gl<.05){ // ponto de meio-tom (reage ao som)
+      const s=cs*(.08+.3*band*band) + (c===head?cs*.06:0);
+      g.fillStyle=c===head?pc.on:pc.dot; g.globalAlpha=.75; rr(cx-s/2,cy-s/2,s,s,s*.25); g.fill(); g.globalAlpha=1; continue;
+    }
+    // quadrados aninhados
+    const s1=cs*(.78+gl*.16), s2=cs*(.55+gl*.2), s3=cs*(.3+gl*.25);
+    g.fillStyle=gl>.05?pc.hit:pc.on; rr(cx-s1/2,cy-s1/2,s1,s1,cs*.12); g.fill();
+    g.fillStyle=gl>.05?pc.hit2:pc.on2; rr(cx-s2/2,cy-s2/2,s2,s2,cs*.09); g.fill();
+    g.fillStyle=gl>.05?pc.hit:pc.on; rr(cx-s3/2,cy-s3/2,s3,s3,cs*.06); g.fill();
+    if(r<DR){ g.strokeStyle=pc.bg; g.lineWidth=2*DPR; rr(cx-s1/2+3*DPR,cy-s1/2+3*DPR,s1-6*DPR,s1-6*DPR,cs*.1); g.stroke(); }
+  }
+  // pixels desintegrando
+  for(let i=bits.length-1;i>=0;i--){const b=bits[i]; b.x+=b.vx; b.y+=b.vy; b.vy+=.05*DPR; b.vx*=.98; b.a-=.018; if(b.a<=0){bits.splice(i,1);continue}
+    g.globalAlpha=b.a; g.fillStyle=b.c; g.fillRect(b.x|0,b.y|0,b.s,b.s)} g.globalAlpha=1;
+  requestAnimationFrame(frame);
+}
+KIT.init({title:'Grade',canvas:cv,audio:false,hint:'toque para ligar o som · desenhe na grade'});
+KIT.section('Sequência');
+KIT.slider('Andamento (BPM)',60,180,1,112,v=>P.bpm=v);
+KIT.slider('Suingue',0,.6,.01,0,v=>P.swing=v);
+KIT.select('Escala',Object.keys(KIT.scales),'Pentatônica menor',v=>P.scale=v);
+KIT.select('Tom',['Lá','Si♭','Si','Dó','Ré','Mi','Fá','Sol'],'Lá',v=>P.root={'Lá':45,'Si♭':46,'Si':47,'Dó':48,'Ré':50,'Mi':52,'Fá':53,'Sol':55}[v]);
+KIT.slider('Brilho do timbre',300,6000,10,2400,v=>P.cutoff=v);
+KIT.slider('Duração das notas',.08,1.5,.01,.35,v=>P.decay=v);
+KIT.buttons([['Limpar',()=>preset('')],['Aleatório',()=>preset('Aleatório')],['Quebrado',()=>preset('Quebrado')],['▶/❚❚ (espaço)',()=>playing=!playing]]);
+KIT.section('Imagem');
+KIT.select('Paleta',Object.keys(pal),'Aroke',v=>P.palette=v);
+KIT.section('Mesa (objetos pela câmera)');
+KIT.toggle('Modo Mesa',false,v=>{P.mesa=v; if(v&&!video.srcObject)camOn()});
+KIT.slider('Sensibilidade da mesa',.05,.5,.01,.18,v=>P.mesaTh=v);
+KIT.buttons([['Aprender mesa vazia',learn]]);
+requestAnimationFrame(frame);
+</script>
+</body></html>

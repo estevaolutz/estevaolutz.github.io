@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Harpa de Ar</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100vw;height:100vh;touch-action:none}
+#load{position:fixed;top:14px;left:50%;transform:translateX(-50%);color:#fff8;font:12px system-ui;letter-spacing:.06em}</style>
+</head><body>
+<canvas id="c"></canvas><div id="load">carregando o rastreamento das mãos…</div>
+<script>/* KIT — base comum das obras da coleção IDEIAS
+   áudio (microfone / arquivo / nenhum), análise, painel escondido (H),
+   projeção com 4 cantos, gravação de tela, tela cheia */
+(function(){
+const K = window.KIT = {};
+const css = `
+#kit-btn{position:fixed;right:12px;bottom:12px;z-index:20;width:34px;height:34px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffa;font:16px system-ui;cursor:pointer;opacity:.25;transition:opacity .3s}
+#kit-btn:hover{opacity:1}
+#kit-panel{position:fixed;right:12px;bottom:54px;z-index:21;width:270px;max-height:80vh;overflow:auto;background:#0a0a0fe8;border:1px solid #fff2;border-radius:10px;padding:12px 14px;color:#ddd;font:12px/1.4 system-ui;display:none;backdrop-filter:blur(6px)}
+#kit-panel.on{display:block}
+#kit-panel h3{margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#fff}
+#kit-panel .sec{margin:10px 0 4px;color:#888;font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+#kit-panel label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:5px 0}
+#kit-panel input[type=range]{width:130px}
+#kit-panel select,#kit-panel button{background:#1c1c24;color:#ddd;border:1px solid #fff2;border-radius:5px;padding:4px 6px;font:12px system-ui;cursor:pointer}
+#kit-panel .row{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+#kit-panel button.on{background:#c33;color:#fff}
+#kit-panel .help{color:#777;font-size:11px;margin-top:8px}
+#kit-hint{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:19;color:#fff9;font:13px system-ui;letter-spacing:.05em;pointer-events:none;transition:opacity 1s}
+#kit-rec{position:fixed;left:14px;top:14px;z-index:20;width:12px;height:12px;border-radius:50%;background:#e22;display:none;animation:kb 1s infinite}
+@keyframes kb{50%{opacity:.2}}`;
+const st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+
+/* ---------- áudio ---------- */
+const A = K.audio = {ctx:null,analyser:null,fft:null,wave:null,level:0,bass:0,mid:0,high:0,onset:false,flux:0,src:'mic',_prev:null,_fluxAvg:0,_lastOnset:0};
+A.ensure = function(){
+  if(A.ctx) return A.ctx;
+  const ctx = A.ctx = new (window.AudioContext||window.webkitAudioContext)();
+  A.analyser = ctx.createAnalyser(); A.analyser.fftSize=2048; A.analyser.smoothingTimeConstant=.6;
+  A.fft = new Uint8Array(A.analyser.frequencyBinCount); A.wave=new Uint8Array(A.analyser.fftSize);
+  A._prev = new Float32Array(A.analyser.frequencyBinCount);
+  A.inputGain = ctx.createGain(); A.inputGain.connect(A.analyser);
+  K.out = ctx.createGain(); K.out.gain.value=.8;               // som gerado pelas obras
+  A.master = ctx.createGain(); A.master.connect(ctx.destination);
+  K.out.connect(A.master);
+  A.recDest = ctx.createMediaStreamDestination(); A.master.connect(A.recDest);
+  A.genToAnalyser = ctx.createGain(); A.genToAnalyser.gain.value = 0; K.out.connect(A.genToAnalyser); A.genToAnalyser.connect(A.analyser);
+  return ctx;
+};
+A._node=null; A._stream=null; A._el=null;
+A.stop = function(){
+  if(A._node){try{A._node.disconnect()}catch(e){} A._node=null}
+  if(A._stream){A._stream.getTracks().forEach(t=>t.stop());A._stream=null}
+  if(A._el){A._el.pause();A._el=null}
+};
+A.useMic = async function(){
+  A.ensure(); A.stop(); A.src='mic';
+  try{
+    A._stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    A._node = A.ctx.createMediaStreamSource(A._stream); A._node.connect(A.inputGain);
+  }catch(e){ console.warn('mic',e); hint('Microfone não liberado'); }
+};
+A.useFile = function(file){
+  A.ensure(); A.stop(); A.src='file';
+  const el = A._el = new Audio(URL.createObjectURL(file)); el.loop=true; el.crossOrigin='anonymous';
+  A._node = A.ctx.createMediaElementSource(el); A._node.connect(A.inputGain); A._node.connect(A.master);
+  el.play();
+};
+A.useNone = function(){ A.ensure(); A.stop(); A.src='none'; };
+A.update = function(){
+  A.onset=false;
+  if(!A.analyser) return;
+  A.analyser.getByteFrequencyData(A.fft); A.analyser.getByteTimeDomainData(A.wave);
+  const n=A.fft.length, sr=A.ctx.sampleRate, bin=sr/2/n;
+  const band=(lo,hi)=>{let s=0,c=0;for(let i=Math.max(1,lo/bin|0);i<Math.min(n,hi/bin|0);i++){s+=A.fft[i];c++}return c?s/c/255:0};
+  const sm=(o,v,k)=>o+(v-o)*k;
+  A.bass=sm(A.bass,band(30,180),.4); A.mid=sm(A.mid,band(180,2000),.4); A.high=sm(A.high,band(2000,9000),.4);
+  let rms=0; for(let i=0;i<A.wave.length;i++){const v=(A.wave[i]-128)/128;rms+=v*v} rms=Math.sqrt(rms/A.wave.length);
+  A.level=sm(A.level,Math.min(1,rms*K.sens*3),.3);
+  let flux=0; for(let i=2;i<n/3;i++){const v=A.fft[i]/255;const d=v-A._prev[i];if(d>0)flux+=d;A._prev[i]=v}
+  flux*=K.sens; A.flux=flux;
+  A._fluxAvg = A._fluxAvg*.95 + flux*.05;
+  const now=performance.now();
+  if(flux>A._fluxAvg*1.8+1.2 && now-A._lastOnset>110){A.onset=true;A._lastOnset=now}
+};
+K.sens = 1;
+
+/* ---------- painel ---------- */
+let panel, body;
+K.init = function(opt){
+  K.canvas = opt.canvas; K.title=opt.title||document.title;
+  const b=document.createElement('button'); b.id='kit-btn'; b.textContent='⚙'; b.title='Controles (H)'; document.body.appendChild(b);
+  panel=document.createElement('div'); panel.id='kit-panel'; document.body.appendChild(panel);
+  panel.innerHTML=`<h3>${K.title}</h3>
+   <div class="sec">Entrada de áudio</div>
+   <label>Fonte <select id="kit-src"><option value="mic">Microfone</option><option value="file">Arquivo de áudio</option><option value="none">Nenhuma</option></select></label>
+   <input type="file" id="kit-file" accept="audio/*" style="display:none">
+   <label>Sensibilidade <input type="range" id="kit-sens" min=".2" max="4" step=".05" value="1"></label>
+   <label>Volume do som <input type="range" id="kit-vol" min="0" max="1.5" step=".01" value=".8"></label>
+   <div id="kit-body"></div>
+   <div class="sec">Saída</div>
+   <div class="row"><button id="kit-proj">Projeção</button><button id="kit-recb">● Gravar</button><button id="kit-fs">Tela cheia</button></div>
+   <div class="help">H: painel · F: tela cheia · P: projeção · R: gravar</div>`;
+  body=panel.querySelector('#kit-body');
+  const rec=document.createElement('div'); rec.id='kit-rec'; document.body.appendChild(rec);
+  const h=document.createElement('div'); h.id='kit-hint'; document.body.appendChild(h);
+  b.onclick=()=>panel.classList.toggle('on');
+  const srcSel=panel.querySelector('#kit-src'), fileIn=panel.querySelector('#kit-file');
+  srcSel.onchange=()=>{ if(srcSel.value==='mic')A.useMic(); else if(srcSel.value==='none')A.useNone(); else fileIn.click(); };
+  fileIn.onchange=()=>{ if(fileIn.files[0]) A.useFile(fileIn.files[0]); };
+  panel.querySelector('#kit-sens').oninput=e=>K.sens=+e.target.value;
+  panel.querySelector('#kit-vol').oninput=e=>{A.ensure();K.out.gain.value=+e.target.value};
+  panel.querySelector('#kit-proj').onclick=K.projection;
+  panel.querySelector('#kit-recb').onclick=K.toggleRec;
+  panel.querySelector('#kit-fs').onclick=K.fullscreen;
+  addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT'&&e.target.type!=='range')return;
+    const k=e.key.toLowerCase();
+    if(k==='h')panel.classList.toggle('on'); else if(k==='f')K.fullscreen(); else if(k==='p')K.projection(); else if(k==='r')K.toggleRec();
+  });
+  // arranque: câmera/som ligados; o navegador exige um gesto para o áudio
+  A.ensure();
+  if(opt.audio!==false) A.useMic(); else {A.src='none'; srcSel.value='none';}
+  const resume=()=>{ if(A.ctx.state!=='running'){A.ctx.resume();} if(A.ctx.state==='running'||true){hint('');} };
+  if(A.ctx.state!=='running') hint(opt.hint||'toque ou clique para ativar o som');
+  addEventListener('pointerdown',resume); addEventListener('keydown',resume);
+};
+function hint(t){const h=document.getElementById('kit-hint'); if(!h)return; h.textContent=t; h.style.opacity=t?1:0;}
+K.hint=hint;
+K.section=t=>{const d=document.createElement('div');d.className='sec';d.textContent=t;body.appendChild(d)};
+K.slider=(label,min,max,step,val,cb)=>{const l=document.createElement('label');l.innerHTML=`${label} <input type="range" min="${min}" max="${max}" step="${step}" value="${val}">`;const i=l.querySelector('input');i.oninput=()=>cb(+i.value);body.appendChild(l);cb(+val);return i};
+K.select=(label,opts,val,cb)=>{const l=document.createElement('label');l.innerHTML=`${label} <select>${opts.map(o=>`<option ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;const s=l.querySelector('select');s.onchange=()=>cb(s.value);body.appendChild(l);cb(val);return s};
+K.toggle=(label,val,cb)=>{const l=document.createElement('label');l.innerHTML=`${label} <input type="checkbox" ${val?'checked':''}>`;const i=l.querySelector('input');i.onchange=()=>cb(i.checked);body.appendChild(l);cb(val);return i};
+K.buttons=(list)=>{const r=document.createElement('div');r.className='row';list.forEach(([t,cb])=>{const b=document.createElement('button');b.textContent=t;b.onclick=cb;r.appendChild(b)});body.appendChild(r)};
+
+/* ---------- tela cheia ---------- */
+K.fullscreen=()=>{ if(document.fullscreenElement)document.exitFullscreen(); else document.documentElement.requestFullscreen(); };
+
+/* ---------- gravação ---------- */
+let rec=null, chunks=[];
+K.toggleRec=()=>{
+  const btn=document.getElementById('kit-recb'), dot=document.getElementById('kit-rec');
+  if(rec){rec.stop();return}
+  A.ensure();
+  const vs=K.canvas.captureStream(60);
+  const s=new MediaStream([...vs.getVideoTracks(),...A.recDest.stream.getAudioTracks()]);
+  const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m));
+  rec=new MediaRecorder(s,{mimeType:mime,videoBitsPerSecond:12e6}); chunks=[];
+  rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=()=>{const blob=new Blob(chunks,{type:mime});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=K.title.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+(mime.includes('mp4')?'.mp4':'.webm');a.click();rec=null;btn.classList.remove('on');btn.textContent='● Gravar';dot.style.display='none'};
+  rec.start(500); btn.classList.add('on'); btn.textContent='■ Parar'; dot.style.display='block';
+};
+
+/* ---------- projeção (janela separada, 4 cantos) ---------- */
+let projWin=null;
+K.projection=()=>{
+  if(projWin&&!projWin.closed){projWin.focus();return}
+  projWin=window.open('','projecao_'+K.title,'width=960,height=540');
+  if(!projWin){hint('Libere pop-ups para abrir a projeção');return}
+  const d=projWin.document;
+  d.write(`<!DOCTYPE html><html><head><title>Projeção — ${K.title}</title><style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
+  video{position:absolute;left:0;top:0;transform-origin:0 0;background:#000}
+  .h{position:absolute;width:22px;height:22px;margin:-11px;border:2px solid #0f8;border-radius:50%;cursor:move;display:none;z-index:2}
+  body.edit .h{display:block} body.edit{cursor:default}
+  #tip{position:fixed;top:10px;left:50%;transform:translateX(-50%);color:#0f8;font:13px system-ui;display:none;z-index:3;background:#000a;padding:6px 10px;border-radius:6px}
+  body.edit #tip{display:block}
+  </style></head><body><video autoplay muted playsinline></video>
+  <div class="h"></div><div class="h"></div><div class="h"></div><div class="h"></div>
+  <div id="tip">Arraste os 4 cantos · E: esconder cantos · F: tela cheia · 0: reiniciar</div></body></html>`);
+  d.close();
+  const v=d.querySelector('video'); v.srcObject=K.canvas.captureStream(60);
+  const hs=[...d.querySelectorAll('.h')];
+  const key='kitproj_'+K.title;
+  const W=()=>projWin.innerWidth, H=()=>projWin.innerHeight;
+  let pts; try{pts=JSON.parse(localStorage.getItem(key))}catch(e){}
+  const reset=()=>pts=[[0,0],[1,0],[1,1],[0,1]];
+  if(!pts)reset();
+  function apply(){
+    const w=W(),h=H(); v.style.width=w+'px'; v.style.height=h+'px'; v.style.objectFit='fill';
+    const P=pts.map(p=>[p[0]*w,p[1]*h]);
+    hs.forEach((e,i)=>{e.style.left=P[i][0]+'px';e.style.top=P[i][1]+'px'});
+    v.style.transform='matrix3d('+homography([[0,0],[w,0],[w,h],[0,h]],P).join(',')+')';
+    try{localStorage.setItem(key,JSON.stringify(pts))}catch(e){}
+  }
+  hs.forEach((e,i)=>{e.onpointerdown=ev=>{e.setPointerCapture(ev.pointerId);e.onpointermove=m=>{pts[i]=[m.clientX/W(),m.clientY/H()];apply()};e.onpointerup=()=>e.onpointermove=null}});
+  d.body.classList.add('edit');
+  projWin.addEventListener('keydown',e=>{const k=e.key.toLowerCase(); if(k==='e')d.body.classList.toggle('edit'); if(k==='f'){d.fullscreenElement?d.exitFullscreen():d.documentElement.requestFullscreen()} if(k==='0'){reset();apply()}});
+  projWin.addEventListener('resize',apply); apply();
+};
+function homography(s,d){
+  // resolve matriz 3x3 que leva s->d e devolve matrix3d (coluna-maior)
+  const A=[],b=[];
+  for(let i=0;i<4;i++){const [x,y]=s[i],[u,v]=d[i];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);}
+  const h=solve(A,b);
+  return [h[0],h[3],0,h[6], h[1],h[4],0,h[7], 0,0,1,0, h[2],h[5],0,1];
+}
+function solve(A,b){const n=b.length;for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;[A[i],A[m]]=[A[m],A[i]];[b[i],b[m]]=[b[m],b[i]];for(let r=i+1;r<n;r++){const f=A[r][i]/A[i][i];for(let c=i;c<n;c++)A[r][c]-=f*A[i][c];b[r]-=f*b[i]}}const x=new Array(n);for(let i=n-1;i>=0;i--){let s=b[i];for(let c=i+1;c<n;c++)s-=A[i][c]*x[c];x[i]=s/A[i][i]}return x}
+
+/* ---------- utilidades musicais ---------- */
+K.mtof=m=>440*Math.pow(2,(m-69)/12);
+K.scales={
+  'Pentatônica menor':[0,3,5,7,10],'Pentatônica maior':[0,2,4,7,9],'Dórico':[0,2,3,5,7,9,10],
+  'Lídio':[0,2,4,6,7,9,11],'Eólio':[0,2,3,5,7,8,10],'Hirajoshi':[0,2,3,7,8]};
+K.degree=(scale,i,root)=>{const s=K.scales[scale]||scale;const o=Math.floor(i/s.length);return root+o*12+s[((i%s.length)+s.length)%s.length]};
+K.reverb=function(sec=3,decay=2.5){const ctx=A.ensure();const c=ctx.createConvolver();const len=ctx.sampleRate*sec;const buf=ctx.createBuffer(2,len,ctx.sampleRate);for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay)}c.buffer=buf;return c};
+})();
+</script>
+<script type="module">
+import {FilesetResolver, HandLandmarker} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+const cv=document.getElementById('c'), g=cv.getContext('2d');
+let W,H,DPR; function size(){DPR=Math.min(devicePixelRatio,2);W=cv.width=innerWidth*DPR;H=cv.height=innerHeight*DPR} size(); addEventListener('resize',size);
+const A=KIT.audio;
+const P={camA:.28,scale:'Pentatônica maior',root:48,life:60,maxStr:14,pinch:.055,flick:1,hue:190};
+
+/* ---------- som: corda Karplus-Strong pré-calculada ---------- */
+const cache={}; let rev;
+function ks(midi){
+  const ctx=A.ensure(); if(cache[midi]) return cache[midi];
+  const sr=ctx.sampleRate, f=KIT.mtof(midi), N=Math.round(sr/f), len=Math.round(sr*3.2);
+  const b=ctx.createBuffer(1,len,sr), d=b.getChannelData(0), buf=new Float32Array(N);
+  for(let i=0;i<N;i++) buf[i]=Math.random()*2-1;
+  let p=0; const damp=.996 - Math.max(0,(midi-60))*.0004;
+  for(let i=0;i<len;i++){ const n=(p+1)%N; const v=(buf[p]+buf[n])*.5*damp; d[i]=buf[p]; buf[p]=v; p=n; }
+  return cache[midi]=b;
+}
+function pluck(midi,vel=.6,pan=0){
+  const ctx=A.ensure(); if(ctx.state!=='running') return;
+  if(!rev){rev=KIT.reverb(4,2.6);const rg=ctx.createGain();rg.gain.value=.45;rev.connect(rg);rg.connect(KIT.out)}
+  const s=ctx.createBufferSource(); s.buffer=ks(midi);
+  const gn=ctx.createGain(); gn.gain.value=vel*.5; const pn=ctx.createStereoPanner(); pn.pan.value=Math.max(-1,Math.min(1,pan));
+  const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1200+vel*6000;
+  s.connect(lp); lp.connect(gn); gn.connect(pn); pn.connect(KIT.out); pn.connect(rev); s.start();
+}
+const noteFor=len=>{ // comprimento (0..1 da diagonal) -> grau da escala; curto = agudo
+  const steps=14, i=Math.round((1-Math.min(1,len/.9))*steps);
+  return KIT.degree(P.scale,i,P.root);
+};
+
+/* ---------- cordas ---------- */
+const strings=[]; const sparks=[];
+function addString(a,b){
+  const len=Math.hypot(b[0]-a[0],b[1]-a[1])/Math.hypot(W,H);
+  if(len<.04) return;
+  const s={a:[...a],b:[...b],midi:noteFor(len),amp:1,phase:0,born:performance.now(),hue:(P.hue+ (noteFor(len)-P.root)*9)%360};
+  strings.push(s); if(strings.length>P.maxStr) strings.shift();
+  pluck(s.midi,.8,(a[0]+b[0])/W-1);
+}
+function cross(p1,p2,a,b){ // segmentos p1-p2 e a-b se cruzam?
+  const d=(x1,y1,x2,y2,x3,y3)=>(x2-x1)*(y3-y1)-(y2-y1)*(x3-x1);
+  const d1=d(a[0],a[1],b[0],b[1],p1[0],p1[1]), d2=d(a[0],a[1],b[0],b[1],p2[0],p2[1]);
+  const d3=d(p1[0],p1[1],p2[0],p2[1],a[0],a[1]), d4=d(p1[0],p1[1],p2[0],p2[1],b[0],b[1]);
+  return (d1*d2<0)&&(d3*d4<0);
+}
+function strike(s,speed,pt){
+  if(performance.now()-(s.last||0)<90) return; s.last=performance.now();
+  s.amp=Math.min(1.6,.5+speed); pluck(s.midi,Math.min(1,.25+speed*.8),(s.a[0]+s.b[0])/W-1);
+  for(let k=0;k<14;k++) sparks.push({x:pt[0],y:pt[1],vx:(Math.random()-.5)*8*DPR,vy:(Math.random()-.5)*8*DPR,a:1,h:s.hue});
+}
+
+/* ---------- mãos ---------- */
+const video=document.createElement('video'); video.muted=true; video.playsInline=true;
+let hands=null, prevTips={}, live=[], lastPinch={};
+async function start(){
+  try{ video.srcObject=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720}}); await video.play(); }catch(e){ document.getElementById('load').textContent='sem câmera — desenhe cordas com o mouse ou o dedo'; return; }
+  try{
+  const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+  hands=await HandLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.6,minTrackingConfidence:.5});
+  document.getElementById('load').remove();
+  }catch(e){ document.getElementById('load').textContent='rastreamento indisponível — desenhe cordas com o mouse ou o dedo'; }
+}
+function toScreen(l){ // espelhado, cobrindo a tela (object-fit: cover)
+  const vw=video.videoWidth, vh=video.videoHeight, s=Math.max(W/vw,H/vh), dx=(W-vw*s)/2, dy=(H-vh*s)/2;
+  return [W-(l.x*vw*s+dx), l.y*vh*s+dy];
+}
+
+/* ---------- mouse/dedo na tela (sem câmera) ---------- */
+let md=null, mprev=null;
+cv.addEventListener('pointerdown',e=>{md=[e.clientX*DPR,e.clientY*DPR]});
+cv.addEventListener('pointermove',e=>{const p=[e.clientX*DPR,e.clientY*DPR]; if(!md&&mprev){const sp=Math.hypot(p[0]-mprev[0],p[1]-mprev[1])/(20*DPR); strings.forEach(s=>{if(cross(mprev,p,s.a,s.b))strike(s,sp,p)})} mprev=p});
+addEventListener('pointerup',e=>{if(md){addString(md,[e.clientX*DPR,e.clientY*DPR]);md=null}});
+
+let lastT=0;
+function frame(ms){
+  A.update();
+  g.fillStyle='#000'; g.fillRect(0,0,W,H);
+  // câmera translúcida
+  if(video.readyState>=2 && P.camA>0){
+    const vw=video.videoWidth, vh=video.videoHeight, s=Math.max(W/vw,H/vh);
+    g.save(); g.globalAlpha=P.camA; g.translate(W,0); g.scale(-1,1); g.filter='grayscale(1) contrast(1.2)';
+    g.drawImage(video,(W-vw*s)/2,(H-vh*s)/2,vw*s,vh*s); g.restore(); g.filter='none';
+  }
+  live=[];
+  if(hands && video.readyState>=2 && ms!==lastT){
+    lastT=ms;
+    const r=hands.detectForVideo(video,ms);
+    const tipsNow={};
+    (r.landmarks||[]).forEach((lm,hi)=>{
+      const side=(r.handednesses?.[hi]?.[0]?.categoryName)||('h'+hi);
+      const th=toScreen(lm[4]), ix=toScreen(lm[8]), wr=toScreen(lm[0]), mid=toScreen(lm[9]);
+      const handSize=Math.hypot(wr[0]-mid[0],wr[1]-mid[1])||1;
+      const pinchD=Math.hypot(th[0]-ix[0],th[1]-ix[1])/handSize;
+      tipsNow[side]={th,ix,pinch:pinchD<P.pinch*6};
+      live.push([th,ix,side]);           // fio entre polegar e indicador
+      // abrir/fechar a pinça percorre a escala (arpejo)
+      const len=Math.hypot(th[0]-ix[0],th[1]-ix[1])/Math.hypot(W,H), n=noteFor(len*3);
+      const key='n'+side; if(len>.02 && prevTips[key]!==undefined && n!==prevTips[key] && Math.abs(n-prevTips[key])<=4) pluck(n,.25,ix[0]/W*2-1);
+      tipsNow[key]=n;
+      // dedos atravessando cordas
+      ['th','ix'].forEach(f=>{ const pp=prevTips[side]?.[f]; if(!pp)return; const p=tipsNow[side][f];
+        const sp=Math.hypot(p[0]-pp[0],p[1]-pp[1])/(18*DPR);
+        strings.forEach(s=>{ if(cross(pp,p,s.a,s.b)) strike(s,sp,p) });
+        if(f==='ix' && sp>3.2*P.flick) { for(let k=0;k<20;k++) sparks.push({x:p[0],y:p[1],vx:(p[0]-pp[0])*.25+(Math.random()-.5)*4*DPR,vy:(p[1]-pp[1])*.25+(Math.random()-.5)*4*DPR,a:1,h:P.hue}); }
+      });
+    });
+    const sides=Object.keys(tipsNow).filter(k=>!k.startsWith('n'));
+    if(sides.length===2){
+      const [a,b]=sides.map(s=>tipsNow[s].ix);
+      live.push([a,b,'duas']);
+      // pinça em qualquer mão fixa a corda entre os indicadores
+      sides.forEach(s=>{ const was=lastPinch[s]; const now=tipsNow[s].pinch; if(now&&!was) addString(a,b); lastPinch[s]=now; });
+    } else sides.forEach(s=>lastPinch[s]=tipsNow[s].pinch);
+    prevTips=tipsNow;
+  }
+  // cordas fixas vibrando
+  const now=performance.now();
+  g.globalCompositeOperation='lighter'; g.lineCap='round';
+  for(let i=strings.length-1;i>=0;i--){
+    const s=strings[i], age=(now-s.born)/1000;
+    const fade=P.life>=120?1:Math.max(0,1-age/P.life); if(fade<=0){strings.splice(i,1);continue}
+    s.phase+=.9; s.amp*=.965;
+    const L=Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1]), nx=-(s.b[1]-s.a[1])/L, ny=(s.b[0]-s.a[0])/L;
+    const lit=.35+Math.min(1,s.amp)*.65 + A.level*.3;
+    [[10,.08],[4,.25],[1.4,1]].forEach(([w,al])=>{
+      g.strokeStyle=`hsla(${s.hue},90%,${al===1?85:60}%,${al*lit*fade})`; g.lineWidth=w*DPR; g.beginPath();
+      for(let k=0;k<=40;k++){const u=k/40, off=Math.sin(u*Math.PI)*Math.sin(s.phase+u*Math.PI*3)*s.amp*14*DPR;
+        const x=s.a[0]+(s.b[0]-s.a[0])*u+nx*off, y=s.a[1]+(s.b[1]-s.a[1])*u+ny*off; k?g.lineTo(x,y):g.moveTo(x,y)} g.stroke();
+    });
+  }
+  // fios vivos entre os dedos
+  live.forEach(([a,b,k])=>{
+    const shimmer=.5+.5*Math.sin(now*.02);
+    g.strokeStyle=k==='duas'?`hsla(${P.hue+40},100%,80%,${.35+shimmer*.3})`:`hsla(${P.hue},100%,75%,.55)`;
+    g.lineWidth=(k==='duas'?1.2:2)*DPR; g.setLineDash(k==='duas'?[6*DPR,6*DPR]:[]); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); g.setLineDash([]);
+    [a,b].forEach(p=>{const gr=g.createRadialGradient(p[0],p[1],0,p[0],p[1],18*DPR);gr.addColorStop(0,`hsla(${P.hue},100%,85%,.9)`);gr.addColorStop(1,'hsla(0,0%,0%,0)');g.fillStyle=gr;g.fillRect(p[0]-18*DPR,p[1]-18*DPR,36*DPR,36*DPR)});
+  });
+  if(md&&mprev){g.strokeStyle=`hsla(${P.hue},100%,75%,.5)`;g.lineWidth=1.5*DPR;g.beginPath();g.moveTo(md[0],md[1]);g.lineTo(mprev[0],mprev[1]);g.stroke()}
+  // faíscas
+  for(let i=sparks.length-1;i>=0;i--){const p=sparks[i]; p.x+=p.vx;p.y+=p.vy;p.vx*=.94;p.vy*=.94;p.a-=.025; if(p.a<=0){sparks.splice(i,1);continue}
+    g.fillStyle=`hsla(${p.h},100%,80%,${p.a})`; g.fillRect(p.x,p.y,2.2*DPR,2.2*DPR)}
+  g.globalCompositeOperation='source-over';
+  requestAnimationFrame(frame);
+}
+KIT.init({title:'Harpa de Ar',canvas:cv,audio:false,hint:'toque para ligar o som · pinça com as duas mãos estica uma corda'});
+KIT.section('Harpa');
+KIT.select('Escala',Object.keys(KIT.scales),'Pentatônica maior',v=>P.scale=v);
+KIT.select('Tom',['Dó','Ré','Mi','Fá','Sol','Lá'],'Dó',v=>P.root={'Dó':48,'Ré':50,'Mi':52,'Fá':53,'Sol':55,'Lá':57}[v]);
+KIT.slider('Vida das cordas (s, 120 = sempre)',5,120,1,60,v=>P.life=v);
+KIT.slider('Máximo de cordas',3,30,1,14,v=>P.maxStr=v);
+KIT.slider('Sensibilidade da pinça',.02,.12,.005,.055,v=>P.pinch=v);
+KIT.slider('Faíscas do gesto rápido',.3,3,.05,1,v=>P.flick=v);
+KIT.section('Imagem');
+KIT.slider('Transparência da câmera',0,1,.01,.28,v=>P.camA=v);
+KIT.slider('Cor',0,360,1,190,v=>P.hue=v);
+KIT.buttons([['Apagar cordas',()=>strings.length=0]]);
+start();
+requestAnimationFrame(frame);
+</script>
+</body></html>

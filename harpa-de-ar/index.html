@@ -255,7 +255,7 @@ import {FilesetResolver, HandLandmarker} from 'https://cdn.jsdelivr.net/npm/@med
 const cv=document.getElementById('c'), g=cv.getContext('2d');
 let W,H,DPR; function size(){DPR=Math.min(devicePixelRatio,2);W=cv.width=innerWidth*DPR;H=cv.height=innerHeight*DPR} size(); addEventListener('resize',size);
 const A=KIT.audio;
-const P={temp:true,sizes:10,names:true,ruler:true,camA:.28,scale:'Pentatônica maior',root:48,life:60,maxStr:14,pinch:.055,flick:1,hue:190};
+const P={mini:.42,hold:4,temp:true,sizes:10,names:true,ruler:true,camA:.28,scale:'Pentatônica maior',root:48,life:60,maxStr:14,pinch:.055,flick:1,hue:190};
 
 /* ---------- som: corda Karplus-Strong pré-calculada ---------- */
 const cache={}; let rev;
@@ -341,7 +341,7 @@ function strike(s,speed,pt){
 
 /* ---------- mãos ---------- */
 const video=document.createElement('video'); video.muted=true; video.playsInline=true;
-let hands=null, prevTips={}, live=[], lastPinch={};
+let hands=null, prevTips={}, live=[], mini={}, both={frames:0,armed:true};
 async function start(){
   try{ video.srcObject=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720}}); await video.play(); }catch(e){ (document.getElementById('load')||{}).textContent='sem câmera — desenhe cordas com o mouse ou o dedo'; return; }
   try{
@@ -380,8 +380,10 @@ function frame(ms){
       const side=(r.handednesses?.[hi]?.[0]?.categoryName)||('h'+hi);
       const th=toScreen(lm[4]), ix=toScreen(lm[8]), wr=toScreen(lm[0]), mid=toScreen(lm[9]);
       const handSize=Math.hypot(wr[0]-mid[0],wr[1]-mid[1])||1;
-      const pinchD=Math.hypot(th[0]-ix[0],th[1]-ix[1])/handSize;
-      tipsNow[side]={th,ix,pinch:pinchD<P.pinch*6};
+      // pinça do dedo mínimo (polegar + mindinho), com histerese para não piscar
+      const pk=toScreen(lm[20]), miniD=Math.hypot(th[0]-pk[0],th[1]-pk[1])/handSize;
+      const was=!!mini[side]; mini[side]= was ? miniD<P.mini*1.45 : miniD<P.mini;
+      tipsNow[side]={th,ix,pk,mini:mini[side],miniD};
       live.push([th,ix,side]);           // fio entre polegar e indicador
       // abrir/fechar a pinça percorre a escala (arpejo)
       const len=Math.hypot(th[0]-ix[0],th[1]-ix[1])/Math.hypot(W,H), n=noteFor(len*3);
@@ -398,9 +400,13 @@ function frame(ms){
     if(sides.length===2){
       const [a,b]=sides.map(s=>tipsNow[s].ix);
       live.push([a,b,'duas']);
-      // pinça em qualquer mão fixa a corda entre os indicadores
-      sides.forEach(s=>{ const was=lastPinch[s]; const now=tipsNow[s].pinch; if(now&&!was) addString(a,b); lastPinch[s]=now; });
-    } else sides.forEach(s=>lastPinch[s]=tipsNow[s].pinch);
+      // as DUAS pinças do dedo mínimo fechadas (por alguns quadros) fixam a corda entre os indicadores;
+      // para criar outra, é preciso abrir ao menos uma das pinças
+      const fechadas=sides.every(s=>tipsNow[s].mini);
+      if(fechadas){ both.frames++; if(both.armed && both.frames>=P.hold){ addString(a,b); both.armed=false; } }
+      else { both.frames=0; both.armed=true; }
+    } else { both.frames=0; both.armed=true; }
+    sides.forEach(s=>live.push([tipsNow[s].th,tipsNow[s].pk,'mini',tipsNow[s].mini,tipsNow[s].miniD]));
     prevTips=tipsNow;
   }
   // cordas fixas vibrando
@@ -421,7 +427,13 @@ function frame(ms){
   }
   // fios vivos entre os dedos
   let active=null;
-  live.forEach(([a,b,k])=>{
+  live.forEach(([a,b,k,closed,d])=>{
+    if(k==='mini'){ // anel no encontro polegar–mindinho: enche quando fecha
+      const cx=(a[0]+b[0])/2, cy=(a[1]+b[1])/2, rr=9*DPR, prog=Math.max(0,Math.min(1,1-(d-P.mini)/(1.1-P.mini)));
+      g.strokeStyle=closed?`hsla(${P.hue+40},100%,80%,.95)`:'rgba(255,255,255,.35)'; g.lineWidth=1.5*DPR;
+      g.beginPath(); g.arc(cx,cy,rr,-Math.PI/2,-Math.PI/2+prog*Math.PI*2); g.stroke();
+      if(closed){ g.fillStyle=`hsla(${P.hue+40},100%,80%,.5)`; g.beginPath(); g.arc(cx,cy,rr*.6,0,7); g.fill(); }
+      return; }
     if(k==='duas'){ const m=drawGhost(a,b); if(m!==null) active=m; }
     const shimmer=.5+.5*Math.sin(now*.02);
     g.strokeStyle=k==='duas'?`hsla(${P.hue+40},100%,80%,${.35+shimmer*.3})`:`hsla(${P.hue},100%,75%,.55)`;
@@ -438,7 +450,7 @@ function frame(ms){
   requestAnimationFrame(frame);
 }
 const demo={on:false,prev:null,next:0,t0:0};
-KIT.init({title:'Harpa de Ar',canvas:cv,audio:false,demoSong:false,hint:'toque para ligar o som · pinça com as duas mãos estica uma corda',onDemo:on=>{
+KIT.init({title:'Harpa de Ar',canvas:cv,audio:false,demoSong:false,hint:'toque para ligar o som · feche polegar e mindinho nas duas mãos para criar uma corda',onDemo:on=>{
   if(!on && !video.srcObject) start();
   demo.on=on; demo.prev=null; demo.next=0; demo.t0=performance.now(); if(on) strings.length=0;
 }});
@@ -467,7 +479,8 @@ KIT.toggle('Mostrar régua de tamanhos',true,v=>P.ruler=v);
 KIT.section('Cordas');
 KIT.slider('Vida das cordas (s, 120 = sempre)',5,120,1,60,v=>P.life=v);
 KIT.slider('Máximo de cordas',3,30,1,14,v=>P.maxStr=v);
-KIT.slider('Sensibilidade da pinça',.02,.12,.005,.055,v=>P.pinch=v);
+KIT.slider('Pinça do mínimo: abertura que conta como fechada',.2,.8,.01,.42,v=>P.mini=v);
+KIT.slider('Pinça do mínimo: quadros segurando',1,15,1,4,v=>P.hold=v);
 KIT.slider('Faíscas do gesto rápido',.3,3,.05,1,v=>P.flick=v);
 KIT.section('Imagem');
 KIT.slider('Transparência da câmera',0,1,.01,.28,v=>P.camA=v);

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super Trunfo — Mitologia Nórdica · Imprimir</title>
+<link rel="stylesheet" href="/super-trunfo/nucleo/carta.css">
+<style>
+@page{ size: A4 landscape; margin: 0; }
+html,body{ margin:0; background:#5b5650; font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+.barra{ position: sticky; top: 0; z-index: 9; background: #1c1a17; color: #f3eee6; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+.barra h1{ font-size: 16px; margin: 0 8px 0 0; font-weight: 800; }
+.barra a{ color: #ffd36b; }
+.barra label{ font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.barra select,.barra button{ font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; border: 1px solid #555; background: #2c2925; color: #fff; }
+.barra button.imp{ background: #ffd36b; color: #111; font-weight: 800; border: 0; cursor: pointer; padding: 8px 16px; }
+.barra .dica{ font-size: 12px; color: #c9bfae; flex-basis: 100%; }
+.folhas{ display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 18px 0 40px; }
+.folha{ width: 297mm; height: 210mm; background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.35); position: relative; overflow: hidden;
+  display: grid; grid-template-columns: repeat(4, 63mm); grid-template-rows: repeat(2, 88mm); gap: 4mm; justify-content: center; align-content: center; }
+.folha .slot{ position: relative; width: 63mm; height: 88mm; }
+.folha .slot::after{ content:""; position:absolute; inset:-1.5mm; border: .2mm dashed #c8c8c8; pointer-events:none; }
+.folha .rot{ position: absolute; bottom: 4mm; left: 0; right: 0; text-align: center; font-size: 8pt; color: #999; }
+@media print{
+  html,body{ background: #fff; }
+  .barra{ display: none; }
+  .folhas{ padding: 0; gap: 0; }
+  .folha{ box-shadow: none; page-break-after: always; break-after: page; }
+}
+</style>
+</head>
+<body>
+<div class="barra">
+  <h1>ᛟ Imprimir cartas · Mitologia Nórdica</h1>
+  <label>Estilo <select id="estilo"></select></label>
+  <label>Cartas <select id="quais">
+    <option value="todas">Todas (48)</option>
+  </select></label>
+  <label>Versos <select id="versos">
+    <option value="nao">Sem verso</option>
+    <option value="intercalado">Frente e verso (impressão duplex)</option>
+    <option value="final">Versos no fim</option>
+  </select></label>
+  <button class="imp" onclick="window.print()">Imprimir</button>
+  <a href="./">← Voltar ao jogo</a>
+  <div class="dica">A4 deitado, 8 cartas por folha (63 × 88 mm, o tamanho de carta de baralho). Imprima em <b>tamanho real / 100%</b> (sem "ajustar à página") e com gráficos de fundo ligados. Papel de 180 a 240 g fica com cara de carta. Para frente e verso, use duplex virando pela borda longa.</div>
+</div>
+<div class="folhas" id="folhas"></div>
+<script src="baralho.js"></script>
+<script src="/super-trunfo/nucleo/carta.js"></script>
+<script>
+const NOVAS = BARALHO.novas || [];
+const $ = id => document.getElementById(id);
+if(NOVAS.length) $("quais").insertAdjacentHTML("beforeend", `<option value="novas">Só as ${NOVAS.length} novas</option>`);
+Object.entries(GRUPOS).forEach(([k, g]) => $("quais").insertAdjacentHTML("beforeend", `<option value="${k}">${k} · ${g.n}</option>`));
+ESTILOS.forEach(e => $("estilo").insertAdjacentHTML("beforeend", `<option value="${e.k}">${e.n}</option>`));
+const q = new URLSearchParams(location.search);
+let salvo = null; try{ salvo = localStorage.getItem("st-estilo"); }catch(e){}
+let est0 = q.get("estilo") || salvo || "original"; est0 = est0 === "anfora" ? "faixa" : est0 === "marmore" ? "nobre" : est0;
+$("estilo").value = ESTILOS.some(e => e.k === est0) ? est0 : "original";
+if(q.get("cartas")) $("quais").value = q.get("cartas");
+
+function montar(){
+  const est = $("estilo").value, quais = $("quais").value, versos = $("versos").value;
+  let lista = CARTAS;
+  if(quais === "novas") lista = CARTAS.filter(c => NOVAS.includes(c.cod));
+  else if(quais.length === 1) lista = CARTAS.filter(c => c.grupo === quais);
+  const paginas = [];
+  for(let i = 0; i < lista.length; i += 8) paginas.push(lista.slice(i, i + 8));
+  const frente = p => `<div class="folha">${p.map(c => `<div class="slot">${htmlCarta(c, est, {w:"63mm"})}</div>`).join("")}</div>`;
+  const verso = n => `<div class="folha">${Array.from({length:n}, () => `<div class="slot">${htmlVerso(est, {w:"63mm"})}</div>`).join("")}</div>`;
+  let h = "";
+  if(versos === "intercalado") paginas.forEach(p => { h += frente(p) + verso(8); });
+  else { paginas.forEach(p => h += frente(p)); if(versos === "final") paginas.forEach(() => h += verso(8)); }
+  $("folhas").innerHTML = h;
+  try{ localStorage.setItem("st-estilo", est); }catch(e){}
+}
+["estilo","quais","versos"].forEach(id => $(id).addEventListener("change", montar));
+montar();
+</script>
+</body>
+</html>

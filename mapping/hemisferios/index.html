@@ -6,7 +6,8 @@
 <title>Hemisférios Espectrais — Mapping</title>
 <style>
 html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#e8e6e1}
-#gl,#ov{position:fixed;inset:0;width:100%;height:100%;display:block}
+#gl,#ov{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#ov{touch-action:none}
 body.proj #ov,body.proj #panel{display:none}
 body.proj{cursor:none}
 body.hidden #panel,body.hidden #ov{display:none}
@@ -29,6 +30,14 @@ button.on{background:#c8553d;border-color:#c8553d}
 #meter{width:100%;height:44px;background:#000;border-radius:4px;display:block;margin-top:6px}
 .hint{color:#8a867d;font-size:11px;line-height:1.5}
 .hint b{color:#cfc9bc;font-weight:600}
+body.ctrl{background:#0d0d0f}
+body.ctrl #gl{box-shadow:0 0 0 1px #3a3a3a}
+body.ctrl #panel{top:0;right:0;bottom:0;height:100%;max-height:none;width:340px;border-radius:0;border-width:0 0 0 1px}
+body.ctrl .no-ctrl{display:none}
+#sala{font:700 26px ui-monospace,Menlo,monospace;letter-spacing:.18em;color:#e0b84a;align-self:center}
+#codIn{width:96px;text-transform:uppercase;font:600 16px ui-monospace,Menlo,monospace;letter-spacing:.15em;background:#26262a;color:#eee;border:1px solid #444;border-radius:6px;padding:5px 8px}
+#remState{word-break:break-all}
+@media (pointer:coarse){input[type=range]{height:30px}button,select{padding:9px 12px;font-size:14px}label.row{grid-template-columns:92px 1fr 46px}}
 #tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:8px 14px;border-radius:8px;font-size:13px;transition:opacity 1s;pointer-events:none}
 </style>
 </head>
@@ -39,6 +48,12 @@ button.on{background:#c8553d;border-color:#c8553d}
 <div id="panel">
   <h1>Hemisférios Espectrais</h1>
   <div class="sub">Mapping de espectro de áudio nos hemisférios do teto</div>
+
+  <h2>Controle pelo iPad</h2>
+  <div class="btns no-ctrl"><button id="salaBtn">Abrir sala (no Mac)</button><span id="sala"></span></div>
+  <div class="btns"><input id="codIn" maxlength="4" placeholder="CÓDIGO" autocapitalize="characters" autocomplete="off"><button id="entrarBtn">Entrar (no iPad)</button></div>
+  <div class="hint" id="remState">Desconectado</div>
+  <div class="hint" style="margin-top:6px">No Mac ligado ao projetor, clique em <b>Abrir sala</b>. No iPad, abra esta mesma página e digite o código em <b>Entrar</b> (ou abra o link que aparece acima). O microfone fica no Mac. O iPad vira a mesa de controle, com uma prévia no formato do projetor onde dá para arrastar as alças com o dedo.</div>
 
   <h2>Áudio</h2>
   <div class="btns">
@@ -92,7 +107,7 @@ button.on{background:#c8553d;border-color:#c8553d}
 
   <h2>Saída</h2>
   <div class="btns">
-    <button id="projBtn">Janela de projeção</button>
+    <button id="projBtn" class="no-ctrl">Janela de projeção</button>
     <button id="fsBtn">Tela cheia</button>
     <button id="hideBtn">Esconder controles (H)</button>
   </div>
@@ -106,18 +121,23 @@ button.on{background:#c8553d;border-color:#c8553d}
   <h2>Como usar</h2>
   <div class="hint">
     Com o Mac <b>espelhado</b> no projetor: arraste direto na tela olhando o teto. Com a tela <b>estendida</b>: abra a janela de projeção, leve-a ao projetor e clique nela para tela cheia.<br><br>
-    <b>Arrastar dentro</b> do círculo move. <b>Alça ●</b> à direita: largura + rotação. <b>Alça ●</b> embaixo: altura. <b>Cruz ✛</b>: ápice do hemisfério (onde fica o ponto mais baixo, visto do projetor).<br>
+    <b>Arrastar dentro</b> do círculo (fora da cruz) move. <b>Alça ●</b> à direita: largura + rotação. <b>Alça ●</b> embaixo: altura. <b>Cruz ✛</b>: ápice do hemisfério (onde fica o ponto mais baixo, visto do projetor).<br>
     <b>Profundidade</b>: ajuste com a grade ligada até os anéis parecerem igualmente espaçados <i>sobre</i> o hemisfério.<br><br>
     Teclas: <b>Tab</b> próximo · <b>1–8</b> escolher · <b>setas</b> mover (Shift = rápido) · <b>Alt+setas</b> largura/altura · <b>Q/W</b> rotação · <b>A/S</b> profundidade · <b>C</b> calibração · <b>H</b> esconder · <b>F</b> tela cheia
   </div>
 </div>
 <div id="tip" style="opacity:0"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 (() => {
 const isProj = new URLSearchParams(location.search).has('proj');
 if (isProj) document.body.classList.add('proj');
 const NB = 64, MAXH = 8, KEY = 'hemisferios-espectrais-v1';
+let role = 'solo';                 // 'solo' | 'host' (Mac) | 'ctrl' (iPad)
+let hostAspect = 16/9;
+const VR = {x:0, y:0, w:innerWidth, h:innerHeight};
+let applyingRemote = false;
 const bc = ('BroadcastChannel' in window) ? new BroadcastChannel('hemisferios-espectrais') : null;
 
 // ---------- estado ----------
@@ -139,6 +159,7 @@ try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.hemis) S = Obj
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
   if (bc && !isProj) bc.postMessage({t:'state', s:S});
+  if (!applyingRemote && typeof sendState === 'function') sendState();
 }
 
 // ---------- WebGL ----------
@@ -253,8 +274,17 @@ let dpr = 1;
 const ov = document.getElementById('ov'); const ctx = ov.getContext('2d');
 function resize(){
   dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.width = ov.width = Math.round(innerWidth*dpr);
-  cv.height = ov.height = Math.round(innerHeight*dpr);
+  if (role === 'ctrl'){
+    // prévia no formato exato da tela do projetor, ao lado do painel
+    const pad = 14, avail = innerWidth - (innerWidth > 700 ? 340 : 0);
+    let w = avail - 2*pad, h = w / hostAspect;
+    if (h > innerHeight - 2*pad){ h = innerHeight - 2*pad; w = h * hostAspect; }
+    VR.x = (avail - w)/2; VR.y = (innerHeight - h)/2; VR.w = w; VR.h = h;
+  } else { VR.x = 0; VR.y = 0; VR.w = innerWidth; VR.h = innerHeight; }
+  [cv, ov].forEach(c => { c.style.left = VR.x+'px'; c.style.top = VR.y+'px'; c.style.width = VR.w+'px'; c.style.height = VR.h+'px'; });
+  cv.width = ov.width = Math.round(VR.w*dpr);
+  cv.height = ov.height = Math.round(VR.h*dpr);
+  if (role === 'host' && typeof sendStatus === 'function') sendStatus();
 }
 addEventListener('resize', resize); resize();
 
@@ -339,8 +369,9 @@ async function startMic(deviceId){
     micState.textContent = 'sem acesso ao microfone';
     console.error(e);
   }
+  sendStatus();
 }
-micBtn.onclick = () => startMic(devSel.value || undefined);
+micBtn.onclick = () => role === 'ctrl' ? sendCmd('mic') : startMic(devSel.value || undefined);
 devSel.onchange = () => startMic(devSel.value);
 
 function updateSpectrum(t){
@@ -378,7 +409,7 @@ function drawMeter(){
 }
 
 // ---------- alças de edição ----------
-function hPx(h){ const W=innerWidth, H=innerHeight;
+function hPx(h){ const W=VR.w, H=VR.h;
   return {cx:h.x*W, cy:h.y*H, rx:h.rx*H, ry:h.ry*H, c:Math.cos(h.rot), s:Math.sin(h.rot)}; }
 function toWorld(P, lx, ly){ return [P.cx + P.c*lx - P.s*ly, P.cy + P.s*lx + P.c*ly]; }
 function handles(h){
@@ -387,7 +418,7 @@ function handles(h){
 }
 function drawOverlay(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,innerWidth,innerHeight);
+  ctx.clearRect(0,0,VR.w,VR.h);
   S.hemis.forEach((h,i) => {
     const H = handles(h), sel = i===S.sel;
     ctx.save();
@@ -403,21 +434,22 @@ function drawOverlay(){
     const dot = (p,r,fill) => { ctx.beginPath(); ctx.arc(p[0],p[1],r,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle='#000'; ctx.lineWidth=1.5; ctx.stroke(); };
     ctx.strokeStyle='rgba(255,200,70,.5)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(...H.center); ctx.lineTo(...H.rxH); ctx.moveTo(...H.center); ctx.lineTo(...H.ryH); ctx.stroke();
-    dot(H.center, 6, '#ffc846'); dot(H.rxH, 7, '#ff8a3d'); dot(H.ryH, 7, '#ff8a3d');
+    const hr = TOUCH ? 11 : 7; dot(H.center, hr-1, '#ffc846'); dot(H.rxH, hr, '#ff8a3d'); dot(H.ryH, hr, '#ff8a3d');
     const a = H.apex; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.moveTo(a[0]-9,a[1]); ctx.lineTo(a[0]+9,a[1]); ctx.moveTo(a[0],a[1]-9); ctx.lineTo(a[0],a[1]+9); ctx.stroke();
   });
 }
 let drag = null;
+const TOUCH = matchMedia('(pointer:coarse)').matches, HR = TOUCH ? 26 : 12;
 const dist2 = (a,b) => Math.hypot(a[0]-b[0], a[1]-b[1]);
 ov.addEventListener('pointerdown', e => {
-  const m = [e.clientX, e.clientY];
+  const m = [e.clientX - VR.x, e.clientY - VR.y];
   const h = S.hemis[S.sel];
   if (h){
     const H = handles(h);
-    if (dist2(m,H.apex) < 12) drag = {k:'apex'};
-    else if (dist2(m,H.rxH) < 12) drag = {k:'rx'};
-    else if (dist2(m,H.ryH) < 12) drag = {k:'ry'};
+    if (dist2(m,H.apex) < HR*0.6) drag = {k:'apex'};
+    else if (dist2(m,H.rxH) < HR) drag = {k:'rx'};
+    else if (dist2(m,H.ryH) < HR) drag = {k:'ry'};
   }
   if (!drag){
     // clique dentro de algum hemisfério: seleciona e move (de cima para baixo, menor primeiro)
@@ -433,7 +465,7 @@ ov.addEventListener('pointerdown', e => {
 });
 ov.addEventListener('pointermove', e => {
   if (!drag) return;
-  const h = S.hemis[S.sel], P = hPx(h), m=[e.clientX,e.clientY], W=innerWidth, H=innerHeight;
+  const h = S.hemis[S.sel], P = hPx(h), m=[e.clientX-VR.x,e.clientY-VR.y], W=VR.w, H=VR.h;
   if (drag.k==='move'){ h.x = (m[0]-drag.ox)/W; h.y = (m[1]-drag.oy)/H; }
   else if (drag.k==='rx'){
     const dx=m[0]-P.cx, dy=m[1]-P.cy;
@@ -449,7 +481,7 @@ ov.addEventListener('pointermove', e => {
   }
   syncUI(); save();
 });
-ov.addEventListener('pointerup', () => { drag = null; });
+ov.addEventListener('pointerup', () => { if (drag){ drag = null; sendState(true); } });
 
 // ---------- painel ----------
 const $ = id => document.getElementById(id);
@@ -506,11 +538,13 @@ $('impFile').onchange = async e => {
 function toggleFS(){ if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
 const tip = $('tip'); let tipT;
 function toggleHide(){
+  if (role === 'ctrl'){ sendCmd('hide'); return; }
   document.body.classList.toggle('hidden');
   if (document.body.classList.contains('hidden')){
     tip.textContent = 'Controles escondidos — tecle H para voltar'; tip.style.opacity = 1;
     clearTimeout(tipT); tipT = setTimeout(()=>tip.style.opacity=0, 2200);
   }
+  sendStatus();
 }
 
 addEventListener('keydown', e => {
@@ -529,7 +563,7 @@ addEventListener('keydown', e => {
       if (e.key==='ArrowRight') h.rx += step; if (e.key==='ArrowLeft') h.rx = Math.max(.01,h.rx-step);
       if (e.key==='ArrowDown') h.ry += step; if (e.key==='ArrowUp') h.ry = Math.max(.01,h.ry-step);
     } else {
-      const ar = innerHeight/innerWidth;
+      const ar = VR.h/VR.w;
       if (e.key==='ArrowRight') h.x += step*ar; if (e.key==='ArrowLeft') h.x -= step*ar;
       if (e.key==='ArrowDown') h.y += step; if (e.key==='ArrowUp') h.y -= step;
     }
@@ -544,13 +578,122 @@ addEventListener('keydown', e => {
 
 if (bc) bc.onmessage = e => { if (e.data.t==='hello') bc.postMessage({t:'state', s:S}); };
 
+// ---------- controle pelo iPad (PeerJS) ----------
+const PFX = 'hemisferios-estevao-';
+let peer = null, conns = [], sendT = 0, sendPend = false, roomCode = '', retryT = null, lastSpec = 0;
+function remState(t){ $('remState').textContent = t; }
+function code4(){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ'; let s=''; for(let i=0;i<4;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
+function sendAll(msg){ conns.forEach(c => { if (c.open) c.send(msg); }); }
+function sendState(now){
+  if (!conns.length) return;
+  const go = () => { sendT = performance.now(); sendAll({t:'state', s:S}); };
+  const n = performance.now();
+  if (now || n - sendT > 40) go();
+  else if (!sendPend){ sendPend = true; setTimeout(() => { sendPend = false; go(); }, 45); }
+}
+function sendCmd(c){ if (conns.length) sendAll({t:'cmd', c}); else remState('Não conectado ao Mac'); }
+function sendStatus(){
+  if (role !== 'host' || !conns.length) return;
+  sendAll({t:'status', aspect: innerWidth/innerHeight, hidden: document.body.classList.contains('hidden'), mic: micState.textContent});
+}
+function applyState(s){
+  if (!s || !s.hemis) return;
+  applyingRemote = true; S = s;
+  if (S.sel >= S.hemis.length) S.sel = 0;
+  syncUI(); save();
+  applyingRemote = false;
+}
+function onRemote(d, c){
+  if (!d || !d.t) return;
+  if (role === 'host'){
+    if (d.t === 'state'){ applyState(d.s); conns.forEach(o => { if (o !== c && o.open) o.send(d); }); }
+    else if (d.t === 'cmd'){
+      if (d.c === 'hide') toggleHide();
+      else if (d.c === 'mic') startMic(devSel.value || undefined);
+      sendStatus();
+    }
+  } else if (role === 'ctrl'){
+    if (d.t === 'state') applyState(d.s);
+    else if (d.t === 'spec'){ for (let k=0;k<NB;k++){ specBytes[k] = d.d[k]; specSm[k] = d.d[k]/255; } lastSpec = performance.now(); }
+    else if (d.t === 'status'){
+      if (d.aspect && Math.abs(d.aspect - hostAspect) > 0.001){ hostAspect = d.aspect; resize(); }
+      $('hideBtn').textContent = d.hidden ? 'Mostrar controles no Mac' : 'Esconder controles no Mac';
+      micState.textContent = 'Mac: ' + (d.mic || '—');
+      micBtn.classList.toggle('on', d.mic === 'ao vivo');
+    }
+  }
+}
+function setupConn(c){
+  c.on('open', () => {
+    conns.push(c);
+    if (role === 'host'){ c.send({t:'state', s:S}); sendStatus(); remState('iPad conectado ✓ (sala ' + roomCode + ')'); }
+    else remState('Conectado ao Mac ✓ (sala ' + roomCode + ')');
+  });
+  c.on('data', d => onRemote(d, c));
+  c.on('close', () => {
+    conns = conns.filter(x => x !== c);
+    if (role === 'host') remState(conns.length ? 'iPad conectado ✓' : 'Sala ' + roomCode + ' aberta — esperando o iPad');
+    else { remState('Conexão perdida — tentando de novo…'); retryJoin(); }
+  });
+}
+function roomLink(code){ return location.origin + location.pathname + '?sala=' + code; }
+function openRoom(code){
+  if (typeof Peer === 'undefined'){ remState('Sem internet para o controle remoto'); return; }
+  if (peer) peer.destroy();
+  role = 'host'; conns = []; roomCode = code || code4();
+  remState('Abrindo sala…');
+  peer = new Peer(PFX + roomCode);
+  peer.on('open', () => {
+    $('sala').textContent = roomCode;
+    $('salaBtn').textContent = 'Sala aberta'; $('salaBtn').classList.add('on');
+    remState('Sala ' + roomCode + ' aberta — no iPad: ' + roomLink(roomCode));
+    try { localStorage.setItem(KEY+'-sala', roomCode); localStorage.setItem(KEY+'-host', '1'); } catch(e){}
+  });
+  peer.on('connection', setupConn);
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch(e){} });
+  peer.on('error', e => { if (e.type === 'unavailable-id') openRoom(); else remState('Erro: ' + e.type); });
+}
+function retryJoin(){ clearTimeout(retryT); retryT = setTimeout(() => { if (role === 'ctrl' && !conns.length) joinRoom(roomCode); }, 3000); }
+function joinRoom(code){
+  if (typeof Peer === 'undefined'){ remState('Sem internet para o controle remoto'); return; }
+  code = (code || '').toUpperCase().trim();
+  if (code.length !== 4){ remState('O código tem 4 letras'); return; }
+  if (peer) peer.destroy();
+  role = 'ctrl'; conns = []; roomCode = code;
+  document.body.classList.add('ctrl'); document.body.classList.remove('hidden');
+  $('codIn').value = code;
+  micBtn.textContent = '🎙 Ligar microfone do Mac';
+  $('hideBtn').textContent = 'Esconder controles no Mac';
+  try { localStorage.setItem(KEY+'-sala', code); localStorage.removeItem(KEY+'-host'); } catch(e){}
+  resize();
+  remState('Conectando à sala ' + code + '…');
+  peer = new Peer();
+  peer.on('open', () => setupConn(peer.connect(PFX + code, {reliable:true, serialization:'json'})));
+  peer.on('error', e => {
+    remState(e.type === 'peer-unavailable' ? 'Sala ' + code + ' não encontrada — abra a sala no Mac (tentando de novo…)' : 'Erro: ' + e.type);
+    retryJoin();
+  });
+}
+$('salaBtn').onclick = () => { let c = null; try { c = localStorage.getItem(KEY+'-sala'); } catch(e){} openRoom(c); };
+$('entrarBtn').onclick = () => joinRoom($('codIn').value);
+$('codIn').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(e.target.value); e.stopPropagation(); });
+try { $('codIn').value = localStorage.getItem(KEY+'-sala') || ''; } catch(e){}
+{
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('sala')) setTimeout(() => joinRoom(qs.get('sala')), 300);
+  else { let h = null, c = null; try { h = localStorage.getItem(KEY+'-host'); c = localStorage.getItem(KEY+'-sala'); } catch(e){}
+         if (h && c) setTimeout(() => openRoom(c), 300); }   // Mac reabre a mesma sala ao recarregar
+}
+
 syncUI();
 let frame = 0;
 (function loop(now){
   const t = (now||0)/1000;
-  updateSpectrum(t);
+  if (!(role === 'ctrl' && performance.now() - lastSpec < 1500)) updateSpectrum(t);
   drawGL();
-  if (!document.body.classList.contains('hidden')){ drawOverlay(); if ((frame++ & 1)===0) drawMeter(); }
+  if (role === 'host' && conns.length && (frame % 3) === 0) sendAll({t:'spec', d:Array.from(specBytes)});
+  if (!document.body.classList.contains('hidden')){ drawOverlay(); if ((frame & 1)===0) drawMeter(); }
+  frame++;
   if (bc) bc.postMessage({t:'spec', d:specBytes});
   requestAnimationFrame(loop);
 })();

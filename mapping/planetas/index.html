@@ -39,6 +39,13 @@ body.ctrl .no-ctrl{display:none}
 #codIn{width:96px;text-transform:uppercase;font:600 16px ui-monospace,Menlo,monospace;letter-spacing:.15em;background:#26262a;color:#eee;border:1px solid #444;border-radius:6px;padding:5px 8px}
 #remState{word-break:break-all}
 @media (pointer:coarse){input[type=range]{height:30px}button,select{padding:9px 12px;font-size:14px}label.row{grid-template-columns:96px 1fr 46px}}
+#panel .bar{display:flex;align-items:center;gap:6px;cursor:move;margin:-12px -14px 8px;padding:9px 10px 9px 14px;border-bottom:1px solid #2a2a2a;position:sticky;top:-12px;background:rgba(16,16,18,.97);z-index:2;touch-action:none;user-select:none;-webkit-user-select:none}
+#panel .bar button{padding:3px 9px;font-size:14px;line-height:1}
+#panel.min>*:not(.bar){display:none}
+#panel.min .bar{margin-bottom:-12px;border-bottom:0}
+body:not(.ctrl).editing #panel{opacity:.12;pointer-events:none;transition:opacity .2s}
+body.ctrl #panel .bar{cursor:default}
+body.ctrl #pMin,body.ctrl #pSide{display:none}
 #tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:8px 14px;border-radius:8px;font-size:13px;transition:opacity 1s;pointer-events:none}
 </style>
 </head>
@@ -48,7 +55,7 @@ body.ctrl .no-ctrl{display:none}
 <canvas id="ov"></canvas>
 
 <div id="panel">
-  <h1>Dois Planetas</h1>
+  <div class="bar"><h1 style="flex:1;margin:0">Dois Planetas</h1><button id="pSide" title="Trocar de lado">⇆</button><button id="pMin" title="Minimizar">–</button></div>
   <div class="sub">Mapping nos hemisférios do teto: sol no centro, planetas em fase, naves de um para o outro</div>
 
   <h2>Controle pelo iPad</h2>
@@ -288,6 +295,7 @@ function resize(){
   [cv, fx, ov].forEach(c => { c.style.left = VR.x+'px'; c.style.top = VR.y+'px'; c.style.width = VR.w+'px'; c.style.height = VR.h+'px';
     c.width = Math.round(VR.w*dpr); c.height = Math.round(VR.h*dpr); });
   if (role === 'host' && typeof sendStatus === 'function') sendStatus();
+  if (typeof applyPanel === 'function') applyPanel();
 }
 addEventListener('resize', resize); resize();
 
@@ -618,7 +626,7 @@ ov.addEventListener('pointerdown', e => {
       if (lx*lx+ly*ly <= 1){ S.sel = i; drag = {k:'move', ox:m[0]-P.cx, oy:m[1]-P.cy}; break; }
     }
   }
-  if (drag){ ov.setPointerCapture(e.pointerId); syncUI(); }
+  if (drag){ ov.setPointerCapture(e.pointerId); document.body.classList.add('editing'); syncUI(); }
 });
 ov.addEventListener('pointermove', e => {
   if (!drag) return;
@@ -637,7 +645,8 @@ ov.addEventListener('pointermove', e => {
   }
   syncUI(); save();
 });
-ov.addEventListener('pointerup', () => { if (drag){ drag = null; sendState(true); } });
+ov.addEventListener('pointerup', () => { document.body.classList.remove('editing'); if (drag){ drag = null; sendState(true); } });
+ov.addEventListener('pointercancel', () => { document.body.classList.remove('editing'); drag = null; });
 
 // ---------- painel ----------
 const pct = v => Math.round(v*100)+'%';
@@ -851,6 +860,43 @@ launch = function(big, from){
   const before = ships.length; _launch(big, from);
   if (bc && ships.length > before){ const s = ships[ships.length-1]; bc.postMessage({t:'ship', s:{p0:s.p0.map((v,i)=>v/(i?VR.h:VR.w)), p1:s.p1.map((v,i)=>v/(i?VR.h:VR.w)), p2:s.p2.map((v,i)=>v/(i?VR.h:VR.w)), dur:s.dur, size:s.size, col:s.col, norm:true}}); }
 };
+
+// ---------- painel móvel: arrastar pela barra, minimizar, trocar de lado ----------
+var PK = KEY + '-painel', PP = {}, pd = null;
+try { PP = JSON.parse(localStorage.getItem(PK)) || {}; } catch(e){}
+function applyPanel(){
+  if (!PP) return;
+  var panel = document.getElementById('panel');
+  if (role === 'ctrl'){ panel.classList.remove('min'); panel.style.left = panel.style.top = panel.style.right = ''; return; }
+  panel.classList.toggle('min', !!PP.min);
+  document.getElementById('pMin').textContent = PP.min ? '+' : '–';
+  if (PP.x != null){
+    var w = panel.offsetWidth;
+    panel.style.left = Math.min(Math.max(0, PP.x), innerWidth - w) + 'px';
+    panel.style.top = Math.min(Math.max(0, PP.y), innerHeight - 44) + 'px';
+    panel.style.right = 'auto';
+  } else { panel.style.left = ''; panel.style.right = '12px'; panel.style.top = '12px'; }
+}
+function savePanel(){ try { localStorage.setItem(PK, JSON.stringify(PP)); } catch(e){} applyPanel(); }
+$('pMin').onclick = e => { e.stopPropagation(); PP.min = !PP.min; savePanel(); };
+$('pSide').onclick = e => {
+  e.stopPropagation();
+  var r = $('panel').getBoundingClientRect();
+  var onLeft = r.left + r.width/2 < innerWidth/2;
+  PP.x = onLeft ? innerWidth - r.width - 12 : 12; PP.y = 12; savePanel();
+};
+{
+  var bar = document.querySelector('#panel .bar');
+  bar.addEventListener('pointerdown', e => {
+    if (role === 'ctrl' || e.target.tagName === 'BUTTON') return;
+    var r = $('panel').getBoundingClientRect();
+    pd = {dx: e.clientX - r.left, dy: e.clientY - r.top}; bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener('pointermove', e => { if (pd){ PP.x = e.clientX - pd.dx; PP.y = e.clientY - pd.dy; applyPanel(); } });
+  bar.addEventListener('pointerup', () => { if (pd){ pd = null; savePanel(); } });
+  bar.addEventListener('dblclick', e => { if (e.target.tagName !== 'BUTTON'){ PP.min = !PP.min; savePanel(); } });
+}
+applyPanel();
 
 syncUI();
 let frame = 0;

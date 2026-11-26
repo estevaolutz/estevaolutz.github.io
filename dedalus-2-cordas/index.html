@@ -43,7 +43,7 @@ button.on{background:#134e4a;border-color:var(--ac)}
 .grp input[type=range]{width:74px}
 button:disabled{opacity:.45;cursor:default}
 video{display:none}
-#mix{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:14px;padding:10px 12px 8px;background:rgba(9,11,16,.45);border:1px solid rgba(255,255,255,.08);border-radius:10px;font:600 10px system-ui,sans-serif;letter-spacing:.06em;color:rgba(229,231,235,.75);user-select:none}
+#mix{position:fixed;left:12px;bottom:12px;z-index:3;display:flex;gap:14px;padding:10px 12px 8px;background:rgba(9,11,16,.45);border:1px solid rgba(255,255,255,.08);border-radius:10px;font:600 10px system-ui,sans-serif;letter-spacing:.06em;color:rgba(229,231,235,.75);user-select:none}
 #mix .vz{display:flex;flex-direction:column;align-items:center;gap:6px;width:78px}
 #mix .tr{position:relative;width:18px;height:110px;background:rgba(255,255,255,.07);border-radius:4px;cursor:ns-resize;touch-action:none;overflow:hidden}
 #mix .lv{position:absolute;left:0;right:0;bottom:0;height:0;opacity:.8}
@@ -977,14 +977,17 @@ function drawMaos() {
     ctx.fillStyle = COR[g] + '.35)'; ctx.beginPath(); ctx.arc(x, y, r * .6, 0, 7); ctx.fill();
   });
 }
+// área ocupada pelas barras de volume (canto inferior esquerdo): o que é desenhado embaixo à esquerda começa depois dela
+function mixArea() { const r = $('mix').getBoundingClientRect(); return { x: r.right + 14, top: r.top }; }
 function drawReguas() {   // trilhos laterais: altura (vertical) e fora (horizontal) de cada mão, no alcance calibrado
-  ctx.save();
+  ctx.save(); const MA = mixArea();
   [1, 2].forEach(g => {
     const m = CTRL.maos[g]; if (!LIMBS[g].on) return;
     const xr = g === 1 ? W - 22 : 14, a = m.ativa ? 1 : .35;
-    ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(xr, 60, 8, H - 120);
-    ctx.fillStyle = COR[g] + a + ')'; ctx.fillRect(xr - 3, 60 + (1 - m.altura) * (H - 120) - 2, 14, 4);
-    const yb = H - 40, x0 = g === 1 ? W / 2 + 20 : 20, w = W / 2 - 40;
+    const hr = g === 1 ? H - 120 : Math.max(40, MA.top - 72);   // o trilho esquerdo termina acima das barras de volume
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(xr, 60, 8, hr);
+    ctx.fillStyle = COR[g] + a + ')'; ctx.fillRect(xr - 3, 60 + (1 - m.altura) * hr - 2, 14, 4);
+    const yb = H - 40, x0 = g === 1 ? W / 2 + 20 : MA.x, w = g === 1 ? W / 2 - 40 : Math.max(40, W / 2 - 20 - MA.x);
     ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(x0, yb, w, 6);
     const f = g === 1 ? m.fora : 1 - m.fora; ctx.fillStyle = COR[g] + a + ')'; ctx.fillRect(x0 + f * w - 2, yb - 3, 4, 12);
   });
@@ -995,7 +998,7 @@ function drawPincas() {
   ctx.save(); ctx.font = '600 11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   [1, 2].forEach(g => {
     if (!LIMBS[g].on) return;
-    const P = PZ[g], w = 72, x0 = g === 1 ? W - 40 - 4 * (w + 4) : 40, y = H - 70;
+    const P = PZ[g], w = 72, x0 = g === 1 ? W - 40 - 4 * (w + 4) : mixArea().x, y = H - 70;
     PZ_EFEITO[g].forEach((nm, k) => {
       const on = P.dedo === k, q = clamp(1 - (P.d[k] / P.lim[k] - 1) / 2, 0, 1), x = x0 + k * (w + 4);
       ctx.fillStyle = on ? COR[g] + '.55)' : 'rgba(255,255,255,.05)'; ctx.fillRect(x, y - 11, w, 22);
@@ -1010,9 +1013,9 @@ function drawLeituras() {
   const pc = v => Math.round(clamp(v, 0, 1) * 100) + '%';
   const linha = g => { const m = CTRL.maos[g]; return !m.ativa ? 'fora da tela' : (g === 1 && somOn ? `acorde ${chordName(curDeg)}${m.pinca >= 0 ? ' ' + PZ_EFEITO[1][m.pinca] : ''} · ` : '') + (g === 2 && somOn && ldDeg !== null ? `nota ${NOTES[((degMidi(ldDeg, 60) % 12) + 12) % 12]} · ` : '') + `altura ${pc(m.altura)} · fora ${pc(m.fora)} · perto ${pc(m.perto)} · aberta ${pc(m.aberta)} · pinça ${m.pinca >= 0 ? PZ_DEDO_NOME[m.pinca] : '—'}`; };
   ctx.save(); ctx.font = '13px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  const y0 = H - 150; ctx.fillStyle = 'rgba(9,11,16,.72)'; ctx.fillRect(10, y0 - 18, Math.min(W - 20, 760), 72);
-  ctx.fillStyle = '#fb7185'; ctx.fillText('MÃO DIREITA', 20, y0); ctx.fillStyle = '#e5e7eb'; ctx.fillText(linha(1), 20, y0 + 16);
-  ctx.fillStyle = '#38bdf8'; ctx.fillText('MÃO ESQUERDA', 20, y0 + 36); ctx.fillStyle = '#e5e7eb'; ctx.fillText(linha(2), 20, y0 + 52);
+  const y0 = H - 150, x = mixArea().x; ctx.fillStyle = 'rgba(9,11,16,.72)'; ctx.fillRect(x - 10, y0 - 18, Math.min(W - x, 760), 72);
+  ctx.fillStyle = '#fb7185'; ctx.fillText('MÃO DIREITA', x, y0); ctx.fillStyle = '#e5e7eb'; ctx.fillText(linha(1), x, y0 + 16);
+  ctx.fillStyle = '#38bdf8'; ctx.fillText('MÃO ESQUERDA', x, y0 + 36); ctx.fillStyle = '#e5e7eb'; ctx.fillText(linha(2), x, y0 + 52);
   ctx.restore();
 }
 function drawWizBox() {
@@ -1045,9 +1048,9 @@ function frame(nowMs) {
   while (eventos.length && ac && eventos[0].t <= ac.currentTime) { const e = eventos.shift(); ultimaNota[e.g] = performance.now(); try { VIS.nota(e.g, e); } catch (err) {} }
   drawCam(); drawReguas(); drawMaos(); drawPincas(); drawLeituras(); drawWizBox();
   ctx.save(); ctx.font = '12px system-ui,sans-serif'; ctx.fillStyle = 'rgba(142,152,176,.75)'; ctx.textAlign = 'left';
-  ctx.fillText('Dedalus II · Cordas de Luz · v1  ·  cordas entre as mãos: o arpejo dedilha as cordas (Karplus-Strong) · mãos afastadas = cordas longas que soam mais · para fora = cordas brilhantes  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', 14, H - 12);
+  ctx.fillText('Dedalus II · Cordas de Luz · v1  ·  cordas entre as mãos: o arpejo dedilha as cordas (Karplus-Strong) · mãos afastadas = cordas longas que soam mais · para fora = cordas brilhantes  |  K câmera · G identificar · M/L calibrar · P/O pinças · S som · H painel', mixArea().x, H - 6);
   const msg = cam.msg || (somErro ? 'Erro no som: ' + somErro : '') || (!somOn ? 'Som desligado (tecla S)' : ac && ac.state !== 'running' ? 'Áudio suspenso pelo navegador — clique na tela' : '') || (!cam.on ? 'Ligue a câmera (tecla K)' : !cam.detected ? 'Nenhum corpo detectado' : !CTRL.maos[1].ativa ? 'Mão direita fora da tela (baixo em silêncio)' : '');
-  if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, 14, H - 30); }
+  if (msg) { ctx.fillStyle = '#fbbf24'; ctx.fillText(msg, mixArea().x, H - 22); }
   ctx.restore();
 }
 requestAnimationFrame(frame);

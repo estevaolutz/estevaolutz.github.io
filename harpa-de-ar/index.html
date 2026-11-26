@@ -255,7 +255,7 @@ import {FilesetResolver, HandLandmarker} from 'https://cdn.jsdelivr.net/npm/@med
 const cv=document.getElementById('c'), g=cv.getContext('2d');
 let W,H,DPR; function size(){DPR=Math.min(devicePixelRatio,2);W=cv.width=innerWidth*DPR;H=cv.height=innerHeight*DPR} size(); addEventListener('resize',size);
 const A=KIT.audio;
-const P={camA:.28,scale:'Pentatônica maior',root:48,life:60,maxStr:14,pinch:.055,flick:1,hue:190};
+const P={temp:true,sizes:10,names:true,ruler:true,camA:.28,scale:'Pentatônica maior',root:48,life:60,maxStr:14,pinch:.055,flick:1,hue:190};
 
 /* ---------- som: corda Karplus-Strong pré-calculada ---------- */
 const cache={}; let rev;
@@ -281,12 +281,49 @@ const noteFor=len=>{ // comprimento (0..1 da diagonal) -> grau da escala; curto 
   return KIT.degree(P.scale,i,P.root);
 };
 
+/* ---------- modo temperado: só alguns tamanhos, cada um uma nota da escala ---------- */
+const NOMES=['Dó','Dó♯','Ré','Ré♯','Mi','Fá','Fá♯','Sol','Sol♯','Lá','Lá♯','Si'];
+const nome=m=>NOMES[((m%12)+12)%12]+(Math.floor(m/12)-1);
+function tamanhos(){ // comprimento físico ∝ 1/frequência, como numa harpa de verdade
+  const Lmax=Math.min(W,H)*.95, m0=KIT.degree(P.scale,0,P.root), out=[];
+  for(let i=0;i<P.sizes;i++){ const m=KIT.degree(P.scale,i,P.root); out.push({midi:m,len:Lmax*KIT.mtof(m0)/KIT.mtof(m)}); }
+  return out;
+}
+function snap(a,b){ // mantém o centro e o ângulo, ajusta o comprimento ao tamanho permitido mais próximo
+  const L=Math.hypot(b[0]-a[0],b[1]-a[1]); if(L<1) return null;
+  let best=null; tamanhos().forEach(t=>{ const d=Math.abs(Math.log(L/t.len)); if(!best||d<best.d) best={...t,d}; });
+  const cx=(a[0]+b[0])/2, cy=(a[1]+b[1])/2, ux=(b[0]-a[0])/L, uy=(b[1]-a[1])/L, h=best.len/2;
+  return {a:[cx-ux*h,cy-uy*h], b:[cx+ux*h,cy+uy*h], midi:best.midi};
+}
+function drawGhost(a,b){ // mostra a corda que vai nascer, já no tamanho da escala
+  if(!P.temp) return null;
+  const sn=snap(a,b); if(!sn) return null;
+  g.strokeStyle=`hsla(${(P.hue+(sn.midi-P.root)*9)%360},100%,80%,.8)`; g.lineWidth=1.6*DPR;
+  g.beginPath(); g.moveTo(sn.a[0],sn.a[1]); g.lineTo(sn.b[0],sn.b[1]); g.stroke();
+  [sn.a,sn.b].forEach(p=>{g.beginPath();g.arc(p[0],p[1],3.5*DPR,0,7);g.stroke()});
+  if(P.names) label(nome(sn.midi),(sn.a[0]+sn.b[0])/2,(sn.a[1]+sn.b[1])/2,.95);
+  return sn.midi;
+}
+function label(t,x,y,al){ g.save(); g.globalCompositeOperation='source-over'; g.font=`${12*DPR}px system-ui`; g.textAlign='center'; g.fillStyle=`rgba(255,255,255,${al})`; g.fillText(t,x,y-10*DPR); g.restore(); }
+function drawRuler(active){
+  if(!P.temp||!P.ruler) return;
+  const ts=tamanhos(), Lmax=ts[0].len, x0=24*DPR, yb=H-26*DPR, hmax=Math.min(H*.28,170*DPR), gap=Math.min(26*DPR,(W*.4)/ts.length);
+  g.save(); g.globalCompositeOperation='source-over'; g.font=`${9*DPR}px system-ui`; g.textAlign='center';
+  ts.forEach((t,i)=>{ const h=hmax*t.len/Lmax, x=x0+i*gap, on=t.midi===active;
+    g.strokeStyle=on?`hsla(${(P.hue+(t.midi-P.root)*9)%360},100%,75%,1)`:'rgba(255,255,255,.28)'; g.lineWidth=(on?2.5:1.2)*DPR;
+    g.beginPath(); g.moveTo(x,yb); g.lineTo(x,yb-h); g.stroke();
+    g.fillStyle=on?'#fff':'rgba(255,255,255,.4)'; g.fillText(nome(t.midi).replace(/\d+$/,''),x,yb+12*DPR); });
+  g.restore();
+}
+
 /* ---------- cordas ---------- */
 const strings=[]; const sparks=[];
 function addString(a,b){
   const len=Math.hypot(b[0]-a[0],b[1]-a[1])/Math.hypot(W,H);
   if(len<.04) return;
-  const s={a:[...a],b:[...b],midi:noteFor(len),amp:1,phase:0,born:performance.now(),hue:(P.hue+ (noteFor(len)-P.root)*9)%360};
+  let midi=noteFor(len);
+  if(P.temp){ const sn=snap(a,b); a=sn.a; b=sn.b; midi=sn.midi; }
+  const s={a:[...a],b:[...b],midi,amp:1,phase:0,born:performance.now(),hue:(P.hue+(midi-P.root)*9)%360};
   strings.push(s); if(strings.length>P.maxStr) strings.shift();
   pluck(s.midi,.8,(a[0]+b[0])/W-1);
 }
@@ -380,15 +417,19 @@ function frame(ms){
       for(let k=0;k<=40;k++){const u=k/40, off=Math.sin(u*Math.PI)*Math.sin(s.phase+u*Math.PI*3)*s.amp*14*DPR;
         const x=s.a[0]+(s.b[0]-s.a[0])*u+nx*off, y=s.a[1]+(s.b[1]-s.a[1])*u+ny*off; k?g.lineTo(x,y):g.moveTo(x,y)} g.stroke();
     });
+    if(P.temp&&P.names) label(nome(s.midi),s.b[0],s.b[1],.35*fade+.4*Math.min(1,s.amp));
   }
   // fios vivos entre os dedos
+  let active=null;
   live.forEach(([a,b,k])=>{
+    if(k==='duas'){ const m=drawGhost(a,b); if(m!==null) active=m; }
     const shimmer=.5+.5*Math.sin(now*.02);
     g.strokeStyle=k==='duas'?`hsla(${P.hue+40},100%,80%,${.35+shimmer*.3})`:`hsla(${P.hue},100%,75%,.55)`;
     g.lineWidth=(k==='duas'?1.2:2)*DPR; g.setLineDash(k==='duas'?[6*DPR,6*DPR]:[]); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); g.setLineDash([]);
     [a,b].forEach(p=>{const gr=g.createRadialGradient(p[0],p[1],0,p[0],p[1],18*DPR);gr.addColorStop(0,`hsla(${P.hue},100%,85%,.9)`);gr.addColorStop(1,'hsla(0,0%,0%,0)');g.fillStyle=gr;g.fillRect(p[0]-18*DPR,p[1]-18*DPR,36*DPR,36*DPR)});
   });
-  if(md&&mprev){g.strokeStyle=`hsla(${P.hue},100%,75%,.5)`;g.lineWidth=1.5*DPR;g.beginPath();g.moveTo(md[0],md[1]);g.lineTo(mprev[0],mprev[1]);g.stroke()}
+  if(md&&mprev){g.strokeStyle=`hsla(${P.hue},100%,75%,.3)`;g.lineWidth=1.2*DPR;g.setLineDash([5*DPR,5*DPR]);g.beginPath();g.moveTo(md[0],md[1]);g.lineTo(mprev[0],mprev[1]);g.stroke();g.setLineDash([]); const m=drawGhost(md,mprev); if(m!==null) active=m;}
+  drawRuler(active);
   // faíscas
   for(let i=sparks.length-1;i>=0;i--){const p=sparks[i]; p.x+=p.vx;p.y+=p.vy;p.vx*=.94;p.vy*=.94;p.a-=.025; if(p.a<=0){sparks.splice(i,1);continue}
     g.fillStyle=`hsla(${p.h},100%,80%,${p.a})`; g.fillRect(p.x,p.y,2.2*DPR,2.2*DPR)}
@@ -418,6 +459,12 @@ function demoStep(now){
 KIT.section('Harpa');
 KIT.select('Escala',Object.keys(KIT.scales),'Pentatônica maior',v=>P.scale=v);
 KIT.select('Tom',['Dó','Ré','Mi','Fá','Sol','Lá'],'Dó',v=>P.root={'Dó':48,'Ré':50,'Mi':52,'Fá':53,'Sol':55,'Lá':57}[v]);
+KIT.section('Modo temperado');
+KIT.toggle('Tamanhos presos à escala',true,v=>P.temp=v);
+KIT.slider('Quantos tamanhos',3,16,1,10,v=>P.sizes=v);
+KIT.toggle('Mostrar nome das notas',true,v=>P.names=v);
+KIT.toggle('Mostrar régua de tamanhos',true,v=>P.ruler=v);
+KIT.section('Cordas');
 KIT.slider('Vida das cordas (s, 120 = sempre)',5,120,1,60,v=>P.life=v);
 KIT.slider('Máximo de cordas',3,30,1,14,v=>P.maxStr=v);
 KIT.slider('Sensibilidade da pinça',.02,.12,.005,.055,v=>P.pinch=v);

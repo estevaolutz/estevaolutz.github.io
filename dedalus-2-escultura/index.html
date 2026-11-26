@@ -43,6 +43,13 @@ button.on{background:#134e4a;border-color:var(--ac)}
 .grp input[type=range]{width:74px}
 button:disabled{opacity:.45;cursor:default}
 video{display:none}
+#mix{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:14px;padding:10px 12px 8px;background:rgba(9,11,16,.45);border:1px solid rgba(255,255,255,.08);border-radius:10px;font:600 10px system-ui,sans-serif;letter-spacing:.06em;color:rgba(229,231,235,.75);user-select:none}
+#mix .vz{display:flex;flex-direction:column;align-items:center;gap:6px;width:78px}
+#mix .tr{position:relative;width:18px;height:110px;background:rgba(255,255,255,.07);border-radius:4px;cursor:ns-resize;touch-action:none;overflow:hidden}
+#mix .lv{position:absolute;left:0;right:0;bottom:0;height:0;opacity:.8}
+#mix .kn{position:absolute;left:0;right:0;height:3px;background:#fff;border-radius:2px;box-shadow:0 0 4px rgba(0,0,0,.6)}
+#mix span{text-align:center;line-height:1.25}
+#mix small{font-weight:400;opacity:.7}
 </style>
 </head>
 <body>
@@ -111,6 +118,10 @@ video{display:none}
   </div>
 </div>
 <div id="wiz"><b id="wizT"></b><div id="wizN"></div><div class="bar"><i id="wizB"></i></div><small id="wizS">Esc cancela</small></div>
+<div id="mix" title="Arraste cada barra para mudar o volume da voz">
+  <div class="vz" data-g="2"><div class="tr"><i class="lv" style="background:#38bdf8"></i><b class="kn"></b></div><span></span></div>
+  <div class="vz" data-g="1"><div class="tr"><i class="lv" style="background:#fb7185"></i><b class="kn"></b></div><span></span></div>
+</div>
 <button id="showUi" aria-label="Mostrar painel de controle">☰ Painel</button>
 <script type="module">
 import { FilesetResolver, PoseLandmarker, HandLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs';
@@ -1131,6 +1142,24 @@ addEventListener('keydown', e => {
   else if (k === 'h') toggleUi();
   else if (k === 's') toggleSom();
 });
+/* ---------- MIXER NA TELA: uma barra por voz — nível ao vivo (pico, em dB) e volume arrastando a barra ---------- */
+const MIX = { an: null, buf: new Float32Array(1024), nv: { 1: 0, 2: 0 } };
+document.querySelectorAll('#mix .vz').forEach(el => {
+  const g = +el.dataset.g, nome = document.querySelector(`#somBar .grp b[style*="${g === 1 ? 'fb7185' : '38bdf8'}"]`);
+  el.querySelector('span').innerHTML = `${nome ? nome.textContent : ''}<br><small>mão ${g === 1 ? 'direita' : 'esquerda'}</small>`;
+  const tr = el.querySelector('.tr');
+  const set = e => { const r = tr.getBoundingClientRect(), v = Math.round(clamp(1 - (e.clientY - r.top) / r.height, 0, 1) * 100) / 100; if (g === 1) { BX.vol = v; $('bxVol').value = v; } else { LD.vol = v; $('ldVol').value = v; } salvaSom(); };
+  tr.addEventListener('pointerdown', e => { tr.setPointerCapture(e.pointerId); set(e); });
+  tr.addEventListener('pointermove', e => { if (tr.hasPointerCapture(e.pointerId)) set(e); });
+});
+(function mixQuadro() {
+  if (ac && bxOut && ld) {
+    if (!MIX.an) MIX.an = { 1: bxOut, 2: ld.vol }, Object.keys(MIX.an).forEach(g => { const a = ac.createAnalyser(); a.fftSize = 1024; MIX.an[g].connect(a); MIX.an[g] = a; });
+    [1, 2].forEach(g => { MIX.an[g].getFloatTimeDomainData(MIX.buf); let p = 0; for (let i = 0; i < MIX.buf.length; i++) p = Math.max(p, Math.abs(MIX.buf[i])); const x = clamp((20 * Math.log10(p + 1e-6) + 48) / 48, 0, 1); MIX.nv[g] = x > MIX.nv[g] ? x : MIX.nv[g] * .9 + x * .1; });
+  }
+  document.querySelectorAll('#mix .vz').forEach(el => { const g = +el.dataset.g; el.querySelector('.lv').style.height = (MIX.nv[g] * 100) + '%'; el.querySelector('.kn').style.bottom = `calc(${(g === 1 ? BX.vol : LD.vol) * 100}% - 1.5px)`; });
+  requestAnimationFrame(mixQuadro);
+})();
 /* ---------- INÍCIO AUTOMÁTICO: câmera e som ligados, painel escondido (☰ ou tecla H mostra) ----------
    O navegador só libera o áudio depois de um gesto: se ele começar suspenso, o primeiro clique ou tecla religa. */
 $('ui').classList.add('hide');

@@ -12,6 +12,8 @@ const K = window.KIT = {};
 const css = `
 #kit-btn{position:fixed;right:12px;bottom:12px;z-index:20;width:34px;height:34px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffa;font:16px system-ui;cursor:pointer;opacity:.25;transition:opacity .3s}
 #kit-btn:hover{opacity:1}
+#kit-demo{position:fixed;right:54px;bottom:12px;z-index:20;height:34px;padding:0 14px;border-radius:17px;border:1px solid #fff3;background:#0006;color:#fffc;font:12px system-ui;letter-spacing:.05em;cursor:pointer;opacity:.35;transition:opacity .3s}
+#kit-demo:hover,#kit-demo.on{opacity:1}#kit-demo.on{background:#2a6;border-color:#2a6;color:#fff}
 #kit-panel{position:fixed;right:12px;bottom:54px;z-index:21;width:270px;max-height:80vh;overflow:auto;background:#0a0a0fe8;border:1px solid #fff2;border-radius:10px;padding:12px 14px;color:#ddd;font:12px/1.4 system-ui;display:none;backdrop-filter:blur(6px)}
 #kit-panel.on{display:block}
 #kit-panel h3{margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#fff}
@@ -45,6 +47,7 @@ A.ensure = function(){
 };
 A._node=null; A._stream=null; A._el=null;
 A.stop = function(){
+  if(K.demo){ K.demo=false; clearInterval(A._demoTimer); if(A._demoBus){try{A._demoBus.disconnect()}catch(e){} A._demoBus=null} K._onDemo&&K._onDemo(false); const b=document.getElementById('kit-demo'); if(b){b.classList.remove('on');b.textContent='▶ Ver exemplo'} }
   if(A._node){try{A._node.disconnect()}catch(e){} A._node=null}
   if(A._stream){A._stream.getTracks().forEach(t=>t.stop());A._stream=null}
   if(A._el){A._el.pause();A._el=null}
@@ -61,6 +64,43 @@ A.useFile = function(file){
   const el = A._el = new Audio(URL.createObjectURL(file)); el.loop=true; el.crossOrigin='anonymous';
   A._node = A.ctx.createMediaElementSource(el); A._node.connect(A.inputGain); A._node.connect(A.master);
   el.play();
+};
+/* ---------- modo exemplo: música de demonstração gerada aqui mesmo ---------- */
+A.useDemo = function(withSong){
+  A.ensure(); A.stop(); A.src='demo'; K.demo=true;
+  const b=document.getElementById('kit-demo'); if(b){b.classList.add('on');b.textContent='■ Sair do exemplo'}
+  const sel=document.getElementById('kit-src'); if(sel) sel.value='demo';
+  K._onDemo&&K._onDemo(true);
+  if(withSong===false) return;
+  const ctx=A.ctx, bus=A._demoBus=ctx.createGain(); bus.gain.value=.9; bus.connect(A.inputGain); bus.connect(A.master);
+  const rv=K.reverb(2.8,2.8), rg=ctx.createGain(); rg.gain.value=.3; rv.connect(rg); rg.connect(bus);
+  const dl=ctx.createDelay(1), fb=ctx.createGain(); fb.gain.value=.35; dl.connect(fb); fb.connect(dl); const dg=ctx.createGain(); dg.gain.value=.25; dl.connect(dg); dg.connect(bus);
+  const nb=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate), nd=nb.getChannelData(0); for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+  const bpm=100, sp=60/bpm/4; dl.delayTime.value=sp*3;
+  const chords=[[57,60,64],[53,57,60],[48,52,55],[55,59,62]]; // Lá menor, Fá, Dó, Sol
+  let step=0, next=ctx.currentTime+.1;
+  const env=(g,t,a,peak,d)=>{g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(.0001,t+a+d)};
+  function voice(type,f,t,peak,d,cut,dest){const o=ctx.createOscillator();o.type=type;o.frequency.value=f;const lp=ctx.createBiquadFilter();lp.frequency.value=cut;const g=ctx.createGain();env(g,t,.005,peak,d);o.connect(lp);lp.connect(g);g.connect(dest||bus);o.start(t);o.stop(t+d+.1);return g}
+  function noise(t,peak,d,type,f){const n=ctx.createBufferSource();n.buffer=nb;const fl=ctx.createBiquadFilter();fl.type=type;fl.frequency.value=f;const g=ctx.createGain();env(g,t,.001,peak,d);n.connect(fl);fl.connect(g);g.connect(bus);n.start(t);n.stop(t+d+.05)}
+  function tick(){
+    if(!K.demo) return;
+    if(ctx.state!=='running'){ next=ctx.currentTime+.1; return }
+    while(next<ctx.currentTime+.15){
+      const t=next, s=step%16, bar=Math.floor(step/16), sec=Math.floor(bar/4)%4; // 0 intro,1 cheio,2 pausa,3 cheio+
+      const ch=chords[bar%4], drums=sec===1||sec===3;
+      if(s===0){ ch.forEach(m=>{const g=voice('sawtooth',K.mtof(m),t,.035,sp*16,900+sec*500);g.connect(rv)}) }
+      if(drums){
+        if(s===0||s===8||(sec===3&&s===10)){const o=ctx.createOscillator();o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(45,t+.12);const g=ctx.createGain();env(g,t,.002,.9,.4);o.connect(g);g.connect(bus);o.start(t);o.stop(t+.5)}
+        if(s===4||s===12){noise(t,.35,.18,'bandpass',1900);voice('triangle',190,t,.25,.08,3000)}
+        if(s%2===0) noise(t,s%4===2?.12:.06,.04,'highpass',8000);
+        if(s%2===0||s===7) voice('sawtooth',K.mtof(ch[0]-24),t,.22,sp*1.6,400+300*(s===0));
+      }
+      if(sec!==2 && (s%3===0||s===14)){ const m=ch[(s/3|0)%3]+12+(s>8?12:0); const g=voice('square',K.mtof(m),t,.05,.22,2600); g.connect(dl) }
+      if(sec===2 && s%4===0){ const g=voice('sine',K.mtof(ch[s/4%3]+24),t,.06,.8,5000); g.connect(rv); g.connect(dl) }
+      next+=sp; step++;
+    }
+  }
+  A._demoTimer=setInterval(tick,25);
 };
 A.useNone = function(){ A.ensure(); A.stop(); A.src='none'; };
 A.update = function(){
@@ -85,24 +125,27 @@ K.sens = 1;
 let panel, body;
 K.init = function(opt){
   K.canvas = opt.canvas; K.title=opt.title||document.title;
+  K._onDemo=opt.onDemo; K._demoSong=opt.demoSong;
+  const db=document.createElement('button'); db.id='kit-demo'; db.textContent='▶ Ver exemplo'; db.title='A obra toca sozinha (E)'; document.body.appendChild(db);
+  db.onclick=()=>{ if(K.demo){ A.stop(); A.src='none'; document.getElementById('kit-src').value='none'; } else { A.ctx.resume(); A.useDemo(K._demoSong); } };
   const b=document.createElement('button'); b.id='kit-btn'; b.textContent='⚙'; b.title='Controles (H)'; document.body.appendChild(b);
   panel=document.createElement('div'); panel.id='kit-panel'; document.body.appendChild(panel);
   panel.innerHTML=`<h3>${K.title}</h3>
    <div class="sec">Entrada de áudio</div>
-   <label>Fonte <select id="kit-src"><option value="mic">Microfone</option><option value="file">Arquivo de áudio</option><option value="none">Nenhuma</option></select></label>
+   <label>Fonte <select id="kit-src"><option value="mic">Microfone</option><option value="file">Arquivo de áudio</option><option value="none">Nenhuma</option><option value="demo">Exemplo (demonstração)</option></select></label>
    <input type="file" id="kit-file" accept="audio/*" style="display:none">
    <label>Sensibilidade <input type="range" id="kit-sens" min=".2" max="4" step=".05" value="1"></label>
    <label>Volume do som <input type="range" id="kit-vol" min="0" max="1.5" step=".01" value=".8"></label>
    <div id="kit-body"></div>
    <div class="sec">Saída</div>
    <div class="row"><button id="kit-proj">Projeção</button><button id="kit-recb">● Gravar</button><button id="kit-fs">Tela cheia</button></div>
-   <div class="help">H: painel · F: tela cheia · P: projeção · R: gravar</div>`;
+   <div class="help">H: painel · E: exemplo · F: tela cheia · P: projeção · R: gravar<br>Link direto do exemplo: acrescente ?exemplo ao endereço</div>`;
   body=panel.querySelector('#kit-body');
   const rec=document.createElement('div'); rec.id='kit-rec'; document.body.appendChild(rec);
   const h=document.createElement('div'); h.id='kit-hint'; document.body.appendChild(h);
   b.onclick=()=>panel.classList.toggle('on');
   const srcSel=panel.querySelector('#kit-src'), fileIn=panel.querySelector('#kit-file');
-  srcSel.onchange=()=>{ if(srcSel.value==='mic')A.useMic(); else if(srcSel.value==='none')A.useNone(); else fileIn.click(); };
+  srcSel.onchange=()=>{ if(srcSel.value==='mic')A.useMic(); else if(srcSel.value==='none')A.useNone(); else if(srcSel.value==='demo')A.useDemo(K._demoSong); else fileIn.click(); };
   fileIn.onchange=()=>{ if(fileIn.files[0]) A.useFile(fileIn.files[0]); };
   panel.querySelector('#kit-sens').oninput=e=>K.sens=+e.target.value;
   panel.querySelector('#kit-vol').oninput=e=>{A.ensure();K.out.gain.value=+e.target.value};
@@ -112,14 +155,16 @@ K.init = function(opt){
   addEventListener('keydown',e=>{
     if(e.target.tagName==='INPUT'&&e.target.type!=='range')return;
     const k=e.key.toLowerCase();
-    if(k==='h')panel.classList.toggle('on'); else if(k==='f')K.fullscreen(); else if(k==='p')K.projection(); else if(k==='r')K.toggleRec();
+    if(k==='h')panel.classList.toggle('on'); else if(k==='f')K.fullscreen(); else if(k==='p')K.projection(); else if(k==='r')K.toggleRec(); else if(k==='e')document.getElementById('kit-demo').click();
   });
   // arranque: câmera/som ligados; o navegador exige um gesto para o áudio
   A.ensure();
-  if(opt.audio!==false) A.useMic(); else {A.src='none'; srcSel.value='none';}
+  const ex=/[?&]exemplo/.test(location.search);
+  if(opt.audio!==false && !ex) A.useMic(); else {A.src='none'; srcSel.value='none';}
   const resume=()=>{ if(A.ctx.state!=='running'){A.ctx.resume();} if(A.ctx.state==='running'||true){hint('');} };
   if(A.ctx.state!=='running') hint(opt.hint||'toque ou clique para ativar o som');
   addEventListener('pointerdown',resume); addEventListener('keydown',resume);
+  if(/[?&]exemplo/.test(location.search)) setTimeout(()=>{ A.useDemo(K._demoSong); if(A.ctx.state!=='running') hint('toque ou clique para ouvir o exemplo'); },0);
 };
 function hint(t){const h=document.getElementById('kit-hint'); if(!h)return; h.textContent=t; h.style.opacity=t?1:0;}
 K.hint=hint;
@@ -295,10 +340,19 @@ function frame(ms){
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
 }
-KIT.init({title:'Interferência',canvas:cv,audio:false,hint:'toque para ouvir · arraste os centros das ondas'});
+let demoT=null, chordSel, modeSel2, oldDrift=.3;
+KIT.init({title:'Interferência',canvas:cv,audio:false,demoSong:false,hint:'toque para ouvir · arraste os centros das ondas',onDemo:on=>{
+  clearInterval(demoT);
+  if(!on){ P.drift=oldDrift; return }
+  oldDrift=P.drift; P.drift=1.4; let n=0;
+  demoT=setInterval(()=>{ n++;
+    const ks=Object.keys(chords); P.chord=ks[(ks.indexOf(P.chord)+1)%ks.length]; if(chordSel)chordSel.value=P.chord; makeSources();
+    if(n%3===0){ P.mode=(P.mode+1)%3; if(modeSel2)modeSel2.value=['Espectro','Moiré','Tinta'][P.mode]; }
+  },14000);
+}});
 KIT.section('Ondas');
-KIT.select('Modo',['Espectro','Moiré','Tinta'],'Espectro',v=>P.mode=['Espectro','Moiré','Tinta'].indexOf(v));
-KIT.select('Acorde das fontes',Object.keys(chords),'Quinta',v=>{P.chord=v; if(A.ctx) makeSources()});
+modeSel2=KIT.select('Modo',['Espectro','Moiré','Tinta'],'Espectro',v=>P.mode=['Espectro','Moiré','Tinta'].indexOf(v));
+chordSel=KIT.select('Acorde das fontes',Object.keys(chords),'Quinta',v=>{P.chord=v; if(A.ctx) makeSources()});
 KIT.toggle('Espelhado (4 quadrantes)',true,v=>P.mirror=v);
 KIT.slider('Nota base (Hz)',55,330,1,110,v=>P.base=v);
 KIT.slider('Densidade dos anéis',.3,3,.01,1,v=>P.density=v);

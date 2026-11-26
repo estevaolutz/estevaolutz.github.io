@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dois Planetas — Mapping</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#e8e6e1}
+#gl,#fx,#ov{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#fx{pointer-events:none}
+#ov{touch-action:none}
+body.proj #ov,body.proj #panel{display:none}
+body.proj{cursor:none}
+body.hidden #panel,body.hidden #ov{display:none}
+body.hidden{cursor:none}
+#panel{position:fixed;top:12px;right:12px;width:308px;max-height:calc(100% - 24px);overflow:auto;background:rgba(16,16,18,.9);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid #333;border-radius:12px;padding:12px 14px;font-size:13px;box-sizing:border-box}
+h1{font-size:15px;margin:0 0 2px;font-weight:650}
+.sub{color:#8a867d;font-size:11px;margin-bottom:4px}
+h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:#9a968c;margin:14px 0 6px;border-top:1px solid #2a2a2a;padding-top:10px;font-weight:600}
+label.row{display:grid;grid-template-columns:104px 1fr 40px;align-items:center;gap:6px;margin:5px 0}
+label.row .v{text-align:right;color:#aaa;font-variant-numeric:tabular-nums;font-size:11.5px}
+label.chk{display:flex;gap:6px;align-items:center;margin:5px 0}
+input[type=range]{width:100%;accent-color:#e0b84a}
+select,button{background:#26262a;color:#eee;border:1px solid #444;border-radius:6px;padding:5px 8px;font-size:12px;cursor:pointer;font-family:inherit}
+select{width:100%}
+button:hover{background:#34343a}
+button.on{background:#c8553d;border-color:#c8553d}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+#hemis button{min-width:34px;font-weight:600}
+#hemis button.sel{background:#e0b84a;color:#111;border-color:#e0b84a}
+#meter{width:100%;height:40px;background:#000;border-radius:4px;display:block;margin-top:6px}
+.hint{color:#8a867d;font-size:11px;line-height:1.5}
+.hint b{color:#cfc9bc;font-weight:600}
+body.ctrl{background:#0d0d0f}
+body.ctrl #gl{box-shadow:0 0 0 1px #3a3a3a}
+body.ctrl #panel{top:0;right:0;bottom:0;height:100%;max-height:none;width:340px;border-radius:0;border-width:0 0 0 1px}
+body.ctrl .no-ctrl{display:none}
+#sala{font:700 26px ui-monospace,Menlo,monospace;letter-spacing:.18em;color:#e0b84a;align-self:center}
+#codIn{width:96px;text-transform:uppercase;font:600 16px ui-monospace,Menlo,monospace;letter-spacing:.15em;background:#26262a;color:#eee;border:1px solid #444;border-radius:6px;padding:5px 8px}
+#remState{word-break:break-all}
+@media (pointer:coarse){input[type=range]{height:30px}button,select{padding:9px 12px;font-size:14px}label.row{grid-template-columns:96px 1fr 46px}}
+#tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:8px 14px;border-radius:8px;font-size:13px;transition:opacity 1s;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="fx"></canvas>
+<canvas id="ov"></canvas>
+
+<div id="panel">
+  <h1>Dois Planetas</h1>
+  <div class="sub">Mapping nos hemisférios do teto: sol no centro, planetas em fase, naves de um para o outro</div>
+
+  <h2>Controle pelo iPad</h2>
+  <div class="btns no-ctrl"><button id="salaBtn">Abrir sala (no Mac)</button><span id="sala"></span></div>
+  <div class="btns"><input id="codIn" maxlength="4" placeholder="CÓDIGO" autocapitalize="characters" autocomplete="off"><button id="entrarBtn">Entrar (no iPad)</button></div>
+  <div class="hint" id="remState">Desconectado</div>
+
+  <h2>Áudio</h2>
+  <div class="btns">
+    <button id="micBtn">🎙 Ligar microfone</button>
+    <span class="hint" id="micState" style="align-self:center">modo demo</span>
+  </div>
+  <select id="devSel" style="display:none"></select>
+  <label class="row">Ganho <input type="range" id="gain" min="-20" max="40" step="1"><span class="v" id="gainV"></span></label>
+  <canvas id="meter"></canvas>
+
+  <h2>Naves</h2>
+  <label class="row">Lançamento
+    <select id="shipMode">
+      <option value="0">Automático (ritmo próprio)</option>
+      <option value="1">Pelo som do microfone</option>
+      <option value="2">Os dois juntos</option>
+    </select><span></span></label>
+  <label class="row">Naves/minuto <input type="range" id="rate" min="2" max="90" step="1"><span class="v" id="rateV"></span></label>
+  <label class="row">Sensib. ao som <input type="range" id="sens" min="0" max="1" step="0.01"><span class="v" id="sensV"></span></label>
+  <label class="row">Tamanho <input type="range" id="shipSize" min="0.4" max="2.5" step="0.05"><span class="v" id="shipSizeV"></span></label>
+  <label class="row">Velocidade <input type="range" id="speed" min="0.3" max="2.5" step="0.05"><span class="v" id="speedV"></span></label>
+  <label class="row">Rastro <input type="range" id="trail" min="0" max="1" step="0.01"><span class="v" id="trailV"></span></label>
+  <div class="btns"><button id="launchBtn">Lançar nave agora</button></div>
+
+  <h2>Cena</h2>
+  <label class="chk"><input type="checkbox" id="sunOn"> Sol no centro</label>
+  <label class="row">Tamanho do sol <input type="range" id="sunR" min="0.02" max="0.2" step="0.002"><span class="v" id="sunRV"></span></label>
+  <label class="row">Sol no grave <input type="range" id="sunPulse" min="0" max="1" step="0.01"><span class="v" id="sunPulseV"></span></label>
+  <label class="chk"><input type="checkbox" id="starsOn"> Estrelas (somem perto da borda)</label>
+  <label class="row">Brilho geral <input type="range" id="bright" min="0.2" max="2" step="0.01"><span class="v" id="brightV"></span></label>
+
+  <h2>Planeta selecionado</h2>
+  <label class="row">Calibração
+    <select id="cal">
+      <option value="0">Desligada</option>
+      <option value="1">Grade sobre a cena</option>
+      <option value="2">Branco sólido</option>
+    </select><span></span></label>
+  <div class="btns" id="hemis"></div>
+  <div class="btns">
+    <button id="addH">+ planeta</button>
+    <button id="delH">− remover</button>
+    <button id="apexReset">Centralizar ápice</button>
+  </div>
+  <label class="row">Tipo
+    <select id="kind">
+      <option value="0">Gasoso (faixas)</option>
+      <option value="1">Lua rochosa</option>
+      <option value="2">Terra (oceanos e nuvens)</option>
+      <option value="3">Gelo</option>
+      <option value="4">Lava</option>
+    </select><span></span></label>
+  <label class="row">Fase (acesa) <input type="range" id="phase" min="0.05" max="1" step="0.01"><span class="v" id="phaseV"></span></label>
+  <label class="row">Terminador <input type="range" id="soft" min="0" max="0.5" step="0.01"><span class="v" id="softV"></span></label>
+  <label class="row">Giro <input type="range" id="spin" min="-1" max="1" step="0.01"><span class="v" id="spinV"></span></label>
+  <label class="row">Atmosfera <input type="range" id="atm" min="0" max="1.5" step="0.01"><span class="v" id="atmV"></span></label>
+  <label class="row">Profundidade <input type="range" id="depth" min="0" max="1" step="0.01"><span class="v" id="depthV"></span></label>
+  <label class="row">Largura <input type="range" id="rx" min="0.05" max="0.9" step="0.001"><span class="v" id="rxV"></span></label>
+  <label class="row">Altura <input type="range" id="ry" min="0.05" max="0.9" step="0.001"><span class="v" id="ryV"></span></label>
+  <label class="row">Rotação <input type="range" id="rot" min="-3.1416" max="3.1416" step="0.01"><span class="v" id="rotV"></span></label>
+  <label class="row">Borda suave <input type="range" id="feather" min="0" max="0.2" step="0.005"><span class="v" id="featherV"></span></label>
+
+  <h2>Saída</h2>
+  <div class="btns">
+    <button id="projBtn" class="no-ctrl">Janela de projeção</button>
+    <button id="fsBtn">Tela cheia</button>
+    <button id="hideBtn">Esconder controles (H)</button>
+  </div>
+  <div class="btns">
+    <button id="expBtn">Salvar config.</button>
+    <button id="impBtn">Abrir config.</button>
+    <button id="resetBtn">Resetar</button>
+    <input type="file" id="impFile" accept=".json" style="display:none">
+  </div>
+
+  <h2>Como usar</h2>
+  <div class="hint">
+    A posição inicial já vem estimada pela foto do teto. Ligue a calibração <b>Grade</b> e ajuste cada planeta: <b>arraste dentro</b> (fora da cruz) para mover, as <b>alças ●</b> mudam largura/rotação e altura, a <b>cruz ✛</b> marca o ápice. O planeta pode passar da borda da imagem; a parte de fora é o lado noturno. Ajuste a <b>Fase</b> até a linha dia/noite ficar antes da borda do projetor.<br>
+    O <b>sol</b> (círculo amarelo) também se arrasta, e a luz dos planetas sempre vem dele.<br>
+    Pelo som: <b>graves</b> lançam naves grandes do planeta 1; <b>agudos</b> lançam caças pequenos do planeta 2.<br><br>
+    iPad: no Mac clique em <b>Abrir sala</b>; no iPad abra esta página e digite o código.<br>
+    Teclas: <b>Tab</b> próximo · <b>setas</b> mover (Shift = rápido) · <b>Alt+setas</b> tamanho · <b>Q/W</b> rotação · <b>A/S</b> profundidade · <b>Z/X</b> fase · <b>N</b> lançar nave · <b>C</b> calibração · <b>H</b> esconder · <b>F</b> tela cheia
+  </div>
+</div>
+<div id="tip" style="opacity:0"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(() => {
+const isProj = new URLSearchParams(location.search).has('proj');
+if (isProj) document.body.classList.add('proj');
+const NB = 64, MAXH = 4, KEY = 'dois-planetas-v1';
+let role = 'solo';
+let hostAspect = 16/9;
+const VR = {x:0, y:0, w:innerWidth, h:innerHeight};
+let applyingRemote = false;
+const bc = ('BroadcastChannel' in window) ? new BroadcastChannel('dois-planetas') : null;
+const $ = id => document.getElementById(id);
+
+// ---------- estado (posições iniciais estimadas pela foto do teto) ----------
+function defaults(){
+  return {
+    hemis:[
+      {x:.03, y:.47, rx:.41, ry:.41, rot:0, ax:0, ay:0, depth:.45, kind:1, phase:.42, soft:.12, spin:.15, atm:.3},
+      {x:.92, y:.50, rx:.41, ry:.41, rot:0, ax:0, ay:0, depth:.45, kind:0, phase:.64, soft:.12, spin:.25, atm:.5},
+    ],
+    sun:{x:.47, y:.49, r:.065}, sunOn:true, sunPulse:.5,
+    sel:0, cal:1, feather:.03, bright:1, starsOn:true,
+    gain:10, shipMode:2, rate:14, sens:.55, shipSize:1, speed:1, trail:.7
+  };
+}
+let S = defaults();
+try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.hemis) S = Object.assign(defaults(), s); } catch(e){}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+  if (bc && !isProj) bc.postMessage({t:'state', s:S});
+  if (!applyingRemote && typeof sendState === 'function') sendState();
+}
+
+// ---------- WebGL: planetas ----------
+const cv = $('gl');
+const gl = cv.getContext('webgl', {antialias:false});
+const VS = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+const FS = `precision highp float;
+uniform vec2 uRes;
+uniform int uCount,uCal,uSel;
+uniform vec4 uGeo[4],uGeo2[4],uL[4],uP[4];
+uniform float uTime,uFeather,uBright;
+const float PI=3.14159265;
+float h31(vec3 p){p=fract(p*.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
+float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
+  return mix(mix(mix(h31(i),h31(i+vec3(1,0,0)),f.x),mix(h31(i+vec3(0,1,0)),h31(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(h31(i+vec3(0,0,1)),h31(i+vec3(1,0,1)),f.x),mix(h31(i+vec3(0,1,1)),h31(i+vec3(1,1,1)),f.x),f.y),f.z);}
+float fbm(vec3 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*vn(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
+vec3 rotY(vec3 p,float a){float c=cos(a),s=sin(a);return vec3(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}
+vec3 surf(float k,vec3 n,float spin,out vec3 atmC){
+  vec3 p=rotY(n,spin);
+  if(k<.5){
+    float f=p.y*7.+fbm(p*3.+vec3(0.,0.,spin*.3))*2.2;
+    vec3 a=vec3(.82,.48,.26),b=vec3(.93,.78,.58),c=vec3(.55,.24,.15);
+    vec3 col=mix(a,b,.5+.5*sin(f));col=mix(col,c,smoothstep(.55,.9,fbm(p*vec3(2.,9.,2.))));
+    atmC=vec3(1.,.7,.45);return col;
+  }else if(k<1.5){
+    float m=fbm(p*1.8);float d=fbm(p*7.);
+    vec3 col=vec3(.62,.64,.68)*(.75+.35*d);col*=mix(1.,.55,smoothstep(.5,.62,m));
+    float cr=smoothstep(.72,.78,fbm(p*5.+3.));col*=1.-.35*cr;
+    atmC=vec3(.6,.7,.9);return col;
+  }else if(k<2.5){
+    float h=fbm(p*2.2);
+    vec3 col=h<.52?mix(vec3(.04,.16,.42),vec3(.08,.36,.62),h/.52):mix(vec3(.25,.52,.22),vec3(.62,.55,.33),smoothstep(.55,.75,h));
+    vec3 pc=rotY(n,spin*1.35+.7);float cl=smoothstep(.55,.72,fbm(pc*3.5));col=mix(col,vec3(1.),cl*.85);
+    atmC=vec3(.4,.7,1.);return col;
+  }else if(k<3.5){
+    float h=fbm(p*3.);float cr=1.-smoothstep(.0,.04,abs(fbm(p*5.)-.5));
+    vec3 col=mix(vec3(.78,.9,.98),vec3(.97,.99,1.),h);col=mix(col,vec3(.35,.6,.8),cr*.7);
+    atmC=vec3(.6,.9,1.);return col;
+  }else{
+    float h=fbm(p*2.5);float cr=1.-smoothstep(.0,.05,abs(fbm(p*4.)-.5));
+    vec3 col=mix(vec3(.12,.08,.07),vec3(.25,.12,.08),h);
+    atmC=vec3(1.,.45,.15);return col+vec3(1.,.42,.1)*cr*1.4;
+  }
+}
+void main(){
+  vec2 p=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y);
+  vec3 col=vec3(0.);
+  for(int i=0;i<4;i++){
+    if(i>=uCount)break;
+    vec4 g=uGeo[i];vec4 g2=uGeo2[i];vec4 L4=uL[i];vec4 P=uP[i];
+    vec2 d=p-g.xy;float c=cos(g2.x),s=sin(g2.x);
+    vec2 q=vec2(c*d.x+s*d.y,-s*d.x+c*d.y)/g.zw;
+    float r=length(q);
+    if(r>1.)continue;
+    float mask=1.-smoothstep(1.-uFeather-1e-4,1.,r);
+    vec2 a=g2.yz;vec2 v=q-a;float lv=length(v);
+    vec2 dir=lv>1e-5?v/lv:vec2(1.,0.);
+    float bb=dot(a,dir);float sd=-bb+sqrt(max(bb*bb-dot(a,a)+1.,0.));
+    float rho=clamp(lv/max(sd,1e-4),0.,1.);
+    float tm=max(g2.w,.01)*PI*.5;
+    float th=asin(clamp(rho*sin(tm),0.,1.));
+    float u=th/tm;
+    float thS=u*PI*.5;
+    vec3 n=vec3(sin(thS)*dir.x,sin(thS)*dir.y,cos(thS));
+    vec3 L=L4.xyz;float k=L4.w;
+    float nl=dot(n,L);
+    float soft=P.z;
+    float term=smoothstep(-soft*.6-.01,soft+.02,nl);
+    float lam=max(nl,0.);
+    vec3 atmC;vec3 base=surf(k,n,P.x,atmC);
+    vec3 cc=base*term*(.3+.7*lam)*P.y;
+    if(k>3.5){cc+=base*(1.-term)*.55*step(.3,max(base.r-.3,0.));}
+    float rim=pow(sin(thS),5.);
+    cc+=atmC*rim*P.w*smoothstep(-.15,.45,nl)*P.y;
+    cc=1.-exp(-cc*1.5);
+    cc*=uBright;
+    if(uCal==2)cc=vec3(1.);
+    if(uCal==1){
+      float gr=0.;
+      float ru=abs(fract(u*4.+.5)-.5)/4.;gr=max(gr,1.-smoothstep(.004,.009,ru));
+      float phi=atan(dir.y,dir.x);float seg=PI/6.;
+      float an=abs(fract(phi/seg+.5)-.5)*seg*rho;gr=max(gr,1.-smoothstep(.004,.009,an));
+      gr=max(gr,smoothstep(.975,.99,r));gr=max(gr,1.-smoothstep(.015,.025,lv));
+      vec3 gc=(i==uSel)?vec3(1.,.75,.2):vec3(.55,.85,1.);
+      cc=max(cc*.6,gc*gr);
+    }
+    col=max(col,cc*mask);
+  }
+  gl_FragColor=vec4(col,1.);
+}`;
+function sh(type, src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const ap = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
+const U = {}; ['uRes','uCount','uCal','uSel','uGeo','uGeo2','uL','uP','uTime','uFeather','uBright'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+const specBytes = new Uint8Array(NB), specSm = new Float32Array(NB);
+let dpr = 1;
+const fx = $('fx'), fctx = fx.getContext('2d');
+const ov = $('ov'), ctx = ov.getContext('2d');
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (role === 'ctrl'){
+    const pad = 14, avail = innerWidth - (innerWidth > 700 ? 340 : 0);
+    let w = avail - 2*pad, h = w / hostAspect;
+    if (h > innerHeight - 2*pad){ h = innerHeight - 2*pad; w = h * hostAspect; }
+    VR.x = (avail - w)/2; VR.y = (innerHeight - h)/2; VR.w = w; VR.h = h;
+  } else { VR.x = 0; VR.y = 0; VR.w = innerWidth; VR.h = innerHeight; }
+  [cv, fx, ov].forEach(c => { c.style.left = VR.x+'px'; c.style.top = VR.y+'px'; c.style.width = VR.w+'px'; c.style.height = VR.h+'px';
+    c.width = Math.round(VR.w*dpr); c.height = Math.round(VR.h*dpr); });
+  if (role === 'host' && typeof sendStatus === 'function') sendStatus();
+}
+addEventListener('resize', resize); resize();
+
+// energia do som
+function bandAvg(a, b){ let s=0; for(let k=a;k<b;k++) s+=specSm[k]; return s/(b-a); }
+let bass = 0;
+
+// geometria em pixels de tela (CSS)
+function hPx(h){ const W=VR.w, H=VR.h;
+  return {cx:h.x*W, cy:h.y*H, rx:h.rx*H, ry:h.ry*H, c:Math.cos(h.rot), s:Math.sin(h.rot)}; }
+function toWorld(P, lx, ly){ return [P.cx + P.c*lx - P.s*ly, P.cy + P.s*lx + P.c*ly]; }
+function sunPx(){ return [S.sun.x*VR.w, S.sun.y*VR.h, S.sun.r*VR.h]; }
+// direção (tela) para onde a luz/naves apontam a partir de um planeta
+function lightTarget(i){
+  if (S.sunOn) return sunPx();
+  const o = S.hemis[(i+1) % S.hemis.length] || {x:.5,y:.5};
+  return [o.x*VR.w, o.y*VR.h, 0];
+}
+
+const geo = new Float32Array(16), geo2 = new Float32Array(16), uL = new Float32Array(16), uP = new Float32Array(16);
+function drawGL(t){
+  const W = cv.width, H = cv.height, n = Math.min(S.hemis.length, MAXH), k = W / VR.w;
+  const lightGain = 1 + (S.sunOn ? S.sunPulse*0.6*bass : 0);
+  S.hemis.slice(0,n).forEach((h,i) => {
+    const P = hPx(h);
+    geo.set([P.cx*k, P.cy*k, Math.max(P.rx*k,1), Math.max(P.ry*k,1)], i*4);
+    geo2.set([h.rot, h.ax, h.ay, h.depth], i*4);
+    const tg = lightTarget(i);
+    let dx = tg[0]-P.cx, dy = tg[1]-P.cy;
+    let lx = (P.c*dx + P.s*dy)/P.rx, ly = (-P.s*dx + P.c*dy)/P.ry;
+    const l = Math.hypot(lx,ly) || 1; lx/=l; ly/=l;
+    const ca = 2*h.phase - 1, sa = Math.sqrt(Math.max(0, 1-ca*ca));
+    uL.set([sa*lx, sa*ly, ca, h.kind], i*4);
+    uP.set([t*h.spin*0.25, lightGain, h.soft, h.atm], i*4);
+  });
+  gl.viewport(0,0,W,H);
+  gl.uniform2f(U.uRes, W, H);
+  gl.uniform1i(U.uCount, n); gl.uniform1i(U.uCal, +S.cal);
+  gl.uniform1i(U.uSel, document.body.classList.contains('hidden') || isProj ? -1 : S.sel);
+  gl.uniform4fv(U.uGeo, geo); gl.uniform4fv(U.uGeo2, geo2); gl.uniform4fv(U.uL, uL); gl.uniform4fv(U.uP, uP);
+  gl.uniform1f(U.uTime, t); gl.uniform1f(U.uFeather, +S.feather); gl.uniform1f(U.uBright, +S.bright);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+// ---------- estrelas, sol e naves (canvas 2D) ----------
+const stars = [];
+{ let sd = 7; const rnd = () => (sd = (sd*16807) % 2147483647) / 2147483647;
+  for (let i=0;i<170;i++) stars.push({x:rnd(), y:rnd(), m:0.3+rnd()*0.7, ph:rnd()*6.28, sp:0.5+rnd()*2}); }
+function insidePlanet(px, py){
+  for (const h of S.hemis){ const P = hPx(h); const dx=px-P.cx, dy=py-P.cy;
+    const lx=(P.c*dx+P.s*dy)/P.rx, ly=(-P.s*dx+P.c*dy)/P.ry; if (lx*lx+ly*ly < 1.04) return true; }
+  return false;
+}
+const SHIP_COLORS = ['#ffd2a0','#cfe0ff','#9fe8ff','#e8f6ff','#ffb27a'];
+let ships = [], flashes = [];
+function rimPoint(i, jitter){
+  const h = S.hemis[i], P = hPx(h), tg = lightTarget(i);
+  let ang = Math.atan2(tg[1]-P.cy, tg[0]-P.cx) + jitter;
+  let dx = Math.cos(ang), dy = Math.sin(ang);
+  const lx = (P.c*dx + P.s*dy)/P.rx, ly = (-P.s*dx + P.c*dy)/P.ry;
+  const s = 0.9 / Math.hypot(lx, ly);
+  return [P.cx + dx*s, P.cy + dy*s];
+}
+function launch(big, from){
+  if (S.hemis.length < 2 || ships.length > 60) return;
+  const n = S.hemis.length;
+  if (from == null) from = Math.floor(Math.random()*n);
+  let to = (from + 1 + Math.floor(Math.random()*(n-1))) % n;
+  const st = rimPoint(from, (Math.random()-.5)*0.7), en = rimPoint(to, (Math.random()-.5)*0.7);
+  const [sx, sy, sr] = S.sunOn ? sunPx() : [(st[0]+en[0])/2, (st[1]+en[1])/2, 0];
+  const ex = en[0]-st[0], ey = en[1]-st[1], el = Math.hypot(ex,ey) || 1;
+  const side = Math.random() < .5 ? 1 : -1;
+  const clear = (S.sunOn ? sr*2.2 : 0) + VR.h*(0.05 + Math.random()*0.16);
+  const mx = sx + (-ey/el)*side*clear, my = sy + (ex/el)*side*clear;
+  const cx = (4*mx - st[0] - en[0])/2, cy = (4*my - st[1] - en[1])/2;
+  const size = (big ? 2 : 0.75) * S.shipSize * (0.85 + Math.random()*0.3);
+  const dur = (big ? 6.5 : 3.2) * (0.85 + Math.random()*0.3) / S.speed;
+  ships.push({p0:st, p1:[cx,cy], p2:en, t0:performance.now()/1000, dur, size, col:SHIP_COLORS[S.hemis[from].kind] || '#fff', trail:[], to});
+}
+function bez(s, u){ const a=1-u; return [a*a*s.p0[0]+2*a*u*s.p1[0]+u*u*s.p2[0], a*a*s.p0[1]+2*a*u*s.p1[1]+u*u*s.p2[1]]; }
+function drawFX(now){
+  const W = VR.w, H = VR.h;
+  fctx.setTransform(dpr,0,0,dpr,0,0);
+  fctx.clearRect(0,0,W,H);
+  if (S.cal == 2) return;
+  fctx.globalCompositeOperation = 'lighter';
+  // estrelas, com fade perto das bordas para não desenhar o retângulo do projetor
+  if (S.starsOn){
+    for (const s of stars){
+      const px = s.x*W, py = s.y*H;
+      const edge = Math.min(s.x, 1-s.x, s.y, 1-s.y);
+      const fade = Math.max(0, Math.min(1, (edge-0.03)/0.12));
+      if (fade <= 0 || insidePlanet(px,py)) continue;
+      const a = fade * s.m * (0.55 + 0.45*Math.sin(now*s.sp + s.ph)) * S.bright;
+      fctx.fillStyle = `rgba(220,230,255,${a})`;
+      fctx.fillRect(px, py, 1.4, 1.4);
+    }
+  }
+  // sol
+  if (S.sunOn){
+    const [sx, sy, sr0] = sunPx();
+    const sr = sr0 * (1 + S.sunPulse*0.35*bass);
+    const g = fctx.createRadialGradient(sx,sy,0, sx,sy,sr*3.2);
+    g.addColorStop(0, `rgba(255,250,225,${S.bright})`);
+    g.addColorStop(0.28, `rgba(255,214,120,${0.95*S.bright})`);
+    g.addColorStop(0.32, `rgba(255,170,60,${0.45*S.bright})`);
+    g.addColorStop(0.6, `rgba(255,120,30,${0.12*S.bright})`);
+    g.addColorStop(1, 'rgba(255,90,20,0)');
+    fctx.fillStyle = g; fctx.beginPath(); fctx.arc(sx,sy,sr*3.2,0,Math.PI*2); fctx.fill();
+    // coroa
+    fctx.strokeStyle = `rgba(255,190,90,${0.25*S.bright})`; fctx.lineWidth = 1;
+    for (let k=0;k<14;k++){
+      const a = k/14*Math.PI*2 + now*0.05, len = sr*(1.25 + 0.45*Math.sin(now*1.7 + k*2.1) + 0.6*bass*S.sunPulse);
+      fctx.beginPath(); fctx.moveTo(sx+Math.cos(a)*sr*0.95, sy+Math.sin(a)*sr*0.95); fctx.lineTo(sx+Math.cos(a)*len, sy+Math.sin(a)*len); fctx.stroke();
+    }
+  }
+  // naves
+  const tnow = now;
+  ships = ships.filter(s => {
+    const raw = (tnow - s.t0)/s.dur;
+    if (raw >= 1){ flashes.push({x:s.p2[0], y:s.p2[1], t0:tnow, size:s.size, col:s.col}); return false; }
+    const u = raw*raw*(3-2*raw);
+    const pos = bez(s, u), nxt = bez(s, Math.min(1, u+0.01));
+    s.trail.push(pos); const maxT = Math.round(8 + 50*S.trail); while (s.trail.length > maxT) s.trail.shift();
+    const sc = H/720;
+    // rastro
+    if (S.trail > 0 && s.trail.length > 1){
+      for (let k=1;k<s.trail.length;k++){
+        const a = k/s.trail.length;
+        fctx.strokeStyle = hexA(s.col, a*0.55*S.bright);
+        fctx.lineWidth = Math.max(0.6, s.size*2.2*sc*a);
+        fctx.beginPath(); fctx.moveTo(...s.trail[k-1]); fctx.lineTo(...s.trail[k]); fctx.stroke();
+      }
+    }
+    // casco
+    const ang = Math.atan2(nxt[1]-pos[1], nxt[0]-pos[0]);
+    const Ls = 9*s.size*sc;
+    fctx.save(); fctx.translate(pos[0], pos[1]); fctx.rotate(ang);
+    const eg = fctx.createRadialGradient(-Ls*0.7,0,0,-Ls*0.7,0,Ls*1.1);
+    eg.addColorStop(0, hexA('#9fd8ff', 0.9*S.bright)); eg.addColorStop(1, 'rgba(80,160,255,0)');
+    fctx.fillStyle = eg; fctx.beginPath(); fctx.arc(-Ls*0.7,0,Ls*1.1,0,Math.PI*2); fctx.fill();
+    fctx.fillStyle = hexA(s.col, S.bright);
+    fctx.beginPath(); fctx.moveTo(Ls,0); fctx.lineTo(-Ls*0.75, Ls*0.55); fctx.lineTo(-Ls*0.45,0); fctx.lineTo(-Ls*0.75,-Ls*0.55); fctx.closePath(); fctx.fill();
+    fctx.restore();
+    return true;
+  });
+  // clarão de pouso
+  flashes = flashes.filter(f => {
+    const k = (tnow - f.t0)/0.8; if (k >= 1) return false;
+    const r = (6 + 30*k) * f.size * H/720;
+    fctx.strokeStyle = hexA(f.col, (1-k)*0.8*S.bright); fctx.lineWidth = 2*(1-k)+0.5;
+    fctx.beginPath(); fctx.arc(f.x, f.y, r, 0, Math.PI*2); fctx.stroke();
+    return true;
+  });
+  fctx.globalCompositeOperation = 'source-over';
+}
+function hexA(hex, a){ const v = parseInt(hex.slice(1),16); return `rgba(${v>>16},${(v>>8)&255},${v&255},${Math.max(0,Math.min(1,a))})`; }
+
+// lançadores: automático e pelo som
+let nextAuto = 0, lastBass = 0, lastTreb = 0, avgB = 0, avgT = 0;
+function launchers(now){
+  if ((S.shipMode == 0 || S.shipMode == 2) && now > nextAuto){
+    if (nextAuto) launch(Math.random() < 0.3);
+    nextAuto = now + (60 / S.rate) * (0.5 + Math.random());
+  }
+  const b = bandAvg(0, 10), tr = bandAvg(38, 60);
+  bass = bass*0.8 + b*0.2;
+  if (S.shipMode >= 1){
+    const thr = 0.25 - 0.2*S.sens;
+    if (b > avgB*1.25 + thr && now - lastBass > 0.35){ lastBass = now; launch(true, 0); }
+    if (tr > avgT*1.3 + thr*0.8 && now - lastTreb > 0.18){ lastTreb = now; launch(false, Math.min(1, S.hemis.length-1)); }
+  }
+  avgB = avgB*0.95 + b*0.05; avgT = avgT*0.95 + tr*0.05;
+}
+
+// ---------- janela de projeção (só recebe) ----------
+if (isProj){
+  const tip = $('tip'); tip.textContent = 'Clique para tela cheia'; tip.style.opacity = 1;
+  setTimeout(()=>tip.style.opacity=0, 3000);
+  addEventListener('click', () => { if(!document.fullscreenElement) document.documentElement.requestFullscreen?.(); });
+  if (bc){
+    bc.onmessage = e => {
+      if (e.data.t==='state') S = e.data.s;
+      else if (e.data.t==='spec'){ for(let k=0;k<NB;k++) specSm[k] = e.data.d[k]/255; }
+      else if (e.data.t==='ship'){
+        const s = e.data.s, d = p => [p[0]*VR.w, p[1]*VR.h];
+        ships.push({p0:d(s.p0), p1:d(s.p1), p2:d(s.p2), dur:s.dur, size:s.size, col:s.col, t0:performance.now()/1000, trail:[]});
+      }
+    };
+    bc.postMessage({t:'hello'});
+  }
+  (function loop(){ const t = performance.now()/1000; bass = bass*0.8 + bandAvg(0,10)*0.2; drawGL(t); drawFX(t); requestAnimationFrame(loop); })();
+  return;
+}
+
+// ---------- áudio ----------
+let actx=null, analyser=null, stream=null, fbuf=null, bins=null;
+const FMIN=35, FMAX=14000;
+const micBtn = $('micBtn'), micState = $('micState'), devSel = $('devSel');
+function computeBins(){
+  const hz = actx.sampleRate / analyser.fftSize, maxBin = analyser.frequencyBinCount-1;
+  bins = [];
+  for (let k=0;k<NB;k++){
+    const f0 = FMIN*Math.pow(FMAX/FMIN, k/NB), f1 = FMIN*Math.pow(FMAX/FMIN, (k+1)/NB);
+    const a = Math.min(maxBin, Math.round(f0/hz)), b = Math.min(maxBin, Math.max(a, Math.round(f1/hz)));
+    bins.push([a, b, Math.sqrt(f0*f1)]);
+  }
+}
+async function listDevices(){
+  try{
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+    const cur = stream?.getAudioTracks()[0]?.getSettings().deviceId;
+    devSel.innerHTML = devs.map((d,i)=>`<option value="${d.deviceId}" ${d.deviceId===cur?'selected':''}>${d.label||('Entrada '+(i+1))}</option>`).join('');
+    devSel.style.display = devs.length>1 ? 'block' : 'none';
+  }catch(e){}
+}
+async function startMic(deviceId){
+  try{
+    if (stream) stream.getTracks().forEach(t=>t.stop());
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    await actx.resume();
+    stream = await navigator.mediaDevices.getUserMedia({audio:{
+      deviceId: deviceId ? {exact:deviceId} : undefined, echoCancellation:false, noiseSuppression:false, autoGainControl:false }});
+    const src = actx.createMediaStreamSource(stream);
+    analyser = actx.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0;
+    src.connect(analyser);
+    fbuf = new Float32Array(analyser.frequencyBinCount);
+    computeBins();
+    micBtn.classList.add('on'); micBtn.textContent = '🎙 Microfone ligado'; micState.textContent = 'ao vivo';
+    listDevices();
+  }catch(e){ micState.textContent = 'sem acesso ao microfone'; console.error(e); }
+  sendStatus();
+}
+micBtn.onclick = () => role === 'ctrl' ? sendCmd('mic') : startMic(devSel.value || undefined);
+devSel.onchange = () => startMic(devSel.value);
+function updateSpectrum(t){
+  for (let k=0;k<NB;k++){
+    let v;
+    if (analyser){
+      if (k===0) analyser.getFloatFrequencyData(fbuf);
+      const [a,b,fc] = bins[k];
+      let m = -200; for (let j=a;j<=b;j++) if (fbuf[j]>m) m=fbuf[j];
+      const db = m + (+S.gain) + 3*Math.log2(fc/1000);
+      v = Math.min(1, Math.max(0, (db+85)/60));
+    } else {
+      const x = k/NB, beat = Math.exp(-((t*1.05)%1)*7), hat = Math.exp(-((t*2.1+0.5)%1)*14);
+      v = 0.25 + 0.15*Math.sin(t*1.7 + k*0.33) + beat*0.7*Math.max(0, 1-x*3) + hat*0.6*Math.max(0, x*1.6-0.6);
+      v = Math.min(1, Math.max(0, v));
+    }
+    specSm[k] = v > specSm[k] ? specSm[k] + (v-specSm[k])*0.6 : specSm[k] + (v-specSm[k])*0.12;
+    specBytes[k] = Math.round(specSm[k]*255);
+  }
+}
+const meter = $('meter'), mctx = meter.getContext('2d');
+function drawMeter(){
+  const w = meter.width = meter.clientWidth*dpr, h = meter.height = meter.clientHeight*dpr;
+  mctx.clearRect(0,0,w,h);
+  const bw = w/NB;
+  for (let k=0;k<NB;k++){
+    const v = specSm[k];
+    mctx.fillStyle = k < 10 ? '#ff9a4a' : (k >= 38 && k < 60 ? '#7fd4ff' : '#666');
+    mctx.fillRect(k*bw+0.5, h - v*h, bw-1, v*h);
+  }
+}
+
+// ---------- alças de edição ----------
+function inView(p){ return p[0] >= 6 && p[0] <= VR.w-6 && p[1] >= 6 && p[1] <= VR.h-6; }
+function handles(h){
+  const P = hPx(h);
+  // usa a alça do lado que estiver dentro da imagem (o planeta pode passar da borda)
+  const rxA = toWorld(P, P.rx, 0), rxB = toWorld(P, -P.rx, 0);
+  const ryA = toWorld(P, 0, P.ry), ryB = toWorld(P, 0, -P.ry);
+  const rxFlip = !inView(rxA) && inView(rxB), ryFlip = !inView(ryA) && inView(ryB);
+  return { P, center:[P.cx,P.cy], rxH: rxFlip ? rxB : rxA, rxFlip, ryH: ryFlip ? ryB : ryA, apex:toWorld(P,h.ax*P.rx,h.ay*P.ry) };
+}
+const TOUCH = matchMedia('(pointer:coarse)').matches, HR = TOUCH ? 26 : 12;
+function drawOverlay(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,VR.w,VR.h);
+  const dot = (p,r,fill) => { ctx.beginPath(); ctx.arc(p[0],p[1],r,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle='#000'; ctx.lineWidth=1.5; ctx.stroke(); };
+  const hr = TOUCH ? 11 : 7;
+  S.hemis.forEach((h,i) => {
+    const H = handles(h), sel = i===S.sel;
+    ctx.save(); ctx.translate(H.P.cx, H.P.cy); ctx.rotate(h.rot);
+    ctx.beginPath(); ctx.ellipse(0,0,H.P.rx,H.P.ry,0,0,Math.PI*2);
+    ctx.setLineDash(sel?[6,4]:[3,5]); ctx.lineWidth = sel?1.5:1;
+    ctx.strokeStyle = sel ? 'rgba(255,200,70,.9)' : 'rgba(140,210,255,.45)'; ctx.stroke();
+    ctx.restore(); ctx.setLineDash([]);
+    ctx.font = '600 14px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle = sel ? '#ffc846' : 'rgba(170,220,255,.85)';
+    const lp = [Math.min(Math.max(H.P.cx, 20), VR.w-20), Math.min(Math.max(H.P.cy - Math.min(H.P.ry,H.P.rx)*0.5, 20), VR.h-20)];
+    ctx.fillText(String(i+1), lp[0], lp[1]);
+    if (!sel) return;
+    ctx.strokeStyle='rgba(255,200,70,.5)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(...H.center); ctx.lineTo(...H.rxH); ctx.moveTo(...H.center); ctx.lineTo(...H.ryH); ctx.stroke();
+    dot(H.center, hr-1, '#ffc846'); dot(H.rxH, hr, '#ff8a3d'); dot(H.ryH, hr, '#ff8a3d');
+    const a = H.apex; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(a[0]-9,a[1]); ctx.lineTo(a[0]+9,a[1]); ctx.moveTo(a[0],a[1]-9); ctx.lineTo(a[0],a[1]+9); ctx.stroke();
+  });
+  if (S.sunOn){
+    const [sx,sy,sr] = sunPx();
+    ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(255,220,120,.8)'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.arc(sx,sy,sr,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    dot([sx,sy], hr-2, '#ffe08a');
+  }
+}
+let drag = null;
+const dist2 = (a,b) => Math.hypot(a[0]-b[0], a[1]-b[1]);
+ov.addEventListener('pointerdown', e => {
+  const m = [e.clientX - VR.x, e.clientY - VR.y];
+  const h = S.hemis[S.sel];
+  if (h){
+    const H = handles(h);
+    if (dist2(m,H.apex) < HR*0.6) drag = {k:'apex'};
+    else if (dist2(m,H.rxH) < HR) drag = {k:'rx', flip:H.rxFlip};
+    else if (dist2(m,H.ryH) < HR) drag = {k:'ry'};
+  }
+  if (!drag && S.sunOn){
+    const [sx,sy,sr] = sunPx();
+    if (dist2(m,[sx,sy]) < Math.max(sr, HR)) drag = {k:'sun', ox:m[0]-sx, oy:m[1]-sy};
+  }
+  if (!drag){
+    const order = S.hemis.map((h,i)=>i).sort((a,b)=>(a===S.sel?-1:b===S.sel?1:0));
+    for (const i of order){
+      const P = hPx(S.hemis[i]);
+      const dx = m[0]-P.cx, dy = m[1]-P.cy;
+      const lx = (P.c*dx + P.s*dy)/P.rx, ly = (-P.s*dx + P.c*dy)/P.ry;
+      if (lx*lx+ly*ly <= 1){ S.sel = i; drag = {k:'move', ox:m[0]-P.cx, oy:m[1]-P.cy}; break; }
+    }
+  }
+  if (drag){ ov.setPointerCapture(e.pointerId); syncUI(); }
+});
+ov.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const m=[e.clientX-VR.x,e.clientY-VR.y], W=VR.w, H=VR.h;
+  if (drag.k==='sun'){ S.sun.x = (m[0]-drag.ox)/W; S.sun.y = (m[1]-drag.oy)/H; save(); return; }
+  const h = S.hemis[S.sel], P = hPx(h);
+  const dx=m[0]-P.cx, dy=m[1]-P.cy;
+  if (drag.k==='move'){ h.x = (m[0]-drag.ox)/W; h.y = (m[1]-drag.oy)/H; }
+  else if (drag.k==='rx'){ h.rx = Math.max(8, Math.hypot(dx,dy))/H; h.rot = Math.atan2(dy,dx) + (drag.flip ? Math.PI : 0);
+    if (h.rot > Math.PI) h.rot -= 2*Math.PI; }
+  else if (drag.k==='ry'){ h.ry = Math.max(8, Math.abs(-P.s*dx + P.c*dy))/H; }
+  else if (drag.k==='apex'){
+    let ax = (P.c*dx + P.s*dy)/P.rx, ay = (-P.s*dx + P.c*dy)/P.ry;
+    const l = Math.hypot(ax,ay); if (l>0.85){ ax*=0.85/l; ay*=0.85/l; }
+    h.ax = ax; h.ay = ay;
+  }
+  syncUI(); save();
+});
+ov.addEventListener('pointerup', () => { if (drag){ drag = null; sendState(true); } });
+
+// ---------- painel ----------
+const pct = v => Math.round(v*100)+'%';
+const fmt = {
+  gain: v=>(v>0?'+':'')+v+' dB', rate: v=>v, sens: pct, shipSize: v=>(+v).toFixed(2)+'×', speed: v=>(+v).toFixed(2)+'×', trail: pct,
+  sunR: v=>(+v).toFixed(3), sunPulse: pct, bright: pct, feather: pct,
+  phase: pct, soft: pct, spin: v=>(+v).toFixed(2), atm: pct,
+  depth: v=>Math.round(v*90)+'°', rx: v=>(+v).toFixed(3), ry: v=>(+v).toFixed(3), rot: v=>Math.round(v*180/Math.PI)+'°'
+};
+const globalKeys = ['gain','rate','sens','shipSize','speed','trail','sunPulse','bright','feather'];
+const hemiKeys = ['phase','soft','spin','atm','depth','rx','ry','rot'];
+globalKeys.forEach(k => $(k).addEventListener('input', e => { S[k] = +e.target.value; syncUI(); save(); }));
+hemiKeys.forEach(k => $(k).addEventListener('input', e => { const h=S.hemis[S.sel]; if(h){ h[k] = +e.target.value; syncUI(); save(); } }));
+$('sunR').addEventListener('input', e => { S.sun.r = +e.target.value; syncUI(); save(); });
+['shipMode','cal'].forEach(k => $(k).addEventListener('change', e => { S[k] = +e.target.value; save(); }));
+$('kind').addEventListener('change', e => { const h=S.hemis[S.sel]; if(h){ h.kind = +e.target.value; save(); } });
+['sunOn','starsOn'].forEach(k => $(k).addEventListener('change', e => { S[k] = e.target.checked; save(); }));
+function syncUI(){
+  globalKeys.forEach(k => { $(k).value = S[k]; $(k+'V').textContent = fmt[k](S[k]); });
+  $('sunR').value = S.sun.r; $('sunRV').textContent = fmt.sunR(S.sun.r);
+  ['shipMode','cal'].forEach(k => $(k).value = S[k]);
+  $('sunOn').checked = !!S.sunOn; $('starsOn').checked = !!S.starsOn;
+  const h = S.hemis[S.sel];
+  if (h){ hemiKeys.forEach(k => { $(k).value = h[k]; $(k+'V').textContent = fmt[k](h[k]); }); $('kind').value = h.kind; }
+  const box = $('hemis');
+  if (box.children.length !== S.hemis.length){
+    box.innerHTML = S.hemis.map((_,i)=>`<button data-i="${i}">${i+1}</button>`).join('');
+    [...box.children].forEach(b => b.onclick = () => { S.sel = +b.dataset.i; syncUI(); save(); });
+  }
+  [...box.children].forEach((b,i) => b.classList.toggle('sel', i===S.sel));
+}
+$('addH').onclick = () => {
+  if (S.hemis.length >= MAXH) return;
+  const src = S.hemis[S.sel] || defaults().hemis[0];
+  S.hemis.push(Object.assign({}, src, {x:.5, y:.5, ax:0, ay:0, kind:(src.kind+2)%5}));
+  S.sel = S.hemis.length-1; syncUI(); save();
+};
+$('delH').onclick = () => { if (S.hemis.length <= 1) return; S.hemis.splice(S.sel,1); S.sel = Math.max(0, S.sel-1); syncUI(); save(); };
+$('apexReset').onclick = () => { const h=S.hemis[S.sel]; if(h){ h.ax=0; h.ay=0; save(); } };
+$('launchBtn').onclick = () => role === 'ctrl' ? sendCmd('launch') : launch(Math.random() < .5);
+$('projBtn').onclick = () => window.open(location.pathname + '?proj=1', 'planetas-proj', 'width=1280,height=720');
+$('fsBtn').onclick = toggleFS;
+$('hideBtn').onclick = toggleHide;
+$('resetBtn').onclick = () => { if (confirm('Voltar à configuração inicial?')) { S = defaults(); syncUI(); save(); } };
+$('expBtn').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));
+  a.download = 'dois-planetas-config.json'; a.click();
+};
+$('impBtn').onclick = () => $('impFile').click();
+$('impFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const s = JSON.parse(await f.text()); if (s.hemis){ S = Object.assign(defaults(), s); $('hemis').innerHTML=''; syncUI(); save(); } } catch(err){ alert('Arquivo inválido'); }
+};
+function toggleFS(){ if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
+const tip = $('tip'); let tipT;
+function toggleHide(){
+  if (role === 'ctrl'){ sendCmd('hide'); return; }
+  document.body.classList.toggle('hidden');
+  if (document.body.classList.contains('hidden')){
+    tip.textContent = 'Controles escondidos — tecle H para voltar'; tip.style.opacity = 1;
+    clearTimeout(tipT); tipT = setTimeout(()=>tip.style.opacity=0, 2200);
+  }
+  sendStatus();
+}
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && e.target.type !== 'range')) return;
+  const h = S.hemis[S.sel], k = e.key.toLowerCase();
+  const step = e.shiftKey ? 0.01 : 0.002;
+  let used = true;
+  if (k==='h') toggleHide();
+  else if (k==='f') toggleFS();
+  else if (k==='c') S.cal = (S.cal+1)%3;
+  else if (k==='n') $('launchBtn').onclick();
+  else if (k==='tab') S.sel = (S.sel + (e.shiftKey?-1:1) + S.hemis.length) % S.hemis.length;
+  else if (/^[1-4]$/.test(k) && +k <= S.hemis.length) S.sel = +k-1;
+  else if (!h) used = false;
+  else if (e.key.startsWith('Arrow')){
+    if (e.altKey){
+      if (e.key==='ArrowRight') h.rx += step; if (e.key==='ArrowLeft') h.rx = Math.max(.02,h.rx-step);
+      if (e.key==='ArrowDown') h.ry += step; if (e.key==='ArrowUp') h.ry = Math.max(.02,h.ry-step);
+    } else {
+      const ar = VR.h/VR.w;
+      if (e.key==='ArrowRight') h.x += step*ar; if (e.key==='ArrowLeft') h.x -= step*ar;
+      if (e.key==='ArrowDown') h.y += step; if (e.key==='ArrowUp') h.y -= step;
+    }
+  }
+  else if (k==='q') h.rot -= e.shiftKey?0.05:0.01;
+  else if (k==='w') h.rot += e.shiftKey?0.05:0.01;
+  else if (k==='a') h.depth = Math.max(0, h.depth-0.02);
+  else if (k==='s') h.depth = Math.min(1, h.depth+0.02);
+  else if (k==='z') h.phase = Math.max(0.05, h.phase-0.01);
+  else if (k==='x') h.phase = Math.min(1, h.phase+0.01);
+  else used = false;
+  if (used){ e.preventDefault(); syncUI(); save(); }
+});
+
+if (bc) bc.onmessage = e => { if (e.data.t==='hello') bc.postMessage({t:'state', s:S}); };
+
+// ---------- controle pelo iPad (PeerJS) ----------
+const PFX = 'planetas-estevao-';
+let peer = null, conns = [], sendT = 0, sendPend = false, roomCode = '', retryT = null, lastSpec = 0;
+function remState(t){ $('remState').textContent = t; }
+function code4(){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ'; let s=''; for(let i=0;i<4;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
+function sendAll(msg){ conns.forEach(c => { if (c.open) c.send(msg); }); }
+function sendState(now){
+  if (!conns.length) return;
+  const go = () => { sendT = performance.now(); sendAll({t:'state', s:S}); };
+  const n = performance.now();
+  if (now || n - sendT > 40) go();
+  else if (!sendPend){ sendPend = true; setTimeout(() => { sendPend = false; go(); }, 45); }
+}
+function sendCmd(c){ if (conns.length) sendAll({t:'cmd', c}); else remState('Não conectado ao Mac'); }
+function sendStatus(){
+  if (role !== 'host' || !conns.length) return;
+  sendAll({t:'status', aspect: innerWidth/innerHeight, hidden: document.body.classList.contains('hidden'), mic: micState.textContent});
+}
+function applyState(s){
+  if (!s || !s.hemis) return;
+  applyingRemote = true; S = s;
+  if (S.sel >= S.hemis.length) S.sel = 0;
+  syncUI(); save();
+  applyingRemote = false;
+}
+function onRemote(d, c){
+  if (!d || !d.t) return;
+  if (role === 'host'){
+    if (d.t === 'state'){ applyState(d.s); conns.forEach(o => { if (o !== c && o.open) o.send(d); }); }
+    else if (d.t === 'cmd'){
+      if (d.c === 'hide') toggleHide();
+      else if (d.c === 'mic') startMic(devSel.value || undefined);
+      else if (d.c === 'launch') launch(Math.random() < .5);
+      sendStatus();
+    }
+  } else if (role === 'ctrl'){
+    if (d.t === 'state') applyState(d.s);
+    else if (d.t === 'spec'){ for (let k=0;k<NB;k++){ specBytes[k] = d.d[k]; specSm[k] = d.d[k]/255; } lastSpec = performance.now(); }
+    else if (d.t === 'status'){
+      if (d.aspect && Math.abs(d.aspect - hostAspect) > 0.001){ hostAspect = d.aspect; resize(); }
+      $('hideBtn').textContent = d.hidden ? 'Mostrar controles no Mac' : 'Esconder controles no Mac';
+      micState.textContent = 'Mac: ' + (d.mic || '—');
+      micBtn.classList.toggle('on', d.mic === 'ao vivo');
+    }
+  }
+}
+function setupConn(c){
+  c.on('open', () => {
+    conns.push(c);
+    if (role === 'host'){ c.send({t:'state', s:S}); sendStatus(); remState('iPad conectado ✓ (sala ' + roomCode + ')'); }
+    else remState('Conectado ao Mac ✓ (sala ' + roomCode + ')');
+  });
+  c.on('data', d => onRemote(d, c));
+  c.on('close', () => {
+    conns = conns.filter(x => x !== c);
+    if (role === 'host') remState(conns.length ? 'iPad conectado ✓' : 'Sala ' + roomCode + ' aberta — esperando o iPad');
+    else { remState('Conexão perdida — tentando de novo…'); retryJoin(); }
+  });
+}
+function roomLink(code){ return location.origin + location.pathname + '?sala=' + code; }
+function openRoom(code){
+  if (typeof Peer === 'undefined'){ remState('Sem internet para o controle remoto'); return; }
+  if (peer) peer.destroy();
+  role = 'host'; conns = []; roomCode = code || code4();
+  remState('Abrindo sala…');
+  peer = new Peer(PFX + roomCode);
+  peer.on('open', () => {
+    $('sala').textContent = roomCode;
+    $('salaBtn').textContent = 'Sala aberta'; $('salaBtn').classList.add('on');
+    remState('Sala ' + roomCode + ' aberta — no iPad: ' + roomLink(roomCode));
+    try { localStorage.setItem(KEY+'-sala', roomCode); localStorage.setItem(KEY+'-host', '1'); } catch(e){}
+  });
+  peer.on('connection', setupConn);
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch(e){} });
+  peer.on('error', e => { if (e.type === 'unavailable-id') openRoom(); else remState('Erro: ' + e.type); });
+}
+function retryJoin(){ clearTimeout(retryT); retryT = setTimeout(() => { if (role === 'ctrl' && !conns.length) joinRoom(roomCode); }, 3000); }
+function joinRoom(code){
+  if (typeof Peer === 'undefined'){ remState('Sem internet para o controle remoto'); return; }
+  code = (code || '').toUpperCase().trim();
+  if (code.length !== 4){ remState('O código tem 4 letras'); return; }
+  if (peer) peer.destroy();
+  role = 'ctrl'; conns = []; roomCode = code;
+  document.body.classList.add('ctrl'); document.body.classList.remove('hidden');
+  $('codIn').value = code;
+  micBtn.textContent = '🎙 Ligar microfone do Mac';
+  $('hideBtn').textContent = 'Esconder controles no Mac';
+  try { localStorage.setItem(KEY+'-sala', code); localStorage.removeItem(KEY+'-host'); } catch(e){}
+  resize();
+  remState('Conectando à sala ' + code + '…');
+  peer = new Peer();
+  peer.on('open', () => setupConn(peer.connect(PFX + code, {reliable:true, serialization:'json'})));
+  peer.on('error', e => {
+    remState(e.type === 'peer-unavailable' ? 'Sala ' + code + ' não encontrada — abra a sala no Mac (tentando de novo…)' : 'Erro: ' + e.type);
+    retryJoin();
+  });
+}
+$('salaBtn').onclick = () => { let c = null; try { c = localStorage.getItem(KEY+'-sala'); } catch(e){} openRoom(c); };
+$('entrarBtn').onclick = () => joinRoom($('codIn').value);
+$('codIn').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(e.target.value); e.stopPropagation(); });
+try { $('codIn').value = localStorage.getItem(KEY+'-sala') || ''; } catch(e){}
+{
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('sala')) setTimeout(() => joinRoom(qs.get('sala')), 300);
+  else { let h = null, c = null; try { h = localStorage.getItem(KEY+'-host'); c = localStorage.getItem(KEY+'-sala'); } catch(e){}
+         if (h && c) setTimeout(() => openRoom(c), 300); }
+}
+
+// a janela de projeção recebe as mesmas naves que o Mac lança
+const _launch = launch;
+launch = function(big, from){
+  const before = ships.length; _launch(big, from);
+  if (bc && ships.length > before){ const s = ships[ships.length-1]; bc.postMessage({t:'ship', s:{p0:s.p0.map((v,i)=>v/(i?VR.h:VR.w)), p1:s.p1.map((v,i)=>v/(i?VR.h:VR.w)), p2:s.p2.map((v,i)=>v/(i?VR.h:VR.w)), dur:s.dur, size:s.size, col:s.col, norm:true}}); }
+};
+
+syncUI();
+let frame = 0;
+(function loop(){
+  const t = performance.now()/1000;
+  if (!(role === 'ctrl' && performance.now() - lastSpec < 1500)) updateSpectrum(t);
+  launchers(t);
+  drawGL(t); drawFX(t);
+  if (role === 'host' && conns.length && (frame % 3) === 0) sendAll({t:'spec', d:Array.from(specBytes)});
+  if (bc && (frame % 2) === 0) bc.postMessage({t:'spec', d:specBytes});
+  if (!document.body.classList.contains('hidden')){ drawOverlay(); if ((frame & 1)===0) drawMeter(); }
+  frame++;
+  requestAnimationFrame(loop);
+})();
+})();
+</script>
+</body>
+</html>

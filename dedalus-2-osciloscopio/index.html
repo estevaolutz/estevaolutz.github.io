@@ -811,6 +811,11 @@ const VOZ_D = {
     this.n.fmO.frequency.setTargetAtTime(f * 2, t, .006);
     this.freq = f; this.midi = m; notaVisD(t, m);
   },
+  alinhaGate(c) {   // (re)inicia o pulso do gate cravado na próxima semicolcheia da grade do arpejo
+    const n = this.n, s16 = 60 / MUS.bpm / 4; let T = nextT > c ? nextT : c; while (T < c + .03) T += s16;   // nextT = próxima semicolcheia já agendada do arpejo
+    const o = osc('square', MUS.bpm / 60 * 4); o.connect(n.gG); o.start(T); try { n.gO.stop(T); } catch (e) {}
+    n.gO = o; n.gBpm = MUS.bpm; n.gGrade = gradeV;
+  },
   vivo(m1, c, P) {
     const T = TIMBRES[BX.timbre], n = this.n;
     if (!m1.ativa) this.midi = null;
@@ -818,7 +823,8 @@ const VOZ_D = {
     this.b.forma(clamp(T.b + m1.fora * BX.env, 0, 3), c);
     n.lp.frequency.setTargetAtTime(BX.cut * 2 ** (-5 * (1 - m1.aberta)), c, .05); n.lp.Q.setTargetAtTime(.7 + BX.res * 8, c, .1);
     n.fmG.gain.setTargetAtTime(P === 2 ? this.freq * 1.6 : 0, c, .06);
-    const gt = P === 3 ? 1 : 0; n.gO.frequency.setTargetAtTime(MUS.bpm / 60 * 4, c, .05); n.gG.gain.setTargetAtTime(gt * .5, c, .04); n.gB.offset.setTargetAtTime(1 - gt * .5, c, .04);
+    if (n.gBpm !== MUS.bpm || (n.gGrade !== gradeV && tempoT >= gradeT)) this.alinhaGate(c);   // mesmo BPM e mesma grade do arpejo
+    const gt = P === 3 ? 1 : 0; n.gG.gain.setTargetAtTime(gt * .5, c, .04); n.gB.offset.setTargetAtTime(1 - gt * .5, c, .04);
     BUS.bxDly.gain.setTargetAtTime(P === 1 ? .55 : P === 3 ? .5 : 0, c, .08);   // eco · gate + delay
   }
 };

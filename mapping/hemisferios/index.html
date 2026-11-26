@@ -109,6 +109,7 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
     <button id="addH">+ hemisfério</button>
     <button id="delH">− remover</button>
     <button id="apexReset">Centralizar ápice</button>
+    <button id="photoBtn">Posições da foto</button>
   </div>
   <label class="row">Profundidade <input type="range" id="depth" min="0" max="1" step="0.01"><span class="v" id="depthV"></span></label>
   <label class="row">Largura <input type="range" id="rx" min="0.02" max="0.6" step="0.001"><span class="v" id="rxV"></span></label>
@@ -153,21 +154,27 @@ let applyingRemote = false;
 const bc = ('BroadcastChannel' in window) ? new BroadcastChannel('hemisferios-espectrais') : null;
 
 // ---------- estado ----------
+// posições medidas na foto do teto (27/11): 3 hemisférios grandes + 2 pequenos
+function photoLayout(){
+  return [
+    {x:.394, y:.295, rx:.329, ry:.328, rot:0, ax:0, ay:0, depth:.35},
+    {x:.736, y:.685, rx:.333, ry:.316, rot:0, ax:0, ay:0, depth:.35},
+    {x:.127, y:.714, rx:.258, ry:.274, rot:0, ax:0, ay:0, depth:.35},
+    {x:.699, y:.197, rx:.188, ry:.188, rot:0, ax:0, ay:0, depth:.35},
+    {x:.136, y:.180, rx:.172, ry:.195, rot:0, ax:0, ay:0, depth:.35},
+  ];
+}
 function defaults(){
   return {
-    hemis:[
-      {x:.50,y:.50,rx:.21,ry:.21,rot:0,ax:0,ay:0,depth:.35},
-      {x:.24,y:.25,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
-      {x:.76,y:.25,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
-      {x:.24,y:.76,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
-      {x:.76,y:.76,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
-    ],
+    hemis: photoLayout(),
     sel:0, style:0, rings:8, dist:0, hue:.55, hueSpread:.55, sat:.8, bright:1,
     cal:1, feather:.04, rimComp:.35, gain:10, release:.08, tilt:true, flow:1
   };
 }
 let S = defaults();
 try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.hemis) S = Object.assign(defaults(), s); } catch(e){}
+// troca única para o encaixe medido na foto, mantendo as outras escolhas
+try { if (!isProj && localStorage.getItem(KEY+'-layout') !== '2'){ S.hemis = photoLayout(); S.sel = 0; localStorage.setItem(KEY+'-layout','2'); localStorage.setItem(KEY, JSON.stringify(S)); } } catch(e){}
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
   if (bc && !isProj) bc.postMessage({t:'state', s:S});
@@ -624,6 +631,7 @@ $('delH').onclick = () => {
   if (S.hemis.length <= 1) return;
   S.hemis.splice(S.sel,1); S.sel = Math.max(0, S.sel-1); syncUI(); save();
 };
+$('photoBtn').onclick = () => { if (confirm('Voltar os hemisférios para as posições medidas na foto?')){ S.hemis = photoLayout(); S.sel = 0; $('hemis').innerHTML=''; syncUI(); save(); } };
 $('apexReset').onclick = () => { const h=S.hemis[S.sel]; if(h){ h.ax=0; h.ay=0; save(); } };
 $('projBtn').onclick = () => window.open(location.pathname + '?proj=1', 'hemisferios-proj', 'width=1280,height=720');
 $('fsBtn').onclick = toggleFS;

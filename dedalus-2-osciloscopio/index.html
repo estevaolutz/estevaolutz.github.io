@@ -491,7 +491,7 @@ setInterval(caldTick, 33);
 /* ---------- PINÇAS (polegar + indicador / médio / anelar / mínimo) — valem ENQUANTO segura ----------
    Distância polegar–ponta medida em tamanhos de mão; limite por dedo calibrável (botões "Pinças D/E", teclas P e O). */
 const PZ_DEDOS = [8, 12, 16, 20], PZ_DEDO_NOME = ['indicador', 'médio', 'anelar', 'mínimo'], PZ_SOLTA = 1.45;
-const PZ_EFEITO = { 1: ['segura', 'eco', 'FM 2:1', 'bitcrusher'], 2: ['gira', '8ª ↑', 'vibrato', 'uníssono'] };
+const PZ_EFEITO = { 1: ['segura', 'eco', 'FM 2:1', 'gate + delay'], 2: ['gira', '8ª ↑', 'vibrato', 'uníssono'] };
 const PZ = { 1: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, 2: { dedo: -1, d: [9, 9, 9, 9], lim: [.3, .3, .3, .3] }, cal: null };
 [1, 2].forEach(g => { try { const c = JSON.parse(localStorage.getItem('dedalus_pz' + g) || 'null'); if (c && Array.isArray(c.lim) && c.lim.length === 4) PZ[g].lim = c.lim; } catch (e) {} });
 function pzTick() {
@@ -769,7 +769,7 @@ const glideA = (p, f, c, gl) => { p.cancelScheduledValues(c); if (gl > .001) { p
    desenhadas, em vez de girar. Para fora (as duas mãos) = a forma da onda muda, e a figura muda junto.
    MÃO DIREITA (onda contínua, troca de nota no arpejo sem reatacar): altura = acorde · para fora = forma da onda
      (seno → triângulo → quadrada → serra, a partir do timbre) · perto = volume · abrir = abre o filtro (fechada = cantos arredondados).
-     Pinças: indicador = SEGURA a nota (figura parada) · médio = ECO · anelar = FM 2:1 (figura em laço) · mínimo = BITCRUSHER (degraus).
+     Pinças: indicador = SEGURA a nota (figura parada) · médio = ECO · anelar = FM 2:1 (figura em laço) · mínimo = GATE rítmico + DELAY.
    MÃO ESQUERDA: altura = nota (afinada em razão justa com o baixo) · para fora = forma da onda · perto = volume · abrir = filtro.
      Pinças: indicador = GIRA (desafina 0,6 Hz: a figura gira devagar) · médio = 8ª ACIMA · anelar = VIBRATO ·
      mínimo = UNÍSSONO (oitava exata do baixo: a figura mais simples). */
@@ -797,8 +797,11 @@ const VOZ_D = {
     const inp = ganho(1), lp = filtro('lowpass', BX.cut, .7), env = ganho(0);
     const fmO = osc('sine', 220), fmG = ganho(0); fmO.start();
     this.b = bancoDeFormas(inp); fmO.connect(fmG); fmG.connect(this.b.fm);
-    inp.connect(lp); lp.connect(env); env.connect(out);
-    this.n = { lp, env, fmO, fmG }; return inp;
+    // GATE rítmico (pinça do mínimo): pulso quadrado em semicolcheias, bordas suavizadas; só a profundidade muda (sem estalo)
+    const gate = ganho(0), gB = csrc(1), gO = osc('square', MUS.bpm / 60 * 4), gG = ganho(0), gS = filtro('lowpass', 220, .5);
+    gB.connect(gate.gain); gO.connect(gG); gG.connect(gS); gS.connect(gate.gain); gO.start();
+    inp.connect(lp); lp.connect(env); env.connect(gate); gate.connect(out);
+    this.n = { lp, env, fmO, fmG, gB, gO, gG }; return inp;
   },
   passo(pos, t, s16, m1, P) {
     if (P === 0 && this.midi !== null) return;   // segura: a figura fica parada
@@ -815,8 +818,8 @@ const VOZ_D = {
     this.b.forma(clamp(T.b + m1.fora * BX.env, 0, 3), c);
     n.lp.frequency.setTargetAtTime(BX.cut * 2 ** (-5 * (1 - m1.aberta)), c, .05); n.lp.Q.setTargetAtTime(.7 + BX.res * 8, c, .1);
     n.fmG.gain.setTargetAtTime(P === 2 ? this.freq * 1.6 : 0, c, .06);
-    BUS.bxDly.gain.setTargetAtTime(P === 1 ? .55 : 0, c, .08);
-    const crush = P === 3; cr.wet.gain.setTargetAtTime(crush ? .32 : 0, c, .015); cr.dry.gain.setTargetAtTime(crush ? 0 : 1, c, .015);
+    const gt = P === 3 ? 1 : 0; n.gO.frequency.setTargetAtTime(MUS.bpm / 60 * 4, c, .05); n.gG.gain.setTargetAtTime(gt * .5, c, .04); n.gB.offset.setTargetAtTime(1 - gt * .5, c, .04);
+    BUS.bxDly.gain.setTargetAtTime(P === 1 ? .55 : P === 3 ? .5 : 0, c, .08);   // eco · gate + delay
   }
 };
 const VOZ_E = {

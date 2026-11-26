@@ -80,6 +80,10 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
       <option value="1">Raios (barras radiais)</option>
       <option value="2">Contorno pulsante</option>
       <option value="3">Pulso (respiração)</option>
+      <option value="4">Plasma</option>
+      <option value="5">Metal líquido</option>
+      <option value="6">Poeira estelar</option>
+      <option value="7">Aurora</option>
     </select><span></span></label>
   <label class="row">Divisões <input type="range" id="rings" min="3" max="24" step="1"><span class="v" id="ringsV"></span></label>
   <label class="row">Distribuição
@@ -91,6 +95,7 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
   <label class="row">Arco de cor <input type="range" id="hueSpread" min="0" max="1" step="0.01"><span class="v" id="hueSpreadV"></span></label>
   <label class="row">Saturação <input type="range" id="sat" min="0" max="1" step="0.01"><span class="v" id="satV"></span></label>
   <label class="row">Brilho <input type="range" id="bright" min="0.1" max="2" step="0.01"><span class="v" id="brightV"></span></label>
+  <label class="row">Movimento <input type="range" id="flow" min="0" max="3" step="0.05"><span class="v" id="flowV"></span></label>
 
   <h2>Mapeamento</h2>
   <label class="row">Calibração
@@ -158,7 +163,7 @@ function defaults(){
       {x:.76,y:.76,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
     ],
     sel:0, style:0, rings:8, dist:0, hue:.55, hueSpread:.55, sat:.8, bright:1,
-    cal:1, feather:.04, rimComp:.35, gain:10, release:.08, tilt:true
+    cal:1, feather:.04, rimComp:.35, gain:10, release:.08, tilt:true, flow:1
   };
 }
 let S = defaults();
@@ -178,8 +183,26 @@ uniform vec2 uRes;
 uniform int uCount,uStyle,uCal,uSel;
 uniform vec4 uGeo[8],uGeo2[8],uBand[8];
 uniform sampler2D uSpec;
-uniform float uRings,uSat,uBright,uFeather,uRimComp;
+uniform float uRings,uSat,uBright,uFeather,uRimComp,uTime;
+uniform vec4 uRip[2],uRipA[2];
 const float PI=3.14159265;
+float h31(vec3 p){p=fract(p*.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
+float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
+  return mix(mix(mix(h31(i),h31(i+vec3(1,0,0)),f.x),mix(h31(i+vec3(0,1,0)),h31(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(h31(i+vec3(0,0,1)),h31(i+vec3(1,0,1)),f.x),mix(h31(i+vec3(0,1,1)),h31(i+vec3(1,1,1)),f.x),f.y),f.z);}
+float fbm(vec3 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*vn(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
+float sw(vec2 p,float t){return .5*sin(p.x*1.7+t)+.35*sin(p.y*2.3-t*1.3+p.x*.6)+.25*sin((p.x-p.y)*3.1+t*.7)+.15*sin((p.x+p.y)*4.7-t*1.9);}
+float rip1(float age,float amp,float u){ if(age<0.)return 0.; float d=u-age*.32; return amp*exp(-d*d*160.)*sin(d*55.)*exp(-age*.7); }
+// altura da superfície de metal líquido: ondas que saem do ápice + agitação
+float liqH(vec2 dc,float eM,float eH,float sd){
+  float u=length(dc);float h=0.;
+  h+=rip1(uRip[0].x,uRipA[0].x,u)+rip1(uRip[0].y,uRipA[0].y,u)+rip1(uRip[0].z,uRipA[0].z,u)+rip1(uRip[0].w,uRipA[0].w,u);
+  h+=rip1(uRip[1].x,uRipA[1].x,u)+rip1(uRip[1].y,uRipA[1].y,u)+rip1(uRip[1].z,uRipA[1].z,u)+rip1(uRip[1].w,uRipA[1].w,u);
+  h+=(.012+.05*eM)*sw(dc*2.2+sd,uTime*.9);
+  h+=(.001+.006*eH)*sw(dc*6.+sd*1.7,uTime*2.6);
+  return h;
+}
+float bandE(float lo,float hi,float a,float b){float s=0.;for(int k=0;k<6;k++){s+=texture2D(uSpec,vec2(clamp(mix(lo,hi,mix(a,b,(float(k)+.5)/6.)),0.,1.)*(63./64.)+.5/64.,.5)).r;}return s/6.;}
 float spec(float x){return texture2D(uSpec,vec2(clamp(x,0.,1.)*(63./64.)+.5/64.,.5)).r;}
 vec3 hsv(float h,float s,float v){vec3 k=clamp(abs(mod(h*6.+vec3(0.,4.,2.),6.)-3.)-1.,0.,1.);return v*mix(vec3(1.),k,s);}
 void main(){
@@ -233,11 +256,73 @@ void main(){
         float line=exp(-abs(u-R)*38.);
         float fill=.14*(1.-smoothstep(R-.02,R,u));
         cc=hsv(hue+ax*b.w,uSat,line+fill);
-      }else{
+      }else if(uStyle==3){
         float sum=0.;
         for(int k=0;k<8;k++){sum+=spec(mix(lo,hi,(float(k)+.5)/8.));}
         float lev=sum/8.;
         cc=hsv(hue+u*b.w*.5,uSat,lev*lev*1.6*(1.-.45*u));
+      }else{
+        // ---- estilos orgânicos ----
+        float eL=bandE(lo,hi,0.,.25),eM=bandE(lo,hi,.25,.6),eH=bandE(lo,hi,.6,1.);
+        vec2 dc=dir*u;float sd=float(i)*7.31;
+        if(uStyle==4){
+          // plasma: correntes grandes (grave) + filamentos (agudo)
+          float t=uTime;
+          vec3 P3=vec3(dc*2.1,t*.22+sd);
+          vec3 wq=vec3(fbm(P3*1.6+vec3(0.,0.,t*.3)),fbm(P3*1.6+vec3(5.2,1.3,t*.3)),0.);
+          float w1=fbm(P3+wq*(1.2+1.6*eL));
+          float fil=1.-smoothstep(0.,.035+.06*eH,abs(fbm(vec3(dc*3.2,t*.4+sd)+wq*2.)-.5));
+          float I=pow(smoothstep(.42,.8,w1),2.)*(.35+2.*eL)+.12*eM*(1.-u*u)+fil*(.08+1.3*eH)*smoothstep(.38,.62,w1+.12);
+          vec3 cB=hsv(hue+b.w*.4*w1,uSat,1.);
+          cc=cB*smoothstep(.02,1.25,I)+vec3(1.,.96,.9)*pow(max(I-.95,0.),2.)*1.2;
+        }else if(uStyle==5){
+          // metal líquido: espelho com ondas
+          float e=.008;
+          float h0=liqH(dc,eM,eH,sd),hx=liqH(dc+vec2(e,0.),eM,eH,sd),hy=liqH(dc+vec2(0.,e),eM,eH,sd);
+          float tS=u*PI*.5;vec3 n0=vec3(sin(tS)*dir,cos(tS));
+          vec3 nr=normalize(n0+vec3(-(hx-h0)/e,-(hy-h0)/e,0.)*.55);
+          vec3 V=vec3(0.,0.,1.);vec3 rf=reflect(-V,nr);
+          // estúdio: gradiente escuro com duas "softboxes" refletidas
+          float env=smoothstep(-.6,.8,rf.y*.6+rf.x*.4);
+          vec3 sky=mix(hsv(hue,uSat*.6,.02),hsv(hue+b.w*.5,uSat*.55,.35),env);
+          vec2 r2=rf.xy;
+          float box1=exp(-pow(length((r2-vec2(-.32,-.38))*vec2(2.2,4.5)),4.));
+          float box2=exp(-pow(length((r2-vec2(.4,.25))*vec2(4.,2.4)),4.));
+          float fres=.3+.7*pow(1.-max(nr.z,0.),2.);
+          cc=sky*(.6+.8*eM)+vec3(1.,.97,.93)*box1*(.5+1.6*eL)+hsv(hue+b.w,uSat*.35,1.)*box2*(.25+1.2*eH);
+          cc*=fres*1.6;
+        }else if(uStyle==6){
+          // poeira estelar: disco de partículas girando (grave no centro, agudo na borda)
+          float om=.22/(.12+u);float ang=phi+uTime*om*(.5+.8*eM);
+          float lev=spec(mix(lo,hi,u));
+          vec2 g2c=vec2(ang/(2.*PI)*110.,u*46.);
+          vec2 cl=floor(g2c);vec2 fr=fract(g2c)-.5;float hs=h31(vec3(cl,sd));
+          vec2 off=vec2(h31(vec3(cl,sd+1.))-.5,h31(vec3(cl,sd+2.))-.5)*.5;
+          float sz=.08+.22*hs;
+          float spark=smoothstep(sz,0.,length(fr-off))*step(.62-lev*.55,hs);
+          float dust=pow(fbm(vec3(ang*1.6,u*7.,uTime*.08+sd)),2.)*(.2+lev);
+          float arms=.5+.5*sin(ang*2.-u*9.+uTime*.2);
+          vec3 cA=hsv(hue+b.w*u,uSat*.75,1.);
+          cc=cA*(spark*(.6+2.4*lev)+dust*.7*(.5+arms))+hsv(hue,uSat*.3,1.)*exp(-u*7.)*(.15+1.8*eL);
+        }else{
+          // aurora: cortinas que sobem da borda; altura = nível da faixa naquele azimute
+          float x=phi/(2.*PI)+.5;
+          float wv=fbm(vec3(x*7.,uTime*.12,sd))*.35;
+          float xs=fract(x+wv*.15+uTime*.005);
+          float lev=spec(mix(lo,hi,abs(xs*2.-1.)));
+          float hgt=.15+.75*lev;
+          float base=1.-hgt;
+          float prof=smoothstep(base-.06,base+.26,u)*(1.-smoothstep(.88,1.,u));
+          float rays=.6+.4*vn(vec3(x*55.+wv*30.,uTime*.5,sd));
+          float curt=.55+.45*sin((x+wv)*PI*14.+uTime*.3);
+          float t2=clamp((1.-u)/max(hgt,.05),0.,1.);
+          vec3 ca=mix(hsv(hue,uSat*.9,1.),hsv(hue+b.w*.6,uSat*.8,1.),smoothstep(.2,.9,t2));
+          cc=ca*prof*rays*curt*(.4+1.6*lev);
+          cc+=hsv(hue+b.w*.6,uSat*.5,1.)*.06*eM*(1.-u);
+        }
+        // acabamento de cinema: tone mapping + grão leve
+        cc=1.-exp(-cc*1.25);
+        cc+=(h31(vec3(gl_FragCoord.xy,floor(uTime*24.)))-.5)*.03*dot(cc,vec3(.33));
       }
       cc*=uBright;
     }
@@ -266,7 +351,7 @@ gl.linkProgram(prog); gl.useProgram(prog);
 const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
 const ap = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
-const U = {}; ['uRes','uCount','uStyle','uCal','uSel','uGeo','uGeo2','uBand','uSpec','uRings','uSat','uBright','uFeather','uRimComp']
+const U = {}; ['uRes','uCount','uStyle','uCal','uSel','uGeo','uGeo2','uBand','uSpec','uRings','uSat','uBright','uFeather','uRimComp','uTime','uRip','uRipA']
   .forEach(n => U[n] = gl.getUniformLocation(prog, n));
 const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -297,6 +382,8 @@ function resize(){
 addEventListener('resize', resize); resize();
 
 const geo = new Float32Array(32), geo2 = new Float32Array(32), band = new Float32Array(32);
+let lastGL = 0, flowT = 0, ripLast = 0, ripAvg = 0, ripples = [];
+const ripU = new Float32Array(8), ripA = new Float32Array(8);
 function drawGL(){
   const W = cv.width, H = cv.height, n = Math.min(S.hemis.length, MAXH);
   S.hemis.slice(0,n).forEach((h,i) => {
@@ -313,6 +400,14 @@ function drawGL(){
   gl.uniform4fv(U.uGeo, geo); gl.uniform4fv(U.uGeo2, geo2); gl.uniform4fv(U.uBand, band);
   gl.uniform1f(U.uRings, +S.rings); gl.uniform1f(U.uSat, +S.sat); gl.uniform1f(U.uBright, +S.bright);
   gl.uniform1f(U.uFeather, +S.feather); gl.uniform1f(U.uRimComp, +S.rimComp);
+  // tempo do fluxo (controle Movimento) e ondas disparadas pelos ataques de grave
+  const now = performance.now()/1000, dt = lastGL ? Math.min(0.1, now - lastGL) : 0; lastGL = now;
+  let eLow = 0; for (let k=0;k<10;k++) eLow += specBytes[k]/255; eLow /= 10;
+  flowT += dt * (+S.flow) * (0.6 + 0.8*eLow);
+  if (eLow > ripAvg*1.25 + 0.12 && now - ripLast > 0.28){ ripLast = now; ripples.unshift({t0:flowT, a:0.06 + 0.25*Math.min(1, eLow)}); ripples.length = Math.min(ripples.length, 8); }
+  ripAvg = ripAvg*0.95 + eLow*0.05;
+  for (let k=0;k<8;k++){ const r = ripples[k]; ripU[k] = r ? flowT - r.t0 : -1; ripA[k] = r ? r.a : 0; }
+  gl.uniform1f(U.uTime, flowT); gl.uniform4fv(U.uRip, ripU); gl.uniform4fv(U.uRipA, ripA);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, NB, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, specBytes);
   gl.uniform1i(U.uSpec, 0);
@@ -497,10 +592,10 @@ const $ = id => document.getElementById(id);
 const fmt = {
   gain: v=>(v>0?'+':'')+v+' dB', release: v=>(+v).toFixed(2), rings: v=>v, hue: v=>Math.round(v*360)+'°',
   hueSpread: v=>Math.round(v*100)+'%', sat: v=>Math.round(v*100)+'%', bright: v=>Math.round(v*100)+'%',
-  feather: v=>Math.round(v*100)+'%', rimComp: v=>Math.round(v*100)+'%',
+  feather: v=>Math.round(v*100)+'%', rimComp: v=>Math.round(v*100)+'%', flow: v=>(+v).toFixed(2)+'×',
   depth: v=>Math.round(v*90)+'°', rx: v=>(+v).toFixed(3), ry: v=>(+v).toFixed(3), rot: v=>Math.round(v*180/Math.PI)+'°'
 };
-const globalKeys = ['gain','release','rings','hue','hueSpread','sat','bright','feather','rimComp'];
+const globalKeys = ['gain','release','rings','hue','hueSpread','sat','bright','feather','rimComp','flow'];
 const hemiKeys = ['depth','rx','ry','rot'];
 globalKeys.forEach(k => $(k).addEventListener('input', e => { S[k] = +e.target.value; syncUI(); save(); }));
 hemiKeys.forEach(k => $(k).addEventListener('input', e => { const h=S.hemis[S.sel]; if(h){ h[k] = +e.target.value; syncUI(); save(); } }));

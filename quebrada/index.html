@@ -121,7 +121,7 @@ input[type=range]{accent-color:var(--acc);width:90px}
     </div>
     <div class="help">
       <b>nanoPAD2 (cena 1, padrão de fábrica):</b> linha de baixo = notas 36, 38 … 50 tocam a bateria; linha de cima = notas 37, 39 … 51 são efeitos que funcionam enquanto o pad está apertado. Touchpad X/Y = CC1 / CC2 (toque = CC16). Se o seu nanoPAD2 estiver configurado diferente, use <b>APRENDER MIDI</b>: clique num pad da tela e bata no pad físico (ou clique em X/Y e mexa no touchpad).<br>
-      <b>Stutter</b> repete o trecho de áudio que acabou de tocar (sincronizado ao tempo) — lento e rápido têm velocidades ajustáveis. <b>Delay</b> joga o som num eco pingue-pongue; <b>Dub Echo</b> sobe o feedback e escurece as repetições. <b>Tape Stop</b> freia a fita. <b>Roll</b> faz rufos de caixa/chimbal.<br>
+      <b>Stutter</b> repete o trecho de áudio que acabou de tocar (sincronizado ao tempo) — lento e rápido têm velocidades ajustáveis. <b>Delay</b> joga o som num eco pingue-pongue; <b>Dub Echo</b> sobe o feedback e escurece as repetições. Os quatro últimos pads (notas 45, 47, 49 e 51) são <b>stutters prontos</b> de bumbo, caixa, chimbal e aro: enquanto você segura, a peça repete na velocidade do stutter rápido, presa ao tempo, com a força da sua batida.<br>
       Teclado: <b>A S D F G H J K</b> = efeitos · <b>Z X C V B N M ,</b> = bateria · <b>espaço</b> = play/stop. Web MIDI funciona no Chrome/Edge (o Safari não tem MIDI).
     </div>
   </div>
@@ -147,11 +147,11 @@ input[type=range]{accent-color:var(--acc);width:90px}
       <div class="ptitle"><span>Efeitos</span></div>
       <div class="knobs">
         <div class="knob"><span>Stutter lento</span><select id="stSlow"><option>1/4</option><option>1/8</option><option>1/8T</option><option>1/16</option></select></div>
-        <div class="knob"><span>Stutter rápido</span><select id="stFast"><option>1/16</option><option>1/16T</option><option>1/32</option><option>1/64</option></select></div>
+        <div class="knob"><span>Stutter rápido / repetições</span><select id="stFast"><option>1/16</option><option>1/16T</option><option>1/32</option><option>1/64</option></select></div>
         <div class="knob"><span>Tempo do delay</span><select id="dlyTime"><option>1/16</option><option>1/8</option><option>1/8.</option><option>1/4</option><option>1/4.</option></select></div>
         <div class="knob"><span>Feedback</span><input type="range" id="fb" min="0" max="90"></div>
         <div class="knob"><span>Reverb</span><input type="range" id="rev" min="0" max="100"></div>
-        <div class="knob"><span>Lo-fi base</span><input type="range" id="lofi" min="0" max="100"></div>
+        <div class="knob"><span>Lo-fi</span><input type="range" id="lofi" min="0" max="100"></div>
         <div class="knob"><span>Saturação</span><input type="range" id="sat" min="0" max="100"></div>
         <div class="knob"><span>Volume</span><input type="range" id="vol" min="0" max="100"></div>
       </div>
@@ -201,7 +201,7 @@ const DEFAULT_PATTERNS={
 const VEL=[0,.32,.72,1,.75,.75];
 const RATE={'1/4':4,'1/4.':6,'1/8':2,'1/8.':3,'1/8T':4/3,'1/16':1,'1/16T':2/3,'1/32':.5,'1/64':.25};
 const XY_RATES=[4,2,4/3,1,2/3,.5,.25];
-const FX_PADS=[{id:'stSlow',l:'STUTTER\nLENTO'},{id:'stFast',l:'STUTTER\nRÁPIDO'},{id:'throw',l:'DELAY'},{id:'dub',l:'DUB\nECHO'},{id:'tape',l:'TAPE\nSTOP'},{id:'filt',l:'FILTRO'},{id:'lofi',l:'LO-FI'},{id:'roll',l:'ROLL'}];
+const FX_PADS=[{id:'stSlow',l:'STUTTER\nLENTO'},{id:'stFast',l:'STUTTER\nRÁPIDO'},{id:'throw',l:'DELAY'},{id:'dub',l:'DUB\nECHO'},{id:'rep0',l:'BUMBO\nSTUTTER',row:0},{id:'rep1',l:'CAIXA\nSTUTTER',row:1},{id:'rep3',l:'CHIMBAL\nSTUTTER',row:3},{id:'rep6',l:'ARO\nSTUTTER',row:6}];
 const KEYS_FX='asdfghjk',KEYS_DR='zxcvbnm,';
 
 /* ---------- estado ---------- */
@@ -398,7 +398,18 @@ function trigger(r,t,v,step){
 /* ---------- sequenciador ---------- */
 let playing=false,cur=0,nextT=0,visQ=[],recent=[],rec=false,rollN=0;
 const held={};
+const reps={};
+function repTick(){
+  const ahead=ctx.currentTime+.1,iv=RATE[S.stFast]*stepDur();
+  for(const r in reps){const p=reps[r];while(p.t<ahead){trigger(+r,p.t,p.v*(p.n%2?.78:1),null);p.n++;p.t+=iv;}}
+}
+function repStart(row,vel){
+  const now=ctx.currentTime,iv=RATE[S.stFast]*stepDur();let t=now+.004;
+  if(playing){const sd=stepDur();let t0=nextT;while(t0>now)t0-=sd;t=t0+Math.ceil((now+.004-t0)/iv)*iv;}
+  reps[row]={t,v:Math.max(.25,Math.min(1,vel/115)),n:0};repTick();
+}
 function scheduler(){
+  repTick();
   if(!playing)return;const sd=stepDur();
   while(nextT<ctx.currentTime+.12){scheduleStep(cur,nextT,sd);nextT+=sd;cur=(cur+1)%STEPS;}
 }
@@ -406,9 +417,6 @@ function scheduleStep(s,time,sd){
   const sw=(s%2)?(S.swing[S.style]/100-.5)*2*sd:0,t=time+sw,pat=PAT();
   for(let r=0;r<8;r++){const c=pat.rows[r][s];if(!c)continue;const n=c===4?2:c===5?3:1;
     for(let k=0;k<n;k++)trigger(r,t+k*sd/n,VEL[c]*(n>1?.55+.45*k/(n-1):1),s);}
-  if(held.roll){rollN++;const lvl=Math.min(1,.3+rollN*.05);
-    if(S.style==='trap'){for(let k=0;k<3;k++)trigger(3,t+k*sd/3,lvl*.9,s);}
-    else{for(let k=0;k<2;k++)trigger(1,t+k*sd/2,lvl*(S.style==='triphop'?.6:1),s);}}
   visQ.push({t,type:'step',s});recent.push({t,s});if(recent.length>24)recent.shift();
 }
 function togglePlay(){
@@ -434,15 +442,14 @@ function fxDown(i,vel){
   const id=FX_PADS[i].id;if(held[id])return;held[id]=true;padVis('fx',i,true);
   if(!ctx)return;
   if(id==='stSlow'||id==='stFast'){stHeld=stHeld.filter(x=>x!==id);stHeld.push(id);stutterUpdate();}
-  else if(id==='tape'){if(stOn){post({type:'st',on:false});stOn=false;}post({type:'tape',on:true,dur:2*60/bpm(),at:quantAt()});}
-  else if(id==='roll'){rollN=0;}
+  else if(FX_PADS[i].row!==undefined)repStart(FX_PADS[i].row,vel);
   applyAll();
 }
 function fxUp(i){
   const id=FX_PADS[i].id;if(!held[id])return;held[id]=false;padVis('fx',i,false);
   if(!ctx)return;
   if(id==='stSlow'||id==='stFast'){stHeld=stHeld.filter(x=>x!==id);stutterUpdate();}
-  else if(id==='tape'){post({type:'tape',on:false});}
+  else if(FX_PADS[i].row!==undefined)delete reps[FX_PADS[i].row];
   applyAll();
 }
 function drumDown(i,vel){
@@ -457,8 +464,7 @@ function applyAll(){
   if(m==='dj'){if(x<.47){lp=90*Math.pow(20000/90,x/.47);q=.7+(.47-x)*9;}else if(x>.53){hp=10*Math.pow(5000/10,(x-.53)/.47);q=.7+(x-.53)*9;}}
   else if(m==='stutter'){lp=20000*Math.pow(160/20000,y);q=.7+y*5;}
   else{lp=80*Math.pow(20000/80,x);q=.7+y*16;}
-  if(held.filt){N.lp.frequency.cancelScheduledValues(now);N.lp.frequency.setValueAtTime(N.lp.frequency.value,now);N.lp.frequency.setTargetAtTime(Math.min(lp,260),now,sd*5);N.lp.Q.setTargetAtTime(Math.max(q,7),now,.05);}
-  else{N.lp.frequency.cancelScheduledValues(now);N.lp.frequency.setValueAtTime(N.lp.frequency.value,now);N.lp.frequency.setTargetAtTime(lp,now,.025);N.lp.Q.setTargetAtTime(q,now,.03);}
+  {N.lp.frequency.cancelScheduledValues(now);N.lp.frequency.setValueAtTime(N.lp.frequency.value,now);N.lp.frequency.setTargetAtTime(lp,now,.025);N.lp.Q.setTargetAtTime(q,now,.03);}
   N.hp.frequency.setTargetAtTime(hp,now,.025);
   // delay
   let send=0,fb=f.fb/100,time=RATE[f.dly]*sd,lpF=3200,hpF=180;
@@ -471,7 +477,7 @@ function applyAll(){
   N.fbLP.frequency.setTargetAtTime(lpF,now,.1);N.fbHP.frequency.setTargetAtTime(hpF,now,.1);
   // reverb, lo-fi, saturação, vinil, volume
   N.rSend.gain.setTargetAtTime(f.rev/100*.6,now,.05);
-  post({type:'crush',v:held.lofi?Math.max(f.lofi/100,.62):f.lofi/100*.5});
+  post({type:'crush',v:f.lofi/100*.5});
   const k=1+f.sat/100*7;N.sat.curve=curve(k);N.satIn.gain.value=1;N.satOut.gain.value=1/Math.sqrt(1+f.sat/100*1.5);
   N.crackle.gain.setTargetAtTime(f.crackle?.09:0,now,.1);
   N.master.gain.setTargetAtTime(S.vol/100,now,.03);

@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hemisférios Espectrais — Mapping</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#e8e6e1}
+#gl,#ov{position:fixed;inset:0;width:100%;height:100%;display:block}
+body.proj #ov,body.proj #panel{display:none}
+body.proj{cursor:none}
+body.hidden #panel,body.hidden #ov{display:none}
+body.hidden{cursor:none}
+#panel{position:fixed;top:12px;right:12px;width:304px;max-height:calc(100% - 24px);overflow:auto;background:rgba(16,16,18,.9);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid #333;border-radius:12px;padding:12px 14px;font-size:13px;box-sizing:border-box}
+h1{font-size:15px;margin:0 0 2px;font-weight:650}
+.sub{color:#8a867d;font-size:11px;margin-bottom:4px}
+h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:#9a968c;margin:14px 0 6px;border-top:1px solid #2a2a2a;padding-top:10px;font-weight:600}
+label.row{display:grid;grid-template-columns:100px 1fr 38px;align-items:center;gap:6px;margin:5px 0}
+label.row .v{text-align:right;color:#aaa;font-variant-numeric:tabular-nums;font-size:11.5px}
+label.chk{display:flex;gap:6px;align-items:center;margin:5px 0}
+input[type=range]{width:100%;accent-color:#e0b84a}
+select,button{background:#26262a;color:#eee;border:1px solid #444;border-radius:6px;padding:5px 8px;font-size:12px;cursor:pointer;font-family:inherit}
+select{width:100%}
+button:hover{background:#34343a}
+button.on{background:#c8553d;border-color:#c8553d}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+#hemis button{min-width:30px;font-weight:600}
+#hemis button.sel{background:#e0b84a;color:#111;border-color:#e0b84a}
+#meter{width:100%;height:44px;background:#000;border-radius:4px;display:block;margin-top:6px}
+.hint{color:#8a867d;font-size:11px;line-height:1.5}
+.hint b{color:#cfc9bc;font-weight:600}
+#tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:8px 14px;border-radius:8px;font-size:13px;transition:opacity 1s;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="ov"></canvas>
+
+<div id="panel">
+  <h1>Hemisférios Espectrais</h1>
+  <div class="sub">Mapping de espectro de áudio nos hemisférios do teto</div>
+
+  <h2>Áudio</h2>
+  <div class="btns">
+    <button id="micBtn">🎙 Ligar microfone</button>
+    <span class="hint" id="micState" style="align-self:center">modo demo</span>
+  </div>
+  <select id="devSel" style="display:none"></select>
+  <label class="row">Ganho <input type="range" id="gain" min="-20" max="40" step="1"><span class="v" id="gainV"></span></label>
+  <label class="row">Queda <input type="range" id="release" min="0.01" max="0.4" step="0.01"><span class="v" id="releaseV"></span></label>
+  <label class="chk"><input type="checkbox" id="tilt"> Compensar agudos (+3 dB/oitava)</label>
+  <canvas id="meter"></canvas>
+
+  <h2>Visual</h2>
+  <label class="row">Estilo
+    <select id="style">
+      <option value="0">Anéis concêntricos</option>
+      <option value="1">Raios (barras radiais)</option>
+      <option value="2">Contorno pulsante</option>
+      <option value="3">Pulso (respiração)</option>
+    </select><span></span></label>
+  <label class="row">Divisões <input type="range" id="rings" min="3" max="24" step="1"><span class="v" id="ringsV"></span></label>
+  <label class="row">Distribuição
+    <select id="dist">
+      <option value="0">Espectro inteiro em todos</option>
+      <option value="1">Uma faixa por hemisfério</option>
+    </select><span></span></label>
+  <label class="row">Cor base <input type="range" id="hue" min="0" max="1" step="0.01"><span class="v" id="hueV"></span></label>
+  <label class="row">Arco de cor <input type="range" id="hueSpread" min="0" max="1" step="0.01"><span class="v" id="hueSpreadV"></span></label>
+  <label class="row">Saturação <input type="range" id="sat" min="0" max="1" step="0.01"><span class="v" id="satV"></span></label>
+  <label class="row">Brilho <input type="range" id="bright" min="0.1" max="2" step="0.01"><span class="v" id="brightV"></span></label>
+
+  <h2>Mapeamento</h2>
+  <label class="row">Calibração
+    <select id="cal">
+      <option value="0">Desligada</option>
+      <option value="1">Grade sobre o espectro</option>
+      <option value="2">Branco sólido</option>
+    </select><span></span></label>
+  <div class="btns" id="hemis"></div>
+  <div class="btns">
+    <button id="addH">+ hemisfério</button>
+    <button id="delH">− remover</button>
+    <button id="apexReset">Centralizar ápice</button>
+  </div>
+  <label class="row">Profundidade <input type="range" id="depth" min="0" max="1" step="0.01"><span class="v" id="depthV"></span></label>
+  <label class="row">Largura <input type="range" id="rx" min="0.02" max="0.6" step="0.001"><span class="v" id="rxV"></span></label>
+  <label class="row">Altura <input type="range" id="ry" min="0.02" max="0.6" step="0.001"><span class="v" id="ryV"></span></label>
+  <label class="row">Rotação <input type="range" id="rot" min="-3.1416" max="3.1416" step="0.01"><span class="v" id="rotV"></span></label>
+  <label class="row">Borda suave <input type="range" id="feather" min="0" max="0.2" step="0.005"><span class="v" id="featherV"></span></label>
+  <label class="row">Luz na borda <input type="range" id="rimComp" min="0" max="1" step="0.01"><span class="v" id="rimCompV"></span></label>
+
+  <h2>Saída</h2>
+  <div class="btns">
+    <button id="projBtn">Janela de projeção</button>
+    <button id="fsBtn">Tela cheia</button>
+    <button id="hideBtn">Esconder controles (H)</button>
+  </div>
+  <div class="btns">
+    <button id="expBtn">Salvar config.</button>
+    <button id="impBtn">Abrir config.</button>
+    <button id="resetBtn">Resetar</button>
+    <input type="file" id="impFile" accept=".json" style="display:none">
+  </div>
+
+  <h2>Como usar</h2>
+  <div class="hint">
+    Com o Mac <b>espelhado</b> no projetor: arraste direto na tela olhando o teto. Com a tela <b>estendida</b>: abra a janela de projeção, leve-a ao projetor e clique nela para tela cheia.<br><br>
+    <b>Arrastar dentro</b> do círculo move. <b>Alça ●</b> à direita: largura + rotação. <b>Alça ●</b> embaixo: altura. <b>Cruz ✛</b>: ápice do hemisfério (onde fica o ponto mais baixo, visto do projetor).<br>
+    <b>Profundidade</b>: ajuste com a grade ligada até os anéis parecerem igualmente espaçados <i>sobre</i> o hemisfério.<br><br>
+    Teclas: <b>Tab</b> próximo · <b>1–8</b> escolher · <b>setas</b> mover (Shift = rápido) · <b>Alt+setas</b> largura/altura · <b>Q/W</b> rotação · <b>A/S</b> profundidade · <b>C</b> calibração · <b>H</b> esconder · <b>F</b> tela cheia
+  </div>
+</div>
+<div id="tip" style="opacity:0"></div>
+
+<script>
+(() => {
+const isProj = new URLSearchParams(location.search).has('proj');
+if (isProj) document.body.classList.add('proj');
+const NB = 64, MAXH = 8, KEY = 'hemisferios-espectrais-v1';
+const bc = ('BroadcastChannel' in window) ? new BroadcastChannel('hemisferios-espectrais') : null;
+
+// ---------- estado ----------
+function defaults(){
+  return {
+    hemis:[
+      {x:.50,y:.50,rx:.21,ry:.21,rot:0,ax:0,ay:0,depth:.35},
+      {x:.24,y:.25,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
+      {x:.76,y:.25,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
+      {x:.24,y:.76,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
+      {x:.76,y:.76,rx:.18,ry:.18,rot:0,ax:0,ay:0,depth:.35},
+    ],
+    sel:0, style:0, rings:8, dist:0, hue:.55, hueSpread:.55, sat:.8, bright:1,
+    cal:1, feather:.04, rimComp:.35, gain:10, release:.08, tilt:true
+  };
+}
+let S = defaults();
+try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.hemis) S = Object.assign(defaults(), s); } catch(e){}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+  if (bc && !isProj) bc.postMessage({t:'state', s:S});
+}
+
+// ---------- WebGL ----------
+const cv = document.getElementById('gl');
+const gl = cv.getContext('webgl', {antialias:false, preserveDrawingBuffer:false});
+const VS = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+const FS = `precision highp float;
+uniform vec2 uRes;
+uniform int uCount,uStyle,uCal,uSel;
+uniform vec4 uGeo[8],uGeo2[8],uBand[8];
+uniform sampler2D uSpec;
+uniform float uRings,uSat,uBright,uFeather,uRimComp;
+const float PI=3.14159265;
+float spec(float x){return texture2D(uSpec,vec2(clamp(x,0.,1.)*(63./64.)+.5/64.,.5)).r;}
+vec3 hsv(float h,float s,float v){vec3 k=clamp(abs(mod(h*6.+vec3(0.,4.,2.),6.)-3.)-1.,0.,1.);return v*mix(vec3(1.),k,s);}
+void main(){
+  vec2 p=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y);
+  vec3 col=vec3(0.);
+  for(int i=0;i<8;i++){
+    if(i>=uCount)break;
+    vec4 g=uGeo[i];vec4 g2=uGeo2[i];vec4 b=uBand[i];
+    vec2 d=p-g.xy;
+    float c=cos(g2.x),s=sin(g2.x);
+    vec2 q=vec2(c*d.x+s*d.y,-s*d.x+c*d.y)/g.zw;
+    float r=length(q);
+    if(r>1.)continue;
+    float mask=1.-smoothstep(1.-uFeather-1e-4,1.,r);
+    // ápice deslocado: reparametriza o disco a partir do ápice
+    vec2 a=g2.yz;
+    vec2 v=q-a;float lv=length(v);
+    vec2 dir=lv>1e-5?v/lv:vec2(1.,0.);
+    float bb=dot(a,dir);
+    float sd=-bb+sqrt(max(bb*bb-dot(a,a)+1.,0.));
+    float rho=clamp(lv/max(sd,1e-4),0.,1.);
+    // profundidade: calota esférica vista de baixo (raio projetado = sen θ)
+    float tm=max(g2.w,.01)*PI*.5;
+    float th=asin(clamp(rho*sin(tm),0.,1.));
+    float u=th/tm;
+    float phi=atan(dir.y,dir.x);
+    float ax=abs(phi)/PI;
+    float rim=mix(1.,1./max(cos(th),.3),uRimComp);
+    float lo=b.x,hi=b.y,hue=b.z;
+    vec3 cc=vec3(0.);
+    if(uCal==2){cc=vec3(1.);}
+    else{
+      if(uStyle==0){
+        float N=uRings;float fr=u*N;float idx=floor(fr);float xc=(idx+.5)/N;
+        float lev=spec(mix(lo,hi,xc));
+        float dd=abs(fract(fr)-.5)*2.;
+        float w=.12+.85*lev;
+        float lit=1.-smoothstep(w-.15,w,dd);
+        cc=hsv(hue+xc*b.w,uSat,lit*(.06+1.1*lev));
+      }else if(uStyle==1){
+        float B=uRings*3.;float fr=ax*B;float idx=floor(fr);float xc=(idx+.5)/B;
+        float lev=spec(mix(lo,hi,xc));
+        float f=fract(fr);
+        float gap=smoothstep(0.,.14,f)*smoothstep(1.,.86,f);
+        float len=.08+.92*lev;
+        float lit=(1.-smoothstep(len-.04,len,u))*gap;
+        cc=hsv(hue+xc*b.w,uSat,lit*(.3+.7*u/max(len,.01))*(.25+lev));
+      }else if(uStyle==2){
+        float lev=spec(mix(lo,hi,ax));
+        float R=.1+.85*lev;
+        float line=exp(-abs(u-R)*38.);
+        float fill=.14*(1.-smoothstep(R-.02,R,u));
+        cc=hsv(hue+ax*b.w,uSat,line+fill);
+      }else{
+        float sum=0.;
+        for(int k=0;k<8;k++){sum+=spec(mix(lo,hi,(float(k)+.5)/8.));}
+        float lev=sum/8.;
+        cc=hsv(hue+u*b.w*.5,uSat,lev*lev*1.6*(1.-.45*u));
+      }
+      cc*=uBright;
+    }
+    cc*=rim;
+    if(uCal==1){
+      float gr=0.;
+      float ru=abs(fract(u*4.+.5)-.5)/4.;
+      gr=max(gr,1.-smoothstep(.004,.009,ru));
+      float seg=PI/6.;
+      float ang=abs(fract(phi/seg+.5)-.5)*seg*rho;
+      gr=max(gr,1.-smoothstep(.004,.009,ang));
+      gr=max(gr,smoothstep(.975,.99,r));
+      gr=max(gr,1.-smoothstep(.015,.025,lv));
+      vec3 gc=(i==uSel)?vec3(1.,.75,.2):vec3(.55,.85,1.);
+      cc=max(cc*.6,gc*gr);
+    }
+    col+=cc*mask;
+  }
+  gl_FragColor=vec4(col,1.);
+}`;
+function sh(type, src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog); gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const ap = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
+const U = {}; ['uRes','uCount','uStyle','uCal','uSel','uGeo','uGeo2','uBand','uSpec','uRings','uSat','uBright','uFeather','uRimComp']
+  .forEach(n => U[n] = gl.getUniformLocation(prog, n));
+const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+const specBytes = new Uint8Array(NB);
+const specSm = new Float32Array(NB);
+
+let dpr = 1;
+const ov = document.getElementById('ov'); const ctx = ov.getContext('2d');
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = ov.width = Math.round(innerWidth*dpr);
+  cv.height = ov.height = Math.round(innerHeight*dpr);
+}
+addEventListener('resize', resize); resize();
+
+const geo = new Float32Array(32), geo2 = new Float32Array(32), band = new Float32Array(32);
+function drawGL(){
+  const W = cv.width, H = cv.height, n = Math.min(S.hemis.length, MAXH);
+  S.hemis.slice(0,n).forEach((h,i) => {
+    geo.set([h.x*W, h.y*H, Math.max(h.rx*H,1), Math.max(h.ry*H,1)], i*4);
+    geo2.set([h.rot, h.ax, h.ay, h.depth], i*4);
+    let lo=0, hi=1, hue=S.hue;
+    if (S.dist==1){ lo=i/n; hi=(i+1)/n; hue = S.hue + S.hueSpread*i/n; }
+    band.set([lo, hi, hue, S.dist==1 ? S.hueSpread/n : S.hueSpread], i*4);
+  });
+  gl.viewport(0,0,W,H);
+  gl.uniform2f(U.uRes, W, H);
+  gl.uniform1i(U.uCount, n); gl.uniform1i(U.uStyle, +S.style); gl.uniform1i(U.uCal, +S.cal);
+  gl.uniform1i(U.uSel, document.body.classList.contains('hidden') || isProj ? -1 : S.sel);
+  gl.uniform4fv(U.uGeo, geo); gl.uniform4fv(U.uGeo2, geo2); gl.uniform4fv(U.uBand, band);
+  gl.uniform1f(U.uRings, +S.rings); gl.uniform1f(U.uSat, +S.sat); gl.uniform1f(U.uBright, +S.bright);
+  gl.uniform1f(U.uFeather, +S.feather); gl.uniform1f(U.uRimComp, +S.rimComp);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, NB, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, specBytes);
+  gl.uniform1i(U.uSpec, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+// ---------- janela de projeção (só recebe) ----------
+if (isProj){
+  const tip = document.getElementById('tip');
+  tip.textContent = 'Clique para tela cheia'; tip.style.opacity = 1;
+  setTimeout(()=>tip.style.opacity=0, 3000);
+  addEventListener('click', () => { if(!document.fullscreenElement) document.documentElement.requestFullscreen?.(); });
+  if (bc){
+    bc.onmessage = e => {
+      if (e.data.t==='state') S = e.data.s;
+      else if (e.data.t==='spec') specBytes.set(e.data.d);
+    };
+    bc.postMessage({t:'hello'});
+  }
+  (function loop(){ drawGL(); requestAnimationFrame(loop); })();
+  return;
+}
+
+// ---------- áudio ----------
+let actx=null, analyser=null, stream=null, fbuf=null, bins=null;
+const FMIN=35, FMAX=14000;
+const micBtn = document.getElementById('micBtn'), micState = document.getElementById('micState'), devSel = document.getElementById('devSel');
+function computeBins(){
+  const hz = actx.sampleRate / analyser.fftSize, maxBin = analyser.frequencyBinCount-1;
+  bins = [];
+  for (let k=0;k<NB;k++){
+    const f0 = FMIN*Math.pow(FMAX/FMIN, k/NB), f1 = FMIN*Math.pow(FMAX/FMIN, (k+1)/NB);
+    const a = Math.min(maxBin, Math.round(f0/hz)), b = Math.min(maxBin, Math.max(a, Math.round(f1/hz)));
+    bins.push([a, b, Math.sqrt(f0*f1)]);
+  }
+}
+async function listDevices(){
+  try{
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+    const cur = stream?.getAudioTracks()[0]?.getSettings().deviceId;
+    devSel.innerHTML = devs.map((d,i)=>`<option value="${d.deviceId}" ${d.deviceId===cur?'selected':''}>${d.label||('Entrada '+(i+1))}</option>`).join('');
+    devSel.style.display = devs.length>1 ? 'block' : 'none';
+  }catch(e){}
+}
+async function startMic(deviceId){
+  try{
+    if (stream) stream.getTracks().forEach(t=>t.stop());
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    await actx.resume();
+    stream = await navigator.mediaDevices.getUserMedia({audio:{
+      deviceId: deviceId ? {exact:deviceId} : undefined,
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false }});
+    const src = actx.createMediaStreamSource(stream);
+    analyser = actx.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0;
+    src.connect(analyser);
+    fbuf = new Float32Array(analyser.frequencyBinCount);
+    computeBins();
+    micBtn.classList.add('on'); micBtn.textContent = '🎙 Microfone ligado';
+    micState.textContent = 'ao vivo';
+    listDevices();
+  }catch(e){
+    micState.textContent = 'sem acesso ao microfone';
+    console.error(e);
+  }
+}
+micBtn.onclick = () => startMic(devSel.value || undefined);
+devSel.onchange = () => startMic(devSel.value);
+
+function updateSpectrum(t){
+  const rel = +S.release;
+  for (let k=0;k<NB;k++){
+    let v;
+    if (analyser){
+      if (k===0) analyser.getFloatFrequencyData(fbuf);
+      const [a,b,fc] = bins[k];
+      let m = -200; for (let j=a;j<=b;j++) if (fbuf[j]>m) m=fbuf[j];
+      let db = m + (+S.gain) + (S.tilt ? 3*Math.log2(fc/1000) : 0);
+      v = Math.min(1, Math.max(0, (db+85)/60));
+    } else {
+      // demo: espectro sintético para calibrar sem som
+      const x = k/NB, beat = Math.exp(-((t*2.1)%1)*5);
+      v = 0.35 + 0.3*Math.sin(t*1.7 + k*0.33) * Math.sin(t*0.6 + x*5)
+          + beat*0.6*Math.max(0, 1-x*3) + 0.15*Math.sin(t*9+k)*(x>.6);
+      v = Math.min(1, Math.max(0, v*(1-0.35*x)));
+    }
+    specSm[k] = v > specSm[k] ? specSm[k] + (v-specSm[k])*0.6 : specSm[k] + (v-specSm[k])*rel;
+    specBytes[k] = Math.round(specSm[k]*255);
+  }
+}
+
+const meter = document.getElementById('meter'), mctx = meter.getContext('2d');
+function drawMeter(){
+  const w = meter.width = meter.clientWidth*dpr, h = meter.height = meter.clientHeight*dpr;
+  mctx.clearRect(0,0,w,h);
+  const bw = w/NB;
+  for (let k=0;k<NB;k++){
+    const v = specSm[k];
+    mctx.fillStyle = `hsl(${(S.hue + S.hueSpread*k/NB)*360},${S.sat*80}%,55%)`;
+    mctx.fillRect(k*bw+0.5, h - v*h, bw-1, v*h);
+  }
+}
+
+// ---------- alças de edição ----------
+function hPx(h){ const W=innerWidth, H=innerHeight;
+  return {cx:h.x*W, cy:h.y*H, rx:h.rx*H, ry:h.ry*H, c:Math.cos(h.rot), s:Math.sin(h.rot)}; }
+function toWorld(P, lx, ly){ return [P.cx + P.c*lx - P.s*ly, P.cy + P.s*lx + P.c*ly]; }
+function handles(h){
+  const P = hPx(h);
+  return { P, center:[P.cx,P.cy], rxH:toWorld(P,P.rx,0), ryH:toWorld(P,0,P.ry), apex:toWorld(P,h.ax*P.rx,h.ay*P.ry) };
+}
+function drawOverlay(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+  S.hemis.forEach((h,i) => {
+    const H = handles(h), sel = i===S.sel;
+    ctx.save();
+    ctx.translate(H.P.cx, H.P.cy); ctx.rotate(h.rot);
+    ctx.beginPath(); ctx.ellipse(0,0,H.P.rx,H.P.ry,0,0,Math.PI*2);
+    ctx.setLineDash(sel?[6,4]:[3,5]); ctx.lineWidth = sel?1.5:1;
+    ctx.strokeStyle = sel ? 'rgba(255,200,70,.9)' : 'rgba(140,210,255,.45)'; ctx.stroke();
+    ctx.restore(); ctx.setLineDash([]);
+    ctx.font = '600 13px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle = sel ? '#ffc846' : 'rgba(170,220,255,.8)';
+    ctx.fillText(String(i+1), H.P.cx, H.P.cy - Math.min(H.P.ry,H.P.rx)*0.55);
+    if (!sel) return;
+    const dot = (p,r,fill) => { ctx.beginPath(); ctx.arc(p[0],p[1],r,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle='#000'; ctx.lineWidth=1.5; ctx.stroke(); };
+    ctx.strokeStyle='rgba(255,200,70,.5)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(...H.center); ctx.lineTo(...H.rxH); ctx.moveTo(...H.center); ctx.lineTo(...H.ryH); ctx.stroke();
+    dot(H.center, 6, '#ffc846'); dot(H.rxH, 7, '#ff8a3d'); dot(H.ryH, 7, '#ff8a3d');
+    const a = H.apex; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(a[0]-9,a[1]); ctx.lineTo(a[0]+9,a[1]); ctx.moveTo(a[0],a[1]-9); ctx.lineTo(a[0],a[1]+9); ctx.stroke();
+  });
+}
+let drag = null;
+const dist2 = (a,b) => Math.hypot(a[0]-b[0], a[1]-b[1]);
+ov.addEventListener('pointerdown', e => {
+  const m = [e.clientX, e.clientY];
+  const h = S.hemis[S.sel];
+  if (h){
+    const H = handles(h);
+    if (dist2(m,H.apex) < 12) drag = {k:'apex'};
+    else if (dist2(m,H.rxH) < 12) drag = {k:'rx'};
+    else if (dist2(m,H.ryH) < 12) drag = {k:'ry'};
+  }
+  if (!drag){
+    // clique dentro de algum hemisfério: seleciona e move (de cima para baixo, menor primeiro)
+    const order = S.hemis.map((h,i)=>i).sort((a,b)=>(a===S.sel?-1:b===S.sel?1:0));
+    for (const i of order){
+      const P = hPx(S.hemis[i]);
+      const dx = m[0]-P.cx, dy = m[1]-P.cy;
+      const lx = (P.c*dx + P.s*dy)/P.rx, ly = (-P.s*dx + P.c*dy)/P.ry;
+      if (lx*lx+ly*ly <= 1){ S.sel = i; drag = {k:'move', ox:m[0]-P.cx, oy:m[1]-P.cy}; break; }
+    }
+  }
+  if (drag){ ov.setPointerCapture(e.pointerId); syncUI(); }
+});
+ov.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const h = S.hemis[S.sel], P = hPx(h), m=[e.clientX,e.clientY], W=innerWidth, H=innerHeight;
+  if (drag.k==='move'){ h.x = (m[0]-drag.ox)/W; h.y = (m[1]-drag.oy)/H; }
+  else if (drag.k==='rx'){
+    const dx=m[0]-P.cx, dy=m[1]-P.cy;
+    h.rx = Math.max(8, Math.hypot(dx,dy))/H; h.rot = Math.atan2(dy,dx);
+  } else if (drag.k==='ry'){
+    const dx=m[0]-P.cx, dy=m[1]-P.cy;
+    h.ry = Math.max(8, Math.abs(-P.s*dx + P.c*dy))/H;
+  } else if (drag.k==='apex'){
+    const dx=m[0]-P.cx, dy=m[1]-P.cy;
+    let ax = (P.c*dx + P.s*dy)/P.rx, ay = (-P.s*dx + P.c*dy)/P.ry;
+    const l = Math.hypot(ax,ay); if (l>0.85){ ax*=0.85/l; ay*=0.85/l; }
+    h.ax = ax; h.ay = ay;
+  }
+  syncUI(); save();
+});
+ov.addEventListener('pointerup', () => { drag = null; });
+
+// ---------- painel ----------
+const $ = id => document.getElementById(id);
+const fmt = {
+  gain: v=>(v>0?'+':'')+v+' dB', release: v=>(+v).toFixed(2), rings: v=>v, hue: v=>Math.round(v*360)+'°',
+  hueSpread: v=>Math.round(v*100)+'%', sat: v=>Math.round(v*100)+'%', bright: v=>Math.round(v*100)+'%',
+  feather: v=>Math.round(v*100)+'%', rimComp: v=>Math.round(v*100)+'%',
+  depth: v=>Math.round(v*90)+'°', rx: v=>(+v).toFixed(3), ry: v=>(+v).toFixed(3), rot: v=>Math.round(v*180/Math.PI)+'°'
+};
+const globalKeys = ['gain','release','rings','hue','hueSpread','sat','bright','feather','rimComp'];
+const hemiKeys = ['depth','rx','ry','rot'];
+globalKeys.forEach(k => $(k).addEventListener('input', e => { S[k] = +e.target.value; syncUI(); save(); }));
+hemiKeys.forEach(k => $(k).addEventListener('input', e => { const h=S.hemis[S.sel]; if(h){ h[k] = +e.target.value; syncUI(); save(); } }));
+['style','dist','cal'].forEach(k => $(k).addEventListener('change', e => { S[k] = +e.target.value; save(); }));
+$('tilt').addEventListener('change', e => { S.tilt = e.target.checked; save(); });
+function syncUI(){
+  globalKeys.forEach(k => { $(k).value = S[k]; $(k+'V').textContent = fmt[k](S[k]); });
+  ['style','dist','cal'].forEach(k => $(k).value = S[k]);
+  $('tilt').checked = !!S.tilt;
+  const h = S.hemis[S.sel];
+  hemiKeys.forEach(k => { if (h){ $(k).value = h[k]; $(k+'V').textContent = fmt[k](h[k]); } });
+  const box = $('hemis');
+  if (box.children.length !== S.hemis.length){
+    box.innerHTML = S.hemis.map((_,i)=>`<button data-i="${i}">${i+1}</button>`).join('');
+    [...box.children].forEach(b => b.onclick = () => { S.sel = +b.dataset.i; syncUI(); save(); });
+  }
+  [...box.children].forEach((b,i) => b.classList.toggle('sel', i===S.sel));
+}
+$('addH').onclick = () => {
+  if (S.hemis.length >= MAXH) return;
+  const src = S.hemis[S.sel] || {rx:.15,ry:.15,depth:.35};
+  S.hemis.push({x:.5,y:.5,rx:src.rx,ry:src.ry,rot:0,ax:0,ay:0,depth:src.depth});
+  S.sel = S.hemis.length-1; syncUI(); save();
+};
+$('delH').onclick = () => {
+  if (S.hemis.length <= 1) return;
+  S.hemis.splice(S.sel,1); S.sel = Math.max(0, S.sel-1); syncUI(); save();
+};
+$('apexReset').onclick = () => { const h=S.hemis[S.sel]; if(h){ h.ax=0; h.ay=0; save(); } };
+$('projBtn').onclick = () => window.open(location.pathname + '?proj=1', 'hemisferios-proj', 'width=1280,height=720');
+$('fsBtn').onclick = toggleFS;
+$('hideBtn').onclick = toggleHide;
+$('resetBtn').onclick = () => { if (confirm('Voltar à configuração inicial?')) { S = defaults(); syncUI(); save(); } };
+$('expBtn').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));
+  a.download = 'hemisferios-config.json'; a.click();
+};
+$('impBtn').onclick = () => $('impFile').click();
+$('impFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const s = JSON.parse(await f.text()); if (s.hemis){ S = Object.assign(defaults(), s); $('hemis').innerHTML=''; syncUI(); save(); } } catch(err){ alert('Arquivo inválido'); }
+};
+function toggleFS(){ if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
+const tip = $('tip'); let tipT;
+function toggleHide(){
+  document.body.classList.toggle('hidden');
+  if (document.body.classList.contains('hidden')){
+    tip.textContent = 'Controles escondidos — tecle H para voltar'; tip.style.opacity = 1;
+    clearTimeout(tipT); tipT = setTimeout(()=>tip.style.opacity=0, 2200);
+  }
+}
+
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && e.target.type !== 'range')) return;
+  const h = S.hemis[S.sel], k = e.key.toLowerCase();
+  const step = e.shiftKey ? 0.01 : 0.002;
+  let used = true;
+  if (k==='h') toggleHide();
+  else if (k==='f') toggleFS();
+  else if (k==='c') S.cal = (S.cal+1)%3;
+  else if (k==='tab') S.sel = (S.sel + (e.shiftKey?-1:1) + S.hemis.length) % S.hemis.length;
+  else if (/^[1-8]$/.test(k) && +k <= S.hemis.length) S.sel = +k-1;
+  else if (!h) used = false;
+  else if (e.key.startsWith('Arrow')){
+    if (e.altKey){
+      if (e.key==='ArrowRight') h.rx += step; if (e.key==='ArrowLeft') h.rx = Math.max(.01,h.rx-step);
+      if (e.key==='ArrowDown') h.ry += step; if (e.key==='ArrowUp') h.ry = Math.max(.01,h.ry-step);
+    } else {
+      const ar = innerHeight/innerWidth;
+      if (e.key==='ArrowRight') h.x += step*ar; if (e.key==='ArrowLeft') h.x -= step*ar;
+      if (e.key==='ArrowDown') h.y += step; if (e.key==='ArrowUp') h.y -= step;
+    }
+  }
+  else if (k==='q') h.rot -= e.shiftKey?0.05:0.01;
+  else if (k==='w') h.rot += e.shiftKey?0.05:0.01;
+  else if (k==='a') h.depth = Math.max(0, h.depth-0.02);
+  else if (k==='s') h.depth = Math.min(1, h.depth+0.02);
+  else used = false;
+  if (used){ e.preventDefault(); syncUI(); save(); }
+});
+
+if (bc) bc.onmessage = e => { if (e.data.t==='hello') bc.postMessage({t:'state', s:S}); };
+
+syncUI();
+let frame = 0;
+(function loop(now){
+  const t = (now||0)/1000;
+  updateSpectrum(t);
+  drawGL();
+  if (!document.body.classList.contains('hidden')){ drawOverlay(); if ((frame++ & 1)===0) drawMeter(); }
+  if (bc) bc.postMessage({t:'spec', d:specBytes});
+  requestAnimationFrame(loop);
+})();
+})();
+</script>
+</body>
+</html>

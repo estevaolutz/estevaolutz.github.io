@@ -91,6 +91,10 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
   <label class="row">Tamanho do sol <input type="range" id="sunR" min="0.02" max="0.2" step="0.002"><span class="v" id="sunRV"></span></label>
   <label class="row">Sol no grave <input type="range" id="sunPulse" min="0" max="1" step="0.01"><span class="v" id="sunPulseV"></span></label>
   <label class="chk"><input type="checkbox" id="starsOn"> Estrelas (somem perto da borda)</label>
+  <label class="row">Densidade <input type="range" id="starDens" min="0.2" max="2.5" step="0.05"><span class="v" id="starDensV"></span></label>
+  <label class="row">Nebulosa <input type="range" id="neb" min="0" max="1" step="0.01"><span class="v" id="nebV"></span></label>
+  <label class="row">Meteoros/min <input type="range" id="meteors" min="0" max="40" step="1"><span class="v" id="meteorsV"></span></label>
+  <label class="row">Tráfego ao longe <input type="range" id="traffic" min="0" max="1" step="0.01"><span class="v" id="trafficV"></span></label>
   <label class="row">Brilho geral <input type="range" id="bright" min="0.2" max="2" step="0.01"><span class="v" id="brightV"></span></label>
 
   <h2>Planeta selecionado</h2>
@@ -117,6 +121,8 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
   <label class="row">Fase (acesa) <input type="range" id="phase" min="0.05" max="1" step="0.01"><span class="v" id="phaseV"></span></label>
   <label class="row">Terminador <input type="range" id="soft" min="0" max="0.5" step="0.01"><span class="v" id="softV"></span></label>
   <label class="row">Giro <input type="range" id="spin" min="-1" max="1" step="0.01"><span class="v" id="spinV"></span></label>
+  <label class="row">Civilização <input type="range" id="civ" min="0" max="1" step="0.01"><span class="v" id="civV"></span></label>
+  <label class="row">Estações <input type="range" id="stations" min="0" max="3" step="1"><span class="v" id="stationsV"></span></label>
   <label class="row">Atmosfera <input type="range" id="atm" min="0" max="1.5" step="0.01"><span class="v" id="atmV"></span></label>
   <label class="row">Profundidade <input type="range" id="depth" min="0" max="1" step="0.01"><span class="v" id="depthV"></span></label>
   <label class="row">Largura <input type="range" id="rx" min="0.05" max="0.9" step="0.001"><span class="v" id="rxV"></span></label>
@@ -141,7 +147,7 @@ body.ctrl #pMin,body.ctrl #pSide{display:none}
   <div class="hint">
     A posição inicial já vem estimada pela foto do teto. Ligue a calibração <b>Grade</b> e ajuste cada planeta: <b>arraste dentro</b> (fora da cruz) para mover, as <b>alças ●</b> mudam largura/rotação e altura, a <b>cruz ✛</b> marca o ápice. O planeta pode passar da borda da imagem; a parte de fora é o lado noturno. Ajuste a <b>Fase</b> até a linha dia/noite ficar antes da borda do projetor.<br>
     O <b>sol</b> (círculo amarelo) também se arrasta, e a luz dos planetas sempre vem dele.<br>
-    Pelo som: <b>graves</b> lançam naves grandes do planeta 1; <b>agudos</b> lançam caças pequenos do planeta 2.<br><br>
+    Pelo som: <b>graves</b> lançam cruzadores e cargueiros do planeta 1; <b>agudos</b> lançam caças (em esquadrilha), ônibus e sondas do planeta 2.<br><br>
     iPad: no Mac clique em <b>Abrir sala</b>; no iPad abra esta página e digite o código.<br>
     Teclas: <b>Tab</b> próximo · <b>setas</b> mover (Shift = rápido) · <b>Alt+setas</b> tamanho · <b>Q/W</b> rotação · <b>A/S</b> profundidade · <b>Z/X</b> fase · <b>N</b> lançar nave · <b>C</b> calibração · <b>H</b> esconder · <b>F</b> tela cheia
   </div>
@@ -165,16 +171,17 @@ const $ = id => document.getElementById(id);
 function defaults(){
   return {
     hemis:[
-      {x:.03, y:.47, rx:.41, ry:.41, rot:0, ax:0, ay:0, depth:.45, kind:1, phase:.42, soft:.12, spin:.15, atm:.3},
-      {x:.92, y:.50, rx:.41, ry:.41, rot:0, ax:0, ay:0, depth:.45, kind:0, phase:.64, soft:.12, spin:.25, atm:.5},
+      {x:.03, y:.47, rx:.41, ry:.41, rot:0, ax:0, ay:0, depth:.45, kind:1, phase:.42, soft:.12, spin:.15, atm:.3, civ:.7, stations:1},
+      {x:.92, y:.50, rx:.41, ry:.41, rot:0, ax:0, ay:0, depth:.45, kind:0, phase:.64, soft:.12, spin:.25, atm:.5, civ:.6, stations:2},
     ],
     sun:{x:.47, y:.49, r:.065}, sunOn:true, sunPulse:.5,
-    sel:0, cal:1, feather:.03, bright:1, starsOn:true,
+    sel:0, cal:1, feather:.03, bright:1, starsOn:true, starDens:1, neb:.35, meteors:6, traffic:.5,
     gain:10, shipMode:2, rate:14, sens:.55, shipSize:1, speed:1, trail:.7
   };
 }
 let S = defaults();
 try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.hemis) S = Object.assign(defaults(), s); } catch(e){}
+S.hemis.forEach((h,i) => { if (h.civ == null) h.civ = i ? .6 : .7; if (h.stations == null) h.stations = i ? 2 : 1; });
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
   if (bc && !isProj) bc.postMessage({t:'state', s:S});
@@ -188,7 +195,7 @@ const VS = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
 const FS = `precision highp float;
 uniform vec2 uRes;
 uniform int uCount,uCal,uSel;
-uniform vec4 uGeo[4],uGeo2[4],uL[4],uP[4];
+uniform vec4 uGeo[4],uGeo2[4],uL[4],uP[4],uC[4];
 uniform float uTime,uFeather,uBright;
 const float PI=3.14159265;
 float h31(vec3 p){p=fract(p*.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
@@ -229,7 +236,7 @@ void main(){
   vec3 col=vec3(0.);
   for(int i=0;i<4;i++){
     if(i>=uCount)break;
-    vec4 g=uGeo[i];vec4 g2=uGeo2[i];vec4 L4=uL[i];vec4 P=uP[i];
+    vec4 g=uGeo[i];vec4 g2=uGeo2[i];vec4 L4=uL[i];vec4 P=uP[i];vec4 C=uC[i];
     vec2 d=p-g.xy;float c=cos(g2.x),s=sin(g2.x);
     vec2 q=vec2(c*d.x+s*d.y,-s*d.x+c*d.y)/g.zw;
     float r=length(q);
@@ -252,6 +259,21 @@ void main(){
     vec3 atmC;vec3 base=surf(k,n,P.x,atmC);
     vec3 cc=base*term*(.3+.7*lam)*P.y;
     if(k>3.5){cc+=base*(1.-term)*.55*step(.3,max(base.r-.3,0.));}
+    // civilização: luzes no lado noturno e instalações no lado de dia
+    if(C.x>0.){
+      vec3 pc=rotY(n,P.x)+vec3(C.y);
+      float reg=k<.5?smoothstep(.45,.75,.5+.5*sin(rotY(n,P.x).y*7.+fbm(pc*3.)*2.2))*smoothstep(.5,.62,fbm(pc*2.5)):smoothstep(.52,.68,fbm(pc*2.6));
+      if(k>1.5&&k<2.5)reg*=smoothstep(.52,.56,fbm(rotY(n,P.x)*2.2));
+      float dots=step(.955,h31(floor(pc*280.)))+.7*step(.9,h31(floor(pc*150.)+5.))*smoothstep(.55,.75,fbm(pc*14.));
+      float roads=1.-smoothstep(.0,.025,abs(fbm(pc*9.)-.5));
+      float night=(1.-term)*smoothstep(.0,.25,-nl+.05);
+      vec3 cityC=k<.5?vec3(.55,.95,1.):vec3(1.,.74,.38);
+      cc+=cityC*reg*(dots+roads*.18)*night*C.x*1.4;
+      float inst=step(.993,h31(floor(pc*220.)+3.))*smoothstep(.55,.7,fbm(pc*3.3));
+      cc+=vec3(.9,.95,1.)*inst*term*C.x*.35;
+      float bea=step(.996,h31(floor(pc*160.)))*step(.85,fract(uTime*.7+h31(floor(pc*160.)+7.)));
+      cc+=vec3(1.,.25,.2)*bea*C.x*1.5*max(night,.25);
+    }
     float rim=pow(sin(thS),5.);
     cc+=atmC*rim*P.w*smoothstep(-.15,.45,nl)*P.y;
     cc=1.-exp(-cc*1.5);
@@ -278,7 +300,7 @@ gl.linkProgram(prog); gl.useProgram(prog);
 gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
 const ap = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
-const U = {}; ['uRes','uCount','uCal','uSel','uGeo','uGeo2','uL','uP','uTime','uFeather','uBright'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+const U = {}; ['uRes','uCount','uCal','uSel','uGeo','uGeo2','uL','uP','uC','uTime','uFeather','uBright'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
 
 const specBytes = new Uint8Array(NB), specSm = new Float32Array(NB);
 let dpr = 1;
@@ -315,7 +337,7 @@ function lightTarget(i){
   return [o.x*VR.w, o.y*VR.h, 0];
 }
 
-const geo = new Float32Array(16), geo2 = new Float32Array(16), uL = new Float32Array(16), uP = new Float32Array(16);
+const geo = new Float32Array(16), geo2 = new Float32Array(16), uL = new Float32Array(16), uP = new Float32Array(16), uC = new Float32Array(16);
 function drawGL(t){
   const W = cv.width, H = cv.height, n = Math.min(S.hemis.length, MAXH), k = W / VR.w;
   const lightGain = 1 + (S.sunOn ? S.sunPulse*0.6*bass : 0);
@@ -330,126 +352,402 @@ function drawGL(t){
     const ca = 2*h.phase - 1, sa = Math.sqrt(Math.max(0, 1-ca*ca));
     uL.set([sa*lx, sa*ly, ca, h.kind], i*4);
     uP.set([t*h.spin*0.25, lightGain, h.soft, h.atm], i*4);
+    uC.set([h.civ || 0, i*3.7 + 1.3, 0, 0], i*4);
   });
   gl.viewport(0,0,W,H);
   gl.uniform2f(U.uRes, W, H);
   gl.uniform1i(U.uCount, n); gl.uniform1i(U.uCal, +S.cal);
   gl.uniform1i(U.uSel, document.body.classList.contains('hidden') || isProj ? -1 : S.sel);
-  gl.uniform4fv(U.uGeo, geo); gl.uniform4fv(U.uGeo2, geo2); gl.uniform4fv(U.uL, uL); gl.uniform4fv(U.uP, uP);
+  gl.uniform4fv(U.uGeo, geo); gl.uniform4fv(U.uGeo2, geo2); gl.uniform4fv(U.uL, uL); gl.uniform4fv(U.uP, uP); gl.uniform4fv(U.uC, uC);
   gl.uniform1f(U.uTime, t); gl.uniform1f(U.uFeather, +S.feather); gl.uniform1f(U.uBright, +S.bright);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
-// ---------- estrelas, sol e naves (canvas 2D) ----------
-const stars = [];
-{ let sd = 7; const rnd = () => (sd = (sd*16807) % 2147483647) / 2147483647;
-  for (let i=0;i<170;i++) stars.push({x:rnd(), y:rnd(), m:0.3+rnd()*0.7, ph:rnd()*6.28, sp:0.5+rnd()*2}); }
-function insidePlanet(px, py){
-  for (const h of S.hemis){ const P = hPx(h); const dx=px-P.cx, dy=py-P.cy;
-    const lx=(P.c*dx+P.s*dy)/P.rx, ly=(-P.s*dx+P.c*dy)/P.ry; if (lx*lx+ly*ly < 1.04) return true; }
-  return false;
+// ---------- céu: estrelas, nebulosa, meteoros e tráfego ao longe ----------
+function mkRnd(seed){ let sd = seed; return () => (sd = (sd*16807) % 2147483647) / 2147483647; }
+const STAR_COLS = ['190,210,255','220,230,255','255,250,240','255,240,205','255,214,170','255,188,150'];
+let stars = [], builtDens = -1;
+function buildStars(){
+  const rnd = mkRnd(7); stars = [];
+  const n = Math.round(900 * S.starDens);
+  for (let i=0;i<n;i++){
+    const r = rnd(), layer = r < .8 ? 0 : (r < .965 ? 1 : 2);
+    stars.push({x:rnd(), y:rnd(), layer,
+      m: layer===0 ? .12+rnd()*.33 : layer===1 ? .4+rnd()*.45 : .75+rnd()*.25,
+      ph:rnd()*6.28, sp:.4+rnd()*2.6, c:STAR_COLS[Math.floor(rnd()*STAR_COLS.length)], tw:rnd() < .4});
+  }
+  builtDens = S.starDens;
 }
-const SHIP_COLORS = ['#ffd2a0','#cfe0ff','#9fe8ff','#e8f6ff','#ffb27a'];
+const DRIFT = [0.0012, 0.0022, 0.0034];   // deriva lenta (fração da largura por segundo) — paralaxe por camada
+function edgeFade(nx, ny){ const e = Math.min(nx, 1-nx, ny, 1-ny); return Math.max(0, Math.min(1, (e-0.03)/0.12)); }
+
+let nebCanvas = null, nebKey = '';
+function buildNebula(){
+  const w = Math.max(64, Math.round(VR.w/3)), h = Math.max(36, Math.round(VR.h/3));
+  const key = w+'x'+h; if (key === nebKey) return; nebKey = key;
+  nebCanvas = document.createElement('canvas'); nebCanvas.width = w; nebCanvas.height = h;
+  const g = nebCanvas.getContext('2d'), rnd = mkRnd(42);
+  const cols = ['120,80,200','60,110,210','40,160,170','190,70,140','90,60,170'];
+  g.globalCompositeOperation = 'lighter';
+  for (let i=0;i<46;i++){
+    const t = rnd(), x = (0.15 + 0.7*t)*w + (rnd()-.5)*w*0.18, y = (0.85 - 0.7*t)*h + (rnd()-.5)*h*0.35;
+    const r = (0.06 + rnd()*0.2) * w, c = cols[Math.floor(rnd()*cols.length)];
+    const gr = g.createRadialGradient(x,y,0,x,y,r);
+    gr.addColorStop(0, `rgba(${c},${0.10+rnd()*0.12})`); gr.addColorStop(1, `rgba(${c},0)`);
+    g.fillStyle = gr; g.fillRect(x-r, y-r, 2*r, 2*r);
+  }
+  for (let i=0;i<220;i++){ const x = rnd()*w, y = rnd()*h, a = rnd()*0.35; g.fillStyle = `rgba(230,235,255,${a})`; g.fillRect(x,y,0.6,0.6); }
+  g.globalCompositeOperation = 'destination-out';
+  const edge = (x0,y0,x1,y1) => { const gr = g.createLinearGradient(x0,y0,x1,y1); gr.addColorStop(0,'rgba(0,0,0,1)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0,0,w,h); };
+  edge(0,0,w*0.16,0); edge(w,0,w*0.84,0); edge(0,0,0,h*0.2); edge(0,h,0,h*0.8);
+}
+
+let meteors = [], nextMeteor = 0, traffic = [], nextTraffic = 0;
+function skyEvents(now){
+  if (S.meteors > 0 && now > nextMeteor){
+    if (nextMeteor){
+      const down = Math.random() < .5 ? 0.45 : Math.PI - 0.45;
+      meteors.push({x:.12+Math.random()*.76, y:.06+Math.random()*.45, a:down + (Math.random()-.5)*0.7,
+        v:.45+Math.random()*.8, t0:now, life:.45+Math.random()*.8, w:.6+Math.random()*1.3, bright:Math.random() < .15});
+    }
+    nextMeteor = now + (60 / S.meteors) * (0.3 + Math.random()*1.4);
+  }
+  if (S.traffic > 0 && now > nextTraffic){
+    if (nextTraffic && traffic.length < 5){
+      const ltr = Math.random() < .5;
+      traffic.push({x: ltr ? -0.02 : 1.02, y:.08+Math.random()*.84, vx:(ltr?1:-1)*(.006+Math.random()*.016), vy:(Math.random()-.5)*.004,
+        ph:Math.random()*6, s:.6+Math.random()*.8});
+    }
+    nextTraffic = now + (14 / S.traffic) * (0.4 + Math.random()*1.2);
+  }
+}
+function drawSky(now, dt){
+  const W = VR.w, H = VR.h, B = S.bright;
+  if (S.neb > 0){ buildNebula(); fctx.globalAlpha = Math.min(1, S.neb*0.9*B); fctx.drawImage(nebCanvas, 0, 0, W, H); fctx.globalAlpha = 1; }
+  if (S.starsOn){
+    if (builtDens !== S.starDens) buildStars();
+    for (const s of stars){
+      const nx = (s.x + now*DRIFT[s.layer]/10) % 1, ny = s.y;
+      const f = edgeFade(nx, ny); if (f <= 0) continue;
+      const tw = s.tw ? 0.55 + 0.45*Math.sin(now*s.sp + s.ph) : 0.9;
+      const a = f * s.m * tw * B, px = nx*W, py = ny*H;
+      if (s.layer === 0){ fctx.fillStyle = `rgba(${s.c},${a})`; fctx.fillRect(px, py, 1, 1); }
+      else if (s.layer === 1){ fctx.fillStyle = `rgba(${s.c},${a})`; fctx.fillRect(px-0.5, py-0.5, 1.6, 1.6); }
+      else {
+        const r = 2.2 + 1.2*tw;
+        const g = fctx.createRadialGradient(px,py,0,px,py,r*2.2);
+        g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.35, `rgba(${s.c},${a*0.6})`); g.addColorStop(1, `rgba(${s.c},0)`);
+        fctx.fillStyle = g; fctx.fillRect(px-r*2.2, py-r*2.2, r*4.4, r*4.4);
+        fctx.strokeStyle = `rgba(${s.c},${a*0.35})`; fctx.lineWidth = 0.7;
+        fctx.beginPath(); fctx.moveTo(px-r*3.2,py); fctx.lineTo(px+r*3.2,py); fctx.moveTo(px,py-r*3.2); fctx.lineTo(px,py+r*3.2); fctx.stroke();
+      }
+    }
+  }
+  // tráfego ao longe: pontinhos lentos com luz piscando
+  traffic = traffic.filter(t => {
+    t.x += t.vx*dt; t.y += t.vy*dt;
+    if (t.x < -0.05 || t.x > 1.05) return false;
+    const f = edgeFade(t.x, t.y); if (f <= 0) return true;
+    const px = t.x*W, py = t.y*H;
+    fctx.fillStyle = `rgba(200,210,225,${0.55*f*B})`; fctx.fillRect(px-0.6*t.s, py-0.4*t.s, 1.6*t.s, 0.9*t.s);
+    const bl = (now*0.8 + t.ph) % 1;
+    if (bl < 0.08){
+      const col = bl < 0.04 ? '255,80,70' : '255,255,255';
+      const g = fctx.createRadialGradient(px,py,0,px,py,3.5*t.s);
+      g.addColorStop(0, `rgba(${col},${0.9*f*B})`); g.addColorStop(1, `rgba(${col},0)`);
+      fctx.fillStyle = g; fctx.fillRect(px-4*t.s, py-4*t.s, 8*t.s, 8*t.s);
+    }
+    return true;
+  });
+  // meteoros
+  meteors = meteors.filter(m => {
+    const age = now - m.t0; if (age > m.life) return false;
+    const env = Math.sin(Math.PI * age / m.life);
+    const dx = Math.cos(m.a), dy = Math.sin(m.a);
+    const hx = m.x*W + dx*m.v*H*age, hy = m.y*H + dy*m.v*H*age;
+    const f = edgeFade(hx/W, hy/H); if (f <= 0) return true;
+    const len = m.v*H*0.22*Math.min(1, age/0.12);
+    const tx = hx - dx*len, ty = hy - dy*len;
+    const a = env*f*B*(m.bright ? 1 : 0.75);
+    const g = fctx.createLinearGradient(hx,hy,tx,ty);
+    g.addColorStop(0, `rgba(255,250,235,${a})`); g.addColorStop(0.25, `rgba(255,210,150,${a*0.5})`); g.addColorStop(1, 'rgba(255,170,110,0)');
+    fctx.strokeStyle = g; fctx.lineWidth = m.w * (m.bright ? 1.8 : 1); fctx.lineCap = 'round';
+    fctx.beginPath(); fctx.moveTo(hx,hy); fctx.lineTo(tx,ty); fctx.stroke();
+    if (m.bright){ const hg = fctx.createRadialGradient(hx,hy,0,hx,hy,6); hg.addColorStop(0,`rgba(255,240,210,${a})`); hg.addColorStop(1,'rgba(255,200,150,0)'); fctx.fillStyle = hg; fctx.fillRect(hx-6,hy-6,12,12); }
+    return true;
+  });
+}
+// apaga o céu onde estão os planetas (estrelas não aparecem "na frente" deles)
+function cutPlanets(){
+  fctx.globalCompositeOperation = 'destination-out';
+  fctx.fillStyle = '#000';
+  for (const h of S.hemis){ const P = hPx(h); fctx.beginPath(); fctx.ellipse(P.cx, P.cy, P.rx, P.ry, h.rot, 0, Math.PI*2); fctx.fill(); }
+}
+
+// ---------- frota: naves desenhadas (sprites) ----------
+const ACCENT = ['#ff8a3d','#4aa8ff','#5fd18a','#7fe6ff','#ff4d3d'];
+// len = comprimento em px numa tela de 720 px de altura (escala pequena perto dos planetas)
+const TYPES = {
+  cruzador:   {len:48, dur:9.5, flame:'130,200,255', noz:[[-128,-22,8],[-128,0,10],[-128,22,8]], nav:[[-80,-46],[-80,46]]},
+  cargueiro:  {len:34, dur:8,   flame:'255,170,90',  noz:[[-128,-16,9],[-128,16,9]],             nav:[[-112,-30],[-112,30]]},
+  transporte: {len:17, dur:5.2, flame:'255,215,150', noz:[[-112,-8,7],[-112,8,7]],               nav:[[-82,-64],[-82,64]]},
+  caca:       {len:12, dur:3.4, flame:'150,205,255', noz:[[-100,-11,7],[-100,11,7]],             nav:[[-78,-90],[-78,90]]},
+  sonda:      {len:14, dur:6.5, flame:'170,255,215', noz:[[-46,0,6]],                            nav:[[0,-120],[0,120]]},
+};
+const sprites = {};
+function metal(g, y0, y1, a, b, c){ const gr = g.createLinearGradient(0,y0,0,y1); gr.addColorStop(0,a||'#dfe4ea'); gr.addColorStop(.5,b||'#8f99a6'); gr.addColorStop(1,c||'#353c46'); return gr; }
+function poly(g, pts){ g.beginPath(); g.moveTo(pts[0][0],pts[0][1]); for (let i=1;i<pts.length;i++) g.lineTo(pts[i][0],pts[i][1]); g.closePath(); }
+function mirror(pts){ return pts.concat(pts.slice().reverse().map(p => [p[0], -p[1]])); }
+function nozzle(g, x, y, r){ g.fillStyle = '#1c1f24'; g.beginPath(); g.ellipse(x+3, y, r*0.5, r, 0, 0, Math.PI*2); g.fill();
+  g.strokeStyle = '#7b8490'; g.lineWidth = 1.5; g.stroke(); }
+function windows(g, pts){ g.fillStyle = '#ffd98a'; for (const p of pts){ g.fillRect(p[0]-1, p[1]-1, 2.2, 2.2); } }
+const PAINT = {
+  cruzador(g, acc){
+    // radiadores (aletas cobre) atrás dos módulos
+    for (const sy of [-1,1]){
+      for (const x of [34,52,70]){ poly(g, [[x,sy*20],[x+12,sy*20],[x+4,sy*54],[x-8,sy*54]]); g.fillStyle = '#7a5434'; g.fill();
+        g.strokeStyle = 'rgba(255,200,150,.35)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x+6,sy*22); g.lineTo(x-2,sy*52); g.stroke(); }
+    }
+    // módulos laterais
+    for (const sy of [-1,1]){
+      for (const x of [-96,-50,-4]){
+        g.fillStyle = metal(g,sy<0?-44:20,sy<0?-20:44,'#d3d9e0','#8d97a3','#3f4650');
+        g.beginPath(); g.roundRect(x, sy<0 ? -44 : 20, 38, 24, 4); g.fill();
+        g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.2; g.stroke();
+        windows(g, [[x+8, sy*32],[x+16, sy*32],[x+24, sy*32],[x+32, sy*32]]);
+      }
+    }
+    // casco principal
+    g.fillStyle = metal(g,-21,21,'#eef1f5','#a3acb8','#47505b');
+    g.beginPath(); g.roundRect(-118,-21,226,42,6); g.fill(); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.stroke();
+    g.beginPath(); g.ellipse(106,0,22,21,0,-Math.PI/2,Math.PI/2); g.fill(); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,.28)'; g.lineWidth = 1;
+    for (const x of [-90,-62,-34,-6,22,50,78]){ g.beginPath(); g.moveTo(x,-20); g.lineTo(x,20); g.stroke(); }
+    g.fillStyle = metal(g,-6,6,'#ffffff','#c2c9d2','#6b7480'); g.fillRect(-112,-5,206,10);
+    windows(g, Array.from({length:22}, (_,k) => [-108 + k*10, k%2 ? -13 : 13]));
+    // faixa de cor e ponte de comando
+    g.fillStyle = acc; g.fillRect(88,-21,6,42);
+    g.fillStyle = metal(g,-13,13,'#ffffff','#cdd3db','#5d6672'); g.beginPath(); g.roundRect(-72,-13,34,26,4); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.45)'; g.stroke();
+    g.fillStyle = '#1c3550'; g.fillRect(-46,-9,5,18); g.fillStyle = '#8fd8ff'; g.fillRect(-45,-7,2,6);
+    // bloco dos motores
+    g.fillStyle = metal(g,-34,34,'#b9c1ca','#6f7984','#2a3038'); g.fillRect(-128,-34,12,68);
+    for (const n of TYPES.cruzador.noz) nozzle(g, n[0], n[1], n[2]);
+  },
+  cargueiro(g, acc){
+    g.fillStyle = metal(g,-7,7); g.fillRect(-100,-7,190,14);
+    const cols = ['#b5562e','#2f7f86','#c9c2b0','#7a8a3b','#a33a3a','#3c5e9e', acc];
+    const rnd = mkRnd(acc.length*97 + acc.charCodeAt(1));
+    for (let i=0;i<6;i++){
+      for (const s of [-1,1]){
+        const x = -92 + i*29, y0 = s<0 ? -31 : 8, c = cols[Math.floor(rnd()*cols.length)];
+        g.fillStyle = c; g.fillRect(x, y0, 26, 23);
+        g.fillStyle = s<0 ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.25)'; g.fillRect(x, y0, 26, 23);
+        g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1;
+        for (let k=1;k<5;k++){ g.beginPath(); g.moveTo(x+k*5.2, y0+1); g.lineTo(x+k*5.2, y0+22); g.stroke(); }
+        g.strokeRect(x+0.5, y0+0.5, 25, 22);
+      }
+    }
+    g.fillStyle = metal(g,-20,20,'#f1f3f6','#a5aeb9','#4b535e'); g.beginPath(); g.ellipse(104,0,24,20,0,0,Math.PI*2); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.stroke();
+    g.fillStyle = '#183048'; g.beginPath(); g.ellipse(118,0,7,12,0,0,Math.PI*2); g.fill();
+    g.fillStyle = 'rgba(160,220,255,.8)'; g.fillRect(119,-8,2,6);
+    g.strokeStyle = acc; g.lineWidth = 3; g.beginPath(); g.arc(104,0,17,Math.PI*0.6,Math.PI*1.4); g.stroke();
+    g.fillStyle = metal(g,-32,32,'#c5ccd5','#7c8691','#2d333b'); g.fillRect(-128,-32,30,64);
+    g.strokeStyle = 'rgba(0,0,0,.4)'; g.strokeRect(-128,-32,30,64);
+    for (const n of TYPES.cargueiro.noz) nozzle(g, n[0], n[1], n[2]);
+  },
+  transporte(g, acc){
+    const wing = mirror([[25,-14],[-62,-66],[-92,-66],[-84,-14]]);
+    poly(g, wing); g.fillStyle = metal(g,-66,66,'#eef1f4','#b3bbc5','#5d6672'); g.fill(); g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.stroke();
+    g.strokeStyle = acc; g.lineWidth = 4; g.beginPath(); g.moveTo(-64,-62); g.lineTo(-88,-62); g.moveTo(-64,62); g.lineTo(-88,62); g.stroke();
+    g.fillStyle = metal(g,-24,24,'#ffffff','#cfd4db','#666e7a'); g.beginPath(); g.ellipse(2,0,120,24,0,0,Math.PI*2); g.fill(); g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.stroke();
+    g.fillStyle = '#1a2b3c'; g.beginPath(); g.ellipse(78,0,18,11,0,0,Math.PI*2); g.fill();
+    g.fillStyle = 'rgba(170,225,255,.9)'; g.fillRect(84,-7,3,6);
+    g.fillStyle = acc; g.fillRect(-30,-23,9,46);
+    g.fillStyle = '#4a525d'; g.fillRect(-112,-3,48,6);
+    windows(g, [[50,-14],[40,-15],[30,-15],[20,-15],[50,14],[40,15],[30,15],[20,15]]);
+    for (const n of TYPES.transporte.noz) nozzle(g, n[0], n[1], n[2]);
+  },
+  caca(g, acc){
+    const wing = mirror([[22,-10],[-58,-92],[-82,-92],[-72,-12]]);
+    poly(g, wing); g.fillStyle = metal(g,-92,92,'#a7b0ba','#5c6570','#252a31'); g.fill(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2; g.stroke();
+    g.strokeStyle = '#c9d0d8'; g.lineWidth = 3.5; g.beginPath(); g.moveTo(-80,-90); g.lineTo(6,-90); g.moveTo(-80,90); g.lineTo(6,90); g.stroke();
+    g.strokeStyle = acc; g.lineWidth = 6; g.beginPath(); g.moveTo(-28,-42); g.lineTo(-48,-74); g.moveTo(-28,42); g.lineTo(-48,74); g.stroke();
+    poly(g, [[128,0],[40,-15],[-88,-18],[-100,-12],[-100,12],[-88,18],[40,15]]);
+    g.fillStyle = metal(g,-18,18,'#c2c9d1','#6d7681','#2a3038'); g.fill(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2; g.stroke();
+    const cg = g.createLinearGradient(30,-8,70,8); cg.addColorStop(0,'#c8f0ff'); cg.addColorStop(1,'#1b4566');
+    g.fillStyle = cg; g.beginPath(); g.ellipse(48,0,24,8,0,0,Math.PI*2); g.fill();
+    for (const n of TYPES.caca.noz) nozzle(g, n[0], n[1], n[2]);
+  },
+  sonda(g, acc){
+    for (const s of [-1,1]){
+      const y0 = s<0 ? -122 : 38;
+      g.fillStyle = '#1b3b78'; g.fillRect(-32, y0, 64, 84);
+      g.strokeStyle = '#5d8fe0'; g.lineWidth = 1.2;
+      for (let k=1;k<4;k++){ g.beginPath(); g.moveTo(-32+k*16, y0); g.lineTo(-32+k*16, y0+84); g.stroke(); }
+      for (let k=1;k<6;k++){ g.beginPath(); g.moveTo(-32, y0+k*14); g.lineTo(32, y0+k*14); g.stroke(); }
+      g.strokeStyle = '#c7ced6'; g.lineWidth = 2.5; g.strokeRect(-32, y0, 64, 84);
+    }
+    g.fillStyle = '#aab2bc'; g.fillRect(-4,-40,8,80);
+    const hx = []; for (let k=0;k<6;k++){ const a = k/6*Math.PI*2 + Math.PI/6; hx.push([Math.cos(a)*30, Math.sin(a)*30]); }
+    poly(g, hx); g.fillStyle = metal(g,-30,30,'#f7dc86','#c99a37','#6a4b12'); g.fill(); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.stroke();
+    g.strokeStyle = '#d8dde3'; g.lineWidth = 2; g.beginPath(); g.moveTo(28,0); g.lineTo(52,0); g.stroke();
+    g.fillStyle = metal(g,-34,34,'#ffffff','#c6ccd4','#6f7783'); g.beginPath(); g.ellipse(58,0,10,34,0,0,Math.PI*2); g.fill(); g.stroke();
+    g.fillStyle = acc; g.beginPath(); g.arc(60,0,4,0,Math.PI*2); g.fill();
+    g.strokeStyle = '#d8dde3'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0,-30); g.lineTo(-20,-46); g.stroke();
+  }
+};
+function sprite(type, acc){
+  const key = type + acc;
+  if (sprites[key]) return sprites[key];
+  const c = document.createElement('canvas'); c.width = c.height = 280;
+  const g = c.getContext('2d'); g.translate(140,140);
+  PAINT[type](g, acc);
+  return sprites[key] = c;
+}
+
 let ships = [], flashes = [];
 function rimPoint(i, jitter){
   const h = S.hemis[i], P = hPx(h), tg = lightTarget(i);
-  let ang = Math.atan2(tg[1]-P.cy, tg[0]-P.cx) + jitter;
-  let dx = Math.cos(ang), dy = Math.sin(ang);
+  const ang = Math.atan2(tg[1]-P.cy, tg[0]-P.cx) + jitter;
+  const dx = Math.cos(ang), dy = Math.sin(ang);
   const lx = (P.c*dx + P.s*dy)/P.rx, ly = (-P.s*dx + P.c*dy)/P.ry;
-  const s = 0.9 / Math.hypot(lx, ly);
+  const s = 0.86 / Math.hypot(lx, ly);
   return [P.cx + dx*s, P.cy + dy*s];
 }
+function pickType(big){
+  const r = Math.random();
+  if (big === true) return r < .45 ? 'cruzador' : 'cargueiro';
+  if (big === false) return r < .6 ? 'caca' : r < .85 ? 'transporte' : 'sonda';
+  return r < .12 ? 'cruzador' : r < .36 ? 'cargueiro' : r < .6 ? 'transporte' : r < .87 ? 'caca' : 'sonda';
+}
+function addShip(sh){
+  ships.push(sh);
+  if (bc && !isProj){
+    const nz = p => [p[0]/VR.w, p[1]/VR.h];
+    bc.postMessage({t:'ship', s:{p0:nz(sh.p0), p1:nz(sh.p1), p2:nz(sh.p2), dur:sh.dur, size:sh.size, type:sh.type, acc:sh.acc, delay:sh.t0 - performance.now()/1000}});
+  }
+}
 function launch(big, from){
-  if (S.hemis.length < 2 || ships.length > 60) return;
+  if (S.hemis.length < 2 || ships.length > 50) return;
   const n = S.hemis.length;
   if (from == null) from = Math.floor(Math.random()*n);
-  let to = (from + 1 + Math.floor(Math.random()*(n-1))) % n;
-  const st = rimPoint(from, (Math.random()-.5)*0.7), en = rimPoint(to, (Math.random()-.5)*0.7);
+  const to = (from + 1 + Math.floor(Math.random()*(n-1))) % n;
+  const type = pickType(big), T = TYPES[type];
+  const st = rimPoint(from, (Math.random()-.5)*0.8), en = rimPoint(to, (Math.random()-.5)*0.8);
   const [sx, sy, sr] = S.sunOn ? sunPx() : [(st[0]+en[0])/2, (st[1]+en[1])/2, 0];
-  const ex = en[0]-st[0], ey = en[1]-st[1], el = Math.hypot(ex,ey) || 1;
+  const ex = en[0]-st[0], ey = en[1]-st[1], el = Math.hypot(ex,ey) || 1, px = -ey/el, py = ex/el;
   const side = Math.random() < .5 ? 1 : -1;
-  const clear = (S.sunOn ? sr*2.2 : 0) + VR.h*(0.05 + Math.random()*0.16);
-  const mx = sx + (-ey/el)*side*clear, my = sy + (ex/el)*side*clear;
-  const cx = (4*mx - st[0] - en[0])/2, cy = (4*my - st[1] - en[1])/2;
-  const size = (big ? 2 : 0.75) * S.shipSize * (0.85 + Math.random()*0.3);
-  const dur = (big ? 6.5 : 3.2) * (0.85 + Math.random()*0.3) / S.speed;
-  ships.push({p0:st, p1:[cx,cy], p2:en, t0:performance.now()/1000, dur, size, col:SHIP_COLORS[S.hemis[from].kind] || '#fff', trail:[], to});
+  const clear = (S.sunOn ? sr*2.4 : 0) + VR.h*(0.04 + Math.random()*0.18);
+  const mx = sx + px*side*clear, my = sy + py*side*clear;
+  const c1 = [(4*mx - st[0] - en[0])/2, (4*my - st[1] - en[1])/2];
+  const dur = T.dur * (0.85 + Math.random()*0.3) / S.speed;
+  const size = S.shipSize * (0.9 + Math.random()*0.2);
+  const acc = ACCENT[S.hemis[from].kind] || '#fff';
+  const now = performance.now()/1000;
+  const wing = type === 'caca' ? (Math.random() < .5 ? 3 : 2) : 1;
+  const sp = VR.h/720 * 16 * size;
+  for (let k=0;k<wing;k++){
+    const off = k === 0 ? 0 : (k === 1 ? -1 : 1) * sp, back = k === 0 ? 0 : 0.22;
+    const o = p => [p[0] + px*off, p[1] + py*off];
+    addShip({p0:o(st), p1:o(c1), p2:o(en), dur, size, type, acc, t0:now + back, trail:[], ph:Math.random()*6});
+  }
 }
 function bez(s, u){ const a=1-u; return [a*a*s.p0[0]+2*a*u*s.p1[0]+u*u*s.p2[0], a*a*s.p0[1]+2*a*u*s.p1[1]+u*u*s.p2[1]]; }
+function drawShips(now){
+  const H = VR.h, B = S.bright;
+  ships = ships.filter(s => {
+    const raw = (now - s.t0)/s.dur;
+    if (raw < 0) return true;
+    if (raw >= 1){ flashes.push({x:s.p2[0], y:s.p2[1], t0:now, size:s.size*TYPES[s.type].len/30, col:s.acc}); return false; }
+    const u = raw*raw*(3-2*raw);
+    const pos = bez(s, u), nxt = bez(s, Math.min(1, u+0.004));
+    const T = TYPES[s.type];
+    // decolagem e pouso: a nave cresce ao sair da superfície e encolhe ao descer
+    const scl = (0.3 + 0.7*Math.min(1, raw/0.14)) * (1 - 0.65*Math.max(0, (raw-0.86)/0.14));
+    const L = T.len * s.size * H/720 * scl, k = L/256;
+    s.trail.push(pos); const maxT = Math.round(4 + 40*S.trail); while (s.trail.length > maxT) s.trail.shift();
+    // rastro de exaustão (fino)
+    fctx.globalCompositeOperation = 'lighter';
+    if (S.trail > 0 && s.trail.length > 2){
+      fctx.lineCap = 'round';
+      for (let i=1;i<s.trail.length;i++){
+        const a = i/s.trail.length;
+        fctx.strokeStyle = `rgba(${T.flame},${a*a*0.28*B})`; fctx.lineWidth = Math.max(0.5, L*0.08*a);
+        fctx.beginPath(); fctx.moveTo(s.trail[i-1][0], s.trail[i-1][1]); fctx.lineTo(s.trail[i][0], s.trail[i][1]); fctx.stroke();
+      }
+    }
+    const ang = Math.atan2(nxt[1]-pos[1], nxt[0]-pos[0]);
+    fctx.save(); fctx.translate(pos[0], pos[1]); fctx.rotate(ang); fctx.scale(k, k);
+    // chamas dos motores
+    const thrust = 0.55 + 0.45*Math.max(0, 1 - raw*1.6) + 0.25*Math.max(0, raw-0.7);
+    for (const nz of T.noz){
+      const fl = (30 + 18*Math.sin(now*37 + s.ph + nz[1])) * thrust * (nz[2]/8);
+      const g = fctx.createLinearGradient(nz[0], 0, nz[0]-fl*2.2, 0);
+      g.addColorStop(0, `rgba(255,255,255,${0.95*B})`); g.addColorStop(0.2, `rgba(${T.flame},${0.8*B})`); g.addColorStop(1, `rgba(${T.flame},0)`);
+      fctx.fillStyle = g; fctx.beginPath(); fctx.ellipse(nz[0]-fl*1.1, nz[1], fl*1.1, nz[2]*0.85, 0, 0, Math.PI*2); fctx.fill();
+    }
+    // casco
+    fctx.globalCompositeOperation = 'source-over';
+    fctx.globalAlpha = Math.min(1, B);
+    fctx.drawImage(sprite(s.type, s.acc), -140, -140);
+    fctx.globalAlpha = 1;
+    // luzes de navegação (vermelha/verde) e estrobo
+    fctx.globalCompositeOperation = 'lighter';
+    const blink = (now*1.1 + s.ph) % 1;
+    const navR = Math.max(3, 2.4/k);
+    T.nav.forEach((p, i) => {
+      const on = i === 0 ? blink < .5 : blink >= .5;
+      const col = i === 0 ? '255,60,50' : '60,255,120';
+      const g = fctx.createRadialGradient(p[0],p[1],0,p[0],p[1],navR*(on?2.2:1.2));
+      g.addColorStop(0, `rgba(${col},${(on?1:0.35)*B})`); g.addColorStop(1, `rgba(${col},0)`);
+      fctx.fillStyle = g; fctx.beginPath(); fctx.arc(p[0],p[1],navR*(on?2.2:1.2),0,Math.PI*2); fctx.fill();
+    });
+    if (blink < 0.05){ const g = fctx.createRadialGradient(0,0,0,0,0,navR*3); g.addColorStop(0,`rgba(255,255,255,${B})`); g.addColorStop(1,'rgba(255,255,255,0)'); fctx.fillStyle = g; fctx.beginPath(); fctx.arc(0,0,navR*3,0,Math.PI*2); fctx.fill(); }
+    fctx.restore();
+    return true;
+  });
+  fctx.globalCompositeOperation = 'lighter';
+  flashes = flashes.filter(f => {
+    const q = (now - f.t0)/0.9; if (q >= 1) return false;
+    const r = (3 + 18*q) * Math.max(0.6, f.size) * H/720;
+    fctx.strokeStyle = hexA(f.col, (1-q)*0.7*B); fctx.lineWidth = 1.5*(1-q)+0.4;
+    fctx.beginPath(); fctx.arc(f.x, f.y, r, 0, Math.PI*2); fctx.stroke();
+    return true;
+  });
+}
+
+let lastFX = 0;
 function drawFX(now){
-  const W = VR.w, H = VR.h;
+  const W = VR.w, H = VR.h, dt = lastFX ? Math.min(0.1, now - lastFX) : 0; lastFX = now;
   fctx.setTransform(dpr,0,0,dpr,0,0);
+  fctx.globalCompositeOperation = 'source-over';
   fctx.clearRect(0,0,W,H);
   if (S.cal == 2) return;
+  skyEvents(now);
   fctx.globalCompositeOperation = 'lighter';
-  // estrelas, com fade perto das bordas para não desenhar o retângulo do projetor
-  if (S.starsOn){
-    for (const s of stars){
-      const px = s.x*W, py = s.y*H;
-      const edge = Math.min(s.x, 1-s.x, s.y, 1-s.y);
-      const fade = Math.max(0, Math.min(1, (edge-0.03)/0.12));
-      if (fade <= 0 || insidePlanet(px,py)) continue;
-      const a = fade * s.m * (0.55 + 0.45*Math.sin(now*s.sp + s.ph)) * S.bright;
-      fctx.fillStyle = `rgba(220,230,255,${a})`;
-      fctx.fillRect(px, py, 1.4, 1.4);
-    }
-  }
-  // sol
+  drawSky(now, dt);
+  cutPlanets();
+  fctx.globalCompositeOperation = 'lighter';
   if (S.sunOn){
     const [sx, sy, sr0] = sunPx();
-    const sr = sr0 * (1 + S.sunPulse*0.35*bass);
+    const sr = sr0 * (1 + S.sunPulse*0.35*bass), B = S.bright;
     const g = fctx.createRadialGradient(sx,sy,0, sx,sy,sr*3.2);
-    g.addColorStop(0, `rgba(255,250,225,${S.bright})`);
-    g.addColorStop(0.28, `rgba(255,214,120,${0.95*S.bright})`);
-    g.addColorStop(0.32, `rgba(255,170,60,${0.45*S.bright})`);
-    g.addColorStop(0.6, `rgba(255,120,30,${0.12*S.bright})`);
+    g.addColorStop(0, `rgba(255,250,225,${B})`);
+    g.addColorStop(0.28, `rgba(255,214,120,${0.95*B})`);
+    g.addColorStop(0.32, `rgba(255,170,60,${0.45*B})`);
+    g.addColorStop(0.6, `rgba(255,120,30,${0.12*B})`);
     g.addColorStop(1, 'rgba(255,90,20,0)');
     fctx.fillStyle = g; fctx.beginPath(); fctx.arc(sx,sy,sr*3.2,0,Math.PI*2); fctx.fill();
-    // coroa
-    fctx.strokeStyle = `rgba(255,190,90,${0.25*S.bright})`; fctx.lineWidth = 1;
+    fctx.strokeStyle = `rgba(255,190,90,${0.25*B})`; fctx.lineWidth = 1;
     for (let k=0;k<14;k++){
       const a = k/14*Math.PI*2 + now*0.05, len = sr*(1.25 + 0.45*Math.sin(now*1.7 + k*2.1) + 0.6*bass*S.sunPulse);
       fctx.beginPath(); fctx.moveTo(sx+Math.cos(a)*sr*0.95, sy+Math.sin(a)*sr*0.95); fctx.lineTo(sx+Math.cos(a)*len, sy+Math.sin(a)*len); fctx.stroke();
     }
   }
-  // naves
-  const tnow = now;
-  ships = ships.filter(s => {
-    const raw = (tnow - s.t0)/s.dur;
-    if (raw >= 1){ flashes.push({x:s.p2[0], y:s.p2[1], t0:tnow, size:s.size, col:s.col}); return false; }
-    const u = raw*raw*(3-2*raw);
-    const pos = bez(s, u), nxt = bez(s, Math.min(1, u+0.01));
-    s.trail.push(pos); const maxT = Math.round(8 + 50*S.trail); while (s.trail.length > maxT) s.trail.shift();
-    const sc = H/720;
-    // rastro
-    if (S.trail > 0 && s.trail.length > 1){
-      for (let k=1;k<s.trail.length;k++){
-        const a = k/s.trail.length;
-        fctx.strokeStyle = hexA(s.col, a*0.55*S.bright);
-        fctx.lineWidth = Math.max(0.6, s.size*2.2*sc*a);
-        fctx.beginPath(); fctx.moveTo(...s.trail[k-1]); fctx.lineTo(...s.trail[k]); fctx.stroke();
-      }
-    }
-    // casco
-    const ang = Math.atan2(nxt[1]-pos[1], nxt[0]-pos[0]);
-    const Ls = 9*s.size*sc;
-    fctx.save(); fctx.translate(pos[0], pos[1]); fctx.rotate(ang);
-    const eg = fctx.createRadialGradient(-Ls*0.7,0,0,-Ls*0.7,0,Ls*1.1);
-    eg.addColorStop(0, hexA('#9fd8ff', 0.9*S.bright)); eg.addColorStop(1, 'rgba(80,160,255,0)');
-    fctx.fillStyle = eg; fctx.beginPath(); fctx.arc(-Ls*0.7,0,Ls*1.1,0,Math.PI*2); fctx.fill();
-    fctx.fillStyle = hexA(s.col, S.bright);
-    fctx.beginPath(); fctx.moveTo(Ls,0); fctx.lineTo(-Ls*0.75, Ls*0.55); fctx.lineTo(-Ls*0.45,0); fctx.lineTo(-Ls*0.75,-Ls*0.55); fctx.closePath(); fctx.fill();
-    fctx.restore();
-    return true;
-  });
-  // clarão de pouso
-  flashes = flashes.filter(f => {
-    const k = (tnow - f.t0)/0.8; if (k >= 1) return false;
-    const r = (6 + 30*k) * f.size * H/720;
-    fctx.strokeStyle = hexA(f.col, (1-k)*0.8*S.bright); fctx.lineWidth = 2*(1-k)+0.5;
-    fctx.beginPath(); fctx.arc(f.x, f.y, r, 0, Math.PI*2); fctx.stroke();
-    return true;
-  });
+  drawStations(now);
+  drawShips(now);
   fctx.globalCompositeOperation = 'source-over';
 }
 function hexA(hex, a){ const v = parseInt(hex.slice(1),16); return `rgba(${v>>16},${(v>>8)&255},${v&255},${Math.max(0,Math.min(1,a))})`; }
@@ -458,19 +756,59 @@ function hexA(hex, a){ const v = parseInt(hex.slice(1),16); return `rgba(${v>>16
 let nextAuto = 0, lastBass = 0, lastTreb = 0, avgB = 0, avgT = 0;
 function launchers(now){
   if ((S.shipMode == 0 || S.shipMode == 2) && now > nextAuto){
-    if (nextAuto) launch(Math.random() < 0.3);
+    if (nextAuto) launch(null);
     nextAuto = now + (60 / S.rate) * (0.5 + Math.random());
   }
   const b = bandAvg(0, 10), tr = bandAvg(38, 60);
   bass = bass*0.8 + b*0.2;
   if (S.shipMode >= 1){
     const thr = 0.25 - 0.2*S.sens;
-    if (b > avgB*1.25 + thr && now - lastBass > 0.35){ lastBass = now; launch(true, 0); }
-    if (tr > avgT*1.3 + thr*0.8 && now - lastTreb > 0.18){ lastTreb = now; launch(false, Math.min(1, S.hemis.length-1)); }
+    if (b > avgB*1.25 + thr && now - lastBass > 0.6){ lastBass = now; launch(true, 0); }
+    if (tr > avgT*1.3 + thr*0.8 && now - lastTreb > 0.35){ lastTreb = now; launch(false, Math.min(1, S.hemis.length-1)); }
   }
   avgB = avgB*0.95 + b*0.05; avgT = avgT*0.95 + tr*0.05;
 }
 
+// ---------- estações orbitais ----------
+PAINT.estacao = function(g, acc){
+  g.strokeStyle = metal(g,-90,90,'#e9edf2','#9aa4b0','#3d444e'); g.lineWidth = 20;
+  g.beginPath(); g.arc(0,0,82,0,Math.PI*2); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.5;
+  for (let k=0;k<16;k++){ const a = k/16*Math.PI*2; g.beginPath(); g.moveTo(Math.cos(a)*72,Math.sin(a)*72); g.lineTo(Math.cos(a)*92,Math.sin(a)*92); g.stroke(); }
+  g.fillStyle = '#ffd98a'; for (let k=0;k<32;k++){ const a = k/32*Math.PI*2 + 0.1; g.fillRect(Math.cos(a)*82-1.2, Math.sin(a)*82-1.2, 2.4, 2.4); }
+  g.strokeStyle = '#b8c0ca'; g.lineWidth = 6; g.beginPath();
+  for (let k=0;k<4;k++){ const a = k/4*Math.PI*2 + Math.PI/4; g.moveTo(Math.cos(a)*20,Math.sin(a)*20); g.lineTo(Math.cos(a)*72,Math.sin(a)*72); } g.stroke();
+  g.fillStyle = metal(g,-24,24,'#ffffff','#b9c1cb','#555e69'); g.beginPath(); g.arc(0,0,24,0,Math.PI*2); g.fill();
+  g.fillStyle = acc; g.beginPath(); g.arc(0,0,9,0,Math.PI*2); g.fill();
+  for (const s of [-1,1]){ g.fillStyle = '#1b3b78'; g.fillRect(-12, s<0 ? -136 : 104, 24, 32); g.strokeStyle = '#c7ced6'; g.lineWidth = 2; g.strokeRect(-12, s<0 ? -136 : 104, 24, 32);
+    g.strokeStyle = '#aab2bc'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, s*92); g.lineTo(0, s*104); g.stroke(); }
+};
+function drawStations(now){
+  const H = VR.h, B = S.bright;
+  S.hemis.forEach((h, i) => {
+    const n = Math.round(h.stations || 0); if (!n) return;
+    const P = hPx(h), tg = lightTarget(i);
+    const sdx = tg[0]-P.cx, sdy = tg[1]-P.cy, sl = Math.hypot(sdx,sdy) || 1;
+    for (let j=0;j<n;j++){
+      const ang = now*(0.07 + 0.03*j) * (i%2 ? -1 : 1) + j*2.4 + i*1.3;
+      const tilt = -0.35 + 0.5*i + 0.3*j;
+      const ox = Math.cos(ang)*P.rx*(1.1 + 0.08*j), oy = Math.sin(ang)*P.ry*(0.32 + 0.06*j);
+      const x = P.cx + Math.cos(tilt)*ox - Math.sin(tilt)*oy, y = P.cy + Math.sin(tilt)*ox + Math.cos(tilt)*oy;
+      const front = Math.sin(ang) > 0;
+      if (!front){ const dx = x-P.cx, dy = y-P.cy; const lx = (P.c*dx + P.s*dy)/P.rx, ly = (-P.s*dx + P.c*dy)/P.ry; if (lx*lx+ly*ly < 1) continue; }
+      const lit = ((x-P.cx)*sdx + (y-P.cy)*sdy)/sl > -P.rx*0.15;
+      const L = 20 * H/720 * (front ? 1 : 0.8), k = L/256;
+      fctx.save(); fctx.translate(x, y); fctx.rotate(now*0.25 + j); fctx.scale(k, k*0.55);
+      fctx.globalCompositeOperation = 'source-over';
+      fctx.globalAlpha = Math.min(1, B) * (lit ? 1 : 0.25);
+      fctx.drawImage(sprite('estacao', ACCENT[h.kind] || '#fff'), -140, -140);
+      fctx.globalAlpha = 1;
+      fctx.globalCompositeOperation = 'lighter';
+      if (((now*0.9 + j + i) % 1) < 0.08){ const r = Math.max(4, 3/k); const gg = fctx.createRadialGradient(0,0,0,0,0,r*3); gg.addColorStop(0,`rgba(255,80,70,${B})`); gg.addColorStop(1,'rgba(255,80,70,0)'); fctx.fillStyle = gg; fctx.beginPath(); fctx.arc(0,0,r*3,0,Math.PI*2); fctx.fill(); }
+      fctx.restore();
+    }
+  });
+}
 // ---------- janela de projeção (só recebe) ----------
 if (isProj){
   const tip = $('tip'); tip.textContent = 'Clique para tela cheia'; tip.style.opacity = 1;
@@ -482,7 +820,7 @@ if (isProj){
       else if (e.data.t==='spec'){ for(let k=0;k<NB;k++) specSm[k] = e.data.d[k]/255; }
       else if (e.data.t==='ship'){
         const s = e.data.s, d = p => [p[0]*VR.w, p[1]*VR.h];
-        ships.push({p0:d(s.p0), p1:d(s.p1), p2:d(s.p2), dur:s.dur, size:s.size, col:s.col, t0:performance.now()/1000, trail:[]});
+        ships.push({p0:d(s.p0), p1:d(s.p1), p2:d(s.p2), dur:s.dur, size:s.size, type:s.type, acc:s.acc, t0:performance.now()/1000 + (s.delay||0), trail:[], ph:Math.random()*6});
       }
     };
     bc.postMessage({t:'hello'});
@@ -653,11 +991,12 @@ const pct = v => Math.round(v*100)+'%';
 const fmt = {
   gain: v=>(v>0?'+':'')+v+' dB', rate: v=>v, sens: pct, shipSize: v=>(+v).toFixed(2)+'×', speed: v=>(+v).toFixed(2)+'×', trail: pct,
   sunR: v=>(+v).toFixed(3), sunPulse: pct, bright: pct, feather: pct,
+  starDens: v=>(+v).toFixed(2)+'×', neb: pct, meteors: v=>v, traffic: pct, civ: pct, stations: v=>v,
   phase: pct, soft: pct, spin: v=>(+v).toFixed(2), atm: pct,
   depth: v=>Math.round(v*90)+'°', rx: v=>(+v).toFixed(3), ry: v=>(+v).toFixed(3), rot: v=>Math.round(v*180/Math.PI)+'°'
 };
-const globalKeys = ['gain','rate','sens','shipSize','speed','trail','sunPulse','bright','feather'];
-const hemiKeys = ['phase','soft','spin','atm','depth','rx','ry','rot'];
+const globalKeys = ['gain','rate','sens','shipSize','speed','trail','sunPulse','bright','feather','starDens','neb','meteors','traffic'];
+const hemiKeys = ['phase','soft','spin','atm','civ','stations','depth','rx','ry','rot'];
 globalKeys.forEach(k => $(k).addEventListener('input', e => { S[k] = +e.target.value; syncUI(); save(); }));
 hemiKeys.forEach(k => $(k).addEventListener('input', e => { const h=S.hemis[S.sel]; if(h){ h[k] = +e.target.value; syncUI(); save(); } }));
 $('sunR').addEventListener('input', e => { S.sun.r = +e.target.value; syncUI(); save(); });
@@ -854,12 +1193,6 @@ try { $('codIn').value = localStorage.getItem(KEY+'-sala') || ''; } catch(e){}
          if (h && c) setTimeout(() => openRoom(c), 300); }
 }
 
-// a janela de projeção recebe as mesmas naves que o Mac lança
-const _launch = launch;
-launch = function(big, from){
-  const before = ships.length; _launch(big, from);
-  if (bc && ships.length > before){ const s = ships[ships.length-1]; bc.postMessage({t:'ship', s:{p0:s.p0.map((v,i)=>v/(i?VR.h:VR.w)), p1:s.p1.map((v,i)=>v/(i?VR.h:VR.w)), p2:s.p2.map((v,i)=>v/(i?VR.h:VR.w)), dur:s.dur, size:s.size, col:s.col, norm:true}}); }
-};
 
 // ---------- painel móvel: arrastar pela barra, minimizar, trocar de lado ----------
 var PK = KEY + '-painel', PP = {}, pd = null;

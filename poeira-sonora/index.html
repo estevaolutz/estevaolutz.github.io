@@ -119,14 +119,14 @@ const msg = (t, ms=3500) => { const m=$('#msg'); m.textContent=t; m.style.displa
 // ---------- parâmetros ----------
 const P = {
   explode:0.6, turb:0.35, spark:0.5, vortex:0.3, shock:0.6, glitch:0.3, attract:0.6, sens:1.0,
-  trail:0.6, bloom:0.5, size:1.0, inten:1.0, rot:0.25
+  trail:0.4, bloom:0.18, size:0.8, scale:2.4, spread:0.5, inten:1.0, rot:0.25
 };
 const SL1 = [
   ['explode','Explosão (graves)',0,1.5],['turb','Turbulência (médios)',0,1.5],['spark','Faíscas (agudos)',0,1.5],
   ['vortex','Vórtice (médios-graves)',0,1.5],['shock','Ondas de choque (batida)',0,1.5],['glitch','Quebra / glitch (batida forte)',0,1],
   ['attract','Coesão da forma',0,1.5],['sens','Sensibilidade',0.2,3]
 ];
-const SL2 = [['trail','Rastro',0,0.98],['bloom','Brilho',0,2],['size','Tamanho dos pontos',0.3,3],['inten','Intensidade',0.2,3],['rot','Giro da câmera',0,1]];
+const SL2 = [['scale','Escala da forma',0.6,3],['spread','Dispersão (espaço entre partículas)',0,1.5],['trail','Rastro',0,0.98],['bloom','Brilho',0,2],['size','Tamanho dos pontos',0.3,3],['inten','Intensidade',0.2,3],['rot','Giro da câmera',0,1]];
 function mkSliders(list, host){
   host.innerHTML = list.map(([k,l,a,b])=>`<label><span class="lab"><span>${l}</span><span id="v_${k}">${P[k].toFixed(2)}</span></span><input type="range" id="s_${k}" min="${a}" max="${b}" step="0.01" value="${P[k]}"></label>`).join('');
   list.forEach(([k])=>$('#s_'+k).addEventListener('input',e=>{P[k]=+e.target.value; $('#v_'+k).textContent=P[k].toFixed(2);}));
@@ -161,7 +161,7 @@ precision highp float;
 uniform sampler2D uPos,uVel,uSpec;
 uniform vec2 uRes; uniform float uTime,uDt,uMorph,uLevel,uKick,uShockR,uShockS;
 uniform int uForm,uPrev; uniform vec4 uBands;
-uniform float uExplode,uTurb,uSpark,uVortex,uShockAmt,uAttract;
+uniform float uExplode,uTurb,uSpark,uVortex,uShockAmt,uAttract,uScale,uSpread;
 uniform vec3 uSw[6];
 layout(location=0) out vec4 oPos; layout(location=1) out vec4 oVel;
 const float PI=3.14159265, TAU=6.2831853;
@@ -178,7 +178,7 @@ vec3 target(int form,float u,vec3 h,vec2 g,float t){
   if(form==4){ float x=(g.x-.5)*4.4, z=(g.y-.5)*4.4; float d=length(vec2(x,z));
     float y=spec(d/3.1)*1.5+0.08*sin(d*8.-t*3.)*uLevel; return vec3(x,y-0.5,z); }
   if(form==5){ int k=int(h.x*6.); vec3 d=normalize(h33(h*17.3)*2.-1.+1e-4);
-    float r=pow(h.y,0.5)*(0.12+0.4*spec(float(k)/6.+h.z*0.16)); return uSw[k]+d*r; }
+    float r=pow(h.y,0.5)*(0.3+0.5*spec(float(k)/6.+h.z*0.16)); return uSw[k]+d*r; }
   if(form==6){ float ring=floor(u*40.); float a=fract(u*40.)*TAU+t*0.2*(mod(ring,2.)*2.-1.); float f=ring/40.;
     float s=spec(f); float r=0.25+f*2.2; float lob=float(int(ring)%6+2);
     return vec3(cos(a)*r, s*0.55*cos(a*lob-t*2.)+(h.y-.5)*0.03, sin(a)*r); }
@@ -196,6 +196,8 @@ void main(){
   vec3 tA=target(uPrev,u,h,g,t), tB=target(uForm,u,h,g,t);
   float m=smoothstep(0.,1.,clamp(uMorph*1.8-h.z*0.8,0.,1.));
   vec3 tg=mix(tA,tB,m);
+  vec3 jd=normalize(h33(h*31.7+1.3)*2.-1.+1e-4);
+  tg=tg*uScale+jd*pow(h33(h*7.1).x,1.5)*uSpread*(1.+0.6*uLevel);
   float k=uAttract*((uForm==0)?0.8:1.0);
   v+=(tg-p)*k*11.0*dt;
   vec3 q=p*1.3+vec3(0.,t*0.15,0.);
@@ -206,7 +208,7 @@ void main(){
   vec3 dir=normalize(p+(h-.5)*0.1+1e-5);
   v+=dir*uExplode*bass*bass*6.0*dt;
   v+=(dir+(h-.5))*uKick*uExplode*1.5*(0.5+h.x);
-  float d=length(p); float w=exp(-pow((d-uShockR)*5.0,2.0));
+  float d=length(p); float w=exp(-pow((d/uScale-uShockR)*5.0,2.0));
   v+=dir*w*uShockS*uShockAmt*12.0*dt;
   vec3 rn=h33(vec3(gl_FragCoord.xy,floor(t*30.)))-.5;
   float sp=step(1.-high*0.6, h33(vec3(gl_FragCoord.yx,floor(t*20.)+3.)).x);
@@ -214,14 +216,14 @@ void main(){
   heat=heat*exp(-dt*3.)+sp*uSpark*high+w*uShockS*uShockAmt*0.6+uKick*0.8*uExplode;
   v*=exp(-dt*(1.6+2.6*uAttract));
   p+=v*dt;
-  if(length(p)>9.||any(isnan(p))){ p=tg; v=vec3(0.); heat=0.; }
+  if(length(p)>16.||any(isnan(p))){ p=tg; v=vec3(0.); heat=0.; }
   oPos=vec4(p,1.); oVel=vec4(v,min(heat,3.));
 }`;
 
 const PART_VS = `#version 300 es
 precision highp float;
 uniform sampler2D uPos,uVel; uniform int uW; uniform mat4 uPV;
-uniform float uSize,uH,uInt,uGlitch,uTime,uCount;
+uniform float uSize,uH,uInt,uGlitch,uTime,uCount,uScale; uniform int uForm;
 uniform vec3 uPa,uPb,uPc,uPd;
 out vec3 vCol;
 void main(){
@@ -237,16 +239,20 @@ void main(){
   float sp=length(V.xyz), heat=V.w;
   float s=uSize*(1.+heat*0.8)*uH/(max(cp.w,.05)*260.);
   gl_PointSize=clamp(s,1.,10.);
-  float fade=min(1.,s*s);
-  float tc=fract(u*0.85+sp*0.08+uTime*0.02);
+  float fade=min(1.,s);
+  vec3 q3=fract(vec3(vec2(ip)+.5,7.31)*vec3(.1031,.1030,.0973)); q3+=dot(q3,q3.yxz+33.33); float hx=fract((q3.x+q3.y)*q3.z);
+  float base=u*0.85;
+  if(uForm==5) base=floor(hx*6.)/6.;
+  if(uForm==0) base=length(p)/(3.*uScale);
+  float tc=fract(base+sp*0.08+uTime*0.02);
   vec3 c=uPa+uPb*cos(6.28318*(uPc*tc+uPd));
-  c=mix(c,vec3(1.),clamp(heat*0.35,0.,0.8));
-  vCol=max(c,0.)*uInt*fade*(0.6+0.6*min(sp,2.)+heat);
+  c=mix(c,vec3(1.),clamp(heat*0.12,0.,0.35));
+  vCol=max(c,0.)*uInt*fade*(0.7+0.3*min(sp,2.)+0.5*min(heat,1.5));
   if(cp.w<0.05) gl_Position=vec4(2.,2.,2.,1.);
 }`;
 const PART_FS = `#version 300 es
 precision highp float; in vec3 vCol; out vec4 o;
-void main(){ vec2 d=gl_PointCoord-.5; float a=max(0.,1.-dot(d,d)*4.); o=vec4(vCol*a*a,1.); }`;
+void main(){ vec2 d=gl_PointCoord-.5; float a=smoothstep(.5,.25,length(d)); o=vec4(vCol*a,1.); }`;
 
 const FADE_FS = `#version 300 es
 precision highp float; uniform float uA; out vec4 o; void main(){ o=vec4(0.,0.,0.,uA); }`;
@@ -268,7 +274,7 @@ void main(){ vec2 uv=gl_FragCoord.xy/uRes;
   vec2 dir=uv-.5; float ab=uAb*0.012;
   vec3 c=vec3(texture(uA,uv-dir*ab).r, texture(uA,uv).g, texture(uA,uv+dir*ab).b);
   c+=texture(uB,uv).rgb*uBloom;
-  c=1.-exp(-c*1.2);
+  c=1.-exp(-c*0.9);
   float vig=smoothstep(1.25,.3,length(dir*vec2(uRes.x/uRes.y,1.)));
   c*=mix(.55,1.,vig);
   o=vec4(pow(c,vec3(.92)),1.); }`;
@@ -334,7 +340,7 @@ function resize(){
 addEventListener('resize',resize); resize();
 
 // ---------- câmera ----------
-const cam={yaw:0.6,pitch:0.35,dist:6.4};
+const cam={yaw:0.6,pitch:0.35,dist:8};
 function persp(f,a,n,fa){const t=1/Math.tan(f/2);return [t/a,0,0,0, 0,t,0,0, 0,0,(fa+n)/(n-fa),-1, 0,0,2*fa*n/(n-fa),0];}
 function lookAt(e,c,u){
   let z=[e[0]-c[0],e[1]-c[1],e[2]-c[2]]; let l=Math.hypot(...z); z=z.map(v=>v/l);
@@ -347,8 +353,8 @@ let drag=null;
 cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId);});
 cv.addEventListener('pointermove',e=>{ if(!drag)return; cam.yaw-=(e.clientX-drag.x)*0.006; cam.pitch=Math.max(-1.4,Math.min(1.4,cam.pitch+(e.clientY-drag.y)*0.006)); drag={x:e.clientX,y:e.clientY}; });
 cv.addEventListener('pointerup',()=>drag=null);
-cv.addEventListener('wheel',e=>{e.preventDefault(); cam.dist=Math.max(1.5,Math.min(14,cam.dist*Math.exp(e.deltaY*0.001)));},{passive:false});
-cv.addEventListener('dblclick',()=>{cam.yaw=0.6;cam.pitch=0.35;cam.dist=6.4;});
+cv.addEventListener('wheel',e=>{e.preventDefault(); cam.dist=Math.max(1.5,Math.min(20,cam.dist*Math.exp(e.deltaY*0.001)));},{passive:false});
+cv.addEventListener('dblclick',()=>{cam.yaw=0.6;cam.pitch=0.35;cam.dist=8;});
 
 // ---------- áudio ----------
 const A={ctx:null};
@@ -600,7 +606,7 @@ function frame(nowMs){
     gl.uniform4f(U.uBands,B.env[0],B.env[1],B.env[2],B.env[3]); gl.uniform1f(U.uLevel,level);
     gl.uniform1f(U.uKick,kick); gl.uniform1f(U.uShockR,shockR); gl.uniform1f(U.uShockS,shockS);
     gl.uniform1f(U.uExplode,P.explode); gl.uniform1f(U.uTurb,P.turb); gl.uniform1f(U.uSpark,P.spark);
-    gl.uniform1f(U.uVortex,P.vortex); gl.uniform1f(U.uShockAmt,P.shock); gl.uniform1f(U.uAttract,P.attract);
+    gl.uniform1f(U.uVortex,P.vortex); gl.uniform1f(U.uShockAmt,P.shock); gl.uniform1f(U.uAttract,P.attract); gl.uniform1f(U.uScale,P.scale); gl.uniform1f(U.uSpread,P.spread);
     gl.uniform3fv(U.uSw,sw);
     gl.drawArrays(gl.TRIANGLES,0,3);
     cur=1-cur; kick=0;
@@ -610,7 +616,7 @@ function frame(nowMs){
   cam.yaw+=dt*P.rot*(0.15+0.6*B.env[1]);
   const sh=beatEnv*0.04;
   const eye=[Math.cos(cam.pitch)*Math.sin(cam.yaw)*cam.dist+(Math.random()-.5)*sh, Math.sin(cam.pitch)*cam.dist+(Math.random()-.5)*sh, Math.cos(cam.pitch)*Math.cos(cam.yaw)*cam.dist];
-  const PV=mul(persp(0.9,W/H,0.05,60),lookAt(eye,[0,0,0],[0,1,0]));
+  const PV=mul(persp(0.9,W/H,0.05,80),lookAt(eye,[0,0,0],[0,1,0]));
 
   // rastro + partículas
   gl.bindFramebuffer(gl.FRAMEBUFFER,accF); gl.drawBuffers([gl.COLOR_ATTACHMENT0]); gl.viewport(0,0,W,H);
@@ -621,9 +627,9 @@ function frame(nowMs){
     const R=pPart, U=R.U; gl.useProgram(R.p);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,sim[cur].pos); gl.uniform1i(U.uPos,0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,sim[cur].vel); gl.uniform1i(U.uVel,1);
-    gl.uniform1i(U.uW,SW); gl.uniformMatrix4fv(U.uPV,false,PV);
+    gl.uniform1i(U.uW,SW); gl.uniform1i(U.uForm,morph>0.6?form:prevForm); gl.uniform1f(U.uScale,P.scale); gl.uniformMatrix4fv(U.uPV,false,PV);
     gl.uniform1f(U.uSize,P.size*2.2); gl.uniform1f(U.uH,H); gl.uniform1f(U.uCount,COUNT);
-    gl.uniform1f(U.uInt,P.inten*0.32*Math.sqrt(262144/COUNT)*(1-P.trail*0.6)); gl.uniform1f(U.uGlitch,0); gl.uniform1f(U.uTime,now);
+    gl.uniform1f(U.uInt,P.inten*0.38*Math.sqrt(262144/COUNT)*(1-P.trail*0.7)); gl.uniform1f(U.uGlitch,0); gl.uniform1f(U.uTime,now);
     gl.uniform3fv(U.uPa,pal[0]); gl.uniform3fv(U.uPb,pal[1]); gl.uniform3fv(U.uPc,pal[2]); gl.uniform3fv(U.uPd,pal[3]);
     gl.drawArrays(gl.POINTS,0,COUNT);
   } else {
@@ -632,8 +638,8 @@ function frame(nowMs){
     gl.blendFunc(gl.ONE,gl.ONE); const R=pPart,U=R.U; gl.useProgram(R.p);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,sim[cur].pos); gl.uniform1i(U.uPos,0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,sim[cur].vel); gl.uniform1i(U.uVel,1);
-    gl.uniform1i(U.uW,SW); gl.uniformMatrix4fv(U.uPV,false,PV); gl.uniform1f(U.uSize,P.size*2.2); gl.uniform1f(U.uH,H); gl.uniform1f(U.uCount,COUNT);
-    gl.uniform1f(U.uInt,P.inten*0.4*Math.sqrt(262144/COUNT)); gl.uniform1f(U.uGlitch,gl_on); gl.uniform1f(U.uTime,now);
+    gl.uniform1i(U.uW,SW); gl.uniform1i(U.uForm,morph>0.6?form:prevForm); gl.uniform1f(U.uScale,P.scale); gl.uniformMatrix4fv(U.uPV,false,PV); gl.uniform1f(U.uSize,P.size*2.2); gl.uniform1f(U.uH,H); gl.uniform1f(U.uCount,COUNT);
+    gl.uniform1f(U.uInt,P.inten*0.38*Math.sqrt(262144/COUNT)); gl.uniform1f(U.uGlitch,gl_on); gl.uniform1f(U.uTime,now);
     gl.uniform3fv(U.uPa,pal[0]); gl.uniform3fv(U.uPb,pal[1]); gl.uniform3fv(U.uPc,pal[2]); gl.uniform3fv(U.uPd,pal[3]);
     gl.drawArrays(gl.POINTS,0,COUNT);
   }

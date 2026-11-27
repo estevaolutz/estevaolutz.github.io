@@ -10,6 +10,9 @@ Obra audiovisual: centenas de milhares de partículas (262 mil, 524 mil ou 1 mil
 ## Formas
 Nebulosa, Esfera (inicial), Galáxia, Toro, Relevo do espectro, Enxame, Anéis — teclas 1–7; troca automática a cada 32 batidas.
 
+## Imagem
+- Escala da forma (padrão 2,4) e Dispersão (padrão 0,5) espaçam as partículas; brilho por ponto baixo e bloom leve para não estourar em branco. No Enxame cada aglomerado tem uma cor; na Nebulosa a cor vai pela distância do centro.
+
 ## Saída
 - Usa `../lib/projecao.js` com `data-calibrar` (projeção limpa, cantos calibrados na página do computador pelo botão "Ajustar cantos") e `../lib/gravacao.js` (MP4 com som, tela cheia). Se as libs não carregarem (arquivo aberto fora do site), cai nas funções próprias de projeção/gravação.
 - Atalhos: H painel, F tela cheia, R gravar, P projeção, Espaço play/pausa, A troca automática.

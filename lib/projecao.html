@@ -16,6 +16,11 @@ body.limpo #ajuda,body.semajuda #ajuda,body.cor #ajuda{display:none}
 #dicaFS{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;background:#12151cf2;border:2px solid #e8b04a;border-radius:14px;padding:18px 26px;font:500 18px/1.45 system-ui,sans-serif;text-align:center;cursor:pointer;max-width:80vw}
 #dicaFS b{color:#e8b04a}
 body.semfs #dicaFS{display:block}
+/* projeção limpa (obra com data-calibrar): só a imagem; a calibração é feita na janela da obra */
+body.limpa #ajuda{display:none!important}
+body.limpa.semfs #dicaFS{display:none;font-size:14px;padding:10px 16px;border-width:1px;top:auto;bottom:18px;transform:translateX(-50%)}
+body.limpa.semfs.mexeu #dicaFS{display:block}
+body.limpa{cursor:none}body.limpa.mexeu{cursor:default}
 #cor{display:none;position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:6;width:min(420px,92vw);background:#0b0d12f0;border:1px solid #e8b04a;border-radius:12px;padding:12px 16px;font-size:13px}
 body.cor #cor{display:block}
 #cor h3{margin:0 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#e8b04a;font-weight:600}
@@ -59,7 +64,8 @@ var gl=cv.getContext('webgl',{antialias:false,premultipliedAlpha:false});
 var S=null;try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
 var temSalvo=!!(S&&S.pts);
 if(!temSalvo)S={pts:[[0,0],[1,0],[1,1],[0,1]],edit:true,grade:false};
-var canto=0,preto=false,teste=false;
+var canto=0,preto=false,teste=false,cal=false;
+var LIMPA=qs.get('limpa')==='1';if(LIMPA){document.body.classList.add('limpa');S.edit=false}
 var KC='projecao-cor',COR0={bri:1,con:1,sat:1,gam:1,pre:0,r:1,g:1,b:1},COR=Object.assign({},COR0);
 try{Object.assign(COR,JSON.parse(localStorage.getItem(KC))||{})}catch(e){}
 function salvar(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
@@ -79,12 +85,15 @@ function pegar(){
 }
 function msg(t){$('msg').innerHTML=t;$('msg').style.display=t?'block':'none'}
 var bc=('BroadcastChannel' in window)?new BroadcastChannel('projecao:'+OBRA):null;
-function estado(){return {preto:preto,teste:teste,grade:!!S.grade,edit:!!S.edit}}
+function estado(){return {preto:preto,teste:teste,grade:!!S.grade,edit:!!S.edit,W:Math.round(innerWidth),H:Math.round(innerHeight)}}
 function vivo(){if(bc)bc.postMessage({t:'vivo',estado:estado()});pegar()}
 /* comandos e cor vindos da janela de controles da obra (o painel "Imagem da projeção" de lá) */
 if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+  if(d.t==='cantos'&&d.pts){S.pts=d.pts;temSalvo=true;return}
+  if(d.t==='cal'){cal=!!d.on;return}
+  if(d.t==='encaixar'){encaixar();bc.postMessage({t:'cantos',pts:S.pts});return}
   if(d.t==='cor'&&d.cor){COR=Object.assign({},COR0,d.cor);if(typeof corUI==='function')corUI()}
-  else if(d.t==='cmd'){if(d.c==='preto')preto=!preto;else if(d.c==='teste'){teste=!teste;if(typeof corUI==='function')corUI()}else if(d.c==='grade'){S.grade=!S.grade;salvar()}else if(d.c==='edit'){S.edit=!S.edit;salvar()}
+  else if(d.t==='cmd'){if(d.c==='preto')preto=!preto;else if(d.c==='teste'){teste=!teste;if(typeof corUI==='function')corUI()}else if(d.c==='grade'){S.grade=!S.grade;salvar()}else if(d.c==='edit'){if(!LIMPA){S.edit=!S.edit;salvar()}}
     bc.postMessage({t:'vivo',estado:estado()})}};
 vivo();setInterval(vivo,1000);
 addEventListener('pagehide',function(){if(bc)bc.postMessage({t:'tchau'})});
@@ -132,11 +141,11 @@ function frame(){
   if(direto){var o=fonte(),c=o&&o.canvas;
     if(c&&c.width>2){try{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,c);tem=1;srcW=c.width;srcH=c.height}catch(e){direto=false;pegar()}}}
   else if(video.readyState>=2){try{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,video);tem=1;srcW=video.videoWidth;srcH=video.videoHeight}catch(e){}}
-  if(!temSalvo&&srcW){temSalvo=true;encaixar()}
+  if(!temSalvo&&srcW){temSalvo=true;encaixar();if(bc)bc.postMessage({t:'cantos',pts:S.pts})}
   gl.viewport(0,0,cv.width,cv.height);
   var P=S.pts.map(function(p){return[p[0]*cv.width,p[1]*cv.height]});
   gl.uniformMatrix3fv(U.uHi,false,colMaj(inv3(quadH(P))));
-  gl.uniform2f(U.uRes,cv.width,cv.height);gl.uniform1i(U.uT,0);gl.uniform1f(U.uTem,tem);gl.uniform1f(U.uGrade,S.grade?1:0);gl.uniform1f(U.uPreto,preto?1:0);
+  gl.uniform2f(U.uRes,cv.width,cv.height);gl.uniform1i(U.uT,0);gl.uniform1f(U.uTem,tem);gl.uniform1f(U.uGrade,(S.grade||cal)?1:0);gl.uniform1f(U.uPreto,preto?1:0);
   gl.uniform1f(U.uTeste,teste?1:0);gl.uniform1f(U.uBri,COR.bri);gl.uniform1f(U.uCon,COR.con);gl.uniform1f(U.uSat,COR.sat);gl.uniform1f(U.uGam,COR.gam);gl.uniform1f(U.uPre,COR.pre);gl.uniform3f(U.uRGB,COR.r,COR.g,COR.b);
   gl.drawArrays(gl.TRIANGLES,0,3);
   alcas();
@@ -183,7 +192,8 @@ ov.addEventListener('pointercancel',function(){arr=null});
 /* ---------- teclado ---------- */
 function entrarFS(){var d=document.documentElement;if(!document.fullscreenElement)(d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)}
 function tela(){if(!document.fullscreenElement)entrarFS();else document.exitFullscreen()}
-ov.addEventListener('dblclick',entrarFS);$('dicaFS').onclick=entrarFS;
+ov.addEventListener('dblclick',entrarFS);
+if(LIMPA){ov.addEventListener('click',entrarFS);var mxT=0;addEventListener('mousemove',function(){document.body.classList.add('mexeu');clearTimeout(mxT);mxT=setTimeout(function(){document.body.classList.remove('mexeu')},2000)})}$('dicaFS').onclick=entrarFS;
 function fsCheck(){document.body.classList.toggle('semfs',!document.fullscreenElement)}
 document.addEventListener('fullscreenchange',fsCheck);fsCheck();
 /* ---------- ajuste de cor do projetor ---------- */
@@ -200,7 +210,8 @@ addEventListener('keydown',function(e){
   if(e.target&&e.target.tagName==='INPUT')return;
   var k=e.key,st=(e.shiftKey?10:1);
   if(k==='f'||k==='F'){tela();return}
-  if(k==='e'||k==='E'){S.edit=!S.edit;salvar();return}
+  if(k==='e'||k==='E'){if(!LIMPA){S.edit=!S.edit;salvar()}return}
+  if(LIMPA&&!/^[fFbBgGcCtT]$/.test(k))return;
   if(k==='h'||k==='H'){document.body.classList.toggle('semajuda');return}
   if(k==='g'||k==='G'){S.grade=!S.grade;salvar();return}
   if(k==='b'||k==='B'){preto=!preto;return}

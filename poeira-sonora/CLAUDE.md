@@ -15,6 +15,7 @@ Nebulosa, Esfera (inicial), Galáxia, Toro, Relevo do espectro, Enxame, Anéis �
 
 ## Saída
 - Usa `../lib/projecao.js` com `data-calibrar` (projeção limpa, cantos calibrados na página do computador pelo botão "Ajustar cantos") e `../lib/gravacao.js` (MP4 com som, tela cheia). Se as libs não carregarem (arquivo aberto fora do site), cai nas funções próprias de projeção/gravação.
+- Botão de engrenagem (canto superior direito, aparece com o movimento do mouse/dedo) abre e fecha o painel de ajustes; o painel tem × para fechar.
 - Atalhos: H painel, F tela cheia, R gravar, P projeção, Espaço play/pausa, A troca automática.
 
 ## Regras

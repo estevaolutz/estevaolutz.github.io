@@ -232,17 +232,17 @@ function pickVoice(){
   return ptVoices()[0];
 }
 let talkTimer=null;
-function say(text){
-  $('#bubble').textContent=text;
-  const mini=$('#sofiaMini');mini.classList.add('talk');clearTimeout(talkTimer);
-  talkTimer=setTimeout(()=>mini.classList.remove('talk'),Math.min(5000,400+text.length*65));
-  if(muted||!('speechSynthesis' in window))return;
+function talk(ms){const mini=$('#sofiaMini');mini.classList.add('talk');clearTimeout(talkTimer);talkTimer=setTimeout(()=>mini.classList.remove('talk'),ms);}
+function ttsSpeak(text,done){
+  if(muted||!('speechSynthesis' in window)){setTimeout(done,Math.min(4000,300+text.length*55));return;}
+  let fin=false;const end=()=>{if(fin)return;fin=true;done();};
   try{
-    speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);u.lang='pt-BR';const v=pickVoice();if(v)u.voice=v;u.rate=.95;u.pitch=1.05;
-    speechSynthesis.speak(u);
-  }catch(e){}
+    u.onend=end;u.onerror=end;speechSynthesis.speak(u);
+    setTimeout(end,1500+text.length*110);
+  }catch(e){setTimeout(end,500);}
 }
+function say(text){stopSpeech();pending=[];$('#bubble').textContent=text;talk(Math.min(5000,400+text.length*65));ttsSpeak(text,()=>{});}
 const FALAS={
   'oi':['01','Oi! Eu sou a Sofia! Qual pizza vamos fazer hoje?'],
   'massa':['02','Vamos fazer a massa! Arraste os ingredientes até o pote.'],
@@ -312,22 +312,34 @@ function loadClips(){
       .then(b=>new Promise((ok,no)=>a.decodeAudioData(b,ok,no))).then(buf=>{CLIPS[k]=buf;}).catch(()=>{});}
   }).catch(()=>{});
 }
-let clipQueue=[],clipSrc=null,clipToken=0;
-function stopClips(){clipToken++;clipQueue=[];if(clipSrc){try{clipSrc.stop();}catch(e){}clipSrc=null;}}
-function playQueue(tk){
-  if(tk!==clipToken||!clipQueue.length)return;const k=clipQueue.shift(),a=audio();
-  const src=a.createBufferSource();src.buffer=CLIPS[k];const g=a.createGain();g.gain.value=1.4;src.connect(g);g.connect(a.destination);
-  src.onended=()=>{if(clipSrc===src)clipSrc=null;setTimeout(()=>playQueue(tk),60);};clipSrc=src;src.start();
-  const mini=$('#sofiaMini');mini.classList.add('talk');clearTimeout(talkTimer);talkTimer=setTimeout(()=>mini.classList.remove('talk'),CLIPS[k].duration*1000+80);
+/* fila de falas: 2 = instrução (nunca é cortada, espera a vez), 1 = ingrediente/escolha (só guarda a última), 0 = contagem e "nham" (pode ser pulada) */
+const LOW=new Set(['n1','n2','n3','n4','n5','n6','n7','n8','n9','n10','nham','hummm','gostoso','nham-nham','delicia','mais-uma']);
+const MID=new Set(['farinha','agua','sal','fermento','azeite','arraste-pote','muito-bem']);
+function prioOf(keys){let p=0;for(const k of keys){const q=LOW.has(k)?0:(MID.has(k)||k.startsWith('agora-'))?1:2;if(q>p)p=q;}return p;}
+let speech=null,pending=[],speechId=0,clipSrc=null;
+function stopSpeech(){speechId++;speech=null;if(clipSrc){try{clipSrc.stop();}catch(e){}clipSrc=null;}try{speechSynthesis.cancel();}catch(e){}}
+function stopClips(){stopSpeech();pending=[];}
+function speakItem(it){
+  const id=++speechId;speech={prio:it.prio,id};$('#bubble').textContent=it.text;
+  const done=()=>{if(id!==speechId)return;speech=null;clipSrc=null;$('#sofiaMini').classList.remove('talk');setTimeout(nextSpeech,120);};
+  if(!muted&&it.keys.every(k=>CLIPS[k])){
+    const a=audio();let i=0,total=0;it.keys.forEach(k=>total+=CLIPS[k].duration);talk(total*1000+200);
+    const playOne=()=>{if(id!==speechId)return;if(i>=it.keys.length){done();return;}
+      const src=a.createBufferSource();src.buffer=CLIPS[it.keys[i++]];const g=a.createGain();g.gain.value=1.4;src.connect(g);g.connect(a.destination);
+      src.onended=()=>setTimeout(playOne,60);clipSrc=src;src.start();};
+    playOne();return;
+  }
+  talk(Math.min(6000,400+it.text.length*70));ttsSpeak(it.text,done);
 }
+function nextSpeech(){if(!speech&&pending.length)speakItem(pending.shift());}
 function fala(...keys){
   keys=keys.filter(k=>FALAS[k]);if(!keys.length)return;
-  const text=keys.map(k=>FALAS[k][1]).join(' ');
-  if(!muted&&keys.every(k=>CLIPS[k])){
-    $('#bubble').textContent=text;try{speechSynthesis.cancel();}catch(e){}
-    stopClips();clipQueue=keys.slice();playQueue(clipToken);return;
-  }
-  stopClips();say(text);
+  const it={keys,text:keys.map(k=>FALAS[k][1]).join(' '),prio:prioOf(keys)};
+  if(!speech){speakItem(it);return;}
+  if(it.prio===0){if(speech.prio===0){stopSpeech();speakItem(it);}return;}
+  if(speech.prio===0){stopSpeech();speakItem(it);return;}
+  if(it.prio===1)pending=pending.filter(p=>p.prio!==1);
+  pending.push(it);
 }
 const NUM=['zero','um','dois','três','quatro','cinco','seis','sete','oito','nove','dez','onze','doze','treze','catorze','quinze','dezesseis','dezessete','dezoito','dezenove','vinte'];
 
@@ -1067,7 +1079,7 @@ RECIPES.forEach((rec,i)=>{
   setTimeout(()=>{const big=previewPizza(rec);c.getContext('2d').drawImage(big,0,0,300,300);},60+i*40);
 });
 function showMenu(){
-  token++;G.stage='menu';G.st={};hideBig();setShelf([]);parts.length=0;updateSteps();
+  stopClips();token++;G.stage='menu';G.st={};hideBig();setShelf([]);parts.length=0;updateSteps();
   $('#menu').classList.add('show');
   $('#tally').textContent=pizzasFeitas?`🍕 Pizzas que a Sofia já fez: ${pizzasFeitas}`:'';
   fala('oi');
@@ -1106,7 +1118,7 @@ $('#voiceBtn').addEventListener('click',()=>{audio();loadVoices();renderVoices()
 $('#voiceClose').addEventListener('click',()=>$('#voicePanel').classList.remove('show'));
 if('speechSynthesis' in window)speechSynthesis.addEventListener('voiceschanged',()=>{if($('#voicePanel').classList.contains('show'))renderVoices();});
 $('#muteBtn').textContent=muted?'🔇':'🔊';
-$('#muteBtn').addEventListener('click',()=>{muted=!muted;$('#muteBtn').textContent=muted?'🔇':'🔊';try{localStorage.setItem('pizzaria_mute',muted?'1':'0');}catch(e){}if(muted){stopClips();if('speechSynthesis' in window)speechSynthesis.cancel();}else{audio();SFX.click();}});
+$('#muteBtn').addEventListener('click',()=>{muted=!muted;$('#muteBtn').textContent=muted?'🔇':'🔊';try{localStorage.setItem('pizzaria_mute',muted?'1':'0');}catch(e){}if(muted){stopClips();}else{audio();SFX.click();}});
 $('#homeBtn').addEventListener('click',()=>{audio();SFX.click();fade=null;showMenu();});
 $('#startBtn').addEventListener('click',()=>{audio();loadClips();SFX.yay();$('#splash').style.display='none';showMenu();});
 

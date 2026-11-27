@@ -61,6 +61,7 @@ body.pclosed.idle #open{opacity:0}
 @media(hover:none){body.pclosed.idle #open{opacity:.4}}
 body.proj #panel,body.proj #open{display:none!important}
 body.proj{cursor:none}
+body.proj .hint,body.proj .hint button{cursor:pointer}
 .hint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);max-width:520px;padding:18px 22px;border:1px solid #444;border-radius:12px;background:#111;color:var(--ink);text-align:center;z-index:20;font-size:17px}
 #pstat{color:var(--c3)}
 kbd{font:12px/1 "Inter Tight";border:1px solid #444;border-radius:4px;padding:2px 5px;color:var(--ink)}
@@ -206,7 +207,7 @@ function defaults(order){
 function load(){try{const s=JSON.parse(localStorage.getItem('tule-quads-'+mode));if(s&&s.length===nL)return s}catch(e){}return defaults($('order').value)}
 function save(){try{localStorage.setItem('tule-quads-'+mode,JSON.stringify(quads))}catch(e){}}
 
-let projAR=16/9,projConnected=false;
+let projAR=16/9,projConnected=false,projFull=true;
 function placeStage(){
   const ctrl=!isProj&&projConnected;
   document.body.classList.toggle('ctrl',ctrl);
@@ -215,7 +216,7 @@ function placeStage(){
   let x=m,y=m+16,w=innerWidth-2*m-(open&&!narrow?340:0),h=innerHeight-2*m-14-(open&&narrow?innerHeight*0.62:0);
   if(w/h>projAR){const nw=h*projAR;x+=(w-nw)/2;w=nw}else{const nh=w/projAR;y+=(h-nh)/2;h=nh}
   Object.assign(stage.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px',right:'auto',bottom:'auto'});
-  const pl=$('plabel');pl.style.left=x+'px';pl.style.top=(y-20)+'px';pl.textContent='Pré-visualização da janela de projeção';
+  const pl=$('plabel');pl.style.left=x+'px';pl.style.top=(y-20)+'px';pl.textContent=projFull?'Pré-visualização da janela de projeção':'Atenção: a janela de projeção não está em tela cheia. Clique em "Tela cheia" nela.';pl.style.color=projFull?'#777':'#FAC775';pl.style.fontSize=projFull?'12px':'14px';
 }
 function layout(){
   placeStage();
@@ -411,7 +412,10 @@ function applyState(o){
 if(bc)bc.onmessage=e=>{
   const m=e.data||{};
   if(isProj&&m.t==='state')applyState(m.s);
-  else if(!isProj&&m.t==='size'&&m.w>0&&m.h>0){projAR=m.w/m.h;projConnected=true;layout()}
+  else if(!isProj&&m.t==='size'&&m.w>0&&m.h>0){
+    projAR=m.w/m.h;projConnected=true;projFull=m.full!==false;layout();
+    $('pstat').textContent=projFull?'Janela de projeção conectada e em tela cheia.':`Atenção: a janela de projeção não está em tela cheia (${m.w}×${m.h} de ${m.sw}×${m.sh}). Clique no botão "Tela cheia" que aparece nela.`;
+  }
   else if(!isProj&&m.t==='hello'){sync();if(m.w>0&&m.h>0)projAR=m.w/m.h;projConnected=true;layout();$('pstat').textContent='Janela de projeção conectada. Arraste-a para o projetor e dê um duplo clique nela para tela cheia.'}
   else if(!isProj&&m.t==='quads'&&m.q&&m.q.length===nL){quads=m.q;save();layout()}
 };
@@ -423,10 +427,18 @@ $('pwin').onclick=()=>{
 applyMode();
 if(isProj){
   document.body.classList.add('proj');document.title='Projeção · Tule em Camadas';
-  const h=document.createElement('div');h.className='hint';h.textContent='Janela de projeção. Arraste-a para a tela do projetor e dê um duplo clique para tela cheia. Os controles ficam na outra janela.';document.body.appendChild(h);
-  const gone=()=>h.remove();document.addEventListener('fullscreenchange',gone);setTimeout(gone,10000);
-  if(bc){bc.postMessage({t:'hello',w:innerWidth,h:innerHeight});addEventListener('resize',()=>bc.postMessage({t:'size',w:innerWidth,h:innerHeight}))}
-  if(!bc)h.textContent='Este navegador não sincroniza janelas. Use Chrome, Safari ou Firefox atualizados.';
+  const h=document.createElement('div');h.className='hint';
+  h.innerHTML='<p style="margin:0 0 14px;color:#ecebe6;font-size:17px">Esta é a janela de projeção. Ela precisa ocupar a tela do projetor inteira, senão os cantos ficam presos dentro dela.</p><button id="goFs" style="font-size:20px;min-height:56px;padding:0 28px">Tela cheia</button>';
+  document.body.appendChild(h);
+  h.querySelector('#goFs').onclick=()=>{try{document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}};
+  const isFull=()=>!!document.fullscreenElement||(innerWidth>=screen.width-2&&innerHeight>=screen.height-2);
+  const report=()=>{
+    h.style.display=isFull()?'none':'block';
+    if(bc)bc.postMessage({t:'size',w:innerWidth,h:innerHeight,sw:screen.width,sh:screen.height,full:isFull()});
+  };
+  document.addEventListener('fullscreenchange',report);addEventListener('resize',report);
+  if(bc){bc.postMessage({t:'hello',w:innerWidth,h:innerHeight});report()}
+  else h.firstChild.textContent='Este navegador não sincroniza janelas. Use Chrome, Safari ou Firefox atualizados.';
 }
 let last=performance.now();
 function frame(now){

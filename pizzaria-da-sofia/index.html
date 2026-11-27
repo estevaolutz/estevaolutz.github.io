@@ -243,6 +243,92 @@ function say(text){
     speechSynthesis.speak(u);
   }catch(e){}
 }
+const FALAS={
+  'oi':['01','Oi! Eu sou a Sofia! Qual pizza vamos fazer hoje?'],
+  'massa':['02','Vamos fazer a massa! Arraste os ingredientes até o pote.'],
+  'farinha':['03','Farinha!'],
+  'agua':['04','Água!'],
+  'sal':['05','Uma pitadinha de sal!'],
+  'fermento':['06','Fermento, pra massa crescer!'],
+  'azeite':['07','Um fio de azeite!'],
+  'arraste-pote':['08','Arraste até o pote!'],
+  'misturar':['09','Agora gire o dedo dentro do pote pra misturar!'],
+  'massa-pronta':['10','Uau! Que massa bonita!'],
+  'rolo':['11','Hora de abrir a massa! Passe o rolo pra cima e pra baixo.'],
+  'rolo-pronto':['12','Que massa linda e redondinha! Agora vem o molho.'],
+  'molho':['13','Agora o molho de tomate! Espalhe com o dedo.'],
+  'molho-pronto':['14','Que molho caprichado!'],
+  'chocolate':['15','Pizza doce! Espalhe o chocolate com o dedo.'],
+  'chocolate-pronto':['16','Hummm, que chocolate gostoso!'],
+  'queijo':['17','Agora jogue o queijo ralado por toda a pizza!'],
+  'queijo-pronto':['18','Hummm, quanto queijo!'],
+  'granulado':['19','Agora jogue o granulado colorido!'],
+  'granulado-pronto':['20','Que pizza colorida!'],
+  'ingredientes':['21','Agora os ingredientes! Arraste até a pizza.'],
+  'invente':['22','Invente a sua pizza! Arraste os ingredientes até a pizza.'],
+  'agora-tomate':['23','Agora o tomate!'],
+  'agora-manjericao':['24','Agora o manjericão!'],
+  'agora-calabresa':['25','Agora a calabresa!'],
+  'agora-cebola':['26','Agora a cebola!'],
+  'agora-azeitona':['27','Agora as azeitonas!'],
+  'agora-presunto':['28','Agora o presunto!'],
+  'agora-ovo':['29','Agora o ovo!'],
+  'agora-frango':['30','Agora o frango!'],
+  'agora-milho':['31','Agora o milho!'],
+  'agora-morango':['32','Agora os morangos!'],
+  'agora-confete':['33','Agora os confetes!'],
+  'n1':['34','Um!'],
+  'n2':['35','Dois!'],
+  'n3':['36','Três!'],
+  'n4':['37','Quatro!'],
+  'n5':['38','Cinco!'],
+  'n6':['39','Seis!'],
+  'n7':['40','Sete!'],
+  'n8':['41','Oito!'],
+  'n9':['42','Nove!'],
+  'n10':['43','Dez!'],
+  'muito-bem':['44','Muito bem!'],
+  'montada':['45','A pizza está montada! Vamos pro forno!'],
+  'forno':['46','A pizza está pronta pra assar! Empurre a pizza pra dentro do forno.'],
+  'assando':['47','Agora é só esperar... a pizza está assando!'],
+  'ding':['48','Ding! A pizza está pronta! Toque na pizza pra tirar do forno.'],
+  'cheiro':['49','Hummm, que cheiro bom!'],
+  'comer':['50','Hora de comer! Toque na pizza pra dar mordidas. Nham nham!'],
+  'nham':['51','Nham!'],
+  'hummm':['52','Hummm!'],
+  'gostoso':['53','Que gostoso!'],
+  'nham-nham':['54','Nham nham!'],
+  'delicia':['55','Delícia!'],
+  'mais-uma':['56','Mais uma mordida!'],
+  'fim':['57','Hummm! Que delícia! Vamos fazer outra pizza?']
+};
+/* gravações: audio/NN.mp3 (se existir, toca a gravação; senão usa a voz do aparelho) */
+const CLIPS={};
+function loadClips(){
+  const a=audio();if(!a||loadClips.done)return;loadClips.done=true;
+  fetch('audio/lista.json').then(r=>r.ok?r.json():[]).then(have=>{
+  for(const k in FALAS){const n=FALAS[k][0];if(!have.includes(n))continue;
+    fetch('audio/'+n+'.mp3').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();})
+      .then(b=>new Promise((ok,no)=>a.decodeAudioData(b,ok,no))).then(buf=>{CLIPS[k]=buf;}).catch(()=>{});}
+  }).catch(()=>{});
+}
+let clipQueue=[],clipSrc=null,clipToken=0;
+function stopClips(){clipToken++;clipQueue=[];if(clipSrc){try{clipSrc.stop();}catch(e){}clipSrc=null;}}
+function playQueue(tk){
+  if(tk!==clipToken||!clipQueue.length)return;const k=clipQueue.shift(),a=audio();
+  const src=a.createBufferSource();src.buffer=CLIPS[k];const g=a.createGain();g.gain.value=1.4;src.connect(g);g.connect(a.destination);
+  src.onended=()=>{if(clipSrc===src)clipSrc=null;setTimeout(()=>playQueue(tk),60);};clipSrc=src;src.start();
+  const mini=$('#sofiaMini');mini.classList.add('talk');clearTimeout(talkTimer);talkTimer=setTimeout(()=>mini.classList.remove('talk'),CLIPS[k].duration*1000+80);
+}
+function fala(...keys){
+  keys=keys.filter(k=>FALAS[k]);if(!keys.length)return;
+  const text=keys.map(k=>FALAS[k][1]).join(' ');
+  if(!muted&&keys.every(k=>CLIPS[k])){
+    $('#bubble').textContent=text;try{speechSynthesis.cancel();}catch(e){}
+    stopClips();clipQueue=keys.slice();playQueue(clipToken);return;
+  }
+  stopClips();say(text);
+}
 const NUM=['zero','um','dois','três','quatro','cinco','seis','sete','oito','nove','dez','onze','doze','treze','catorze','quinze','dezesseis','dezessete','dezoito','dezenove','vinte'];
 
 /* ================= dados ================= */
@@ -331,13 +417,41 @@ function drawOilBottle(c){
   c.fillStyle='#4a2412';c.font='bold 9px "Arial Rounded MT Bold",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('AZEITE',0,34);
   c.fillStyle='rgba(255,255,255,.35)';rr(c,-20,-4,6,58,3);c.fill();
 }
+function drawWaterGlass(c){
+  c.fillStyle='rgba(0,0,0,.15)';ell(c,0,64,32,7);c.fill();
+  const glass=()=>{c.beginPath();c.moveTo(-34,-52);c.lineTo(34,-52);c.lineTo(26,60);c.quadraticCurveTo(25,64,20,64);c.lineTo(-20,64);c.quadraticCurveTo(-25,64,-26,60);c.closePath();};
+  glass();c.fillStyle='rgba(225,242,255,.55)';c.fill();
+  c.save();glass();c.clip();
+  const g=c.createLinearGradient(0,-20,0,64);g.addColorStop(0,'#8fd3ff');g.addColorStop(1,'#3d9be0');c.fillStyle=g;c.fillRect(-40,-18,80,90);
+  c.fillStyle='#b9e5ff';ell(c,0,-18,32,6);c.fill();c.fillStyle='rgba(255,255,255,.7)';ell(c,-10,-19,12,2);c.fill();
+  c.restore();
+  glass();c.strokeStyle='rgba(120,170,210,.95)';c.lineWidth=3;c.stroke();
+  c.fillStyle='rgba(255,255,255,.55)';c.beginPath();c.moveTo(-26,-46);c.lineTo(-20,-46);c.lineTo(-16,52);c.lineTo(-20,52);c.closePath();c.fill();
+  c.strokeStyle='rgba(150,195,230,.9)';c.lineWidth=2;ell(c,0,-52,34,5);c.stroke();
+}
+function drawYeastJar(c){
+  c.fillStyle='rgba(0,0,0,.15)';ell(c,0,62,34,7);c.fill();
+  rr(c,-32,-24,64,86,14);c.fillStyle='rgba(235,240,245,.7)';c.fill();
+  c.save();rr(c,-32,-24,64,86,14);c.clip();
+  c.fillStyle='#e2c28a';c.fillRect(-34,-8,68,72);
+  for(let i=0;i<70;i++){const x=-28+((i*37)%56),y=-4+((i*53)%62);circ(c,x,y,2.2,i%3?'#c79f5c':'#f0d9a8');}
+  c.restore();
+  rr(c,-32,-24,64,86,14);c.strokeStyle='rgba(140,150,160,.9)';c.lineWidth=2.5;c.stroke();
+  c.fillStyle='#fff8ec';rr(c,-30,10,60,30,4);c.fill();
+  c.fillStyle='#e64b3c';c.font='bold 11px "Arial Rounded MT Bold",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('FERMENTO',0,20);
+  c.fillStyle='#d4a72c';for(let i=-1;i<=1;i++)circ(c,i*9,32,3.2,'#d4a72c');
+  const lg=c.createLinearGradient(0,-46,0,-22);lg.addColorStop(0,'#f6cf3a');lg.addColorStop(1,'#c99a12');
+  c.fillStyle=lg;rr(c,-36,-46,72,24,6);c.fill();
+  c.strokeStyle='rgba(120,80,0,.35)';c.lineWidth=2;for(let x=-30;x<=30;x+=6){c.beginPath();c.moveTo(x,-43);c.lineTo(x,-25);c.stroke();}
+  c.fillStyle='rgba(255,255,255,.4)';rr(c,-26,-18,6,70,3);c.fill();
+}
 function iconCanvas(draw){const c=mk(160),x=c.getContext('2d');x.translate(80,80);draw(x);return c;}
 function emojiIcon(e){return iconCanvas(x=>{x.font='104px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",serif';x.textAlign='center';x.textBaseline='middle';x.fillText(e,0,8);});}
 const DOUGH_INGS=[
   {k:'farinha',name:'Farinha',draw:drawFlourSack,col:'#fbf7ee',say:'Farinha!'},
-  {k:'agua',name:'Água',e:'💧',col:'#8fd3ff',say:'Água!'},
+  {k:'agua',name:'Água',draw:drawWaterGlass,col:'#8fd3ff',say:'Água!'},
   {k:'sal',name:'Sal',e:'🧂',col:'#ffffff',say:'Uma pitadinha de sal!'},
-  {k:'fermento',name:'Fermento',e:'🫧',col:'#e3c890',say:'Fermento, pra massa crescer!'},
+  {k:'fermento',name:'Fermento',draw:drawYeastJar,col:'#e3c890',say:'Fermento, pra massa crescer!'},
   {k:'azeite',name:'Azeite',draw:drawOilBottle,col:'#e4c230',say:'Um fio de azeite!'}
 ];
 for(const ing of DOUGH_INGS){ing.cv=ing.draw?iconCanvas(ing.draw):emojiIcon(ing.e);ing.img=ing.cv.toDataURL();}
@@ -605,10 +719,10 @@ S.dough={
   geo(){const R=Math.min(W,H)*.37;return {cx:screenCX(R*1.1),cy:H/2+H*.02,R};},
   enter(){
     G.st={contents:{},added:{},pours:[],phase:'add',mix:0,swirl:0,lastAng:null};
-    say('Vamos fazer a massa! Arraste cada ingrediente da prateleira até o pote.');
+    fala('massa');
     setShelf(DOUGH_INGS.map(ing=>({id:ing.k,canvas:iconCanvas(ing.draw||(x=>{x.font='104px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",serif';x.textAlign='center';x.textBaseline='middle';x.fillText(ing.e,0,8);})),img:ing.img,label:ing.name,
       canDrag:()=>!G.st.added[ing.k]&&G.st.phase==='add',
-      tap:b=>{if(G.st.added[ing.k]||G.st.phase!=='add')return;say('Arraste '+(ing.k==='agua'?'a água':ing.k==='farinha'?'a farinha':ing.k==='azeite'?'o azeite':'o '+ing.name.toLowerCase())+' até o pote!');b.animate([{transform:'translateX(0)'},{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'translateX(0)'}],{duration:300});},
+      tap:b=>{if(G.st.added[ing.k]||G.st.phase!=='add')return;fala('arraste-pote');b.animate([{transform:'translateX(0)'},{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'translateX(0)'}],{duration:300});},
       over:(x,y)=>this.inBowl(x,y),
       drop:(x,y,b)=>{if(!this.inBowl(x,y))return false;this.add(ing,b,x,y);return true;}})));
     this.pulseNext();
@@ -618,7 +732,7 @@ S.dough={
   add(ing,btn,x,y){
     const st=G.st;if(st.added[ing.k]||st.phase!=='add')return;st.added[ing.k]=1;btn.classList.add('done');
     st.pours.push({ing,t0:now,fx:x,fy:y});
-    say(ing.say);this.pulseNext();
+    fala(ing.k);this.pulseNext();
   },
   iconPos(p,e){const {cx,cy,R}=this.geo();const tx=cx+R*.45,ty=cy-R*.62;const k=Math.min(1,e/320),ea=1-(1-k)**3;
     const rot=e<320?0:-Math.min(1,(e-320)/250)*1.9,sz=Math.min(W,H)*.2;
@@ -632,7 +746,7 @@ S.dough={
           addP({kind:'dot',x:sx,y:sy,vx:(tx-sx)/life,vy:(ty-sy)/life,life,size:p.ing.k==='agua'?rnd(4,7):rnd(2.5,5),col:p.ing.col,edge:true});}}
       if(e>650&&!st.contents[p.ing.k])st.contents[p.ing.k]=now;}
     st.pours=st.pours.filter(p=>now-p.t0<1400);
-    if(st.phase==='add'&&DOUGH_INGS.every(i=>st.contents[i.k])&&!st.pours.length){st.phase='mix';say('Agora gire o dedo dentro do pote, rodando e rodando, para misturar!');lastAct=now-2500;}
+    if(st.phase==='add'&&DOUGH_INGS.every(i=>st.contents[i.k])&&!st.pours.length){st.phase='mix';fala('misturar');lastAct=now-2500;}
   },
   draw(){
     const st=G.st,{cx,cy,R}=this.geo();
@@ -657,7 +771,7 @@ S.dough={
       st.swirl+=da;st.mix=Math.min(1,st.mix+Math.abs(da)/(TAU*5));if(Math.abs(da)>.02)th('stir',130);}
     st.lastAng=ang;
     if(Math.random()<.05)puff(x,y,2);
-    if(st.mix>=1){st.phase='done';SFX.yay();say('Uau! Que massa bonita!');sparkle(cx,cy,R*.5);later(1800,()=>go('roll'));}
+    if(st.mix>=1){st.phase='done';SFX.yay();fala('massa-pronta');sparkle(cx,cy,R*.5);later(1800,()=>go('roll'));}
   },
   hint(t){const st=G.st,{cx,cy,R}=this.geo();
     if(st.phase==='add'&&G.nextIng&&shelfBtns[G.nextIng.k]){const r=shelfBtns[G.nextIng.k].getBoundingClientRect(),c=cv.getBoundingClientRect();
@@ -689,7 +803,7 @@ function drawPin(x,y,R){
   ctx.restore();
 }
 S.roll={
-  enter(){G.st={pinX:null,pinY:null,done:false};G.pz.dirty=true;setShelf([]);say('Hora de abrir a massa! Passe o rolo pra cima e pra baixo.');},
+  enter(){G.st={pinX:null,pinY:null,done:false};G.pz.dirty=true;setShelf([]);fala('rolo');},
   draw(){
     const {cx,cy,R,k}=pgeo(),st=G.st,pz=G.pz;drawSquareBoard(cx,cy,R*1.13);
     if(pz.dirty)rebuildBase(pz);drawPz(BASE);
@@ -703,7 +817,7 @@ S.roll={
       const g=(Math.abs(y-ptr.py)+Math.abs(x-ptr.px)*.35)/k*.075;
       if(g>.3){pz.doughR=Math.min(480,pz.doughR+g);pz.dirty=true;th('roll',150);if(Math.random()<.05)puff(x,y,3);}
     }
-    if(pz.doughR>=480&&!st.done){st.done=true;pz.rolled=true;pz.dirty=true;SFX.yay();say('Que massa linda e redondinha! Agora vem o molho.');sparkle(cx,cy,R);later(1800,()=>go('sauce'));}
+    if(pz.doughR>=480&&!st.done){st.done=true;pz.rolled=true;pz.dirty=true;SFX.yay();fala('rolo-pronto');sparkle(cx,cy,R);later(1800,()=>go('sauce'));}
   },
   hint(t){const {cx,cy,k}=pgeo();if(G.st.done)return null;return {x:cx+30,y:cy+Math.sin(t*2.4)*G.pz.doughR*k*1.05,press:true};}
 };
@@ -719,14 +833,14 @@ function drawLadle(x,y,R,col,tilt){
 }
 S.sauce={
   enter(){G.st={done:false};setShelf([]);
-    say(G.rec.sauce==='chocolate'?'Pizza doce! Espalhe o chocolate com o dedo por toda a massa.':'Agora o molho de tomate! Espalhe com o dedo por toda a massa.');},
+    fala(G.rec.sauce==='chocolate'?'chocolate':'molho');},
   paintTo(x,y,from){const pz=G.pz;const [bx,by]=toPz(x,y);const [ax,ay]=from?toPz(ptr.px,ptr.py):[bx,by];
     const d=Math.hypot(bx-ax,by-ay),n=Math.max(1,Math.ceil(d/22));
     for(let i=1;i<=n;i++){const px=ax+(bx-ax)*i/n,py=ay+(by-ay)*i/n;if(Math.hypot(px-PC,py-PC)<480)paintSauce(pz,px,py);}
     th('squish',110);this.check();},
   check(){const st=G.st,pz=G.pz;if(st.done||coverage(pz.grid,'s')<.82)return;st.done=true;fillSauce(pz);SFX.yay();
     const {cx,cy,R}=pgeo();sparkle(cx,cy,R*.8);
-    say(G.rec.sauce==='chocolate'?'Hummm, que chocolate gostoso!':'Que molho caprichado!');later(1600,()=>go('cheese'));},
+    fala(G.rec.sauce==='chocolate'?'chocolate-pronto':'molho-pronto');later(1600,()=>go('cheese'));},
   down(x,y){if(!G.st.done)this.paintTo(x,y,false);},
   move(x,y){if(ptr.down&&!G.st.done)this.paintTo(x,y,true);},
   draw(){const {cx,cy,R}=pgeo(),pz=G.pz;drawRoundBoard();if(pz.dirty)rebuildBase(pz);drawPz(BASE);
@@ -746,7 +860,7 @@ function drawCheeseBowl(x,y,R,gran){
 S.cheese={
   gran(){return G.rec.sprinkle==='granulado';},
   enter(){G.st={done:false,falls:[],acc:0,hold:0};setShelf([]);
-    say(this.gran()?'Agora jogue o granulado colorido por toda a pizza!':'Agora jogue o queijo ralado por toda a pizza!');},
+    fala(this.gran()?'granulado':'queijo');},
   spawn(sx,sy){const [px,py]=toPz(sx,sy);const gx=px+gauss()*42,gy=py+gauss()*42;if(Math.hypot(gx-PC,gy-PC)>432)return;
     G.st.falls.push({s:makeShred(gx,gy,this.gran()),t0:now,bx:sx+rnd(-10,10),by:sy-Math.min(90,pgeo().R*.28)});th('sprinkle',35);},
   land(s){const pz=G.pz;pz.cheese.push(s);drawShred(bctx,s);markGrid(pz.grid,'c',s.x,s.y,42);},
@@ -758,7 +872,7 @@ S.cheese={
     if(!st.done&&coverage(pz.grid,'c')>=.8){st.done=true;
       for(const p of pz.grid)if(!p.c)for(let i=0;i<4;i++)this.land(makeShred(p.x+gauss()*20,p.y+gauss()*20,this.gran()));
       SFX.yay();const {cx,cy,R}=pgeo();sparkle(cx,cy,R*.8);
-      say(this.gran()?'Que pizza colorida!':'Hummm, quanto queijo!');later(1600,()=>go('tops'));}
+      fala(this.gran()?'granulado-pronto':'queijo-pronto');later(1600,()=>go('tops'));}
   },
   down(x,y){if(!G.st.done)for(let i=0;i<6;i++)this.spawn(x,y);},
   move(x,y){if(!ptr.down||G.st.done)return;const st=G.st;st.acc+=Math.hypot(x-ptr.px,y-ptr.py);while(st.acc>8){st.acc-=8;this.spawn(x,y);this.spawn(x,y);}},
@@ -780,9 +894,9 @@ S.tops={
     setShelf(list.map(k=>({id:k,canvas:topIcon(k),label:TOP[k].name,badge:rec.tops?`0/${rec.tops[k]}`:null,tap:()=>this.select(k),
       over:(x,y)=>this.onPizza(x,y),drop:(x,y)=>{if(!this.onPizza(x,y))return false;G.st.sel=k;this.place(x,y,k,true);return true;}})));
     this.mark();
-    say(rec.tops?`Agora vamos colocar ${TOP[list[0]].call}! Arraste até a pizza, ou toque na pizza.`:'Invente a sua pizza! Arraste os ingredientes até a pizza.');
+    if(rec.tops)fala('ingredientes','agora-'+list[0]);else fala('invente');
   },
-  select(k){G.st.sel=k;this.mark();SFX.click();say(TOP[k].name+'!');},
+  select(k){G.st.sel=k;this.mark();SFX.click();fala('agora-'+k);},
   mark(){const st=G.st,rec=G.rec;for(const k in shelfBtns){const b=shelfBtns[k],n=st.counts[k]||0;b.classList.toggle('sel',k===st.sel);
     if(rec.tops){b._badge.textContent=n>=rec.tops[k]?'✓':`${n}/${rec.tops[k]}`;b.classList.toggle('done',n>=rec.tops[k]&&k!==st.sel);}}},
   onPizza(x,y){const [px,py]=toPz(x,y);return Math.hypot(px-PC,py-PC)<=435;},
@@ -799,15 +913,15 @@ S.tops={
     addP({kind:'text',x,y:y-30,vx:0,vy:-60,life:.9,text:String(rec.tops?n:st.total),size:46});
     if(rec.tops){
       const need=rec.tops[k];
-      if(n<need)say(NUM[n]||'');
+      if(n<need)fala('n'+n);
       else if(n===need){
         const nx=st.list.find(q=>(st.counts[q]||0)<rec.tops[q]);
-        if(nx){st.sel=nx;say(`${NUM[n]}! Muito bem! Agora ${TOP[nx].call}!`);}
-        else if(!st.done){st.done=true;say(`${NUM[n]}! A pizza está montada! Vamos pro forno!`);SFX.yay();const g=pgeo();sparkle(g.cx,g.cy,g.R*.9);later(600,()=>showBig('🔥 Pro forno!',()=>go('oven')));}
+        if(nx){st.sel=nx;fala('n'+n,'muito-bem','agora-'+nx);}
+        else if(!st.done){st.done=true;fala('n'+n,'montada');SFX.yay();const g=pgeo();sparkle(g.cx,g.cy,g.R*.9);later(600,()=>showBig('🔥 Pro forno!',()=>go('oven')));}
       }
       this.mark();
     }else{
-      if(st.total<=20)say(NUM[st.total]);
+      if(st.total<=10)fala('n'+st.total);
       if(st.total===1)showBig('🔥 Pro forno!',()=>go('oven'));
     }
   },
@@ -835,22 +949,22 @@ S.oven={
   enter(){
     const pz=G.pz;G.raw=mk(PZ);renderFull(G.raw.getContext('2d'),pz,0);G.baked=mk(PZ);renderFull(G.baked.getContext('2d'),pz,1);
     G.st={phase:'ready',p:0,drag:false,t0:0};setShelf([]);
-    say('A pizza está pronta para assar! Empurre a pizza para dentro do forno.');
+    fala('forno');
   },
   pos(){const g=this.geo(),p=G.st.p,e=p*p*(3-2*p);
     return {x:g.ox+(g.inX-g.ox)*e,y:g.startY+(g.inY-g.startY)*e,w:g.pw*(1.4-.4*e),ratio:.32-.06*e,inside:p>.8};},
   update(){
     const st=G.st;
-    if(st.phase==='sliding'){st.p=Math.min(1,st.sp+(now-st.t0)/550*(1-st.sp));if(st.p>=1){st.phase='baking';st.t0=now;say('Agora é só esperar... a pizza está assando!');}}
+    if(st.phase==='sliding'){st.p=Math.min(1,st.sp+(now-st.t0)/550*(1-st.sp));if(st.p>=1){st.phase='baking';st.t0=now;fala('assando');}}
     if(st.phase==='baking'){st.bake=Math.min(1,(now-st.t0)/8000);if(Math.random()<.12)SFX.crackle();
       const g=this.geo();if(Math.random()<.25)addP({kind:'ember',x:g.ox-g.aw*.2+rnd(-30,30),y:g.oy-g.ah*.3,vx:rnd(-15,15),vy:-rnd(30,70),life:rnd(.6,1.2),size:rnd(1.5,3),col:'#ffb347'});
-      if(st.bake>=1){st.phase='done';SFX.ding();say('Ding! A pizza está pronta! Toque na pizza para tirar do forno.');lastAct=now-2000;}}
+      if(st.bake>=1){st.phase='done';SFX.ding();fala('ding');lastAct=now-2000;}}
     if(st.phase==='done'){const g=this.geo();if(Math.random()<.3)addP({kind:'steam',x:g.inX+rnd(-g.pw*.3,g.pw*.3),y:g.oy-g.ah*.4,vx:rnd(-8,8),vy:-rnd(30,55),life:rnd(1.2,2),size:rnd(14,26)});}
     if(st.phase==='out'){st.p=Math.max(0,1-(now-st.t0)/600);if(st.p<=0&&!st.gone){st.gone=true;go('eat');}}
   },
   down(x,y){const st=G.st;
     if(st.phase==='ready'){st.drag=true;st.dy=y;st.dp=st.p;}
-    else if(st.phase==='done'){st.phase='out';st.t0=now;SFX.whoosh();say('Hummm, que cheiro bom!');}},
+    else if(st.phase==='done'){st.phase='out';st.t0=now;SFX.whoosh();fala('cheiro');}},
   move(x,y){const st=G.st;if(st.phase!=='ready'||!st.drag)return;const g=this.geo();
     st.p=clamp(st.dp+(st.dy-y)/(g.startY-g.inY),0,1);if(st.p>.6)this.slide();},
   up(){const st=G.st;if(st.phase==='ready'&&st.drag){st.drag=false;this.slide();}},
@@ -908,7 +1022,7 @@ S.eat={
     for(let i=0;i<4;i++){const a=i*Math.PI/4+.2;c.beginPath();c.moveTo(PC-Math.cos(a)*490,PC-Math.sin(a)*490);c.lineTo(PC+Math.cos(a)*490,PC+Math.sin(a)*490);c.stroke();}
     c.restore();
     G.final=f;G.fctx=c;G.st={total:countAlpha(f),bites:0,done:false,t0:now};setShelf([]);
-    say('Hora de comer! Toque na pizza para dar mordidas. Nham nham!');
+    fala('comer');
   },
   down(x,y){
     const st=G.st;if(st.done)return;const [px,py]=toPz(x,y);if(px<0||py<0||px>=PZ||py>=PZ)return;
@@ -918,7 +1032,7 @@ S.eat={
     c.restore();
     SFX.chomp();st.bites++;
     for(let i=0;i<14;i++)addP({kind:'dot',x,y,vx:rnd(-160,160),vy:rnd(-200,40),g:600,life:rnd(.5,.9),size:rnd(2,5),col:pick(['#e9a95a','#f8d469','#c7321f','#b8692b']),fade:true});
-    if(st.bites%3===1)say(pick(['Nham!','Hummm!','Que gostoso!','Nham nham!','Delícia!','Mais uma mordida!']));
+    if(st.bites%3===1)fala(pick(['nham','hummm','gostoso','nham-nham','delicia','mais-uma']));
     if(countAlpha(G.final)/st.total<.12){st.done=true;c.clearRect(0,0,PZ,PZ);const g=pgeo();puff(g.cx,g.cy,20,'rgba(255,240,210,.8)');later(400,finish);}
   },
   draw(){
@@ -934,7 +1048,7 @@ function finish(){
   SFX.fanfare();pizzasFeitas++;try{localStorage.setItem('pizzaria_sofia_count',pizzasFeitas);}catch(e){}
   for(let i=0;i<160;i++)addP({kind:'conf',x:W/2+rnd(-W*.4,W*.4),y:-rnd(0,H*.5),vx:rnd(-40,40),vy:rnd(120,260),life:rnd(2.5,4),size:rnd(7,13),col:pick(['#e74c3c','#f1c40f','#2ecc71','#3498db','#9b59b6','#ff7fbf']),rot:rnd(0,TAU),vr:rnd(-8,8)});
   const nome=G.rec.tops?`pizza ${G.rec.name}`:'pizza inventada';
-  say(`Hummm! Que delícia de ${nome}! Já são ${pizzasFeitas} ${pizzasFeitas===1?'pizza':'pizzas'} da Sofia! Vamos fazer outra?`);
+  fala('fim');
   G.st.party=true;
   showBig('🍕 Fazer outra pizza!',showMenu);
 }
@@ -953,7 +1067,7 @@ function showMenu(){
   token++;G.stage='menu';G.st={};hideBig();setShelf([]);parts.length=0;updateSteps();
   $('#menu').classList.add('show');
   $('#tally').textContent=pizzasFeitas?`🍕 Pizzas que a Sofia já fez: ${pizzasFeitas}`:'';
-  say('Oi! Eu sou a Sofia! Qual pizza vamos fazer hoje?');
+  fala('oi');
 }
 function startRecipe(rec){
   $('#menu').classList.remove('show');G.rec=rec;G.pz=newPizza(rec);
@@ -989,9 +1103,9 @@ $('#voiceBtn').addEventListener('click',()=>{audio();loadVoices();renderVoices()
 $('#voiceClose').addEventListener('click',()=>$('#voicePanel').classList.remove('show'));
 if('speechSynthesis' in window)speechSynthesis.addEventListener('voiceschanged',()=>{if($('#voicePanel').classList.contains('show'))renderVoices();});
 $('#muteBtn').textContent=muted?'🔇':'🔊';
-$('#muteBtn').addEventListener('click',()=>{muted=!muted;$('#muteBtn').textContent=muted?'🔇':'🔊';try{localStorage.setItem('pizzaria_mute',muted?'1':'0');}catch(e){}if(muted&&'speechSynthesis' in window)speechSynthesis.cancel();else{audio();SFX.click();}});
+$('#muteBtn').addEventListener('click',()=>{muted=!muted;$('#muteBtn').textContent=muted?'🔇':'🔊';try{localStorage.setItem('pizzaria_mute',muted?'1':'0');}catch(e){}if(muted){stopClips();if('speechSynthesis' in window)speechSynthesis.cancel();}else{audio();SFX.click();}});
 $('#homeBtn').addEventListener('click',()=>{audio();SFX.click();fade=null;showMenu();});
-$('#startBtn').addEventListener('click',()=>{audio();SFX.yay();$('#splash').style.display='none';showMenu();});
+$('#startBtn').addEventListener('click',()=>{audio();loadClips();SFX.yay();$('#splash').style.display='none';showMenu();});
 
 /* ================= laço principal ================= */
 function drawParts(dt){

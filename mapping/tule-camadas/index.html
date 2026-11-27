@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tule em Camadas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;500&display=swap" rel="stylesheet">
+<style>
+/* VOICE: ferramenta de palco, silenciosa; o preto é o protagonista
+   IDEA: mesa de luz de teatro com três varas de cenário (tule) em profundidade
+   PICTURE: a própria projeção em três faixas, cada uma com seus 4 cantos
+   COLOUR and TYPE: preto absoluto, painel grafite, acentos coral/âmbar/verde-água por camada; Inter Tight
+   LAYOUT: palco em tela cheia, painel de controle recolhível à direita (tecla H) */
+:root{color-scheme:dark;--ink:#ecebe6;--mut:#9c9a92;--panel:#141414;--line:#2c2c2a;--c1:#F0997B;--c2:#FAC775;--c3:#5DCAA5}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;background:#000;color:var(--ink);font:15px/1.5 "Inter Tight",system-ui,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0;background:#000}
+.layer{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none}
+.h{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.4);cursor:grab;touch-action:none;display:none;z-index:5}
+.h.sel{background:#fff}
+.edit .h{display:block}
+.h.hid,.layer.hid{display:none!important}
+#panel{position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:18px 18px 40px;z-index:10;transition:transform .25s}
+#panel.off{transform:translateX(105%)}
+h1{font-weight:500;font-size:22px;line-height:1.1;margin:0 0 4px}
+h2{font-weight:500;font-size:15px;margin:22px 0 8px;color:var(--ink)}
+p,li{color:var(--mut);font-size:13.5px;margin:0 0 8px}
+ol{padding-left:18px;margin:0}
+label{display:flex;align-items:center;gap:10px;font-size:14px;margin:8px 0}
+label span{flex:0 0 92px;color:var(--mut)}
+input[type=range]{flex:1;accent-color:#fff;height:28px}
+select,button{font:inherit;font-size:15px;color:var(--ink);background:#1f1f1e;border:1px solid #3a3a38;border-radius:8px;min-height:42px;padding:0 12px}
+select{width:100%}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.row button{flex:1 1 auto}
+button.on{background:#ecebe6;color:#111}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.svgbox{background:#0b0b0b;border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:6px}
+.svgbox svg{width:100%;height:auto;display:block}
+#open{position:fixed;right:14px;bottom:14px;z-index:9;opacity:.0;transition:opacity .3s}
+body.idle{cursor:none}
+body:not(.idle) #open{opacity:.8}
+kbd{font:12px/1 "Inter Tight";border:1px solid #444;border-radius:4px;padding:2px 5px;color:var(--ink)}
+@media(max-width:600px){#panel{width:100%;top:auto;height:62%;border-left:0;border-top:1px solid var(--line)}#panel.off{transform:translateY(105%)}}
+@media(prefers-reduced-motion:reduce){#panel{transition:none}}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<button id="open" aria-label="Abrir controles">Controles</button>
+<aside id="panel" aria-label="Controles">
+  <h1>Tule em camadas</h1>
+  <p>Três faixas da imagem, uma para cada tela de tule. Monte em escada: a camada da frente mais alta, a de trás mais baixa.</p>
+
+  <h2>Montagem</h2>
+  <select id="mode">
+    <option value="escada">Escada: 3 faixas, uma por camada</option>
+    <option value="paralelo">Paralelo: 3 telas na mesma altura, imagem inteira</option>
+  </select>
+  <p id="modeNote"></p>
+
+  <h2>Cena</h2>
+  <select id="scene">
+    <option value="calib">Calibração (grade e números)</option>
+    <option value="orbit">Órbita: planetas passam pela frente e por trás do sol</option>
+    <option value="parts">Partículas vindo em direção ao público</option>
+    <option value="jelly">Águas-vivas em profundidades diferentes</option>
+    <option value="tunnel">Túnel de anéis</option>
+    <option value="rain">Chuva de luz atravessando as camadas</option>
+  </select>
+  <label><span>Velocidade</span><input id="speed" type="range" min="0" max="3" step="0.05" value="1"></label>
+  <label><span>Cor</span><input id="hue" type="range" min="0" max="360" step="1" value="35"></label>
+  <label><span>Transição</span><input id="blend" type="range" min="0.2" max="1" step="0.05" value="0.6"></label>
+
+  <h2>Brilho por camada</h2>
+  <p>A luz que chega às camadas de trás é menor; compense aqui.</p>
+  <label><span><i class="dot" style="background:var(--c1)"></i>1 frente</span><input id="g0" type="range" min="0" max="3" step="0.05" value="1"></label>
+  <label><span><i class="dot" style="background:var(--c2)"></i>2 meio</span><input id="g1" type="range" min="0" max="3" step="0.05" value="1.35"></label>
+  <label><span><i class="dot" style="background:var(--c3)"></i>3 fundo</span><input id="g2" type="range" min="0" max="3" step="0.05" value="1.8"></label>
+
+  <h2>Cantos</h2>
+  <div class="row">
+    <button id="edit">Editar cantos</button>
+    <button id="reset">Resetar</button>
+  </div>
+  <label><span>Ordem</span>
+    <select id="order"><option value="top">Frente em cima (projetor no alto)</option><option value="bottom">Frente embaixo (projetor no chão)</option></select>
+  </label>
+  <p>No modo de edição, arraste as bolinhas até os cantos de cada tule. Clique numa bolinha e use as setas para ajuste fino (<kbd>Shift</kbd> = 10 px). Fica salvo neste navegador.</p>
+
+  <h2>Projeção</h2>
+  <div class="row">
+    <button id="fs">Tela cheia</button>
+    <button id="hide">Ocultar painel</button>
+  </div>
+  <p><kbd>H</kbd> mostra e oculta o painel · <kbd>E</kbd> edita os cantos · <kbd>F</kbd> tela cheia · <kbd>1</kbd>–<kbd>6</kbd> trocam a cena</p>
+
+  <h2>Desenho da montagem em escada</h2>
+  <div class="svgbox">
+  <svg viewBox="0 0 380 330" role="img" aria-label="Corte lateral da montagem em escada">
+    <line x1="10" y1="40" x2="370" y2="40" stroke="#5f5e5a"/><line x1="10" y1="280" x2="370" y2="280" stroke="#5f5e5a"/>
+    <polygon points="50,100 160,94 160,130" fill="#D85A30" fill-opacity=".35"/>
+    <polygon points="50,100 230,147 230,185" fill="#EF9F27" fill-opacity=".35"/>
+    <polygon points="50,100 290,212 290,250" fill="#1D9E75" fill-opacity=".35"/>
+    <g stroke="#5f5e5a"><line x1="160" y1="40" x2="160" y2="94"/><line x1="230" y1="40" x2="230" y2="147"/><line x1="290" y1="40" x2="290" y2="212"/></g>
+    <line x1="160" y1="94" x2="160" y2="130" stroke="#F0997B" stroke-width="3"/>
+    <line x1="230" y1="147" x2="230" y2="185" stroke="#FAC775" stroke-width="3"/>
+    <line x1="290" y1="212" x2="290" y2="250" stroke="#5DCAA5" stroke-width="3"/>
+    <g fill="#ecebe6" font-size="14"><text x="166" y="62">1</text><text x="236" y="62">2</text><text x="296" y="62">3</text></g>
+    <rect x="336" y="40" width="8" height="240" fill="#000" stroke="#5f5e5a"/>
+    <rect x="18" y="90" width="32" height="20" rx="4" fill="#888780"/>
+    <g fill="#9c9a92" font-size="12" text-anchor="middle"><text x="34" y="130">projetor</text><text x="195" y="298">25–40 cm</text><text x="260" y="298">25–40 cm</text></g>
+    <text x="344" y="318" fill="#9c9a92" font-size="12" text-anchor="end">pano preto ao fundo</text>
+  </svg>
+  </div>
+  <ol style="margin-top:12px">
+    <li>Tule bem esticado: barbante ou cabo de vassoura em cima, peso embaixo.</li>
+    <li>Rolo de 2,4 m: corte pedaços de 1 m no comprimento e divida cada um ao meio, ficando com painéis de 1,2 × 1 m. Os 3 painéis gastam 1,5 m do rolo.</li>
+    <li>Cada painel fica abaixo do anterior, de modo que o feixe que passa por baixo de um bate no seguinte.</li>
+    <li>Projetor um pouco acima da camada 1, inclinado de leve para baixo.</li>
+    <li>Comece só com a camada 1 na cena Calibração, depois junte a 2 e a 3.</li>
+    <li>Sala escura e nada claro atrás: a luz que sobra precisa morrer num pano preto.</li>
+  </ol>
+
+  <h2>Desenho da montagem em paralelo</h2>
+  <div class="svgbox">
+  <svg viewBox="0 0 380 300" role="img" aria-label="Corte lateral da montagem em paralelo">
+    <line x1="10" y1="40" x2="370" y2="40" stroke="#5f5e5a"/><line x1="10" y1="260" x2="370" y2="260" stroke="#5f5e5a"/>
+    <polygon points="50,150 170,95 170,205" fill="#FAC775" fill-opacity=".35"/>
+    <polygon points="170,95 230,68 230,232 170,205" fill="#FAC775" fill-opacity=".22"/>
+    <polygon points="230,68 290,41 290,259 230,232" fill="#FAC775" fill-opacity=".12"/>
+    <g stroke-width="3"><line x1="170" y1="80" x2="170" y2="220" stroke="#F0997B"/><line x1="230" y1="60" x2="230" y2="240" stroke="#FAC775"/><line x1="290" y1="40" x2="290" y2="260" stroke="#5DCAA5"/></g>
+    <rect x="336" y="40" width="8" height="220" fill="#000" stroke="#5f5e5a"/>
+    <rect x="18" y="140" width="32" height="20" rx="4" fill="#888780"/>
+    <g fill="#ecebe6" font-size="14"><text x="176" y="76">1</text><text x="236" y="56">2</text><text x="296" y="36" >3</text></g>
+    <g fill="#9c9a92" font-size="12" text-anchor="middle"><text x="34" y="180">projetor</text><text x="200" y="280">10–30 cm</text><text x="260" y="280">10–30 cm</text></g>
+  </svg>
+  </div>
+  <p style="margin-top:10px">Aqui a mesma imagem atravessa as três telas: cada uma recebe uma cópia um pouco maior e mais fraca. Com as telas próximas (10–20 cm), a imagem ganha espessura; afastadas, vira eco. Projetando de lado (30–45°), as cópias se deslocam em diagonal. Para ter conteúdo diferente em cada tela nessa montagem, é preciso um projetor por tela, ou um na frente e outro atrás.</p>
+</aside>
+
+<script>
+{
+const stage=document.getElementById('stage'),panel=document.getElementById('panel');
+let LW=1200,LH=400,nL=3,mode='escada';const N=3;
+const $=id=>document.getElementById(id);
+let quads=null,editing=false,sel=null;
+try{const m=localStorage.getItem('tule-mode');if(m)$('mode').value=m}catch(e){}
+
+/* homografia: retângulo -> quadrilátero (matrix3d) */
+const adj=m=>[m[4]*m[8]-m[5]*m[7],m[2]*m[7]-m[1]*m[8],m[1]*m[5]-m[2]*m[4],m[5]*m[6]-m[3]*m[8],m[0]*m[8]-m[2]*m[6],m[2]*m[3]-m[0]*m[5],m[3]*m[7]-m[4]*m[6],m[1]*m[6]-m[0]*m[7],m[0]*m[4]-m[1]*m[3]];
+const mm=(a,b)=>{const c=[];for(let i=0;i<3;i++)for(let j=0;j<3;j++){let s=0;for(let k=0;k<3;k++)s+=a[3*i+k]*b[3*k+j];c[3*i+j]=s}return c};
+const mv=(m,v)=>[m[0]*v[0]+m[1]*v[1]+m[2]*v[2],m[3]*v[0]+m[4]*v[1]+m[5]*v[2],m[6]*v[0]+m[7]*v[1]+m[8]*v[2]];
+const basis=p=>{const m=[p[0],p[2],p[4],p[1],p[3],p[5],1,1,1];const v=mv(adj(m),[p[6],p[7],1]);return mm(m,[v[0],0,0,0,v[1],0,0,0,v[2]])};
+const homog=(s,d)=>{const t=mm(basis(d),adj(basis(s)));return t.map(x=>x/t[8])};
+
+const cvs=[],ctxs=[],handles=[];
+for(let i=0;i<N;i++){
+  const c=document.createElement('canvas');c.width=LW;c.height=LH;c.className='layer';
+  c.style.width=LW+'px';c.style.height=LH+'px';stage.appendChild(c);cvs.push(c);ctxs.push(c.getContext('2d'));
+  for(let k=0;k<4;k++){const h=document.createElement('div');h.className='h';h.style.borderColor=['#F0997B','#FAC775','#5DCAA5'][i];h.dataset.l=i;h.dataset.k=k;stage.appendChild(h);handles.push(h)}
+}
+
+function defaults(order){
+  if(mode==='paralelo')return [[[0.04,0.04],[0.96,0.04],[0.04,0.96],[0.96,0.96]]];
+  const q=[];
+  for(let i=0;i<N;i++){
+    const b=order==='bottom'?N-1-i:i;
+    const y0=b/N+0.02,y1=(b+1)/N-0.02;
+    q.push([[0.08,y0],[0.92,y0],[0.08,y1],[0.92,y1]]);
+  }
+  return q;
+}
+function load(){try{const s=JSON.parse(localStorage.getItem('tule-quads-'+mode));if(s&&s.length===nL)return s}catch(e){}return defaults($('order').value)}
+function save(){try{localStorage.setItem('tule-quads-'+mode,JSON.stringify(quads))}catch(e){}}
+
+function layout(){
+  const W=innerWidth,H=innerHeight;
+  for(let i=0;i<nL;i++){
+    const q=quads[i].map(p=>[p[0]*W,p[1]*H]);
+    const t=homog([0,0,LW,0,0,LH,LW,LH],[q[0][0],q[0][1],q[1][0],q[1][1],q[2][0],q[2][1],q[3][0],q[3][1]]);
+    cvs[i].style.transform=`matrix3d(${t[0]},${t[3]},0,${t[6]},${t[1]},${t[4]},0,${t[7]},0,0,1,0,${t[2]},${t[5]},0,${t[8]})`;
+    for(let k=0;k<4;k++){const h=handles[i*4+k];h.style.left=q[k][0]+'px';h.style.top=q[k][1]+'px'}
+  }
+}
+addEventListener('resize',layout);
+
+const notes={
+  escada:'Cada faixa da imagem cai numa tela. Os objetos mudam de camada conforme a profundidade.',
+  paralelo:'A imagem inteira atravessa as três telas, e cada uma mostra uma cópia. Objetos "distantes" ficam menores e mais fracos. Aqui só vale o brilho da camada 1.'
+};
+function applyMode(){
+  mode=$('mode').value;
+  const par=mode==='paralelo';
+  nL=par?1:3;LW=par?1280:1200;LH=par?720:400;
+  cvs.forEach((c,i)=>{c.width=LW;c.height=LH;c.style.width=LW+'px';c.style.height=LH+'px';c.classList.toggle('hid',i>=nL)});
+  handles.forEach(h=>h.classList.toggle('hid',+h.dataset.l>=nL));
+  $('order').disabled=par;$('modeNote').textContent=notes[mode];
+  try{localStorage.setItem('tule-mode',mode)}catch(e){}
+  quads=load();layout();startScene();
+}
+$('mode').onchange=applyMode;
+
+/* arrastar cantos */
+let drag=null;
+stage.addEventListener('pointerdown',e=>{
+  const h=e.target.closest('.h');if(!h)return;
+  drag=h;selectH(h);h.setPointerCapture(e.pointerId);e.preventDefault();
+});
+stage.addEventListener('pointermove',e=>{
+  if(!drag)return;const i=+drag.dataset.l,k=+drag.dataset.k;
+  quads[i][k]=[Math.min(1,Math.max(0,e.clientX/innerWidth)),Math.min(1,Math.max(0,e.clientY/innerHeight))];layout();
+});
+stage.addEventListener('pointerup',()=>{if(drag){drag=null;save()}});
+function selectH(h){handles.forEach(x=>x.classList.remove('sel'));sel=h;if(h)h.classList.add('sel')}
+
+function setEdit(v){editing=v;stage.classList.toggle('edit',v);$('edit').classList.toggle('on',v);$('edit').textContent=v?'Concluir edição':'Editar cantos';if(!v)selectH(null)}
+$('edit').onclick=()=>setEdit(!editing);
+$('reset').onclick=()=>{quads=defaults($('order').value);save();layout()};
+$('order').onchange=()=>{quads=defaults($('order').value);save();layout()};
+const togglePanel=()=>panel.classList.toggle('off');
+$('hide').onclick=togglePanel;$('open').onclick=()=>panel.classList.remove('off');
+const fs=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}};
+$('fs').onclick=fs;
+
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;
+  const k=e.key.toLowerCase();
+  if(k==='h')togglePanel();
+  else if(k==='e')setEdit(!editing);
+  else if(k==='f')fs();
+  else if(k>='1'&&k<='6'){$('scene').selectedIndex=+k-1;startScene()}
+  else if(sel&&e.key.startsWith('Arrow')){
+    const i=+sel.dataset.l,c=+sel.dataset.k,st=(e.shiftKey?10:1);
+    const dx=e.key==='ArrowLeft'?-st:e.key==='ArrowRight'?st:0,dy=e.key==='ArrowUp'?-st:e.key==='ArrowDown'?st:0;
+    quads[i][c]=[quads[i][c][0]+dx/innerWidth,quads[i][c][1]+dy/innerHeight];layout();save();e.preventDefault();
+  }
+});
+
+let idleT;addEventListener('pointermove',()=>{document.body.classList.remove('idle');clearTimeout(idleT);idleT=setTimeout(()=>document.body.classList.add('idle'),2500)});
+
+/* ganhos por camada */
+function gains(){for(let i=0;i<N;i++)cvs[i].style.filter=`brightness(${$('g'+i).value})`}
+['g0','g1','g2'].forEach(id=>$(id).oninput=gains);gains();
+
+/* mundo: objetos com x,y (0..1) e z contínuo 0 (frente) .. 2 (fundo) */
+const col=(dh,l=60,a=1)=>`hsla(${(+$('hue').value+dh)%360},90%,${l}%,${a})`;
+function weights(z){const b=+$('blend').value;const w=[];for(let i=0;i<N;i++)w.push(Math.max(0,1-Math.abs(z-i)/b));const s=w.reduce((a,c)=>a+c,0)||1;return w.map(x=>Math.min(1,x/s*1.0))}
+function glow(c,x,y,r,color){const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=g;c.beginPath();c.arc(x,y,r,0,7);c.fill()}
+function each(z,fn){
+  if(mode==='paralelo'){const c=ctxs[0];c.globalAlpha=Math.max(0.15,Math.min(1,1-z*0.3));fn(c,0);c.globalAlpha=1;return}
+  const w=weights(z);for(let i=0;i<N;i++)if(w[i]>0.01){const c=ctxs[i];c.globalAlpha=w[i];fn(c,i);c.globalAlpha=1}}
+
+let objs=[],t=0;
+const R=Math.random;
+function startScene(){
+  const s=$('scene').value;objs=[];
+  if(s==='parts')for(let i=0;i<140;i++)objs.push({x:R(),y:R(),z:R()*2.4,s:0.3+R()*0.7,dh:R()*40});
+  if(s==='jelly')for(let i=0;i<7;i++)objs.push({x:R(),y:0.3+R()*0.4,ph:R()*6,zp:R()*6,sp:0.03+R()*0.04,dh:R()*60-30,r:40+R()*30});
+  if(s==='tunnel')for(let i=0;i<6;i++)objs.push({z:2.4-i*0.4});
+  if(s==='rain')for(let i=0;i<70;i++)objs.push({x:R(),z:R()*2,y:R(),v:0.4+R()*0.8});
+}
+$('scene').onchange=startScene;
+
+const scenes={
+  calib(){
+    const cols=['#F0997B','#FAC775','#5DCAA5'];
+    for(let i=0;i<nL;i++){const c=ctxs[i];c.strokeStyle=cols[i];c.lineWidth=2;
+      for(let x=0;x<=LW;x+=100){c.globalAlpha=x%300?0.35:0.8;c.beginPath();c.moveTo(x,0);c.lineTo(x,LH);c.stroke()}
+      for(let y=0;y<=LH;y+=100){c.globalAlpha=y%200?0.35:0.8;c.beginPath();c.moveTo(0,y);c.lineTo(LW,y);c.stroke()}
+      c.globalAlpha=1;c.lineWidth=6;c.strokeRect(3,3,LW-6,LH-6);
+      c.fillStyle=cols[i];c.font='500 180px "Inter Tight",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText(String(i+1),LW/2,LH/2+8);
+      c.font='300 34px "Inter Tight",sans-serif';c.fillText(mode==='paralelo'?'imagem inteira':['frente','meio','fundo'][i],LW/2,LH-44);
+      const p=(t*0.25%1)*LW;glow(c,p,LH/2,60,cols[i]);
+    }
+  },
+  orbit(){
+    const sx=LW/2,sy=LH/2;
+    each(1,c=>{glow(c,sx,sy,190,col(0,60,0.55));c.fillStyle=col(10,75);c.beginPath();c.arc(sx,sy,70,0,7);c.fill();
+      c.strokeStyle=col(0,70,0.5);c.lineWidth=3;for(let k=0;k<12;k++){const a=k/12*6.283+t*0.2;c.beginPath();c.moveTo(sx+Math.cos(a)*95,sy+Math.sin(a)*95);c.lineTo(sx+Math.cos(a)*(125+12*Math.sin(t*2+k)),sy+Math.sin(a)*(125+12*Math.sin(t*2+k)));c.stroke()}});
+    [[0.6,420,32,180],[1.0,300,20,200],[0.35,520,44,120]].forEach(([sp,rx,r,dh],n)=>{
+      const a=t*sp+n*2.1,x=sx+Math.cos(a)*rx,z=1-Math.sin(a)*0.95,y=sy+Math.sin(a)*18;
+      each(z,c=>{glow(c,x,y,r*2.6,col(dh,60,0.5));c.fillStyle=col(dh,70);c.beginPath();c.arc(x,y,r,0,7);c.fill()});
+    });
+  },
+  parts(dt){
+    objs.forEach(o=>{o.z-=dt*0.35*o.s;o.x+=(o.x-0.5)*dt*0.05;if(o.z<-0.4){o.z=2.4;o.x=R();o.y=R()}
+      const x=o.x*LW,y=o.y*LH,r=6+(2.4-o.z)*7*o.s;each(o.z,c=>glow(c,x,y,r*2.2,col(o.dh,65,0.9)))});
+  },
+  jelly(dt){
+    objs.forEach(o=>{o.ph+=dt*2;o.zp+=dt*o.sp*6;o.x+=Math.sin(o.ph*0.2)*dt*0.02;if(o.x>1.1)o.x=-0.1;if(o.x<-0.1)o.x=1.1;
+      const z=1+Math.sin(o.zp)*1.05,x=o.x*LW,y=o.y*LH+Math.sin(o.ph*0.5)*30,p=1+Math.sin(o.ph)*0.12,r=o.r*p;
+      each(z,c=>{c.strokeStyle=col(o.dh+180,70,0.9);c.fillStyle=col(o.dh+180,55,0.25);c.lineWidth=3;
+        c.beginPath();c.ellipse(x,y,r,r*0.75/p,0,Math.PI,0);c.closePath();c.fill();c.stroke();
+        for(let k=0;k<5;k++){const tx=x-r*0.7+k*r*0.35;c.beginPath();c.moveTo(tx,y);for(let s=1;s<=6;s++)c.lineTo(tx+Math.sin(o.ph+s*0.8+k)*8,y+s*14);c.stroke()}});
+    });
+  },
+  tunnel(dt){
+    objs.forEach((o,n)=>{o.z-=dt*0.45;if(o.z<-0.4)o.z+=2.4;const r=40+(2.4-o.z)*110;
+      each(o.z,c=>{c.strokeStyle=col(n*25,65);c.lineWidth=6;c.beginPath();c.ellipse(LW/2,LH/2,r*1.6,r*0.55,0,0,7);c.stroke()})});
+  },
+  rain(dt){
+    objs.forEach(o=>{o.y+=dt*o.v*0.6;if(o.y>1.1){o.y=-0.1;o.x=R();o.z=R()*2}
+      const x=o.x*LW,y=o.y*LH;each(o.z,c=>{const g=c.createLinearGradient(x,y-90,x,y);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,col(160,75));c.strokeStyle=g;c.lineWidth=3;c.beginPath();c.moveTo(x,y-90);c.lineTo(x,y);c.stroke()})});
+  }
+};
+
+applyMode();
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000)*+$('speed').value;last=now;t+=dt;
+  for(const c of ctxs){c.globalCompositeOperation='source-over';c.clearRect(0,0,LW,LH);c.globalCompositeOperation='lighter'}
+  scenes[$('scene').value](dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

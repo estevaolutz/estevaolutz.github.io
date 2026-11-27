@@ -47,6 +47,10 @@ body.pclosed #open{display:block}
 body.idle{cursor:none}
 body.pclosed.idle #open{opacity:0}
 @media(hover:none){body.pclosed.idle #open{opacity:.4}}
+body.proj #panel,body.proj #open{display:none!important}
+body.proj{cursor:none}
+.hint{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);max-width:520px;padding:18px 22px;border:1px solid #444;border-radius:12px;background:#111;color:var(--ink);text-align:center;z-index:20;font-size:17px}
+#pstat{color:var(--c3)}
 kbd{font:12px/1 "Inter Tight";border:1px solid #444;border-radius:4px;padding:2px 5px;color:var(--ink)}
 @media(max-width:600px){#panel{width:100%;top:auto;height:62%;border-left:0;border-top:1px solid var(--line)}#panel.off{transform:translateY(105%)}}
 @media(prefers-reduced-motion:reduce){#panel{transition:none}}
@@ -96,6 +100,10 @@ kbd{font:12px/1 "Inter Tight";border:1px solid #444;border-radius:4px;padding:2p
   <p>No modo de edição, arraste as bolinhas até os cantos de cada tule. Clique numa bolinha e use as setas para ajuste fino (<kbd>Shift</kbd> = 10 px). Fica salvo neste navegador.</p>
 
   <h2>Projeção</h2>
+  <div class="row">
+    <button id="pwin" style="flex-basis:100%">Abrir janela de projeção</button>
+  </div>
+  <p id="pstat">A janela de projeção mostra só a imagem. Arraste-a para o projetor e dê um duplo clique nela para tela cheia. Este painel continua no Mac controlando tudo.</p>
   <div class="row">
     <button id="fs">Tela cheia</button>
     <button id="hide">Ocultar painel</button>
@@ -150,6 +158,9 @@ kbd{font:12px/1 "Inter Tight";border:1px solid #444;border-radius:4px;padding:2p
 {
 const stage=document.getElementById('stage'),panel=document.getElementById('panel');
 let LW=1200,LH=400,nL=3,mode='escada';const N=3;
+const isProj=location.hash==='#projecao';
+const bc='BroadcastChannel' in window?new BroadcastChannel('tule-camadas'):null;
+let applying=false;
 const $=id=>document.getElementById(id);
 let quads=null,editing=false,sel=null;
 try{const m=localStorage.getItem('tule-mode');if(m)$('mode').value=m}catch(e){}
@@ -216,33 +227,33 @@ stage.addEventListener('pointerdown',e=>{
 });
 stage.addEventListener('pointermove',e=>{
   if(!drag)return;const i=+drag.dataset.l,k=+drag.dataset.k;
-  quads[i][k]=[Math.min(1,Math.max(0,e.clientX/innerWidth)),Math.min(1,Math.max(0,e.clientY/innerHeight))];layout();
+  quads[i][k]=[Math.min(1,Math.max(0,e.clientX/innerWidth)),Math.min(1,Math.max(0,e.clientY/innerHeight))];layout();sync();
 });
-stage.addEventListener('pointerup',()=>{if(drag){drag=null;save()}});
-function selectH(h){handles.forEach(x=>x.classList.remove('sel'));sel=h;if(h)h.classList.add('sel')}
+stage.addEventListener('pointerup',()=>{if(drag){drag=null;save();sync()}});
+function selectH(h){handles.forEach(x=>x.classList.remove('sel'));sel=h;if(h)h.classList.add('sel');sync()}
 
-function setEdit(v){editing=v;stage.classList.toggle('edit',v);$('edit').classList.toggle('on',v);$('edit').textContent=v?'Concluir edição':'Editar cantos';if(!v)selectH(null)}
+function setEdit(v){editing=v;stage.classList.toggle('edit',v);$('edit').classList.toggle('on',v);$('edit').textContent=v?'Concluir edição':'Editar cantos';if(!v)selectH(null);sync()}
 $('edit').onclick=()=>setEdit(!editing);
-$('reset').onclick=()=>{quads=defaults($('order').value);save();layout()};
+$('reset').onclick=()=>{quads=defaults($('order').value);save();layout();sync()};
 $('order').onchange=()=>{quads=defaults($('order').value);save();layout()};
 function setPanel(open){panel.classList.toggle('off',!open);document.body.classList.toggle('pclosed',!open)}
 const togglePanel=()=>setPanel(panel.classList.contains('off'));
 $('hide').onclick=$('min').onclick=()=>setPanel(false);$('open').onclick=()=>setPanel(true);
-stage.addEventListener('dblclick',()=>{if(!editing)togglePanel()});
+stage.addEventListener('dblclick',()=>{if(isProj)fs();else if(!editing)togglePanel()});
 const fs=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}};
 $('fs').onclick=fs;
 
 addEventListener('keydown',e=>{
   if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;
   const k=e.key.toLowerCase();
-  if(k==='h')togglePanel();
+  if(k==='h'){if(!isProj)togglePanel()}
   else if(k==='e')setEdit(!editing);
   else if(k==='f')fs();
-  else if(k>='1'&&k<='6'){$('scene').selectedIndex=+k-1;startScene()}
+  else if(k>='1'&&k<='6'){$('scene').selectedIndex=+k-1;startScene();sync()}
   else if(sel&&e.key.startsWith('Arrow')){
     const i=+sel.dataset.l,c=+sel.dataset.k,st=(e.shiftKey?10:1);
     const dx=e.key==='ArrowLeft'?-st:e.key==='ArrowRight'?st:0,dy=e.key==='ArrowUp'?-st:e.key==='ArrowDown'?st:0;
-    quads[i][c]=[quads[i][c][0]+dx/innerWidth,quads[i][c][1]+dy/innerHeight];layout();save();e.preventDefault();
+    quads[i][c]=[quads[i][c][0]+dx/innerWidth,quads[i][c][1]+dy/innerHeight];layout();save();sync();e.preventDefault();
   }
 });
 
@@ -314,7 +325,43 @@ const scenes={
   }
 };
 
+/* janela de projeção separada: controle e projeção sincronizados por BroadcastChannel */
+const ids=['speed','hue','blend','g0','g1','g2'];
+function getState(){const o={mode:$('mode').value,scene:$('scene').value,order:$('order').value,quads,editing,sel:sel?[+sel.dataset.l,+sel.dataset.k]:null};ids.forEach(i=>o[i]=$(i).value);return o}
+function sync(){
+  if(!bc||applying)return;
+  try{bc.postMessage(isProj?{t:'quads',q:quads}:{t:'state',s:getState()})}catch(e){}
+}
+function applyState(o){
+  applying=true;
+  try{
+    if($('mode').value!==o.mode){$('mode').value=o.mode;applyMode()}
+    if($('scene').value!==o.scene){$('scene').value=o.scene;startScene()}
+    $('order').value=o.order;ids.forEach(i=>$(i).value=o[i]);gains();
+    if(o.quads&&o.quads.length===nL){quads=o.quads;save();layout()}
+    if(editing!==o.editing)setEdit(o.editing);
+    selectH(o.sel?handles[o.sel[0]*4+o.sel[1]]:null);
+  }finally{applying=false}
+}
+if(bc)bc.onmessage=e=>{
+  const m=e.data||{};
+  if(isProj&&m.t==='state')applyState(m.s);
+  else if(!isProj&&m.t==='hello'){sync();$('pstat').textContent='Janela de projeção conectada. Arraste-a para o projetor e dê um duplo clique nela para tela cheia.'}
+  else if(!isProj&&m.t==='quads'&&m.q&&m.q.length===nL){quads=m.q;save();layout()}
+};
+panel.addEventListener('input',()=>sync());panel.addEventListener('change',()=>sync());
+$('pwin').onclick=()=>{
+  let w=null;try{w=window.open(location.pathname+location.search+'#projecao','tule-projecao','popup=yes,width=1280,height=720')}catch(e){}
+  if(!w)$('pstat').textContent='O navegador bloqueou a janela. No artefato do Claude isso não funciona: use o site estevaolutz.github.io/mapping/tule-camadas/ e permita pop-ups.';
+};
 applyMode();
+if(isProj){
+  document.body.classList.add('proj');document.title='Projeção · Tule em Camadas';
+  const h=document.createElement('div');h.className='hint';h.textContent='Janela de projeção. Arraste-a para a tela do projetor e dê um duplo clique para tela cheia. Os controles ficam na outra janela.';document.body.appendChild(h);
+  const gone=()=>h.remove();document.addEventListener('fullscreenchange',gone);setTimeout(gone,10000);
+  if(bc)bc.postMessage({t:'hello'});
+  if(!bc)h.textContent='Este navegador não sincroniza janelas. Use Chrome, Safari ou Firefox atualizados.';
+}
 let last=performance.now();
 function frame(now){
   const dt=Math.min(0.05,(now-last)/1000)*+$('speed').value;last=now;t+=dt;

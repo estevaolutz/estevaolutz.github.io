@@ -9,10 +9,12 @@ App de projeção "holográfica" em telas de tule (aba Mapping do site). Arquivo
 ## Cenas
 Mundo com objetos em x, y (0–1) e z contínuo (0 = frente, 2 = fundo). A função `each(z, fn)` distribui o desenho entre as camadas com pesos (controle "Transição"). Cenas: calib, orbit, parts, jelly, tunnel, rain. Atalhos: H painel, E cantos, F tela cheia, 1–6 cenas.
 
+## Janela de projeção separada
+Botão "Abrir janela de projeção" abre a mesma página com `#projecao` (sem painel, cursor oculto, duplo clique = tela cheia). Controle e projeção se sincronizam por `BroadcastChannel('tule-camadas')`: o controle envia o estado inteiro (`t:'state'`), a projeção pede com `t:'hello'` e devolve os cantos se forem arrastados nela (`t:'quads'`). Não funciona no artefato do Claude (window.open bloqueado).
+
 ## Material do usuário
 Rolo de tule de 10 m × 2,4 m; painéis sugeridos de 1,2 × 1 m. Projetor portátil (HY300), fraco para tule, por isso há brilho por camada.
 
 ## Ideias pendentes
 - Modo com uma saída por projetor (paralelo com conteúdo diferente em cada tela).
 - Cenas reativas ao microfone (não funcionam no artefato do Claude, só no GitHub Pages).
-- Janela de projeção separada dos controles, como nos outros apps de mapping.
